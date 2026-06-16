@@ -1,41 +1,47 @@
-from contextlib import asynccontextmanager
 import asyncio
 import logging
 import time
-from typing import Optional
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import app.models.analysis_job  # noqa: F401
+import app.models.category  # noqa: F401
+
+# Ensure all models are imported for table creation
+import app.models.daily_report  # noqa: F401
+import app.models.fanqie  # noqa: F401
+import app.models.favorite  # noqa: F401
+import app.models.feedback  # noqa: F401
+import app.models.llm_model  # noqa: F401
+import app.models.monthly_digest  # noqa: F401
+import app.models.mother_topic  # noqa: F401
+import app.models.notification  # noqa: F401
+import app.models.product_feedback  # noqa: F401
+import app.models.qimao  # noqa: F401
+import app.models.scheduled_job  # noqa: F401
+import app.models.trending  # noqa: F401
+import app.models.user  # noqa: F401
+import app.models.user_integration  # noqa: F401
+import app.models.weekly_digest  # noqa: F401
+import app.models.zhihu  # noqa: F401
+from app.api.v1.router import router as v1_router
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings
 from app.core.database import async_session, database_profile, engine
 from app.core.db_backend import database_diagnostics, redact_database_secrets
-from app.api.v1.router import router as v1_router
-from app.scheduler import start_scheduler, shutdown_scheduler
 from app.core.exceptions import AppException
-# Ensure all models are imported for table creation
-import app.models.daily_report  # noqa: F401
-import app.models.category  # noqa: F401
-import app.models.feedback  # noqa: F401
-import app.models.weekly_digest  # noqa: F401
-import app.models.monthly_digest  # noqa: F401
-import app.models.trending  # noqa: F401
-import app.models.mother_topic  # noqa: F401
-import app.models.fanqie  # noqa: F401
-import app.models.notification  # noqa: F401
-import app.models.qimao  # noqa: F401
-import app.models.zhihu  # noqa: F401
-import app.models.scheduled_job  # noqa: F401
-import app.models.llm_model  # noqa: F401
-import app.models.favorite  # noqa: F401
-import app.models.user  # noqa: F401
-import app.models.user_integration  # noqa: F401
-import app.models.product_feedback  # noqa: F401
-import app.models.analysis_job  # noqa: F401
+from app.scheduler import shutdown_scheduler, start_scheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-_cache_warmup_task: Optional[asyncio.Task] = None
+_cache_warmup_task: asyncio.Task | None = None
+
+# ── Structured logging (JSON for production aggregation) ──
+from app.core.logging_config import configure_logging
+_log_format = getattr(settings, "LOG_FORMAT", "text")
+configure_logging(log_format=_log_format)
 
 # ── Request-scoped ID (contextvar, safe for asyncio) ──
 import contextvars
@@ -281,6 +287,7 @@ app.add_middleware(ProcessTimeHeaderMiddleware)
 
 # Rate limiting（内存滑动窗口，按 IP + 路径前缀分桶）
 from app.middleware.rate_limit import RateLimitMiddleware
+
 app.add_middleware(RateLimitMiddleware)
 
 # Mount v1 API routes

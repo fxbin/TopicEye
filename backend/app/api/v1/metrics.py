@@ -15,7 +15,7 @@ Prometheus 兼容的 /metrics 端点。
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Response
 from sqlalchemy import func, select
@@ -35,7 +35,7 @@ _START_TIME = time.monotonic()
 async def prometheus_metrics():
     """Prometheus text format metrics."""
     lines: list[str] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     def gauge(name: str, value, help_text: str = "", labels: dict | None = None):
         if help_text:
@@ -94,6 +94,11 @@ async def prometheus_metrics():
     # ── Uptime ──
     uptime = time.monotonic() - _START_TIME
     gauge("topiceye_uptime_seconds", int(uptime), "Process uptime in seconds")
+
+    # ── Slow queries (cumulative since startup) ──
+    from app.core.slow_query import get_slow_count
+    gauge("topiceye_slow_queries_total", get_slow_count(),
+          "SQL queries exceeding slow query threshold (cumulative)")
 
     return Response(
         content="\n".join(lines) + "\n",

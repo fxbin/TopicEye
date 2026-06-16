@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 class AuthRegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
-    display_name: Optional[str] = Field(default=None, max_length=100)
+    display_name: str | None = Field(default=None, max_length=100)
 
     @field_validator("email")
     @classmethod
@@ -18,6 +17,12 @@ class AuthRegisterRequest(BaseModel):
         if "@" not in normalized or "." not in normalized.rsplit("@", 1)[-1]:
             raise ValueError("Invalid email")
         return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        from app.core.validators import validate_password_strength
+        return validate_password_strength(value)
 
 
 class AuthLoginRequest(BaseModel):
@@ -36,7 +41,7 @@ class AuthLoginRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     plan: str
     role: str
     is_active: bool

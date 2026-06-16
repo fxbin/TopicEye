@@ -19,14 +19,11 @@ without contending with the async engine.
 from __future__ import annotations
 
 import logging
-import os
-import sys
 from pathlib import Path
-from typing import Optional
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from app.core.config import settings
 from app.core.db_backend import create_database_profile
 
@@ -103,6 +100,10 @@ def run_startup_migrations() -> None:
     """Run Alembic migrations to bring the database to the latest revision.
 
     Safe to call on every startup. No-op side effects when already current.
+
+    On PostgreSQL, acquires a session-level advisory lock (key 1) before
+    running upgrade to prevent multiple containers from racing on the
+    same migration. SQLite is single-writer so the lock is a no-op there.
     """
     profile = create_database_profile(
         settings.DATABASE_URL,
@@ -110,6 +111,7 @@ def run_startup_migrations() -> None:
         sqlite_domain_dir=settings.DATABASE_SQLITE_DOMAIN_DIR,
     )
     sync_url = profile.sync_url
+    _migration_lock_key = 7103251  # arbitrary constant; all containers share
 
     cfg = _build_alembic_config()
 
@@ -127,4 +129,23 @@ def run_startup_migrations() -> None:
         command.upgrade(cfg, "head")
         return
 
-    _stamp_or_upgrade(cfg, has_version_table=has_version_table, has_app_tables=has_app_tables)
+    # PG advisory lock: prevent multi-container concurrent migrations
+    pg_lock_conn = None
+    if profile.is_postgresql:
+        from sqlalchemy import create_engine as _ce
+        pg_lock_conn = _ce(sync_url).connect()
+        pg_lock_conn.execution_options(autocommit=True)
+        pg_lock_conn.execute(
+            __import__("sqlalchemy").text(f"SELECT pg_advisory_lock({_migration_lock_key})")
+        )
+    try:
+        _stamp_or_upgrade(cfg, has_version_table=has_version_table, has_app_tables=has_app_tables)
+    finally:
+        if pg_lock_conn is not None:
+            try:
+                pg_lock_conn.execute(
+                    __import__("sqlalchemy").text(f"SELECT pg_advisory_unlock({_migration_lock_key})")
+                )
+                pg_lock_conn.close()
+            except Exception:
+                pass

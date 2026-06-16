@@ -11,21 +11,22 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import time
-import asyncio
-from typing import Any, Optional
-from datetime import datetime, timedelta, timezone
 import threading
+import time
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from litellm import completion
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
+
 from app.config import settings
 from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
@@ -78,11 +79,12 @@ class ModelConfigCache:
     async def refresh(self, user_id: int | None = None):
         """Reload model configs from DB."""
         try:
+            from sqlalchemy import select
+
             from app.core.database import async_session
             from app.models.llm_model import LlmModel
             from app.models.user import User
             from app.services.plan_catalog import plan_allows_custom_ai
-            from sqlalchemy import select
 
             async with async_session() as session:
                 filters = [LlmModel.enabled == True]
@@ -177,10 +179,10 @@ class ModelFailover:
         self._cooldowns: dict[str, datetime] = {}
         self._lock = threading.Lock()
 
-    def on_failure(self, key: str, *, reset_at: Optional[datetime] = None, cooldown_seconds: int = 300):
+    def on_failure(self, key: str, *, reset_at: datetime | None = None, cooldown_seconds: int = 300):
         """Called when a model fails. Pass reset_at if the provider supplied one."""
         cooldown = max(cooldown_seconds or 300, 1)
-        effective_reset = reset_at or (datetime.now(timezone.utc) + timedelta(seconds=cooldown))
+        effective_reset = reset_at or (datetime.now(UTC) + timedelta(seconds=cooldown))
         with self._lock:
             self._cooldowns[key] = effective_reset
         logger.warning("ModelFailover: %s degraded until %s", key, effective_reset)
@@ -203,7 +205,7 @@ class ModelFailover:
             reset_at = self._cooldowns.get(key)
             if not reset_at:
                 return False
-            if datetime.now(timezone.utc) < reset_at:
+            if datetime.now(UTC) < reset_at:
                 return True
             logger.info("ModelFailover: cooldown passed, trying %s", key)
             self._cooldowns.pop(key, None)
@@ -268,7 +270,7 @@ _rate_limiter = RateLimiter(
 )
 _model_rate_limiters: dict[str, RateLimiter] = {}
 _model_rate_limiters_lock = threading.Lock()
-_completion_semaphore: Optional[asyncio.Semaphore] = None
+_completion_semaphore: asyncio.Semaphore | None = None
 
 
 def _normalize_llm_concurrency(value: Any = None) -> int:
@@ -340,7 +342,7 @@ def _is_rate_limit_error(exc: Exception) -> bool:
                                    "请求过于频繁", "调用额度", "额度用完", "已达"])
 
 
-def _parse_reset_time(exc: Exception) -> Optional[datetime]:
+def _parse_reset_time(exc: Exception) -> datetime | None:
     """Parse the exact reset time from a rate limit error message.
 
     Handles formats like:
@@ -357,10 +359,10 @@ def _parse_reset_time(exc: Exception) -> Optional[datetime]:
             dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
                          int(m.group(4)), int(m.group(5)), int(m.group(6)))
             # Chinese servers are likely CST (UTC+8)
-            from datetime import timezone, timedelta
+            from datetime import timedelta, timezone
             cst = timezone(timedelta(hours=8))
             dt = dt.replace(tzinfo=cst)
-            return dt.astimezone(timezone.utc)
+            return dt.astimezone(UTC)
         except (ValueError, OverflowError):
             pass
     return None
@@ -369,11 +371,11 @@ def _parse_reset_time(exc: Exception) -> Optional[datetime]:
 async def _call_llm_single(
     messages: list,
     model: str,
-    api_key: Optional[str],
-    api_base: Optional[str],
+    api_key: str | None,
+    api_base: str | None,
     temperature: float,
     max_tokens: int,
-    response_format: Optional[dict],
+    response_format: dict | None,
     model_config: Any = None,
     scene: str = "general",
 ) -> str:
@@ -437,11 +439,11 @@ async def _call_llm_single(
 async def _call_with_retry(
     messages: list,
     model: str,
-    api_key: Optional[str],
-    api_base: Optional[str],
+    api_key: str | None,
+    api_base: str | None,
     temperature: float,
     max_tokens: int,
-    response_format: Optional[dict],
+    response_format: dict | None,
     model_config: Any = None,
     scene: str = "general",
 ) -> str:
@@ -470,11 +472,22 @@ async def call_llm_with_metadata(
             f"callers should use fallback"
         )
 
+    # Response cache: same (messages, temperature, model) → return cached raw
+    from app.services.llm.response_cache import get_llm_cache
+    cache = get_llm_cache()
+    cached = cache.get(messages, temperature, max_tokens, model=None)
+    if cached is not None:
+        return cached, {"cache_hit": True}
+
     try:
         result = await _call_llm_with_metadata_inner(
             messages, temperature, max_tokens, scene, user_id, routing_group,
         )
         await breaker.record_success()
+        cache.set(
+            messages, temperature, max_tokens, model=None,
+            raw_response=result[0],
+        )
         return result
     except Exception as exc:
         # Only count genuine LLM/API failures, not caller-side issues
@@ -497,7 +510,7 @@ async def _call_llm_with_metadata_inner(
     candidates = [_candidate_from_db_model(m, temperature, max_tokens) for m in db_models]
 
     skipped: list[dict[str, Any]] = []
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
 
     for candidate in candidates:
         model_config = candidate["model_config"]

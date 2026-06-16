@@ -1,0 +1,40 @@
+# =============================================================================
+# TopicEye backend 工具配置
+#
+# 项目结构（pip install -r requirements.txt 直接用，无 setup.py）：
+#   - requirements.txt      生产依赖
+#   - requirements-dev.txt  开发依赖（ruff/pytest 等）
+#   - pytest.ini            pytest 配置
+#   - alembic.ini           数据库迁移
+#
+# 本文件只放工具配置（ruff），不定义 package 本身。
+# =============================================================================
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [
+    "alembic/versions",
+    "data",
+    ".venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+# 默认规则集 E (pycodestyle errors) + F (pyflakes) + I (isort) + W (pycodestyle warnings)
+# + B (bugbear) + UP (pyupgrade) + SIM (simplify) + C4 (comprehensions)
+select = ["E", "F", "I", "W", "B", "UP", "SIM", "C4"]
+ignore = [
+    "E501",   # line too long（已有 line-length 限制，ruff 偶尔误报）
+    "B008",   # function call in default argument（FastAPI Depends 常用）
+    "UP007",  # X | Y union（暂用 Optional[X] / Union 兼容旧语法）
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

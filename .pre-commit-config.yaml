@@ -1,0 +1,37 @@
+# =============================================================================
+# TopicEye pre-commit hooks
+#
+# 安装：pip install pre-commit && pre-commit install
+# 跑全部：pre-commit run --all-files
+#
+# 设计：通用门（merge conflict / yaml / secrets / private key）必跑；
+# Python 质量门（ruff / black / pyupgrade）不在 commit 强制门禁，
+# 改为手动 `make lint` + CI 跑——避免现有 150+ 遗留问题阻塞新提交。
+# 大改 refactor 时再统一修。
+# =============================================================================
+
+repos:
+  # 通用质量门
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key  # 防误提交私钥
+      - id: check-added-large-files
+        args: ['--maxkb=500']  # 防止误提交大文件
+
+  # 密钥扫描（API key / token / password 等）
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '\.lock$|package-lock\.json$|\.min\.js
+

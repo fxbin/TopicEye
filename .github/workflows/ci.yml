@@ -92,3 +92,22 @@ jobs:
         run: npm ci
       - name: Type check
         run: npx tsc --noEmit
+
+  # ── Lint: ruff (Python 质量门，不阻塞 commit 由 CI 兜底) ──
+  backend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+      - name: Ruff check
+        # 渐进式：先用 --statistics 看问题分布；完全清理后改回 error 门禁
+        run: ruff check --statistics . | tail -30
+      - name: Ruff format check
+        run: ruff format --check . | tail -20

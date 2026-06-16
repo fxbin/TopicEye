@@ -147,6 +147,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Sequence sync check failed (non-fatal): %s", exc)
 
+    # Slow query listener (SQL > 1s log warning, > 5s alert webhook)
+    try:
+        from app.core.slow_query import attach_to_all_engines
+        attach_to_all_engines()
+    except Exception as exc:
+        logger.warning("Slow query listener setup failed (non-fatal): %s", exc)
+
     admin_email = (settings.ADMIN_EMAIL or "").strip()
     admin_password = settings.ADMIN_PASSWORD or ""
     if settings.ADMIN_SEED_ENABLED and admin_email and admin_password:

@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   Bookmark,
+  Rocket,
   BrainCircuit,
   CalendarDays,
   ClipboardList,
@@ -81,7 +82,7 @@ export const NAV_SPACES: NavSpace[] = [
     label: '账户',
     items: [
       { id: 'plans', label: '权益规划', href: '/plans', icon: Gem, access: 'public' },
-      { id: 'feedback', label: '反馈与更新', href: '/feedback', icon: MessageSquareWarning, access: 'public' },
+      { id: 'changelog', label: '更新记录', href: '/changelog', icon: Rocket, access: 'public' },
     ],
   },
   {

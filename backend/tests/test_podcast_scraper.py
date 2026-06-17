@@ -95,9 +95,11 @@ async def test_resolve_rss_url_apple_podcast_via_itunes_lookup():
         "https://podcasts.apple.com/us/podcast/test/id1234567890",
         source_config={"itunes_id": "1234567890"},
     )
-    client = FakeClient(routes={
-        "https://itunes.apple.com/lookup": FakeResponse(json_data=ITUNES_LOOKUP_JSON),
-    })
+    client = FakeClient(
+        routes={
+            "https://itunes.apple.com/lookup": FakeResponse(json_data=ITUNES_LOOKUP_JSON),
+        }
+    )
     rss = await scraper._resolve_rss_url(client)
     assert rss == "https://feeds.example.com/test-podcast.xml"
     # Confirm the lookup URL was requested
@@ -108,9 +110,11 @@ async def test_resolve_rss_url_apple_podcast_via_itunes_lookup():
 async def test_resolve_rss_url_apple_id_extracted_from_url():
     """iTunes_id is not in source_config but is in URL path."""
     scraper = PodcastScraper("https://podcasts.apple.com/us/podcast/test/id9999888877")
-    client = FakeClient(routes={
-        "https://itunes.apple.com/lookup": FakeResponse(json_data=ITUNES_LOOKUP_JSON),
-    })
+    client = FakeClient(
+        routes={
+            "https://itunes.apple.com/lookup": FakeResponse(json_data=ITUNES_LOOKUP_JSON),
+        }
+    )
     rss = await scraper._resolve_rss_url(client)
     # lookup was called
     assert any("id=9999888877" in u for u in client.requested_urls)
@@ -123,9 +127,11 @@ async def test_fetch_uses_resolved_rss_and_parses_entries():
         "https://podcasts.apple.com/us/podcast/test/id1234567890",
         source_config={"resolved_rss_url": "https://feeds.example.com/test-podcast.xml"},
     )
-    client = FakeClient(routes={
-        "https://feeds.example.com/": FakeResponse(text=SAMPLE_PODCAST_FEED),
-    })
+    client = FakeClient(
+        routes={
+            "https://feeds.example.com/": FakeResponse(text=SAMPLE_PODCAST_FEED),
+        }
+    )
     entries = await scraper.fetch(client)
 
     assert len(entries) == 2
@@ -140,9 +146,11 @@ async def test_fetch_returns_empty_on_304():
         "https://example.com/feed.xml",
         source_config={"resolved_rss_url": "https://example.com/feed.xml"},
     )
-    client = FakeClient(routes={
-        "https://example.com/": FakeResponse(status_code=304),
-    })
+    client = FakeClient(
+        routes={
+            "https://example.com/": FakeResponse(status_code=304),
+        }
+    )
     entries = await scraper.fetch(client)
     assert entries == []
 
@@ -157,9 +165,11 @@ async def test_resolve_rss_url_html_extraction_fallback():
     </head><body>...</body></html>
     """
     scraper = PodcastScraper("https://example.com/show")
-    client = FakeClient(routes={
-        "https://example.com/show": FakeResponse(text=html),
-    })
+    client = FakeClient(
+        routes={
+            "https://example.com/show": FakeResponse(text=html),
+        }
+    )
     rss = await scraper._resolve_rss_url(client)
     assert rss == "https://example.com/show/feed.xml"
 

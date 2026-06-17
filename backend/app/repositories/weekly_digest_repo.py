@@ -28,25 +28,18 @@ class WeeklyDigestRepository(BaseRepository[WeeklyDigest]):
 
     async def get_latest(self, limit: int = 8) -> Sequence[WeeklyDigest]:
         """Return the most recent weekly digests, newest first."""
-        stmt = (
-            select(self.model)
-            .order_by(self.model.week_start.desc())
-            .limit(limit)
-        )
+        stmt = select(self.model).order_by(self.model.week_start.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
     async def get_weeks_with_digests(self) -> List[Dict[str, Optional[str]]]:
         """Return list of {week_key, week_label, takeaway, status} for all digests, newest first."""
-        stmt = (
-            select(
-                self.model.week_key,
-                self.model.week_label,
-                self.model.takeaway,
-                self.model.status,
-            )
-            .order_by(self.model.week_start.desc())
-        )
+        stmt = select(
+            self.model.week_key,
+            self.model.week_label,
+            self.model.takeaway,
+            self.model.status,
+        ).order_by(self.model.week_start.desc())
         result = await self.db.execute(stmt)
         rows = result.all()
         return [

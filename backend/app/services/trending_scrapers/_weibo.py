@@ -2,6 +2,7 @@
 
 注意：需要有效的 SUB cookie 才能获取数据。
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,8 +17,8 @@ logger = logging.getLogger(__name__)
 # 正则匹配 <a href="/weibo?q=..."> 标题 </a> 后跟 <span> 热度 </span>
 _PAT = re.compile(
     r'<a\s+href="/weibo\?q=([^"&]+)[^"]*band_rank=(\d+)[^"]*"[^>]*>'
-    r'\s*([^<]+?)\s*</a>'
-    r'\s*(?:<span>\s*(\d[\d,]*)\s*</span>)?',
+    r"\s*([^<]+?)\s*</a>"
+    r"\s*(?:<span>\s*(\d[\d,]*)\s*</span>)?",
     re.DOTALL,
 )
 
@@ -71,14 +72,16 @@ class WeiboTrending(BaseTrendingScraper):
                     pass
 
             decoded_query = query_encoded
-            results.append({
-                "title": title,
-                "rank": rank,
-                "url": f"https://s.weibo.com/weibo?q={decoded_query}",
-                "hot_value": hot_val,
-                "hot_value_raw": hot_str or "",
-                "trend": "up" if rank <= 5 else "stable",
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": rank,
+                    "url": f"https://s.weibo.com/weibo?q={decoded_query}",
+                    "hot_value": hot_val,
+                    "hot_value_raw": hot_str or "",
+                    "trend": "up" if rank <= 5 else "stable",
+                }
+            )
 
         # 如果正则匹配不够，按 td-02 + a href 备用匹配
         if len(results) < 5:
@@ -92,14 +95,16 @@ class WeiboTrending(BaseTrendingScraper):
                 if not title or title in seen:
                     continue
                 seen.add(title)
-                results.append({
-                    "title": title,
-                    "rank": len(results) + 1,
-                    "url": f"https://s.weibo.com{href}",
-                    "hot_value": 0,
-                    "hot_value_raw": "",
-                    "trend": "stable",
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "rank": len(results) + 1,
+                        "url": f"https://s.weibo.com{href}",
+                        "hot_value": 0,
+                        "hot_value_raw": "",
+                        "trend": "stable",
+                    }
+                )
                 if len(results) >= 50:
                     break
 

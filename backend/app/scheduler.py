@@ -14,6 +14,7 @@ Job tracking:
     - Execution records go to job_execution_logs table.
     - Task configs are auto-registered to scheduled_jobs table.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -92,8 +93,13 @@ scheduler = AsyncIOScheduler(
 
 # ── Scheduled jobs ────────────────────────────────────────────────────
 
-@track_job("sync_and_analyze", name="全量信源同步+分析", timeout=600,
-           description="同步所有启用的信源，自动分析新内容，聚类+趋势快照")
+
+@track_job(
+    "sync_and_analyze",
+    name="全量信源同步+分析",
+    timeout=600,
+    description="同步所有启用的信源，自动分析新内容，聚类+趋势快照",
+)
 async def sync_and_analyze() -> None:
     """Legacy: sync all enabled sources, then auto-analyze new pending content."""
     logger.info("Scheduler: sync_and_analyze started")
@@ -131,6 +137,7 @@ async def sync_and_analyze() -> None:
     try:
         async with async_session() as db:
             from app.services.topic_clustering import cluster_and_dedup_with_lease
+
             stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
         if claimed:
             logger.info("Scheduler: clustering done — %s", stats)
@@ -143,6 +150,7 @@ async def sync_and_analyze() -> None:
     try:
         async with async_session() as db:
             from app.services.trends import snapshot_daily_trends
+
             stats = await snapshot_daily_trends(db)
             await db.commit()
         logger.info("Scheduler: trend snapshot done — %s", stats)
@@ -150,8 +158,9 @@ async def sync_and_analyze() -> None:
         logger.exception("Scheduler: trend snapshot failed")
 
 
-@track_job("cleanup_old_content", name="清理90天前的待处理内容", timeout=120,
-           description="删除 pending 状态超过90天的内容")
+@track_job(
+    "cleanup_old_content", name="清理90天前的待处理内容", timeout=120, description="删除 pending 状态超过90天的内容"
+)
 async def cleanup_old_content() -> None:
     """Remove pending content older than 90 days."""
     logger.info("Scheduler: cleanup_old_content started")
@@ -165,8 +174,12 @@ async def cleanup_old_content() -> None:
         return f"removed={removed}"
 
 
-@track_job("cleanup_old_notifications", name="清理30天前的站内通知", timeout=60,
-           description="删除30天前的 notifications（CASCADE 自动清 notification_reads）")
+@track_job(
+    "cleanup_old_notifications",
+    name="清理30天前的站内通知",
+    timeout=60,
+    description="删除30天前的 notifications（CASCADE 自动清 notification_reads）",
+)
 async def cleanup_old_notifications() -> None:
     """Remove notifications older than 30 days.
 
@@ -175,6 +188,7 @@ async def cleanup_old_notifications() -> None:
     logger.info("Scheduler: cleanup_old_notifications started")
     try:
         from app.services.notification_service import cleanup_old_notifications as _cleanup
+
         async with async_session() as db:
             removed = await _cleanup(days=30)
             await db.commit()
@@ -184,11 +198,11 @@ async def cleanup_old_notifications() -> None:
         logger.exception("Scheduler: cleanup_old_notifications failed")
 
 
-@track_job("sync_trending", name="趋势雷达数据同步", timeout=120,
-           description="每30分钟同步所有趋势信源数据")
+@track_job("sync_trending", name="趋势雷达数据同步", timeout=120, description="每30分钟同步所有趋势信源数据")
 async def _sync_all_trending() -> None:
     """Sync all trending sources (lightweight, no LLM)."""
     from app.services.trending_pipeline import sync_all_trending
+
     try:
         async with async_session() as db:
             results = await sync_all_trending(db)
@@ -210,6 +224,7 @@ async def _sync_single_source(source_id: int) -> None:
     async with sem:
         async with async_session() as db:
             from app.repositories.source_repo import SourceRepository
+
             source_repo = SourceRepository(db)
             source = await source_repo.claim_sync(
                 source_id,
@@ -274,8 +289,12 @@ def _clear_post_sync_task(task: asyncio.Task) -> None:
         logger.exception("Scheduler: ad-hoc post-sync pipeline task failed")
 
 
-@track_job("post_sync_pipeline", name="同步后分析聚合", timeout=600,
-           description="节流处理待分析内容、话题聚类和趋势快照，避免每个信源同步后重复触发")
+@track_job(
+    "post_sync_pipeline",
+    name="同步后分析聚合",
+    timeout=600,
+    description="节流处理待分析内容、话题聚类和趋势快照，避免每个信源同步后重复触发",
+)
 async def _run_post_sync_pipeline() -> None:
     """Run shared post-sync work, coalescing overlapping sync completions."""
     global _post_sync_rerun_requested
@@ -316,6 +335,7 @@ async def _run_post_sync_pipeline_once() -> None:
     try:
         async with async_session() as db:
             from app.services.topic_clustering import cluster_and_dedup_with_lease
+
             stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
         if claimed:
             logger.info("Scheduler: clustering done — %s", stats)
@@ -326,6 +346,7 @@ async def _run_post_sync_pipeline_once() -> None:
     try:
         async with async_session() as db:
             from app.services.trends import snapshot_daily_trends
+
             stats = await snapshot_daily_trends(db)
             await db.commit()
         logger.info("Scheduler: trend snapshot done — %s", stats)
@@ -432,11 +453,10 @@ async def _rescan_sources() -> None:
     """
     async with async_session() as db:
         # ── Self-heal: reset stale SYNCING sources ──
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(
-            seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3
-        )
+        stale_cutoff = datetime.now(timezone.utc) - timedelta(seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3)
         from sqlalchemy import update as sa_update
         from app.models.source import Source, SourceStatus
+
         heal_result = await db.execute(
             sa_update(Source)
             .where(
@@ -449,21 +469,25 @@ async def _rescan_sources() -> None:
         if healed:
             await db.commit()
             logger.warning(
-                "Scheduler: self-healed %d source(s) stuck in SYNCING (>3x lease)", healed,
+                "Scheduler: self-healed %d source(s) stuck in SYNCING (>3x lease)",
+                healed,
             )
 
         # ── Alert: sources with status=ERROR (连续失败) ──
         try:
             from app.services.alerting import alert_source_failures
-            error_sources = (await db.execute(
-                select(Source.name, Source.source_type, Source.sync_error)
-                .where(Source.status == SourceStatus.ERROR, Source.enabled.is_(True))
-            )).all()
+
+            error_sources = (
+                await db.execute(
+                    select(Source.name, Source.source_type, Source.sync_error).where(
+                        Source.status == SourceStatus.ERROR, Source.enabled.is_(True)
+                    )
+                )
+            ).all()
             if error_sources:
-                await alert_source_failures([
-                    {"name": r[0], "source_type": r[1], "error": r[2] or ""}
-                    for r in error_sources
-                ])
+                await alert_source_failures(
+                    [{"name": r[0], "source_type": r[1], "error": r[2] or ""} for r in error_sources]
+                )
         except Exception:
             logger.debug("Source failure alert skipped (non-fatal)", exc_info=True)
 
@@ -544,14 +568,14 @@ def _source_job_is_overdue(job, expected_next_run_time: datetime) -> bool:
     return job.next_run_time > expected_next_run_time + timedelta(seconds=30)
 
 
-@track_job("save_trending_snapshots", name="趋势快照保存", timeout=120,
-           description="每日00:30保存趋势数据快照")
+@track_job("save_trending_snapshots", name="趋势快照保存", timeout=120, description="每日00:30保存趋势数据快照")
 async def _save_trending_snapshots() -> None:
     """Save daily snapshot for all trending sources at 00:30."""
     logger.info("Scheduler: save_trending_snapshots started")
     try:
         async with async_session() as db:
             from app.services.trending_snapshot import save_all_snapshots
+
             results = await save_all_snapshots(db)
             await db.commit()
         logger.info("Scheduler: trending snapshots saved — %s", results)
@@ -560,14 +584,16 @@ async def _save_trending_snapshots() -> None:
         logger.exception("Scheduler: save_trending_snapshots failed")
 
 
-@track_job("cleanup_trending_snapshots", name="清理过期趋势快照", timeout=60,
-           description="每日01:00清理15天前的趋势快照")
+@track_job(
+    "cleanup_trending_snapshots", name="清理过期趋势快照", timeout=60, description="每日01:00清理15天前的趋势快照"
+)
 async def _cleanup_old_trending_snapshots() -> None:
     """Delete trending snapshots older than 15 days at 01:00."""
     logger.info("Scheduler: cleanup_old_trending_snapshots started")
     try:
         async with async_session() as db:
             from app.services.trending_snapshot import cleanup_old_snapshots
+
             count = await cleanup_old_snapshots(db)
             await db.commit()
         logger.info("Scheduler: cleanup_old_trending_snapshots removed %d records", count)
@@ -576,13 +602,13 @@ async def _cleanup_old_trending_snapshots() -> None:
         logger.exception("Scheduler: cleanup_old_trending_snapshots failed")
 
 
-@track_job("sync_fanqie", name="番茄小说榜单抓取", timeout=300,
-           description="每日凌晨1点抓取番茄小说34个分类榜单")
+@track_job("sync_fanqie", name="番茄小说榜单抓取", timeout=300, description="每日凌晨1点抓取番茄小说34个分类榜单")
 async def _sync_fanqie() -> None:
     """番茄小说榜单每日抓取（凌晨1点）。"""
     logger.info("Scheduler: fanqie sync started")
     try:
         from app.services.fanqie_service import full_sync
+
         result = await full_sync()
         logger.info("Scheduler: fanqie sync done — %s", result)
         return str(result)
@@ -590,13 +616,13 @@ async def _sync_fanqie() -> None:
         logger.exception("Scheduler: fanqie sync failed")
 
 
-@track_job("sync_qimao", name="七猫小说榜单抓取", timeout=300,
-           description="每日凌晨2点抓取七猫小说10个榜单")
+@track_job("sync_qimao", name="七猫小说榜单抓取", timeout=300, description="每日凌晨2点抓取七猫小说10个榜单")
 async def _sync_qimao() -> None:
     """七猫小说榜单每日抓取（凌晨2点）。"""
     logger.info("Scheduler: qimao sync started")
     try:
         from app.services.qimao_service import sync_qimao_ranks
+
         result = await sync_qimao_ranks()
         logger.info("Scheduler: qimao sync done — %s", result)
         return str(result)
@@ -604,13 +630,13 @@ async def _sync_qimao() -> None:
         logger.exception("Scheduler: qimao sync failed")
 
 
-@track_job("sync_zhihu", name="知乎故事榜单抓取", timeout=300,
-           description="每日凌晨4点抓取知乎故事分类榜单")
+@track_job("sync_zhihu", name="知乎故事榜单抓取", timeout=300, description="每日凌晨4点抓取知乎故事分类榜单")
 async def _sync_zhihu() -> None:
     """知乎故事榜单每日抓取（凌晨4点）。"""
     logger.info("Scheduler: zhihu sync started")
     try:
         from app.services.zhihu_service import sync_zhihu_ranks
+
         result = await sync_zhihu_ranks()
         logger.info("Scheduler: zhihu sync done — %s", result)
         return str(result)
@@ -620,13 +646,14 @@ async def _sync_zhihu() -> None:
 
 # ── NEW: AI 日报 & 周刊定时任务 ──────────────────────────────────────
 
-@track_job("daily_report", name="AI日报生成", timeout=300,
-           description="按时间窗口生成日报快照/最终版，基于精选内容")
+
+@track_job("daily_report", name="AI日报生成", timeout=300, description="按时间窗口生成日报快照/最终版，基于精选内容")
 async def _generate_daily_report() -> None:
     """Generate current-day daily report snapshot."""
     logger.info("Scheduler: daily report generation started")
     try:
         from app.services.daily_report import generate_daily_report
+
         async with async_session() as db:
             report = await generate_daily_report(db)
         logger.info("Scheduler: daily report generated — %s (%s)", report.report_date, report.status)
@@ -635,13 +662,13 @@ async def _generate_daily_report() -> None:
         logger.exception("Scheduler: daily report generation failed")
 
 
-@track_job("daily_report_final", name="AI日报完整复盘", timeout=300,
-           description="每日凌晨生成前一天完整日报")
+@track_job("daily_report_final", name="AI日报完整复盘", timeout=300, description="每日凌晨生成前一天完整日报")
 async def _generate_daily_report_final() -> None:
     """Generate previous day's full final daily report."""
     logger.info("Scheduler: daily final report generation started")
     try:
         from app.services.daily_report import generate_previous_day_final_report
+
         async with async_session() as db:
             report = await generate_previous_day_final_report(db)
         logger.info("Scheduler: daily final report generated — %s (%s)", report.report_date, report.status)
@@ -650,8 +677,7 @@ async def _generate_daily_report_final() -> None:
         logger.exception("Scheduler: daily final report generation failed")
 
 
-@track_job("weekly_digest", name="AI周刊生成", timeout=300,
-           description="每周一早9点生成AI周刊，基于本周已分析内容")
+@track_job("weekly_digest", name="AI周刊生成", timeout=300, description="每周一早9点生成AI周刊，基于本周已分析内容")
 # ── User-owned daily reports (T2) ────────────────────────────────────────
 # Generates a per-user daily report for Pro+ users that have enabled
 # private sources. Uses the same edition as the global daily report but
@@ -730,9 +756,7 @@ async def _generate_user_daily_reports() -> None:
                         owner_user_id=uid,
                     )
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "daily_report_user: user=%s failed: %s", uid, exc
-                    )
+                    logger.warning("daily_report_user: user=%s failed: %s", uid, exc)
                     raise
 
         results = await asyncio.gather(
@@ -749,9 +773,12 @@ async def _generate_user_daily_reports() -> None:
 
     logger.info(
         "daily_report_user: succeeded=%s failed=%s (edition=%s window=%s..%s)",
-        succeeded, failed, edition, window_start, window_end,
+        succeeded,
+        failed,
+        edition,
+        window_start,
+        window_end,
     )
-
 
 
 async def _generate_weekly_digest() -> None:
@@ -759,6 +786,7 @@ async def _generate_weekly_digest() -> None:
     logger.info("Scheduler: weekly digest generation started")
     try:
         from app.services.weekly_digest import generate_weekly_digest
+
         async with async_session() as db:
             digest = await generate_weekly_digest(db)
         logger.info("Scheduler: weekly digest generated — %s (%s)", digest.week_key, digest.status)
@@ -768,6 +796,7 @@ async def _generate_weekly_digest() -> None:
 
 
 # ── Lifecycle helpers ─────────────────────────────────────────────────
+
 
 def start_scheduler() -> None:
     """Register all scheduled jobs and start the scheduler."""
@@ -918,6 +947,7 @@ def start_scheduler() -> None:
     # Immediately register all enabled sources so they start syncing
     # right away instead of waiting for the first 10-minute rescan.
     import asyncio as _asyncio
+
     try:
         loop = _asyncio.get_event_loop()
         if loop.is_running():

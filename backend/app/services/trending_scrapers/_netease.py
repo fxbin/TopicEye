@@ -1,4 +1,5 @@
 """网易新闻热点 — https://m.163.com/nc/article/headline/T1348647853363/0-40.html"""
+
 from __future__ import annotations
 
 import logging
@@ -57,20 +58,22 @@ class NeteaseTrending(BaseTrendingScraper):
             # 文章链接
             article_url = item.get("url", item.get("url_3w", ""))
 
-            results.append({
-                "title": title,
-                "rank": rank,
-                "url": article_url,
-                "hot_value": hot_val,
-                "hot_value_raw": str(reply_count),
-                "trend": "stable",
-                "cover_url": item.get("imgsrc", ""),
-                "extra": {
-                    "article_id": article_id,
-                    "source": item.get("source", ""),
-                    "digest": item.get("digest", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": rank,
+                    "url": article_url,
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(reply_count),
+                    "trend": "stable",
+                    "cover_url": item.get("imgsrc", ""),
+                    "extra": {
+                        "article_id": article_id,
+                        "source": item.get("source", ""),
+                        "digest": item.get("digest", ""),
+                    },
+                }
+            )
 
         logger.info("netease trending: fetched %d items", len(results))
         return results

@@ -4,6 +4,7 @@
 
 参考：Java 版 FanQieTextDecoder + FanQieNovelDataConverter
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Unicode 私用区范围（与 Java 版 CODE_START/CODE_END 一致）
 CODE_START = 58344  # 0xE428
-CODE_END = 58715    # 0xE59B
+CODE_END = 58715  # 0xE59B
 
 # 映射表缓存（模块级单例）
 _char_mapping: Optional[dict[int, str]] = None
@@ -72,8 +73,11 @@ def decode_text(text: str) -> str:
 def clean_book(book: dict) -> dict:
     """清洗单条图书记录中的乱码字段（原地修改并返回）。"""
     text_fields = [
-        "bookName", "author", "abstract",
-        "lastChapterTitle", "category",
+        "bookName",
+        "author",
+        "abstract",
+        "lastChapterTitle",
+        "category",
     ]
     for field in text_fields:
         val = book.get(field)

@@ -7,6 +7,7 @@ Creation plan API endpoints.
 - GET  /creation/plans/{id} 获取单条历史方案详情
 - DELETE /creation/plans/{id} 删除自己的一条历史方案
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -37,8 +38,7 @@ async def create_plan(
     """Generate a creation plan for a content item on a specific platform."""
     if req.platform not in PLATFORM_PROMPTS:
         raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported platform: {req.platform}. Supported: {list(PLATFORM_PROMPTS.keys())}"
+            status_code=400, detail=f"Unsupported platform: {req.platform}. Supported: {list(PLATFORM_PROMPTS.keys())}"
         )
     custom_ai_user_id = current_user.id if plan_allows_custom_ai(current_user.plan) else None
     async with async_session() as db:
@@ -51,12 +51,7 @@ async def create_plan(
 @router.get("/platforms")
 async def list_platforms():
     """List available creation platforms."""
-    return {
-        "platforms": [
-            {"id": k, "name": v["name"]}
-            for k, v in PLATFORM_PROMPTS.items()
-        ]
-    }
+    return {"platforms": [{"id": k, "name": v["name"]} for k, v in PLATFORM_PROMPTS.items()]}
 
 
 def _plan_to_dict(p: CreationPlan) -> dict:
@@ -125,6 +120,7 @@ async def delete_my_plan(
 ):
     """删除自己的一条历史方案（per-user 隔离）。"""
     from sqlalchemy import delete
+
     async with async_session() as db:
         result = await db.execute(
             delete(CreationPlan).where(

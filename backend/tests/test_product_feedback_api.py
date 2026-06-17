@@ -31,14 +31,17 @@ async def product_feedback_client() -> AsyncGenerator[tuple[httpx.AsyncClient, s
         # 手动插一条 (test_product_updates_are_public_read_and_admin_managed 依赖)
         from app.models.product_feedback import ProductUpdate
         from datetime import datetime, timezone
-        db.add(ProductUpdate(
-            version="v0.2.1",
-            status="shipped",
-            shipped_at=datetime.now(timezone.utc),
-            items=[
-                {"title": "匿名问题反馈", "description": "未登录用户也可以提交产品问题", "kind": "improvement"},
-            ],
-        ))
+
+        db.add(
+            ProductUpdate(
+                version="v0.2.1",
+                status="shipped",
+                shipped_at=datetime.now(timezone.utc),
+                items=[
+                    {"title": "匿名问题反馈", "description": "未登录用户也可以提交产品问题", "kind": "improvement"},
+                ],
+            )
+        )
         await db.commit()
 
     app = FastAPI()
@@ -139,7 +142,9 @@ async def test_issue_feedback_allows_anonymous_submit_and_admin_management(produ
     assert fixed.json()["fixed_at"] is not None
     assert fixed.json()["resolution_note"] == "已改为并发后台分析队列"
 
-    mine_after_fix = await client.get("/product-feedback/issues/mine", headers={"Authorization": f"Bearer {user_token}"})
+    mine_after_fix = await client.get(
+        "/product-feedback/issues/mine", headers={"Authorization": f"Bearer {user_token}"}
+    )
     assert mine_after_fix.json()["open_count"] == 0
     assert mine_after_fix.json()["fixed_count"] == 1
 
@@ -152,11 +157,7 @@ async def test_product_updates_are_public_read_and_admin_managed(product_feedbac
     assert updates.status_code == 200
     assert updates.json()["total"] >= 1
     # items 是嵌套结构: 每个 update 有 items 数组 (含 title/description/kind)
-    all_entries = [
-        entry
-        for update in updates.json()["items"]
-        for entry in update.get("items", [])
-    ]
+    all_entries = [entry for update in updates.json()["items"] for entry in update.get("items", [])]
     assert any(entry["title"] == "匿名问题反馈" for entry in all_entries)
 
     ordinary_create = await client.post(

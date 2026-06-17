@@ -86,22 +86,22 @@ class NewsletterScraper(BaseScraper):
             summary = entry.get("summary", "")
             if "<img" in summary:
                 import re
+
                 img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', summary)
                 if img_match:
                     cover_url = img_match.group(1)
 
-            entries.append({
-                "title": entry.get("title", ""),
-                "url": entry.get("link", ""),
-                "author": entry.get("author", ""),
-                "summary": summary,
-                "raw_content": (
-                    entry.get("content", [{}])[0].get("value", "")
-                    if entry.get("content") else ""
-                ),
-                "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
-                "published_at": published_at,
-                "cover_url": cover_url,
-            })
+            entries.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": entry.get("link", ""),
+                    "author": entry.get("author", ""),
+                    "summary": summary,
+                    "raw_content": (entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""),
+                    "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
+                    "published_at": published_at,
+                    "cover_url": cover_url,
+                }
+            )
 
         return entries

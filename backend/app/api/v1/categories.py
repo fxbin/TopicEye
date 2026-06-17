@@ -1,4 +1,5 @@
 """Category API endpoints — list and manage content categories."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

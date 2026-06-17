@@ -256,11 +256,14 @@ async def test_ensure_admin_user_creates_builtin_admin():
         assert admin.display_name == "TopicEye 管理员"
         assert admin.role == "admin"
         assert admin.is_active is True
-        assert await authenticate_user(
-            db,
-            email="admin@topiceye.local",
-            password="TopicEyeAdmin123!",
-        ) is admin
+        assert (
+            await authenticate_user(
+                db,
+                email="admin@topiceye.local",
+                password="TopicEyeAdmin123!",
+            )
+            is admin
+        )
 
     await engine.dispose()
 
@@ -293,15 +296,21 @@ async def test_ensure_admin_user_promotes_existing_account_without_resetting_pas
         assert admin.role == "admin"
         assert admin.is_active is True
         assert admin.display_name == "Custom Admin"
-        assert await authenticate_user(
-            db,
-            email="admin@topiceye.local",
-            password="CustomPassword123",
-        ) is admin
-        assert await authenticate_user(
-            db,
-            email="admin@topiceye.local",
-            password="TopicEyeAdmin123!",
-        ) is None
+        assert (
+            await authenticate_user(
+                db,
+                email="admin@topiceye.local",
+                password="CustomPassword123",
+            )
+            is admin
+        )
+        assert (
+            await authenticate_user(
+                db,
+                email="admin@topiceye.local",
+                password="TopicEyeAdmin123!",
+            )
+            is None
+        )
 
     await engine.dispose()

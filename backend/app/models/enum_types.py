@@ -1,4 +1,5 @@
 """Portable SQLAlchemy enum helpers."""
+
 from __future__ import annotations
 
 import enum

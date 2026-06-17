@@ -1,4 +1,5 @@
 """掘金热榜 — https://api.juejin.cn/recommend_api/v1/article/recommend_all_feed"""
+
 from __future__ import annotations
 
 import logging
@@ -62,20 +63,22 @@ class JuejinTrending(BaseTrendingScraper):
             author_info = item_info.get("author_user_info", {})
             author = author_info.get("user_name", "")
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": f"https://juejin.cn/post/{article_id}",
-                "hot_value": hot_index or (digg * 100 + view + comment * 50),
-                "hot_value_raw": f"赞{digg} 读{view} 评{comment}",
-                "trend": "up" if idx <= 5 else "stable",
-                "extra": {
-                    "author": author,
-                    "digg_count": digg,
-                    "view_count": view,
-                    "comment_count": comment,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": f"https://juejin.cn/post/{article_id}",
+                    "hot_value": hot_index or (digg * 100 + view + comment * 50),
+                    "hot_value_raw": f"赞{digg} 读{view} 评{comment}",
+                    "trend": "up" if idx <= 5 else "stable",
+                    "extra": {
+                        "author": author,
+                        "digg_count": digg,
+                        "view_count": view,
+                        "comment_count": comment,
+                    },
+                }
+            )
 
         logger.info("juejin trending: fetched %d items", len(results))
         return results

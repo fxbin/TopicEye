@@ -7,6 +7,7 @@
 - 重新生成时拉历史对比
 - 后续做协作 / 分享 / 导出
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -20,20 +21,16 @@ from app.core.database import Base
 
 class CreationPlan(Base):
     """用户为某个 ContentItem 在指定 platform 上生成的创作方案。"""
+
     __tablename__ = "creation_plans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    content_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
     platform: Mapped[str] = mapped_column(String(50), nullable=False)  # xiaohongshu / short_video / wechat
     platform_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 冗余显示名
     content_title_snapshot: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
-        comment="内容删除后仍能展示历史方案"
+        String(500), nullable=True, comment="内容删除后仍能展示历史方案"
     )
     # LLM 生成的完整 plan（titles / structure / scenes / outline 等）
     plan: Mapped[dict] = mapped_column(JSON, nullable=False)

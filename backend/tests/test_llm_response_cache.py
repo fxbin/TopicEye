@@ -3,6 +3,7 @@ LLM response cache 单元测试。
 
 覆盖：set / get / miss / TTL 过期 / 大小限制淘汰。
 """
+
 from __future__ import annotations
 
 import time
@@ -61,8 +62,7 @@ def test_cache_eviction_when_full():
     cache = LLMCache(max_entries=10)
     # Insert 20 entries with different contents
     for i in range(20):
-        cache.set([{"role": "user", "content": f"q{i}"}], 0.3, 100, None,
-                  raw_response=f"r{i}", ttl_seconds=3600)
+        cache.set([{"role": "user", "content": f"q{i}"}], 0.3, 100, None, raw_response=f"r{i}", ttl_seconds=3600)
     # Should have evicted oldest to stay under cap
     assert cache.status()["entries"] <= 10
 

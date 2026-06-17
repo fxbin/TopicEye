@@ -11,6 +11,7 @@ cleanup_old_snapshots 清理。
 
 用途：持续热度分析、跨时间对比、趋势变化追踪（含网文平台黑岩/点众的周报排名变化）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,9 +56,7 @@ async def save_snapshot(db: AsyncSession, source: str) -> int:
     hour = _current_snapshot_hour()
 
     # 取当前最新数据
-    result = await db.execute(
-        select(TrendingItem).where(TrendingItem.source == source).order_by(TrendingItem.rank)
-    )
+    result = await db.execute(select(TrendingItem).where(TrendingItem.source == source).order_by(TrendingItem.rank))
     items = result.scalars().all()
 
     if not items:
@@ -94,8 +93,7 @@ async def save_snapshot(db: AsyncSession, source: str) -> int:
         record.items = items_json
         record.total_count = len(items_json)
         record.fetched_at = datetime.now(timezone.utc)
-        logger.info("save_snapshot: updated source=%s date=%s hour=%d count=%d",
-                     source, today, hour, len(items_json))
+        logger.info("save_snapshot: updated source=%s date=%s hour=%d count=%d", source, today, hour, len(items_json))
     else:
         record = TrendingSnapshot(
             snapshot_date=today,
@@ -107,8 +105,7 @@ async def save_snapshot(db: AsyncSession, source: str) -> int:
             fetched_at=datetime.now(timezone.utc),
         )
         db.add(record)
-        logger.info("save_snapshot: created source=%s date=%s hour=%d count=%d",
-                     source, today, hour, len(items_json))
+        logger.info("save_snapshot: created source=%s date=%s hour=%d count=%d", source, today, hour, len(items_json))
 
     await db.flush()
     return len(items_json)
@@ -139,14 +136,10 @@ async def cleanup_old_snapshots(db: AsyncSession) -> int:
     cutoff = date.today() - timedelta(days=SNAPSHOT_RETENTION_DAYS)
     # 先 count 再删
     count_result = await db.execute(
-        select(func.count(TrendingSnapshot.id)).where(
-            TrendingSnapshot.snapshot_date < cutoff
-        )
+        select(func.count(TrendingSnapshot.id)).where(TrendingSnapshot.snapshot_date < cutoff)
     )
     count = count_result.scalar() or 0
-    await db.execute(
-        delete(TrendingSnapshot).where(TrendingSnapshot.snapshot_date < cutoff)
-    )
+    await db.execute(delete(TrendingSnapshot).where(TrendingSnapshot.snapshot_date < cutoff))
     logger.info("cleanup_old_snapshots: deleted %d snapshots before %s", count, cutoff)
     return count
 
@@ -160,9 +153,10 @@ async def get_snapshot_diff(db: AsyncSession, source: str) -> Optional[dict]:
 
     async def _get_latest_snap(d: date):
         result = await db.execute(
-            select(TrendingSnapshot).where(
-                and_(TrendingSnapshot.snapshot_date == d, TrendingSnapshot.source == source)
-            ).order_by(TrendingSnapshot.snapshot_hour.desc()).limit(1)
+            select(TrendingSnapshot)
+            .where(and_(TrendingSnapshot.snapshot_date == d, TrendingSnapshot.source == source))
+            .order_by(TrendingSnapshot.snapshot_hour.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -196,12 +190,14 @@ async def get_snapshot_diff(db: AsyncSession, source: str) -> Optional[dict]:
             change = "down"
         else:
             change = "same"
-        changes.append({
-            "title": title,
-            "yesterday_rank": y_rank,
-            "today_rank": t_rank,
-            "change": change,
-        })
+        changes.append(
+            {
+                "title": title,
+                "yesterday_rank": y_rank,
+                "today_rank": t_rank,
+                "change": change,
+            }
+        )
 
     return {
         "yesterday_date": str(yesterday),
@@ -213,6 +209,7 @@ async def get_snapshot_diff(db: AsyncSession, source: str) -> Optional[dict]:
 
 
 # ── 持续热度分析 ──────────────────────────────────────────────────────
+
 
 async def analyze_persistent_topics(
     db: AsyncSession,
@@ -248,9 +245,9 @@ async def analyze_persistent_topics(
 
     # 取所有快照
     result = await db.execute(
-        select(TrendingSnapshot).where(
-            TrendingSnapshot.snapshot_date >= cutoff
-        ).order_by(TrendingSnapshot.snapshot_date, TrendingSnapshot.snapshot_hour)
+        select(TrendingSnapshot)
+        .where(TrendingSnapshot.snapshot_date >= cutoff)
+        .order_by(TrendingSnapshot.snapshot_date, TrendingSnapshot.snapshot_hour)
     )
     snapshots = result.scalars().all()
 
@@ -323,20 +320,22 @@ async def analyze_persistent_topics(
                             day_ranks.append(item.get("rank", 0))
             rank_trend.append(min(day_ranks) if day_ranks else 0)
 
-        results.append({
-            "title": title,
-            "days_on_list": consec_days,
-            "total_days": total_days,
-            "snapshot_count": td["snap_count"],
-            "sources": sorted(list(td["sources"])),
-            "source_count": source_count,
-            "avg_rank": round(avg_rank, 1),
-            "best_rank": best_rank,
-            "hot_value_max": max(td["hot_values"]) if td["hot_values"] else 0,
-            "rank_trend": rank_trend,
-            "first_seen": str(min(td["dates"])),
-            "last_seen": str(max(td["dates"])),
-        })
+        results.append(
+            {
+                "title": title,
+                "days_on_list": consec_days,
+                "total_days": total_days,
+                "snapshot_count": td["snap_count"],
+                "sources": sorted(list(td["sources"])),
+                "source_count": source_count,
+                "avg_rank": round(avg_rank, 1),
+                "best_rank": best_rank,
+                "hot_value_max": max(td["hot_values"]) if td["hot_values"] else 0,
+                "rank_trend": rank_trend,
+                "first_seen": str(min(td["dates"])),
+                "last_seen": str(max(td["dates"])),
+            }
+        )
 
     # 排序：天数降序 > 平台数降序 > 最佳排名升序
     results.sort(key=lambda x: (-x["days_on_list"], -x["source_count"], x["best_rank"]))

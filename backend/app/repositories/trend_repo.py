@@ -38,10 +38,7 @@ class TrendRepository(BaseRepository[TopicTrend]):
 
     async def delete_by_date(self, target_date: date) -> int:
         """Delete all trend snapshots for *target_date*. Returns count deleted."""
-        stmt = (
-            delete(self.model)
-            .where(self.model.snapshot_date == target_date)
-        )
+        stmt = delete(self.model).where(self.model.snapshot_date == target_date)
         result = await self.db.execute(stmt)
         await self.db.flush()
         return result.rowcount

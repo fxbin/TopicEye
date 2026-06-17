@@ -6,6 +6,7 @@
 - mark read / mark all read: 写当前用户的 NotificationRead
 - delete: 只能删除定向到当前用户的通知
 """
+
 from __future__ import annotations
 
 

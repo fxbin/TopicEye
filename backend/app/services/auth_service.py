@@ -27,12 +27,14 @@ def normalize_email(email: str) -> str:
 def hash_password(password: str) -> str:
     salt = os.urandom(_SALT_BYTES)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _HASH_ITERATIONS)
-    return "$".join([
-        _HASH_ALGORITHM,
-        str(_HASH_ITERATIONS),
-        base64.urlsafe_b64encode(salt).decode("ascii"),
-        base64.urlsafe_b64encode(digest).decode("ascii"),
-    ])
+    return "$".join(
+        [
+            _HASH_ALGORITHM,
+            str(_HASH_ITERATIONS),
+            base64.urlsafe_b64encode(salt).decode("ascii"),
+            base64.urlsafe_b64encode(digest).decode("ascii"),
+        ]
+    )
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -248,9 +250,7 @@ async def create_api_token(
 async def list_api_tokens(db: AsyncSession, user_id: int) -> list[UserApiToken]:
     """列出该用户所有 API token（含已撤销，按创建时间倒序）。"""
     result = await db.execute(
-        select(UserApiToken)
-        .where(UserApiToken.user_id == user_id)
-        .order_by(UserApiToken.created_at.desc())
+        select(UserApiToken).where(UserApiToken.user_id == user_id).order_by(UserApiToken.created_at.desc())
     )
     return list(result.scalars().all())
 

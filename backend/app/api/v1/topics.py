@@ -59,15 +59,10 @@ async def list_topics(
     db: AsyncSession = Depends(get_db),
 ):
     """List all topic groups sorted by best_score desc."""
-    result = await db.execute(
-        select(TopicGroup)
-        .order_by(TopicGroup.best_score.desc())
-    )
+    result = await db.execute(select(TopicGroup).order_by(TopicGroup.best_score.desc()))
     topics = result.scalars().all()
 
-    total_result = await db.execute(
-        select(func.count(TopicGroup.id))
-    )
+    total_result = await db.execute(select(func.count(TopicGroup.id)))
     total = total_result.scalar() or 0
 
     return {"items": topics, "total": total}
@@ -79,17 +74,13 @@ async def get_topic(
     db: AsyncSession = Depends(get_db),
 ):
     """Get topic group with its member content items."""
-    result = await db.execute(
-        select(TopicGroup).where(TopicGroup.id == topic_id)
-    )
+    result = await db.execute(select(TopicGroup).where(TopicGroup.id == topic_id))
     topic = result.scalar_one_or_none()
     if not topic:
         raise HTTPException(404, "Topic not found")
 
     items_result = await db.execute(
-        select(ContentItem)
-        .where(ContentItem.topic_id == topic_id)
-        .order_by(ContentItem.crawled_at.desc())
+        select(ContentItem).where(ContentItem.topic_id == topic_id).order_by(ContentItem.crawled_at.desc())
     )
     items = items_result.scalars().all()
 

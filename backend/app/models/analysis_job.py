@@ -18,11 +18,11 @@ class AnalysisJobRecord(Base):
     skipped_inflight_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
     analyzed_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
     failed_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
-    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    queued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (
-        Index("ix_analysis_jobs_status_queued", "status", "queued_at"),
-    )
+    __table_args__ = (Index("ix_analysis_jobs_status_queued", "status", "queued_at"),)

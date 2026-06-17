@@ -41,13 +41,12 @@ async def _load_instances_from_db(db=None) -> list[dict]:
     close_after = False
     if db is None:
         from app.core.database import async_session
+
         db = async_session()
         close_after = True
 
     try:
-        result = await db.execute(
-            select(AppSetting).where(AppSetting.key == "rsshub_instances")
-        )
+        result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
         row = result.scalar_one_or_none()
         if row and row.value:
             try:
@@ -117,7 +116,7 @@ class RSSHubScraper(BaseScraper):
                             all_errors.append(f"{base_url}: blocked")
                             break  # try next instance
 
-                        if '<?xml' not in content and '<rss' not in content and '<feed' not in content:
+                        if "<?xml" not in content and "<rss" not in content and "<feed" not in content:
                             logger.warning("Instance %s returned non-RSS content", base_url)
                             all_errors.append(f"{base_url}: non-RSS")
                             break
@@ -170,26 +169,27 @@ class RSSHubScraper(BaseScraper):
 
             # Author
             author = (
-                (entry.author or "") if hasattr(entry, "author") else
-                (entry.author_detail.get("name", "") if hasattr(entry, "author_detail") else "")
+                (entry.author or "")
+                if hasattr(entry, "author")
+                else (entry.author_detail.get("name", "") if hasattr(entry, "author_detail") else "")
             )
 
-            entries.append({
-                "title": entry.get("title", "").strip(),
-                "url": entry.get("link", "").strip(),
-                "author": author.strip() if author else "",
-                "summary": (
-                    entry.get("summary", "").strip() or
-                    entry.get("description", "").strip()
-                ),
-                "raw_content": (
-                    entry.get("content", [{}])[0].get("value", "")
-                    if hasattr(entry, "content") and entry.content else ""
-                ),
-                "tags": [tag.get("term", "") for tag in entry.get("tags", []) if tag.get("term")],
-                "published_at": published_at,
-                "cover_url": image_url,
-            })
+            entries.append(
+                {
+                    "title": entry.get("title", "").strip(),
+                    "url": entry.get("link", "").strip(),
+                    "author": author.strip() if author else "",
+                    "summary": (entry.get("summary", "").strip() or entry.get("description", "").strip()),
+                    "raw_content": (
+                        entry.get("content", [{}])[0].get("value", "")
+                        if hasattr(entry, "content") and entry.content
+                        else ""
+                    ),
+                    "tags": [tag.get("term", "") for tag in entry.get("tags", []) if tag.get("term")],
+                    "published_at": published_at,
+                    "cover_url": image_url,
+                }
+            )
 
         logger.info("RSSHub parsed %d entries from %s", len(entries), instance_url)
         return entries

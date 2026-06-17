@@ -10,6 +10,7 @@ Webnovel report service — weekly history and rank movement analysis.
 
 跨平台涨跌榜采用"每平台配额制"（各取前 N），避免不同榜单量纲差异导致的偏倚。
 """
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -89,12 +90,17 @@ def _movement_item(
 
 # ── 番茄（独立 ORM + 日级排名快照） ──────────────────────────────────
 
+
 async def _fanqie_history(db: AsyncSession, start_date: str, end_date: str) -> dict:
     rows = await db.execute(
         select(FanqieRankSnapshot)
         .where(FanqieRankSnapshot.snapshot_date >= start_date)
         .where(FanqieRankSnapshot.snapshot_date <= end_date)
-        .order_by(FanqieRankSnapshot.snapshot_date.asc(), FanqieRankSnapshot.rank_type.asc(), FanqieRankSnapshot.position.asc())
+        .order_by(
+            FanqieRankSnapshot.snapshot_date.asc(),
+            FanqieRankSnapshot.rank_type.asc(),
+            FanqieRankSnapshot.position.asc(),
+        )
     )
     snapshots = rows.scalars().all()
     if not snapshots:
@@ -136,29 +142,25 @@ async def _fanqie_history(db: AsyncSession, start_date: str, end_date: str) -> d
         read_count_delta += max(0, latest_reads - first_reads)
         if change == 0:
             continue
-        movements.append(_movement_item(
-            platform="fanqie",
-            title=latest.book_name,
-            author=None,
-            category=category_names.get(latest.category_id, latest.category_id),
-            rank_type=rank_type,
-            position=latest.position,
-            change=change,
-            url=f"https://fanqienovel.com/page/{latest.book_id}",
-        ))
+        movements.append(
+            _movement_item(
+                platform="fanqie",
+                title=latest.book_name,
+                author=None,
+                category=category_names.get(latest.category_id, latest.category_id),
+                rank_type=rank_type,
+                position=latest.position,
+                change=change,
+                url=f"https://fanqienovel.com/page/{latest.book_id}",
+            )
+        )
 
     movements.sort(key=lambda item: abs(item["change"]), reverse=True)
-    category_mix = [
-        {"category": name, "count": count}
-        for name, count in latest_category_counter.most_common(10)
-    ]
+    category_mix = [{"category": name, "count": count} for name, count in latest_category_counter.most_common(10)]
 
     return {
         "snapshot_dates": dates,
-        "daily_counts": [
-            {"date": day, "count": daily_counter.get(day, 0)}
-            for day in dates
-        ],
+        "daily_counts": [{"date": day, "count": daily_counter.get(day, 0)} for day in dates],
         "rank_movements": movements[:24],
         "category_mix": category_mix,
         "read_count_delta": read_count_delta,
@@ -192,6 +194,7 @@ async def _fanqie_current(db: AsyncSession) -> tuple[int, list[dict]]:
 
 
 # ── 七猫（独立 ORM，index_change 来自 API） ──────────────────────────
+
 
 async def _qimao_current(db: AsyncSession) -> tuple[int, list[dict], list[dict]]:
     rows = await db.execute(
@@ -229,6 +232,7 @@ async def _qimao_current(db: AsyncSession) -> tuple[int, list[dict], list[dict]]
 
 # ── 知乎（独立 ORM，rank_pos_diff） ────────────────────────────────────
 
+
 async def _zhihu_current(db: AsyncSession) -> tuple[int, list[dict], list[dict]]:
     rows = await db.execute(
         select(ZhihuAlbum)
@@ -265,6 +269,7 @@ async def _zhihu_current(db: AsyncSession) -> tuple[int, list[dict], list[dict]]
 
 # ── 黑岩 / 点众（trending 体系，复用 TrendingSnapshot 快照） ──────────
 
+
 async def _trending_history(db: AsyncSession, source: str, start_date: str, end_date: str) -> dict:
     """从 TrendingSnapshot 对比首末日 rank，算黑岩/点众的周内排名变化。
 
@@ -288,7 +293,7 @@ async def _trending_history(db: AsyncSession, source: str, start_date: str, end_
     # 每个快照内，同 title 取最佳 rank（最小值），去重
     best_rank_per_snap: dict[tuple[date, str], tuple[int, Optional[str]]] = {}
     for snap in snapshots:
-        for item in (snap.items or []):
+        for item in snap.items or []:
             title = (item.get("title") or "").strip()
             if not title:
                 continue
@@ -312,25 +317,24 @@ async def _trending_history(db: AsyncSession, source: str, start_date: str, end_
         change = first[1] - latest[1]  # 正 = 上升
         if change == 0:
             continue
-        movements.append(_movement_item(
-            platform=source,
-            title=title,
-            author=None,
-            category=None,
-            rank_type="rank",
-            position=latest[1],
-            change=change,
-            url=latest[2] or None,
-        ))
+        movements.append(
+            _movement_item(
+                platform=source,
+                title=title,
+                author=None,
+                category=None,
+                rank_type="rank",
+                position=latest[1],
+                change=change,
+                url=latest[2] or None,
+            )
+        )
 
     movements.sort(key=lambda item: abs(item["change"]), reverse=True)
 
     return {
         "snapshot_dates": dates,
-        "daily_counts": [
-            {"date": str(day), "count": daily_counter.get(day, 0)}
-            for day in dates
-        ],
+        "daily_counts": [{"date": str(day), "count": daily_counter.get(day, 0)} for day in dates],
         "rank_movements": movements,
     }
 
@@ -341,11 +345,7 @@ async def _trending_current(db: AsyncSession, source: str) -> tuple[int, list[di
     注意：TrendingItem.trend 对黑岩/点众是硬编码 'stable'，不可靠，
     排名变化统一走 _trending_history 的快照对比。
     """
-    rows = await db.execute(
-        select(TrendingItem)
-        .where(TrendingItem.source == source)
-        .order_by(TrendingItem.rank.asc())
-    )
+    rows = await db.execute(select(TrendingItem).where(TrendingItem.source == source).order_by(TrendingItem.rank.asc()))
     items = rows.scalars().all()
     count = len(items)
 
@@ -365,6 +365,7 @@ async def _trending_current(db: AsyncSession, source: str) -> tuple[int, list[di
 
 
 # ── 跨平台汇总：归一化 top 涨跌（每平台配额制） ──────────────────────
+
 
 def _normalize_top_movements(
     platform_movements: dict[str, list[dict]],
@@ -401,6 +402,7 @@ def _normalize_top_movements(
 
 # ── 主入口 ────────────────────────────────────────────────────────────
 
+
 async def build_weekly_webnovel_report(db: AsyncSession, days: int = 7) -> dict:
     """Build a read-only weekly webnovel report across all 5 webnovel platforms."""
     safe_days = max(3, min(days, 31))
@@ -431,10 +433,7 @@ async def build_weekly_webnovel_report(db: AsyncSession, days: int = 7) -> dict:
     # 番茄：合并快照变化 + 当前 rank_pos_diff
     fanqie_movements = list(fanqie_current)
     if fanqie_history["rank_movements"]:
-        movement_keys = {
-            (item["platform"], item["title"], item["rank_type"])
-            for item in fanqie_movements
-        }
+        movement_keys = {(item["platform"], item["title"], item["rank_type"]) for item in fanqie_movements}
         fanqie_movements.extend(
             item
             for item in fanqie_history["rank_movements"]

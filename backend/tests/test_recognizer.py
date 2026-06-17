@@ -150,4 +150,5 @@ def test_recognize_empty_url():
 def test_recognizer_importable():
     """Sanity: the module loads cleanly and is registered in scrapers."""
     from app.services.scrapers import recognizer  # noqa: F401
+
     assert callable(recognizer.recognize_source_type)

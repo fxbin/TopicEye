@@ -50,61 +50,63 @@ async def test_list_pending_for_analysis_filters_recent_pending_items():
     now = datetime.now(timezone.utc)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="旧待分析内容",
-                url="https://example.com/old",
-                status=ContentStatus.PENDING,
-                crawled_at=now - timedelta(hours=30),
-            ),
-            ContentItem(
-                id=2,
-                title="最近待分析内容",
-                url="https://example.com/recent",
-                status=ContentStatus.PENDING,
-                crawled_at=now - timedelta(hours=1),
-            ),
-            ContentItem(
-                id=3,
-                title="最近已分析内容",
-                url="https://example.com/analyzed",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=4,
-                title="超时分析中内容",
-                url="https://example.com/stale-analyzing",
-                status=ContentStatus.ANALYZING,
-                crawled_at=now - timedelta(minutes=30),
-                updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
-            ),
-            ContentItem(
-                id=5,
-                title="刚进入分析中的内容",
-                url="https://example.com/fresh-analyzing",
-                status=ContentStatus.ANALYZING,
-                crawled_at=now - timedelta(minutes=20),
-                updated_at=now,
-            ),
-            ContentItem(
-                id=6,
-                title="可重试失败内容",
-                url="https://example.com/retry-error",
-                status=ContentStatus.ERROR,
-                crawled_at=now - timedelta(minutes=10),
-                updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
-            ),
-            ContentItem(
-                id=7,
-                title="刚失败内容",
-                url="https://example.com/fresh-error",
-                status=ContentStatus.ERROR,
-                crawled_at=now - timedelta(minutes=5),
-                updated_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="旧待分析内容",
+                    url="https://example.com/old",
+                    status=ContentStatus.PENDING,
+                    crawled_at=now - timedelta(hours=30),
+                ),
+                ContentItem(
+                    id=2,
+                    title="最近待分析内容",
+                    url="https://example.com/recent",
+                    status=ContentStatus.PENDING,
+                    crawled_at=now - timedelta(hours=1),
+                ),
+                ContentItem(
+                    id=3,
+                    title="最近已分析内容",
+                    url="https://example.com/analyzed",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=4,
+                    title="超时分析中内容",
+                    url="https://example.com/stale-analyzing",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=now - timedelta(minutes=30),
+                    updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
+                ),
+                ContentItem(
+                    id=5,
+                    title="刚进入分析中的内容",
+                    url="https://example.com/fresh-analyzing",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=now - timedelta(minutes=20),
+                    updated_at=now,
+                ),
+                ContentItem(
+                    id=6,
+                    title="可重试失败内容",
+                    url="https://example.com/retry-error",
+                    status=ContentStatus.ERROR,
+                    crawled_at=now - timedelta(minutes=10),
+                    updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
+                ),
+                ContentItem(
+                    id=7,
+                    title="刚失败内容",
+                    url="https://example.com/fresh-error",
+                    status=ContentStatus.ERROR,
+                    crawled_at=now - timedelta(minutes=5),
+                    updated_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         pending = await ContentRepo(db).list_pending_for_analysis(limit=10, hours=24)
@@ -204,22 +206,24 @@ async def test_claim_pending_analysis_ids_uses_skip_locked_for_postgresql(monkey
     monkeypatch.setattr(Select, "with_for_update", with_for_update_spy)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="Postgres 并发认领一",
-                url="https://example.com/postgres-claim-1",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-            ContentItem(
-                id=2,
-                title="Postgres 并发认领二",
-                url="https://example.com/postgres-claim-2",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="Postgres 并发认领一",
+                    url="https://example.com/postgres-claim-1",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+                ContentItem(
+                    id=2,
+                    title="Postgres 并发认领二",
+                    url="https://example.com/postgres-claim-2",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         repo = ContentRepo(db)
@@ -435,32 +439,31 @@ async def test_background_analysis_releases_failed_claims(monkeypatch):
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fake_concurrent)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="后台成功内容",
-                url="https://example.com/background-success",
-                status=ContentStatus.ANALYZING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-            ContentItem(
-                id=2,
-                title="后台失败释放内容",
-                url="https://example.com/background-release-failed",
-                status=ContentStatus.ANALYZING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="后台成功内容",
+                    url="https://example.com/background-success",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+                ContentItem(
+                    id=2,
+                    title="后台失败释放内容",
+                    url="https://example.com/background-release-failed",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+            ]
+        )
         await db.commit()
 
     job = await create_analysis_job([1, 2])
     await analyses_api._run_batch_background(job.job_id, [1, 2])
 
     async with session_factory() as db:
-        statuses = {
-            item.id: item.status
-            for item in (await db.execute(select(ContentItem))).scalars().all()
-        }
+        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
     job_status = await get_analysis_job(job.job_id)
 
     assert statuses == {
@@ -486,22 +489,24 @@ async def test_background_analysis_releases_claims_on_batch_exception(monkeypatc
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", failing_concurrent)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="后台异常释放一",
-                url="https://example.com/background-exception-release-1",
-                status=ContentStatus.ANALYZING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-            ContentItem(
-                id=2,
-                title="后台异常释放二",
-                url="https://example.com/background-exception-release-2",
-                status=ContentStatus.ANALYZING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="后台异常释放一",
+                    url="https://example.com/background-exception-release-1",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+                ContentItem(
+                    id=2,
+                    title="后台异常释放二",
+                    url="https://example.com/background-exception-release-2",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+            ]
+        )
         await db.commit()
 
     job = await create_analysis_job([1, 2])
@@ -510,10 +515,7 @@ async def test_background_analysis_releases_claims_on_batch_exception(monkeypatc
         await analyses_api._run_batch_background(job.job_id, [1, 2])
 
     async with session_factory() as db:
-        statuses = {
-            item.id: item.status
-            for item in (await db.execute(select(ContentItem))).scalars().all()
-        }
+        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
     job_status = await get_analysis_job(job.job_id)
 
     assert statuses == {
@@ -569,22 +571,24 @@ async def test_analyze_pending_sync_uses_concurrent_analysis(monkeypatch):
     engine, session_factory = await _session_factory()
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="最近待同步分析一",
-                url="https://example.com/sync-concurrent-1",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-            ContentItem(
-                id=2,
-                title="最近待同步分析二",
-                url="https://example.com/sync-concurrent-2",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="最近待同步分析一",
+                    url="https://example.com/sync-concurrent-1",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+                ContentItem(
+                    id=2,
+                    title="最近待同步分析二",
+                    url="https://example.com/sync-concurrent-2",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         result = await analyses_api.analyze_all_pending(
@@ -748,28 +752,28 @@ async def test_analysis_cascade_escalates_high_score_to_pro(monkeypatch):
             }, {"actual_model": "openai/lite"}
         if kwargs.get("scene") == "content_analysis":
             return {
-            "summary": "Pro 完整分析",
-            "key_points": ["重点一"],
-            "recommendation": "适合深挖",
-            "creator_angles": ["角度一"],
-            "title_suggestions": ["标题一"],
-            "risk_notes": "",
-            "tags": ["AI"],
-            "scores": {
-                "quality_score": 80,
-                "hot_score": 70,
-                "freshness_score": 60,
-                "creator_score": 75,
-                "viral_score": 65,
-                "risk_score": 20,
-            },
-            "curation": {
-                "curation_score": 82,
-                "info_density": 78,
-                "actionability": 76,
-                "source_weight": 50,
-            },
-        }, {"actual_model": "openai/pro"}
+                "summary": "Pro 完整分析",
+                "key_points": ["重点一"],
+                "recommendation": "适合深挖",
+                "creator_angles": ["角度一"],
+                "title_suggestions": ["标题一"],
+                "risk_notes": "",
+                "tags": ["AI"],
+                "scores": {
+                    "quality_score": 80,
+                    "hot_score": 70,
+                    "freshness_score": 60,
+                    "creator_score": 75,
+                    "viral_score": 65,
+                    "risk_score": 20,
+                },
+                "curation": {
+                    "curation_score": 82,
+                    "info_density": 78,
+                    "actionability": 76,
+                    "source_weight": 50,
+                },
+            }, {"actual_model": "openai/pro"}
         raise AssertionError(f"unexpected scene: {kwargs.get('scene')}")
 
     monkeypatch.setattr(analysis, "call_llm_json_with_metadata", fake_llm_json_with_metadata)
@@ -1291,14 +1295,17 @@ async def test_analyze_batch_commits_analyzing_status_before_llm_call(monkeypatc
 async def test_analyze_batch_invalidates_scoring_cache_after_commit(monkeypatch):
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
-    cache_payload((24, 160, 80), build_empty_payload(
-        hours=24,
-        analyzed_total=0,
-        window_total=0,
-        ignored_count=0,
-        limit=160,
-        sample_limit=80,
-    ))
+    cache_payload(
+        (24, 160, 80),
+        build_empty_payload(
+            hours=24,
+            analyzed_total=0,
+            window_total=0,
+            ignored_count=0,
+            limit=160,
+            sample_limit=80,
+        ),
+    )
     observed = {}
 
     async def fake_analyze_content(content, db):
@@ -1430,14 +1437,17 @@ async def test_analyze_single_rejects_fresh_analyzing_claim(monkeypatch):
 async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch):
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
-    cache_payload((24, 160, 80), build_empty_payload(
-        hours=24,
-        analyzed_total=0,
-        window_total=0,
-        ignored_count=0,
-        limit=160,
-        sample_limit=80,
-    ))
+    cache_payload(
+        (24, 160, 80),
+        build_empty_payload(
+            hours=24,
+            analyzed_total=0,
+            window_total=0,
+            ignored_count=0,
+            limit=160,
+            sample_limit=80,
+        ),
+    )
     observed = {}
 
     async def fake_analyze_content(content, db):
@@ -1578,16 +1588,18 @@ async def test_analyze_batch_concurrent_runs_items_in_parallel(monkeypatch):
     monkeypatch.setattr(analysis, "analyze_content", fake_analyze_content)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=item_id,
-                title=f"并发分析内容 {item_id}",
-                url=f"https://example.com/concurrent-{item_id}",
-                status=ContentStatus.PENDING,
-                raw_content="用于验证并发分析 worker 不共享 session，且 LLM 调用可以重叠执行。",
-            )
-            for item_id in range(1, 5)
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=item_id,
+                    title=f"并发分析内容 {item_id}",
+                    url=f"https://example.com/concurrent-{item_id}",
+                    status=ContentStatus.PENDING,
+                    raw_content="用于验证并发分析 worker 不共享 session，且 LLM 调用可以重叠执行。",
+                )
+                for item_id in range(1, 5)
+            ]
+        )
         await db.commit()
 
     results = await analysis.analyze_batch_concurrent(
@@ -1597,10 +1609,7 @@ async def test_analyze_batch_concurrent_runs_items_in_parallel(monkeypatch):
     )
 
     async with session_factory() as db:
-        statuses = {
-            item.id: item.status
-            for item in (await db.execute(select(ContentItem))).scalars().all()
-        }
+        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
 
     assert [item.content_id for item in results] == [1, 2, 3, 4]
     assert max_active == 2
@@ -1669,30 +1678,32 @@ async def test_post_sync_drain_processes_backlog_and_stale_analyzing(monkeypatch
     monkeypatch.setattr(scheduler_module, "analyze_batch_concurrent", fake_analyze_batch)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="最新待分析一",
-                url="https://example.com/pending-1",
-                status=ContentStatus.PENDING,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="最新待分析二",
-                url="https://example.com/pending-2",
-                status=ContentStatus.PENDING,
-                crawled_at=now - timedelta(minutes=1),
-            ),
-            ContentItem(
-                id=3,
-                title="超时分析中内容",
-                url="https://example.com/stale-analyzing",
-                status=ContentStatus.ANALYZING,
-                crawled_at=now - timedelta(minutes=2),
-                updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 1),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="最新待分析一",
+                    url="https://example.com/pending-1",
+                    status=ContentStatus.PENDING,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="最新待分析二",
+                    url="https://example.com/pending-2",
+                    status=ContentStatus.PENDING,
+                    crawled_at=now - timedelta(minutes=1),
+                ),
+                ContentItem(
+                    id=3,
+                    title="超时分析中内容",
+                    url="https://example.com/stale-analyzing",
+                    status=ContentStatus.ANALYZING,
+                    crawled_at=now - timedelta(minutes=2),
+                    updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 1),
+                ),
+            ]
+        )
         await db.commit()
 
     stats = await scheduler_module._drain_pending_analysis(
@@ -1701,10 +1712,7 @@ async def test_post_sync_drain_processes_backlog_and_stale_analyzing(monkeypatch
     )
 
     async with session_factory() as db:
-        statuses = {
-            item.id: item.status
-            for item in (await db.execute(select(ContentItem))).scalars().all()
-        }
+        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
 
     assert stats == {
         "attempted": 3,
@@ -1755,16 +1763,18 @@ async def test_post_sync_drain_uses_configured_default_batch_size(monkeypatch):
     monkeypatch.setattr(scheduler_module, "analyze_batch_concurrent", fake_analyze_batch)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=content_id,
-                title=f"配置批量 {content_id}",
-                url=f"https://example.com/configured-batch-{content_id}",
-                status=ContentStatus.PENDING,
-                crawled_at=now - timedelta(minutes=content_id),
-            )
-            for content_id in range(1, 5)
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=content_id,
+                    title=f"配置批量 {content_id}",
+                    url=f"https://example.com/configured-batch-{content_id}",
+                    status=ContentStatus.PENDING,
+                    crawled_at=now - timedelta(minutes=content_id),
+                )
+                for content_id in range(1, 5)
+            ]
+        )
         await db.commit()
 
     stats = await scheduler_module._drain_pending_analysis()
@@ -1797,22 +1807,24 @@ async def test_post_sync_drain_releases_claims_after_batch_timeout(monkeypatch):
     monkeypatch.setattr(scheduler_module, "analyze_batch_concurrent", fake_analyze_batch)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="超时释放一",
-                url="https://example.com/timeout-release-1",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc),
-            ),
-            ContentItem(
-                id=2,
-                title="超时释放二",
-                url="https://example.com/timeout-release-2",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="超时释放一",
+                    url="https://example.com/timeout-release-1",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc),
+                ),
+                ContentItem(
+                    id=2,
+                    title="超时释放二",
+                    url="https://example.com/timeout-release-2",
+                    status=ContentStatus.PENDING,
+                    crawled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
     stats = await scheduler_module._drain_pending_analysis(
@@ -1821,10 +1833,7 @@ async def test_post_sync_drain_releases_claims_after_batch_timeout(monkeypatch):
     )
 
     async with session_factory() as db:
-        statuses = {
-            item.id: item.status
-            for item in (await db.execute(select(ContentItem))).scalars().all()
-        }
+        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
 
     assert stats == {
         "attempted": 2,
@@ -1963,4 +1972,3 @@ async def test_sync_single_source_skips_active_sync_lease(monkeypatch):
 
     assert requested == []
     await engine.dispose()
-

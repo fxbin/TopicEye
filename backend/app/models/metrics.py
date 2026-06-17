@@ -19,6 +19,8 @@ class ContentMetrics(Base):
     followers_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
     engagement_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0.0)
     explosion_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0.0)
-    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
 
     content: Mapped["ContentItem"] = relationship(back_populates="metrics")

@@ -31,8 +31,8 @@ from app.services.semantic_dedup import semantic_dedup
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ──────────────────────────────────────────────────────────
-CLUSTER_TAG_OVERLAP = 1    # min shared tags to be in same cluster
-MIN_CLUSTER_SIZE = 2       # min items to form a topic group
+CLUSTER_TAG_OVERLAP = 1  # min shared tags to be in same cluster
+MIN_CLUSTER_SIZE = 2  # min items to form a topic group
 CLUSTER_LLM_CONCURRENCY = 3
 TOPIC_CLUSTERING_JOB_KEY = "topic_clustering"
 TOPIC_CLUSTERING_JOB_NAME = "话题聚类与去重"
@@ -41,6 +41,7 @@ TOPIC_CLUSTERING_JOB_DESCRIPTION = "重建话题分组和语义去重关系"
 
 
 # ── Tag-based clustering ────────────────────────────────────────────────
+
 
 def _extract_tags(item: dict) -> set[str]:
     """Extract normalized tag set from item's analysis tags."""
@@ -113,6 +114,7 @@ def _union_find_cluster(
 
 # ── Step 3: LLM naming ─────────────────────────────────────────────────
 
+
 async def _name_clusters(
     clusters: list[list[dict]],
 ) -> list[dict]:
@@ -134,7 +136,7 @@ async def _name_clusters(
                     + "\n".join(f"- {t}" for t in titles)
                     + f"\n\n关键标签：{', '.join(top_tags)}\n\n"
                     "请为这个话题生成：\n"
-                    '1. 话题名称（8字以内，精炼概括）\n'
+                    "1. 话题名称（8字以内，精炼概括）\n"
                     "2. 一句话摘要（20字以内）\n\n"
                     '返回JSON：{"name": "话题名", "summary": "一句话"}'
                 ),
@@ -182,6 +184,7 @@ async def _dedup_candidate_clusters(cluster_items: list[list[dict]]) -> dict[int
 
 
 # ── Main entry point ────────────────────────────────────────────────────
+
 
 async def cluster_and_dedup_with_lease(
     db: AsyncSession,
@@ -243,15 +246,17 @@ async def cluster_and_dedup(db: AsyncSession) -> dict:
     items = []
     scoring_inputs = []
     for content, analysis, source_weight_db in rows:
-        items.append({
-            "id": content.id,
-            "title": content.title,
-            "summary": analysis.summary or "",
-            "tags": analysis.tags,
-            "curation_score": analysis.curation_score or 0,
-            "adjusted_score": analysis.curation_score or 0,
-            "source_name": content.source_name,
-        })
+        items.append(
+            {
+                "id": content.id,
+                "title": content.title,
+                "summary": analysis.summary or "",
+                "tags": analysis.tags,
+                "curation_score": analysis.curation_score or 0,
+                "adjusted_score": analysis.curation_score or 0,
+                "source_name": content.source_name,
+            }
+        )
         scoring_inputs.append(
             ScoringInput(
                 content_id=content.id,
@@ -276,15 +281,13 @@ async def cluster_and_dedup(db: AsyncSession) -> dict:
             )
         )
 
-    adjusted_scores = {
-        item.content_id: breakdown.final_score
-        for breakdown, item in score_items(scoring_inputs)
-    }
+    adjusted_scores = {item.content_id: breakdown.final_score for breakdown, item in score_items(scoring_inputs)}
     for item in items:
         item["adjusted_score"] = adjusted_scores.get(item["id"], item["curation_score"])
 
     # 2. Clear old topic assignments
     from sqlalchemy import text
+
     await db.execute(text("UPDATE content_items SET topic_id=NULL, duplicate_of=NULL, similarity_score=0.0"))
     await db.execute(text("DELETE FROM topic_groups"))
     await db.flush()
@@ -324,9 +327,7 @@ async def cluster_and_dedup(db: AsyncSession) -> dict:
         cluster_meta = await _name_clusters(group_items)
 
     # 8. Write to DB
-    standalone_ids = {i["id"] for i in non_dup} - {
-        id for g in groups for id in g
-    }
+    standalone_ids = {i["id"] for i in non_dup} - {id for g in groups for id in g}
 
     for meta in cluster_meta:
         topic = TopicGroup(

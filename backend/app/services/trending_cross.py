@@ -7,6 +7,7 @@
 4. 贪心聚类：将相似标题归为同一"共振话题"
 5. 计算共振强度（出现在 N 个平台 = N次共振）
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,9 +31,16 @@ _STOPWORDS = set(
 
 # 信源显示名
 _SOURCE_LABELS: Dict[str, str] = {
-    "weibo": "微博", "baidu": "百度", "douyin": "抖音", "toutiao": "头条",
-    "zhihu": "知乎", "bilibili": "B站", "hackernews": "HN", "ithome": "IT之家",
-    "juejin": "掘金", "eastmoney": "东方财富",
+    "weibo": "微博",
+    "baidu": "百度",
+    "douyin": "抖音",
+    "toutiao": "头条",
+    "zhihu": "知乎",
+    "bilibili": "B站",
+    "hackernews": "HN",
+    "ithome": "IT之家",
+    "juejin": "掘金",
+    "eastmoney": "东方财富",
 }
 
 
@@ -147,30 +155,32 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if s not in by_source or it["rank"] < by_source[s]["rank"]:
                 by_source[s] = it
 
-        results.append({
-            "topic": rep_title,
-            "keywords": top_keywords,
-            "resonance": resonance,
-            "item_count": len(cluster),
-            "sources": sorted(sources_set),
-            "source_labels": [_SOURCE_LABELS.get(s, s) for s in sorted(sources_set)],
-            "source_items": [
-                {
-                    "source": s,
-                    "source_label": _SOURCE_LABELS.get(s, s),
-                    "title": by_source[s]["title"],
-                    "rank": by_source[s]["rank"],
-                    "hot_value": by_source[s].get("hot_value", 0),
-                    "hot_value_raw": by_source[s].get("hot_value_raw", ""),
-                    "url": normalize_zhihu_url(by_source[s].get("url", "")),
-                    "trend": by_source[s].get("trend"),
-                }
-                for s in sorted(sources_set)
-            ],
-            "items": cluster,
-            "total_hot": total_hot,
-            "avg_rank": round(avg_rank, 1),
-        })
+        results.append(
+            {
+                "topic": rep_title,
+                "keywords": top_keywords,
+                "resonance": resonance,
+                "item_count": len(cluster),
+                "sources": sorted(sources_set),
+                "source_labels": [_SOURCE_LABELS.get(s, s) for s in sorted(sources_set)],
+                "source_items": [
+                    {
+                        "source": s,
+                        "source_label": _SOURCE_LABELS.get(s, s),
+                        "title": by_source[s]["title"],
+                        "rank": by_source[s]["rank"],
+                        "hot_value": by_source[s].get("hot_value", 0),
+                        "hot_value_raw": by_source[s].get("hot_value_raw", ""),
+                        "url": normalize_zhihu_url(by_source[s].get("url", "")),
+                        "trend": by_source[s].get("trend"),
+                    }
+                    for s in sorted(sources_set)
+                ],
+                "items": cluster,
+                "total_hot": total_hot,
+                "avg_rank": round(avg_rank, 1),
+            }
+        )
 
     # 按共振强度降序，再按总热度降序
     results.sort(key=lambda x: (x["resonance"], x["total_hot"]), reverse=True)

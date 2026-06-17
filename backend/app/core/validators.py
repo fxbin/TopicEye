@@ -3,6 +3,7 @@
 
 集中在 schemas 中复用，避免各 schema 重复实现。
 """
+
 from __future__ import annotations
 
 import re

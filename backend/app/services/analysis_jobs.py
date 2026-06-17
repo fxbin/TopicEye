@@ -43,9 +43,7 @@ class AnalysisJob:
             "analyzed_ids": self.analyzed_ids,
             "failed_ids": self.failed_ids,
             "pending_ids": [
-                content_id
-                for content_id in self.content_ids
-                if content_id not in analyzed and content_id not in failed
+                content_id for content_id in self.content_ids if content_id not in analyzed and content_id not in failed
             ],
             "count": len(self.content_ids),
             "queued_count": len(self.content_ids),
@@ -106,9 +104,7 @@ def _record_dict(record: AnalysisJobRecord) -> dict[str, Any]:
         "analyzed_ids": record.analyzed_ids or [],
         "failed_ids": record.failed_ids or [],
         "pending_ids": [
-            content_id
-            for content_id in content_ids
-            if content_id not in analyzed and content_id not in failed
+            content_id for content_id in content_ids if content_id not in analyzed and content_id not in failed
         ],
         "count": len(content_ids),
         "queued_count": len(content_ids),
@@ -125,6 +121,7 @@ def _record_dict(record: AnalysisJobRecord) -> dict[str, Any]:
 async def _persist_job_snapshot(job: AnalysisJob) -> None:
     try:
         async with async_session() as db:
+
             async def _write_snapshot() -> None:
                 await begin_immediate_for_sqlite(db)
                 record = await db.get(AnalysisJobRecord, job.job_id)

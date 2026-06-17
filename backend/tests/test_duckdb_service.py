@@ -25,9 +25,7 @@ def test_duckdb_status_redacts_database_password_on_connection_failure(monkeypat
     attach_sql = duckdb_attach_sql(analytics._profile)
 
     def fail_get_conn():
-        raise RuntimeError(
-            f"failed for {url}; conninfo password='s3 cr\\'et'; attach={attach_sql}"
-        )
+        raise RuntimeError(f"failed for {url}; conninfo password='s3 cr\\'et'; attach={attach_sql}")
 
     monkeypatch.setattr(analytics, "_get_conn", fail_get_conn)
 
@@ -91,9 +89,7 @@ def test_stats_queries_use_latest_analysis_only(monkeypatch):
     create_ignored_items_table(conn)
 
     now = datetime.now(timezone.utc)
-    conn.execute(
-        "INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)"
-    )
+    conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute(
         "INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL)",
         [now],
@@ -128,9 +124,7 @@ def test_stats_queries_use_latest_analysis_only(monkeypatch):
     ]
 
     category_distribution = analytics.query_stats_category_distribution(days=7)
-    assert category_distribution["categories"] == [
-        {"category": "AI", "content_count": 1, "avg_score": 90.0}
-    ]
+    assert category_distribution["categories"] == [{"category": "AI", "content_count": 1, "avg_score": 90.0}]
 
     daily_trend = analytics.query_stats_daily_trend(days=7)
     assert len(daily_trend["trend"]) == 1
@@ -318,9 +312,7 @@ def test_stats_queries_exclude_ignored_content(monkeypatch):
     assert source_distribution["sources"][0]["content_count"] == 1
 
     category_distribution = analytics.query_stats_category_distribution(days=7)
-    assert category_distribution["categories"] == [
-        {"category": "商业", "content_count": 1, "avg_score": 90.0}
-    ]
+    assert category_distribution["categories"] == [{"category": "商业", "content_count": 1, "avg_score": 90.0}]
 
     daily_trend = analytics.query_stats_daily_trend(days=7)
     assert daily_trend["trend"][0]["content_count"] == 1

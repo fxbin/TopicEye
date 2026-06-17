@@ -30,26 +30,28 @@ async def test_analysis_repository_reads_and_filters_latest_rows_only():
     now = datetime.now(timezone.utc)
     async with session_factory() as db:
         db.add(ContentItem(id=1, title="测试内容", url="https://example.com/1"))
-        db.add_all([
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                summary="旧分析",
-                curation_score=95,
-                creator_score=95,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                summary="新分析",
-                curation_score=10,
-                creator_score=10,
-                enrichment_status="completed",
-                created_at=now + timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    summary="旧分析",
+                    curation_score=95,
+                    creator_score=95,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    summary="新分析",
+                    curation_score=10,
+                    creator_score=10,
+                    enrichment_status="completed",
+                    created_at=now + timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         repo = AnalysisRepository(db)
@@ -71,57 +73,61 @@ async def test_pending_enrichment_uses_unified_scorer_not_raw_curation_score():
     engine, session_factory = await _session_factory()
     now = datetime.now(timezone.utc)
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="原始高分但质量弱",
-                url="https://example.com/weak-enrich",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="统一评分高质量",
-                url="https://example.com/strong-enrich",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=95,
-                info_density=10,
-                actionability=10,
-                creator_score=10,
-                viral_score=10,
-                freshness_score=50,
-                quality_score=10,
-                hot_score=10,
-                risk_score=0,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                curation_score=70,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=70,
-                freshness_score=80,
-                quality_score=90,
-                hot_score=70,
-                risk_score=0,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="原始高分但质量弱",
+                    url="https://example.com/weak-enrich",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="统一评分高质量",
+                    url="https://example.com/strong-enrich",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=95,
+                    info_density=10,
+                    actionability=10,
+                    creator_score=10,
+                    viral_score=10,
+                    freshness_score=50,
+                    quality_score=10,
+                    hot_score=10,
+                    risk_score=0,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    curation_score=70,
+                    info_density=90,
+                    actionability=90,
+                    source_weight=70,
+                    creator_score=90,
+                    viral_score=70,
+                    freshness_score=80,
+                    quality_score=90,
+                    hot_score=70,
+                    risk_score=0,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         pending_ids = await AnalysisRepository(db).get_pending_enrichment_ids(min_score=55, limit=10)
@@ -194,24 +200,26 @@ async def test_single_enrichment_claim_marks_latest_processing_and_skips_reclaim
                 crawled_at=now,
             )
         )
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                summary="旧分析",
-                curation_score=95,
-                enrichment_status="pending",
-                created_at=now - timedelta(minutes=1),
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                summary="新分析",
-                curation_score=75,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    summary="旧分析",
+                    curation_score=95,
+                    enrichment_status="pending",
+                    created_at=now - timedelta(minutes=1),
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    summary="新分析",
+                    curation_score=75,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         repo = AnalysisRepository(db)
@@ -312,58 +320,62 @@ async def test_pending_enrichment_claim_uses_skip_locked_for_postgresql(monkeypa
     monkeypatch.setattr(Select, "with_for_update", with_for_update_spy)
 
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="增强并发认领一",
-                url="https://example.com/enrichment-pg-1",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="增强并发认领二",
-                url="https://example.com/enrichment-pg-2",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now - timedelta(minutes=1),
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=75,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=80,
-                freshness_score=90,
-                quality_score=90,
-                hot_score=80,
-                risk_score=0,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                curation_score=74,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=80,
-                freshness_score=90,
-                quality_score=90,
-                hot_score=80,
-                risk_score=0,
-                enrichment_status="pending",
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="增强并发认领一",
+                    url="https://example.com/enrichment-pg-1",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="增强并发认领二",
+                    url="https://example.com/enrichment-pg-2",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now - timedelta(minutes=1),
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=75,
+                    info_density=90,
+                    actionability=90,
+                    source_weight=70,
+                    creator_score=90,
+                    viral_score=80,
+                    freshness_score=90,
+                    quality_score=90,
+                    hot_score=80,
+                    risk_score=0,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    curation_score=74,
+                    info_density=90,
+                    actionability=90,
+                    source_weight=70,
+                    creator_score=90,
+                    viral_score=80,
+                    freshness_score=90,
+                    quality_score=90,
+                    hot_score=80,
+                    risk_score=0,
+                    enrichment_status="pending",
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         claimed_ids = await AnalysisRepository(db).claim_pending_enrichment_ids(min_score=55, limit=10)
@@ -398,22 +410,24 @@ async def test_creation_plan_uses_latest_analysis_prompt_material(monkeypatch):
                 status=ContentStatus.ANALYZED,
             )
         )
-        db.add_all([
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                summary="旧分析摘要",
-                tags=["旧标签"],
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                summary="新分析摘要",
-                tags=["新标签"],
-                created_at=now + timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    summary="旧分析摘要",
+                    tags=["旧标签"],
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    summary="新分析摘要",
+                    tags=["新标签"],
+                    created_at=now + timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         plan = await creation.generate_creation_plan(db, 1, "xiaohongshu")
@@ -458,22 +472,24 @@ async def test_clustering_uses_one_latest_analysis_per_content(monkeypatch):
                     status=ContentStatus.ANALYZED,
                 )
             )
-            db.add_all([
-                AiAnalysis(
-                    id=content_id + 10,
-                    content_id=content_id,
-                    tags=["旧标签"],
-                    curation_score=90,
-                    created_at=now,
-                ),
-                AiAnalysis(
-                    id=content_id,
-                    content_id=content_id,
-                    tags=["新标签"],
-                    curation_score=40 + content_id,
-                    created_at=now + timedelta(minutes=1),
-                ),
-            ])
+            db.add_all(
+                [
+                    AiAnalysis(
+                        id=content_id + 10,
+                        content_id=content_id,
+                        tags=["旧标签"],
+                        curation_score=90,
+                        created_at=now,
+                    ),
+                    AiAnalysis(
+                        id=content_id,
+                        content_id=content_id,
+                        tags=["新标签"],
+                        curation_score=40 + content_id,
+                        created_at=now + timedelta(minutes=1),
+                    ),
+                ]
+            )
         await db.commit()
 
         stats = await topic_clustering.cluster_and_dedup(db)
@@ -501,57 +517,61 @@ async def test_clustering_topic_best_score_uses_unified_scorer(monkeypatch):
     engine, session_factory = await _session_factory()
     now = datetime.now(timezone.utc)
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="原始高分质量弱",
-                url="https://example.com/raw-high-topic",
-                status=ContentStatus.ANALYZED,
-                category="AI",
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="统一评分更强",
-                url="https://example.com/unified-topic",
-                status=ContentStatus.ANALYZED,
-                category="AI",
-                crawled_at=now,
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                tags=["统一话题"],
-                curation_score=95,
-                info_density=10,
-                actionability=10,
-                creator_score=10,
-                viral_score=10,
-                freshness_score=50,
-                quality_score=10,
-                hot_score=10,
-                risk_score=0,
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                tags=["统一话题"],
-                curation_score=70,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=70,
-                freshness_score=80,
-                quality_score=90,
-                hot_score=70,
-                risk_score=0,
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="原始高分质量弱",
+                    url="https://example.com/raw-high-topic",
+                    status=ContentStatus.ANALYZED,
+                    category="AI",
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="统一评分更强",
+                    url="https://example.com/unified-topic",
+                    status=ContentStatus.ANALYZED,
+                    category="AI",
+                    crawled_at=now,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    tags=["统一话题"],
+                    curation_score=95,
+                    info_density=10,
+                    actionability=10,
+                    creator_score=10,
+                    viral_score=10,
+                    freshness_score=50,
+                    quality_score=10,
+                    hot_score=10,
+                    risk_score=0,
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    tags=["统一话题"],
+                    curation_score=70,
+                    info_density=90,
+                    actionability=90,
+                    source_weight=70,
+                    creator_score=90,
+                    viral_score=70,
+                    freshness_score=80,
+                    quality_score=90,
+                    hot_score=70,
+                    risk_score=0,
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         stats = await topic_clustering.cluster_and_dedup(db)
@@ -582,22 +602,24 @@ async def test_trend_snapshot_counts_latest_analysis_once():
                 created_at=created_at,
             )
         )
-        db.add_all([
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                curation_score=95,
-                tags=["旧关键词"],
-                created_at=created_at,
-            ),
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=35,
-                tags=["新关键词"],
-                created_at=created_at + timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    curation_score=95,
+                    tags=["旧关键词"],
+                    created_at=created_at,
+                ),
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=35,
+                    tags=["新关键词"],
+                    created_at=created_at + timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         result = await snapshot_daily_trends(db, target)
@@ -623,61 +645,65 @@ async def test_trend_snapshot_uses_unified_scorer_for_picks_and_top_items():
     created_at = datetime(2026, 6, 8, 12, 0, 0)
     async with session_factory() as db:
         db.add(TopicGroup(id=1, name="AI话题"))
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="原始高分但质量弱",
-                url="https://example.com/weak",
-                category="AI",
-                topic_id=1,
-                status=ContentStatus.ANALYZED,
-                crawled_at=created_at,
-                created_at=created_at,
-            ),
-            ContentItem(
-                id=2,
-                title="统一评分高质量",
-                url="https://example.com/strong",
-                category="AI",
-                topic_id=1,
-                status=ContentStatus.ANALYZED,
-                crawled_at=created_at,
-                created_at=created_at,
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=95,
-                info_density=10,
-                actionability=10,
-                creator_score=10,
-                viral_score=10,
-                freshness_score=50,
-                quality_score=10,
-                hot_score=10,
-                risk_score=0,
-                tags=["弱质量"],
-                created_at=created_at,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                curation_score=70,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=70,
-                freshness_score=80,
-                quality_score=90,
-                hot_score=70,
-                risk_score=0,
-                tags=["高质量"],
-                created_at=created_at,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="原始高分但质量弱",
+                    url="https://example.com/weak",
+                    category="AI",
+                    topic_id=1,
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=created_at,
+                    created_at=created_at,
+                ),
+                ContentItem(
+                    id=2,
+                    title="统一评分高质量",
+                    url="https://example.com/strong",
+                    category="AI",
+                    topic_id=1,
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=created_at,
+                    created_at=created_at,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=95,
+                    info_density=10,
+                    actionability=10,
+                    creator_score=10,
+                    viral_score=10,
+                    freshness_score=50,
+                    quality_score=10,
+                    hot_score=10,
+                    risk_score=0,
+                    tags=["弱质量"],
+                    created_at=created_at,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    curation_score=70,
+                    info_density=90,
+                    actionability=90,
+                    source_weight=70,
+                    creator_score=90,
+                    viral_score=70,
+                    freshness_score=80,
+                    quality_score=90,
+                    hot_score=70,
+                    risk_score=0,
+                    tags=["高质量"],
+                    created_at=created_at,
+                ),
+            ]
+        )
         await db.commit()
 
         result = await snapshot_daily_trends(db, target)

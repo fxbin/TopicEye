@@ -73,47 +73,59 @@ def extract_usage(response: Any) -> TokenUsage:
         return TokenUsage(actual_model=actual_model)
 
     prompt_details = _get_value(usage, "prompt_tokens_details", "input_tokens_details") or {}
-    input_tokens = _to_int(_get_value(
-        usage,
-        "prompt_tokens",
-        "input_tokens",
-        "promptTokenCount",
-    ))
-    output_tokens = _to_int(_get_value(
-        usage,
-        "completion_tokens",
-        "output_tokens",
-        "candidatesTokenCount",
-    ))
+    input_tokens = _to_int(
+        _get_value(
+            usage,
+            "prompt_tokens",
+            "input_tokens",
+            "promptTokenCount",
+        )
+    )
+    output_tokens = _to_int(
+        _get_value(
+            usage,
+            "completion_tokens",
+            "output_tokens",
+            "candidatesTokenCount",
+        )
+    )
     if output_tokens == 0:
         total_tokens = _to_int(_get_value(usage, "total_tokens", "totalTokenCount"))
         if total_tokens and input_tokens:
             output_tokens = max(total_tokens - input_tokens, 0)
 
-    cache_read_tokens = _to_int(_get_value(
-        usage,
-        "cache_read_input_tokens",
-        "cachedContentTokenCount",
-    ))
-    if cache_read_tokens == 0:
-        cache_read_tokens = _to_int(_get_value(
-            prompt_details,
-            "cached_tokens",
+    cache_read_tokens = _to_int(
+        _get_value(
+            usage,
             "cache_read_input_tokens",
-            "cache_read_tokens",
-        ))
+            "cachedContentTokenCount",
+        )
+    )
+    if cache_read_tokens == 0:
+        cache_read_tokens = _to_int(
+            _get_value(
+                prompt_details,
+                "cached_tokens",
+                "cache_read_input_tokens",
+                "cache_read_tokens",
+            )
+        )
 
-    cache_creation_tokens = _to_int(_get_value(
-        usage,
-        "cache_creation_input_tokens",
-        "cache_creation_tokens",
-    ))
-    if cache_creation_tokens == 0:
-        cache_creation_tokens = _to_int(_get_value(
-            prompt_details,
+    cache_creation_tokens = _to_int(
+        _get_value(
+            usage,
             "cache_creation_input_tokens",
             "cache_creation_tokens",
-        ))
+        )
+    )
+    if cache_creation_tokens == 0:
+        cache_creation_tokens = _to_int(
+            _get_value(
+                prompt_details,
+                "cache_creation_input_tokens",
+                "cache_creation_tokens",
+            )
+        )
 
     return TokenUsage(
         input_tokens=input_tokens,
@@ -274,6 +286,7 @@ async def record_llm_call_in_new_session(
     from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 
     async with async_session() as db:
+
         async def _write():
             await begin_immediate_for_sqlite(db)
             await record_llm_call(

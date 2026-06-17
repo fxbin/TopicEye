@@ -7,6 +7,7 @@ creation_plans 持久化 + 历史 API 测试。
 - get_my_plan 单条详情
 - delete_my_plan 删除权限
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,8 +24,10 @@ from app.services.auth_service import create_user
 
 def _make_content(*, title: str = "测试素材", url: str = "https://example.com/x") -> ContentItem:
     return ContentItem(
-        title=title, url=url,
-        source_name="测试源", source_type="RSS",
+        title=title,
+        url=url,
+        source_name="测试源",
+        source_type="RSS",
         status=ContentStatus.ANALYZED,
     )
 
@@ -70,11 +73,15 @@ async def test_creation_plans_persisted_after_generate(monkeypatch):
                 "tags": ["t1", "t2"],
                 "tone": "活泼",
             }
+
         monkeypatch.setattr(creation_service, "call_llm_json", fake_call_llm_json)
 
         async with session_factory() as db:
             plan = await creation_service.generate_creation_plan(
-                db, content_id, "xiaohongshu", user_id=user_id,
+                db,
+                content_id,
+                "xiaohongshu",
+                user_id=user_id,
             )
             assert "error" not in plan
             assert plan["titles"] == ["标题1", "标题2", "标题3"]
@@ -115,11 +122,15 @@ async def test_creation_plans_persist_failure_as_log(monkeypatch):
 
         async def fake_call_llm_json(*args, **kwargs):
             return {"titles": []}  # 无效（无标题）
+
         monkeypatch.setattr(creation_service, "call_llm_json", fake_call_llm_json)
 
         async with session_factory() as db:
             plan = await creation_service.generate_creation_plan(
-                db, content_id, "xiaohongshu", user_id=user_id,
+                db,
+                content_id,
+                "xiaohongshu",
+                user_id=user_id,
             )
             assert "error" in plan
             await db.commit()  # generate 只 flush，caller 必须 commit

@@ -2,6 +2,7 @@
 
 PG 迁移期: 全部用 FakeClient mock, 不真发请求.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -124,9 +125,11 @@ def test_build_search_entry_returns_none_when_missing_core_fields():
     """id 或 name 缺失 → 返回 None, 不抛."""
     scraper = HeiyanTrending()
     assert scraper._build_search_entry(_book("6"), rank=1) is not None  # 正常
-    bad1 = _book("6"); bad1.pop("id")
+    bad1 = _book("6")
+    bad1.pop("id")
     assert scraper._build_search_entry(bad1, rank=1) is None
-    bad2 = _book("7"); bad2["name"] = "   "
+    bad2 = _book("7")
+    bad2["name"] = "   "
     assert scraper._build_search_entry(bad2, rank=1) is None
 
 
@@ -147,11 +150,13 @@ async def test_fetch_search_all_stops_on_empty_page():
     p0 = _ok_payload([_book("a"), _book("b")], total_pages=10)
     p1 = _ok_payload([_book("c")], total_pages=10)
     p2 = _ok_payload([])  # 空 → 终止
-    client = FakeClient([
-        ("page=0", p0),
-        ("page=1", p1),
-        ("page=2", p2),
-    ])
+    client = FakeClient(
+        [
+            ("page=0", p0),
+            ("page=1", p1),
+            ("page=2", p2),
+        ]
+    )
     seen: set[str] = set()
     entries = await scraper._fetch_search_all_pages(client, seen, max_pages=12)
     assert len(entries) == 3
@@ -168,12 +173,14 @@ async def test_fetch_search_all_dedupes_repeated_page():
     p1 = _ok_payload([_book("dup"), _book("x")], total_pages=10)  # 与 p0 完全相同
     p2 = _ok_payload([_book("y")], total_pages=10)
     p3 = _ok_payload([])
-    client = FakeClient([
-        ("page=0", p0),
-        ("page=1", p1),
-        ("page=2", p2),
-        ("page=3", p3),
-    ])
+    client = FakeClient(
+        [
+            ("page=0", p0),
+            ("page=1", p1),
+            ("page=2", p2),
+            ("page=3", p3),
+        ]
+    )
     seen: set[str] = set()
     entries = await scraper._fetch_search_all_pages(client, seen, max_pages=12)
     # 3 本 (dup, x, y) - p1 重复被 dedup
@@ -188,10 +195,12 @@ async def test_fetch_search_all_dedupes_via_seen():
     seen = {"shared"}
     p0 = _ok_payload([_book("shared"), _book("new1")], total_pages=10)
     p1 = _ok_payload([])
-    client = FakeClient([
-        ("page=0", p0),
-        ("page=1", p1),
-    ])
+    client = FakeClient(
+        [
+            ("page=0", p0),
+            ("page=1", p1),
+        ]
+    )
     entries = await scraper._fetch_search_all_pages(client, seen, max_pages=12)
     assert len(entries) == 1
     assert entries[0]["extra"]["book_id"] == "new1"
@@ -204,12 +213,14 @@ async def test_fetch_search_all_retries_on_exception():
     scraper = HeiyanTrending()
     p0 = _ok_payload([_book("ok")], total_pages=10)
     p1 = _ok_payload([])
-    client = FakeClient([
-        ("page=0", RuntimeError("conn reset")),
-        ("page=0", RuntimeError("timeout")),
-        ("page=0", p0),
-        ("page=1", p1),
-    ])
+    client = FakeClient(
+        [
+            ("page=0", RuntimeError("conn reset")),
+            ("page=0", RuntimeError("timeout")),
+            ("page=0", p0),
+            ("page=1", p1),
+        ]
+    )
     seen: set[str] = set()
     entries = await scraper._fetch_search_all_pages(client, seen, max_pages=12)
     assert len(entries) == 1
@@ -222,11 +233,13 @@ async def test_fetch_search_all_retries_on_exception():
 async def test_fetch_search_all_returns_empty_after_all_retries_fail():
     """3 次重试都失败 → 返回 [], 不 throw."""
     scraper = HeiyanTrending()
-    client = FakeClient([
-        ("page=0", RuntimeError("e1")),
-        ("page=0", RuntimeError("e2")),
-        ("page=0", RuntimeError("e3")),
-    ])
+    client = FakeClient(
+        [
+            ("page=0", RuntimeError("e1")),
+            ("page=0", RuntimeError("e2")),
+            ("page=0", RuntimeError("e3")),
+        ]
+    )
     seen: set[str] = set()
     entries = await scraper._fetch_search_all_pages(client, seen, max_pages=12)
     assert entries == []

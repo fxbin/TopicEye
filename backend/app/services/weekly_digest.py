@@ -1,6 +1,7 @@
 """
 Weekly Digest service — generate AI-powered weekly curated newsletter.
 """
+
 from __future__ import annotations
 
 import json
@@ -159,7 +160,10 @@ async def generate_weekly_digest(
         if items_data:
             logger.info(
                 "Weekly digest: no data for ISO week %s, expanded to %s ~ %s (%d items)",
-                week_key, expanded_start, week_end, len(items_data),
+                week_key,
+                expanded_start,
+                week_end,
+                len(items_data),
             )
 
     if not items_data:
@@ -218,6 +222,7 @@ async def generate_weekly_digest(
         # 通知：周刊生成成功
         try:
             from app.services.notification_service import push_notification
+
             await push_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
         except Exception:
             pass
@@ -229,6 +234,7 @@ async def generate_weekly_digest(
         # 通知：周刊生成失败
         try:
             from app.services.notification_service import push_notification
+
             await push_notification("error", "weekly_digest", "AI周刊生成失败", str(e)[:200])
         except Exception:
             pass

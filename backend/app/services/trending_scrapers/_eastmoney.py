@@ -1,4 +1,5 @@
 """东方财富财经快讯 — https://newsapi.eastmoney.com/kuaixun/"""
+
 from __future__ import annotations
 
 import json
@@ -20,10 +21,7 @@ class EastmoneyTrending(BaseTrendingScraper):
     CATEGORY = "finance"
 
     async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
-        url = (
-            "https://newsapi.eastmoney.com/kuaixun/v1/"
-            "getlist_102_ajaxResult_30_1_.html"
-        )
+        url = "https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_30_1_.html"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": "https://finance.eastmoney.com/",
@@ -54,18 +52,20 @@ class EastmoneyTrending(BaseTrendingScraper):
             comment_num = int(item.get("commentnum", 0))
             showtime = item.get("showtime", "")
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": url_w.replace("http://", "https://"),
-                "hot_value": comment_num,
-                "hot_value_raw": f"评论{comment_num}",
-                "trend": "up" if comment_num > 20 else "stable",
-                "extra": {
-                    "digest": item.get("digest", "")[:100],
-                    "showtime": showtime,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": url_w.replace("http://", "https://"),
+                    "hot_value": comment_num,
+                    "hot_value_raw": f"评论{comment_num}",
+                    "trend": "up" if comment_num > 20 else "stable",
+                    "extra": {
+                        "digest": item.get("digest", "")[:100],
+                        "showtime": showtime,
+                    },
+                }
+            )
 
         logger.info("eastmoney trending: fetched %d items", len(results))
         return results

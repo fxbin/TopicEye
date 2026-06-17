@@ -1,4 +1,5 @@
 """Content API endpoints — delegates all DB work to repositories."""
+
 from __future__ import annotations
 import json
 from typing import Optional, Set
@@ -99,8 +100,10 @@ async def _score_content_page(
         reverse=(sort_order == "desc"),
     )
     page_offset = (page - 1) * page_size
-    page_items = scored[page_offset:page_offset + page_size]
-    result_items = [_with_scoring_breakdown(item_map, breakdown, scoring_input) for breakdown, scoring_input in page_items]
+    page_items = scored[page_offset : page_offset + page_size]
+    result_items = [
+        _with_scoring_breakdown(item_map, breakdown, scoring_input) for breakdown, scoring_input in page_items
+    ]
     result_items = [item for item in result_items if item]
 
     return {
@@ -125,15 +128,20 @@ def _with_scoring_breakdown(item_map: dict, breakdown, scoring_input) -> Optiona
 
 @router.get("")
 async def list_contents(
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200),
-    source_type: Optional[str] = None, platform: Optional[str] = None,
-    status: Optional[str] = None, category: Optional[str] = None,
-    keyword: Optional[str] = None, source_id: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    source_type: Optional[str] = None,
+    platform: Optional[str] = None,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    keyword: Optional[str] = None,
+    source_id: Optional[int] = None,
     q: Optional[str] = Query(None, description="全文搜索（跨 title + summary + raw_content 的 OR 匹配）"),
     include_trend_sources: bool = Query(False, description="Include榜单/趋势源 such as DouyinHot"),
     hours: Optional[int] = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
-    sort_by: str = Query("created_at",
-                          pattern=r"^(created_at|published_at|crawled_at|curation_score|low_follower_viral)$"),
+    sort_by: str = Query(
+        "created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score|low_follower_viral)$"
+    ),
     sort_order: str = Query("desc", pattern=r"^(asc|desc)$"),
     admin_view: bool = Query(False, description="Return management fields; admin only"),
     current_user: User | None = Depends(get_optional_current_user),
@@ -170,12 +178,18 @@ async def list_contents(
             )
 
     async with async_session() as db:
-        filters = {k: v for k, v in {
-            "source_type": source_type, "platform": platform,
-            "status": status, "category": category,
-            "source_id": source_id,
-            "title": f"%{keyword}%" if keyword else None,
-        }.items() if v is not None}
+        filters = {
+            k: v
+            for k, v in {
+                "source_type": source_type,
+                "platform": platform,
+                "status": status,
+                "category": category,
+                "source_id": source_id,
+                "title": f"%{keyword}%" if keyword else None,
+            }.items()
+            if v is not None
+        }
 
         time_cutoff = None
         if hours:
@@ -220,13 +234,23 @@ async def list_contents(
         # ── Standard SQL sort path ─────────────────────────────────────────
         repo = ContentRepo(db)
         items, total = await repo.list_paginated_with_analyses(
-            page=page, page_size=page_size,
-            filters=filters or None, sort_by=sort_by, sort_order=sort_order,
-            exclude_ids=ignored_ids, exclude_source_types=exclude_source_types, time_cutoff=time_cutoff,
+            page=page,
+            page_size=page_size,
+            filters=filters or None,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            exclude_ids=ignored_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
             visible_user_id=current_user.id if current_user is not None else None,
-            search_query=q,)
-        payload = {"items": [content_with_latest_analysis(i, include_raw_content=include_raw_content) for i in items],
-                   "total": total, "page": page, "page_size": page_size}
+            search_query=q,
+        )
+        payload = {
+            "items": [content_with_latest_analysis(i, include_raw_content=include_raw_content) for i in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
         if cache_params.cacheable and not include_raw_content:
             content = set_cached_content_list(cache_params, payload)
             return Response(
@@ -301,7 +325,9 @@ async def scoring_flow(
     try:
         async with async_session() as db:
             payload = await build_scoring_flow_payload(
-                db, hours=hours, limit=limit,
+                db,
+                hours=hours,
+                limit=limit,
                 visible_user_id=current_user.id,
             )
             return Response(
@@ -315,7 +341,8 @@ async def scoring_flow(
 
 @router.get("/favorites/list", response_model=ContentListResponse)
 async def list_favorites(
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -341,8 +368,12 @@ async def list_favorites(
         items = [by_id[content_id] for content_id in content_ids if content_id in by_id]
     else:
         items = []
-    payload = {"items": [content_with_latest_analysis(i) for i in items],
-               "total": total, "page": page, "page_size": page_size}
+    payload = {
+        "items": [content_with_latest_analysis(i) for i in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
     content = set_cached_json(cache_key, payload)
     return Response(
         content=content,
@@ -359,6 +390,7 @@ async def get_enrichment(
 ):
     """Get or trigger Round-2 enrichment for a content item."""
     from app.services.enricher import enrich_content
+
     repo = AnalysisRepository(db)
     analysis = await repo.get_by_content_id(content_id)
     if not analysis:
@@ -395,6 +427,7 @@ async def enrich_top_items(
 ):
     """Batch-enrich top curated items (scheduler-friendly)."""
     from app.services.enricher import enrich_batch
+
     ids = await AnalysisRepository(db).claim_pending_enrichment_ids(min_score, limit)
     await db.commit()
     if not ids:
@@ -433,6 +466,7 @@ async def get_content(
         d["analysis"] = a_dict
     if content.metrics:
         from app.schemas.content import ContentMetricsResponse
+
         d["metrics"] = [ContentMetricsResponse.model_validate(m).model_dump() for m in content.metrics]
     return d
 
@@ -495,6 +529,7 @@ async def ignore_content(
 ):
     """Mark a content item as ignored (won't appear in feeds)."""
     from app.repositories.ignored_repo import IgnoredRepo
+
     content = await ContentRepo(db).get_by_id(content_id)
     if not content:
         raise HTTPException(404, "Content not found")

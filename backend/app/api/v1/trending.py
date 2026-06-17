@@ -1,6 +1,7 @@
 """
 趋势雷达 API — GET /api/v1/trending
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,7 +84,10 @@ async def get_trending(
     """获取趋势雷达数据。支持按分类和信源筛选。"""
     exclude_list = [s.strip() for s in (exclude_sources or "").split(",") if s.strip()]
     cache_params = TrendingListCacheParams(
-        category=category, source=source, limit=limit, exclude_sources=tuple(exclude_list),
+        category=category,
+        source=source,
+        limit=limit,
+        exclude_sources=tuple(exclude_list),
     )
     cached = get_cached_trending_list(cache_params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
@@ -287,6 +291,7 @@ async def build_cross_platform_payload(db: AsyncSession, *, min_resonance: int, 
 
 # ── 历史快照 API ────────────────────────────────────────────────────────
 
+
 @router.get("/snapshots/diff/{source}")
 async def get_snapshot_diff_api(
     source: str,
@@ -407,6 +412,7 @@ async def build_default_trending_cache_payloads(db: AsyncSession) -> dict[str, o
 
 # ── 角度推荐 API ────────────────────────────────────────────────────────
 
+
 class AngleRecommendOut(BaseModel):
     common_angles: list[str]
     contrast_angles: list[dict[str, str]]
@@ -428,13 +434,8 @@ async def get_topic_angles(
 
     # 从 DB 找到相关趋势条目，拼出各平台标题
     # 转义 LIKE 通配符，防止用户输入 %/_ 泄露非预期数据
-    safe_topic = topic[:8].replace('%', '\\%').replace('_', '\\_')
-    stmt = (
-        select(TrendingItem)
-        .where(TrendingItem.title.like(f"%{safe_topic}%"))
-        .order_by(TrendingItem.rank)
-        .limit(8)
-    )
+    safe_topic = topic[:8].replace("%", "\\%").replace("_", "\\_")
+    stmt = select(TrendingItem).where(TrendingItem.title.like(f"%{safe_topic}%")).order_by(TrendingItem.rank).limit(8)
     result = await db.execute(stmt)
     items = result.scalars().all()
 

@@ -1,4 +1,5 @@
 """GitHub Trending — https://github.com/trending"""
+
 from __future__ import annotations
 
 import logging
@@ -63,14 +64,14 @@ class GitHubTrending(BaseTrendingScraper):
             href = m_h2.group(1).strip()
             # 清理仓库名中的换行/空白
             repo_raw = m_h2.group(2).strip()
-            repo_name = re.sub(r'\s+', '', repo_raw)          # e.g. "owner / repo" → "owner/repo"
-            repo_name = repo_name.lstrip('/')                  # safety
+            repo_name = re.sub(r"\s+", "", repo_raw)  # e.g. "owner / repo" → "owner/repo"
+            repo_name = repo_name.lstrip("/")  # safety
 
             # ── 描述 ──
             m_desc = _DESC_P.search(block)
             desc = ""
             if m_desc:
-                desc = re.sub(r'<[^>]+>', '', m_desc.group(1)).strip()
+                desc = re.sub(r"<[^>]+>", "", m_desc.group(1)).strip()
 
             # ── stars ──
             hot_val = 0
@@ -85,18 +86,20 @@ class GitHubTrending(BaseTrendingScraper):
 
             title = desc if desc else repo_name
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": f"https://github.com{href}",
-                "hot_value": hot_val,
-                "hot_value_raw": hot_raw,
-                "trend": "up" if idx <= 10 else "stable",
-                "extra": {
-                    "repo": repo_name,
-                    "description": desc,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": f"https://github.com{href}",
+                    "hot_value": hot_val,
+                    "hot_value_raw": hot_raw,
+                    "trend": "up" if idx <= 10 else "stable",
+                    "extra": {
+                        "repo": repo_name,
+                        "description": desc,
+                    },
+                }
+            )
 
         logger.info("github trending: fetched %d items", len(results))
         return results

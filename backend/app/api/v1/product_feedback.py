@@ -57,11 +57,13 @@ async def _issue_counts(db: AsyncSession, user_id: int | None = None) -> tuple[i
     open_result = await db.execute(
         select(func.count(IssueFeedback.id)).where(
             *filters,
-            IssueFeedback.status.in_([
-                IssueFeedbackStatus.open,
-                IssueFeedbackStatus.triaged,
-                IssueFeedbackStatus.in_progress,
-            ]),
+            IssueFeedback.status.in_(
+                [
+                    IssueFeedbackStatus.open,
+                    IssueFeedbackStatus.triaged,
+                    IssueFeedbackStatus.in_progress,
+                ]
+            ),
         )
     )
     fixed_result = await db.execute(
@@ -199,6 +201,7 @@ async def update_issue_feedback(
 # ── Product updates: 1 version = 1 record, items[] 装该版本的多条更新 ────────
 # 数据全部在 DB (product_updates 表), 通过 alembic migration seed.
 # 历史 BUILTIN_PRODUCT_UPDATES 已废弃, 避免数据/代码双源.
+
 
 @router.get("/updates", response_model=ProductUpdateListResponse)
 async def list_product_updates(

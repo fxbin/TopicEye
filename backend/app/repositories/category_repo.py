@@ -70,8 +70,6 @@ class CategoryRepository(BaseRepository[Category]):
     async def increment_count(self, category_name: str) -> None:
         """Increment the denormalized content_count for a category."""
         await self.db.execute(
-            update(Category)
-            .where(Category.name == category_name)
-            .values(content_count=Category.content_count + 1)
+            update(Category).where(Category.name == category_name).values(content_count=Category.content_count + 1)
         )
         await self.db.flush()

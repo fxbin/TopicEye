@@ -1,6 +1,7 @@
 """
 Daily Report API endpoints.
 """
+
 from __future__ import annotations
 
 from typing import Tuple, Optional
@@ -28,8 +29,6 @@ from app.services.plan_catalog import plan_allows_private_source
 router = APIRouter(prefix="/daily-reports", tags=["daily-reports"], dependencies=[Depends(get_current_user)])
 
 
-
-
 # ── /me series: user-owned private daily reports (T2) ───────────────────
 # Declared BEFORE /today so FastAPI matches the literal "me" segment first.
 
@@ -45,9 +44,7 @@ async def get_my_today_report(
     the same paywall.
     """
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(
-            status_code=403, detail="我的日报需 Pro 及以上套餐"
-        )
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
     return await get_latest_today_report(db, owner_user_id=current_user.id)
 
 
@@ -60,9 +57,7 @@ async def get_my_report_by_date(
 ):
     """Fetch the user's own report for a date, or latest snapshot if final does not exist."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(
-            status_code=403, detail="我的日报需 Pro 及以上套餐"
-        )
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
     repo = DailyReportRepository(db)
     report = await repo.get_by_date(date, edition=edition, owner_user_id=current_user.id)
     if report is None:
@@ -77,9 +72,7 @@ async def list_my_report_dates(
 ):
     """List all dates that have the user's own reports, newest first."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(
-            status_code=403, detail="我的日报需 Pro 及以上套餐"
-        )
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
     repo = DailyReportRepository(db)
     dates = await repo.get_dates_with_reports(owner_user_id=current_user.id)
     return {"dates": dates}
@@ -92,9 +85,7 @@ async def trigger_my_generate(
 ):
     """Force generate today's user-owned daily report snapshot."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(
-            status_code=403, detail="我的日报需 Pro 及以上套餐"
-        )
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
     return await generate_daily_report(db, force=True, owner_user_id=current_user.id)
 
 
@@ -175,21 +166,23 @@ async def get_report_calendar(
         if status not in counts:
             status = "MISSING"
         counts[status] += 1
-        out.append({
-            "report_date": key,
-            "weekday": WEEKDAYS[current.weekday()],
-            "status": status,
-            "edition": selected.edition if selected else None,
-            "generated_at": selected.generated_at if selected else None,
-            "cutoff_at": selected.cutoff_at if selected else None,
-            "takeaway": selected.takeaway[:80] if selected and selected.takeaway else None,
-            "content_count": selected.content_count if selected else 0,
-            "analyzed_count": selected.analyzed_count if selected else 0,
-            "topic_count": selected.topic_count if selected else 0,
-            "has_report": selected is not None and status != "MISSING",
-            "can_generate": status in {"MISSING", "ERROR", "DONE"},
-            "is_today": current == today,
-        })
+        out.append(
+            {
+                "report_date": key,
+                "weekday": WEEKDAYS[current.weekday()],
+                "status": status,
+                "edition": selected.edition if selected else None,
+                "generated_at": selected.generated_at if selected else None,
+                "cutoff_at": selected.cutoff_at if selected else None,
+                "takeaway": selected.takeaway[:80] if selected and selected.takeaway else None,
+                "content_count": selected.content_count if selected else 0,
+                "analyzed_count": selected.analyzed_count if selected else 0,
+                "topic_count": selected.topic_count if selected else 0,
+                "has_report": selected is not None and status != "MISSING",
+                "can_generate": status in {"MISSING", "ERROR", "DONE"},
+                "is_today": current == today,
+            }
+        )
 
     return {
         "days": out,
@@ -207,15 +200,11 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
 ):
     """List recent daily reports."""
-    count_result = await db.execute(
-        select(func.count()).select_from(DailyReport)
-    )
+    count_result = await db.execute(select(func.count()).select_from(DailyReport))
     total = count_result.scalar() or 0
 
     result = await db.execute(
-        select(DailyReport)
-        .order_by(DailyReport.report_date.desc(), DailyReport.cutoff_at.desc())
-        .limit(limit)
+        select(DailyReport).order_by(DailyReport.report_date.desc(), DailyReport.cutoff_at.desc()).limit(limit)
     )
     items = result.scalars().all()
 

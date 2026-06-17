@@ -1,6 +1,7 @@
 """
 番茄小说榜单数据模型。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,6 +15,7 @@ from app.core.database import Base
 
 class FanqieCategory(Base):
     """番茄分类。"""
+
     __tablename__ = "fanqie_categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -24,13 +26,12 @@ class FanqieCategory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
-    __table_args__ = (
-        Index("ix_fanqie_cat_group", "group"),
-    )
+    __table_args__ = (Index("ix_fanqie_cat_group", "group"),)
 
 
 class FanqieBook(Base):
     """番茄榜单图书。"""
+
     __tablename__ = "fanqie_books"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -46,7 +47,9 @@ class FanqieBook(Base):
     last_chapter_title: Mapped[Optional[str]] = mapped_column(String(500))
     last_chapter_update_time: Mapped[Optional[int]] = mapped_column(Integer)
     current_pos: Mapped[int] = mapped_column(Integer, default=0)  # 榜单排名
-    rank_type: Mapped[str] = mapped_column(String(30), nullable=False)  # male_reading / male_new / female_reading / female_new
+    rank_type: Mapped[str] = mapped_column(
+        String(30), nullable=False
+    )  # male_reading / male_new / female_reading / female_new
     crawled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
 
     # 四个榜单各一个 pos
@@ -64,6 +67,7 @@ class FanqieBook(Base):
 
 class FanqieRankSnapshot(Base):
     """番茄排名历史快照——每天存一份，用于排名变化分析。"""
+
     __tablename__ = "fanqie_rank_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -55,10 +55,7 @@ def _clean_tweet_text(text: str) -> str:
     # Unescape HTML entities
     text = unescape(text)
     # Remove engagement metrics footer: 💬12 🔄8 ❤️116 👀37383 📊23
-    text = re.sub(
-        r"[\U0001F4AC\U0001F504\U00002764\U0001F493\U0001F440\U0001F4CA\u2764\u2605]\uFE0F?\d+",
-        "", text
-    )
+    text = re.sub(r"[\U0001F4AC\U0001F504\U00002764\U0001F493\U0001F440\U0001F4CA\u2764\u2605]\uFE0F?\d+", "", text)
     # Remove "⚡ Powered by xgo.ing" footer
     text = re.sub(r"⚡\s*Powered by xgo\.ing", "", text)
     # Collapse whitespace
@@ -102,7 +99,9 @@ class TwitterRSSScraper(BaseScraper):
         except httpx.HTTPStatusError as exc:
             logger.warning(
                 "TwitterRSSScraper: HTTP %d for %s: %s",
-                exc.response.status_code, self.url, exc,
+                exc.response.status_code,
+                self.url,
+                exc,
             )
             return []
         except httpx.HTTPError as exc:
@@ -130,7 +129,9 @@ class TwitterRSSScraper(BaseScraper):
 
         logger.info(
             "TwitterRSSScraper: fetched %d tweets from @%s (%s)",
-            len(entries), self.username or "unknown", self.url,
+            len(entries),
+            self.username or "unknown",
+            self.url,
         )
         return entries
 

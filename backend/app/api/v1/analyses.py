@@ -80,7 +80,9 @@ async def analyze_batch_endpoint(
 @router.post("/pending")
 async def analyze_all_pending(
     limit: int = Query(20, ge=1, le=100),
-    hours: Optional[int] = Query(None, ge=1, le=720, description="Only analyze pending items collected within this many hours"),
+    hours: Optional[int] = Query(
+        None, ge=1, le=720, description="Only analyze pending items collected within this many hours"
+    ),
     sync: bool = Query(False, description="Run analysis synchronously for diagnostics"),
     background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
@@ -133,15 +135,17 @@ async def analyze_all_pending(
         }
 
     results = await analyze_batch_concurrent(ids, assume_claimed=True)
-    return {"message": f"Analysis complete for {len(results)} items",
-            "count": len(results),
-            "ids": ids,
-            "hours": hours,
-            "queued_ids": [],
-            "skipped_inflight_ids": [],
-            "job_id": None,
-            "mode": "sync",
-            "analyzed_ids": [a.content_id for a in results]}
+    return {
+        "message": f"Analysis complete for {len(results)} items",
+        "count": len(results),
+        "ids": ids,
+        "hours": hours,
+        "queued_ids": [],
+        "skipped_inflight_ids": [],
+        "job_id": None,
+        "mode": "sync",
+        "analyzed_ids": [a.content_id for a in results],
+    }
 
 
 @router.get("/jobs/{job_id}")
@@ -174,23 +178,31 @@ async def list_analyses(
     """List all analyses with optional score filters."""
     analysis_repo = AnalysisRepository(db)
     items, total = await analysis_repo.list_with_score_filter(
-        page=page, page_size=page_size,
+        page=page,
+        page_size=page_size,
         min_creator_score=min_creator_score,
         min_viral_score=min_viral_score,
     )
     return {
         "items": [
             {
-                "id": a.id, "content_id": a.content_id,
-                "quality_score": a.quality_score, "hot_score": a.hot_score,
-                "freshness_score": a.freshness_score, "creator_score": a.creator_score,
-                "viral_score": a.viral_score, "risk_score": a.risk_score,
-                "summary": a.summary, "recommended_reason": a.recommended_reason,
+                "id": a.id,
+                "content_id": a.content_id,
+                "quality_score": a.quality_score,
+                "hot_score": a.hot_score,
+                "freshness_score": a.freshness_score,
+                "creator_score": a.creator_score,
+                "viral_score": a.viral_score,
+                "risk_score": a.risk_score,
+                "summary": a.summary,
+                "recommended_reason": a.recommended_reason,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
             }
             for a in items
         ],
-        "total": total, "page": page, "page_size": page_size,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     }
 
 

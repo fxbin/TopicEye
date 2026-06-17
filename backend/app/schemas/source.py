@@ -187,6 +187,7 @@ class SourceReorderRequest(BaseModel):
 
 class SyncResultResponse(BaseModel):
     """Result of syncing a single source."""
+
     fetched: int
     new: int
     duplicates: int

@@ -8,6 +8,7 @@
 - POST   /me/api-tokens/{id}/revoke  撤销
 - DELETE /me/api-tokens/{id}     删除
 """
+
 from __future__ import annotations
 
 from datetime import datetime

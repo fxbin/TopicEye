@@ -32,19 +32,21 @@ async def test_api_scraper_maps_json_items_with_configured_fields():
             },
         },
     )
-    client = FakeClient({
-        "data": {
-            "items": [
-                {
-                    "name": "第一条",
-                    "link": "https://example.com/a",
-                    "desc": "摘要",
-                    "ts": 1780960043000,
-                    "image": {"url": "https://example.com/a.jpg"},
-                }
-            ]
+    client = FakeClient(
+        {
+            "data": {
+                "items": [
+                    {
+                        "name": "第一条",
+                        "link": "https://example.com/a",
+                        "desc": "摘要",
+                        "ts": 1780960043000,
+                        "image": {"url": "https://example.com/a.jpg"},
+                    }
+                ]
+            }
         }
-    })
+    )
 
     entries = await scraper.fetch(client)
 

@@ -5,6 +5,7 @@ These tests cover the two startup paths in ``app.core.migrations``:
 - legacy database (tables present, no alembic_version) -> ``stamp head``
   records current revision without running DDL
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -17,12 +18,7 @@ from app.core import migrations as migrations_mod
 def _table_names(db_path: str) -> set[str]:
     conn = sqlite3.connect(db_path)
     try:
-        return {
-            row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
+        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     finally:
         conn.close()
 

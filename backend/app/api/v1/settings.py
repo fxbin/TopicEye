@@ -50,9 +50,7 @@ def normalize_rsshub_instance_url(value: str) -> str:
 @router.get("/rsshub/instances", response_model=RSSHubInstancesGetResponse)
 async def get_rsshub_instances(db: AsyncSession = Depends(get_db)):
     """Get current RSSHub instance list (from DB or defaults)."""
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "rsshub_instances")
-    )
+    result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
     row = result.scalar_one_or_none()
 
     if row and row.value:
@@ -65,6 +63,7 @@ async def get_rsshub_instances(db: AsyncSession = Depends(get_db)):
         instances = []
 
     from app.models.app_setting import DEFAULT_RSSHUB_INSTANCES
+
     return {
         "instances": instances,
         "default_instances": [i["url"] for i in DEFAULT_RSSHUB_INSTANCES],
@@ -91,21 +90,21 @@ async def update_rsshub_instances(
 
     raw_value = json.dumps([inst.model_dump() for inst in normalized_instances], ensure_ascii=False)
 
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "rsshub_instances")
-    )
+    result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
     existing = result.scalar_one_or_none()
 
     if existing:
         existing.value = raw_value
         existing.updated_at = datetime.now(timezone.utc)
     else:
-        db.add(AppSetting(
-            key="rsshub_instances",
-            value=raw_value,
-            description="RSSHub 实例列表，支持多实例降级",
-            updated_at=datetime.now(timezone.utc),
-        ))
+        db.add(
+            AppSetting(
+                key="rsshub_instances",
+                value=raw_value,
+                description="RSSHub 实例列表，支持多实例降级",
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
 
     await db.commit()
 
@@ -113,6 +112,7 @@ async def update_rsshub_instances(
 
 
 # ── DuckDB analytics layer management ──
+
 
 @router.get("/duckdb/status")
 async def duckdb_status():
@@ -123,6 +123,7 @@ async def duckdb_status():
     """
     try:
         from app.services.duckdb_service import get_analytics
+
         analytics = get_analytics()
         status = analytics.status()
         available = status["available"]
@@ -132,8 +133,9 @@ async def duckdb_status():
             "status": "ok" if available else "unavailable",
             "database": diagnostics,
             "architecture": "in-memory DuckDB + OLTP ATTACH (READ_ONLY)",
-            "note": "No sync needed; DuckDB reads the configured OLTP backend directly." if available
-                    else "DuckDB package or required extension is unavailable. Analytical read APIs will return 503 until DuckDB is available.",
+            "note": "No sync needed; DuckDB reads the configured OLTP backend directly."
+            if available
+            else "DuckDB package or required extension is unavailable. Analytical read APIs will return 503 until DuckDB is available.",
         }
     except Exception as e:
         return {

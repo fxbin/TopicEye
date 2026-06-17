@@ -1,6 +1,7 @@
 """
 Shared context builders for periodical AI digests.
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -117,7 +118,5 @@ def build_category_text(category_stats: dict[str, dict]) -> str:
     lines = []
     for category, info in sorted(category_stats.items(), key=lambda x: x[1]["count"], reverse=True):
         avg = sum(info["scores"]) / len(info["scores"]) if info["scores"] else 0
-        lines.append(
-            f"- {category}: {info['count']}篇, 平均创作分 {avg:.0f}, 热门: {info['titles'][0][:40]}"
-        )
+        lines.append(f"- {category}: {info['count']}篇, 平均创作分 {avg:.0f}, 热门: {info['titles'][0][:40]}")
     return "\n" + "\n".join(lines) if lines else ""

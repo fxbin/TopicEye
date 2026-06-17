@@ -50,7 +50,7 @@ async def test_classify_async_normalizes_known_category_contract(monkeypatch):
     async def fake_llm_json(*args, **kwargs):
         return {
             "category": "AI",
-            "tags": ["模型", "模型", " " , "x" * 80, "工具", "产品", "额外"],
+            "tags": ["模型", "模型", " ", "x" * 80, "工具", "产品", "额外"],
             "is_new_category": False,
             "confidence": 2,
         }

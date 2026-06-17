@@ -7,6 +7,7 @@
 webhook URL 通过 ALERT_WEBHOOK_URL 环境变量配置。未配置时静默跳过。
 消息格式兼容飞书/钉钉/Slack 的简单 text 消息。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -77,7 +78,9 @@ async def send_alert(
                 logger.info("Alert sent: %s (key=%s)", title, alert_key)
                 return True
             logger.warning(
-                "Alert webhook returned %d: %s", resp.status_code, resp.text[:200],
+                "Alert webhook returned %d: %s",
+                resp.status_code,
+                resp.text[:200],
             )
             return False
     except Exception as exc:
@@ -93,8 +96,7 @@ async def alert_source_failures(failed_sources: list[dict]) -> None:
     if not failed_sources:
         return
 
-    lines = [f"  • {s['name']} ({s.get('source_type', '?')}): {s.get('error', '?')[:100]}"
-             for s in failed_sources[:10]]
+    lines = [f"  • {s['name']} ({s.get('source_type', '?')}): {s.get('error', '?')[:100]}" for s in failed_sources[:10]]
     message = f"{len(failed_sources)} 个信源抓取连续失败:\n" + "\n".join(lines)
     if len(failed_sources) > 10:
         message += f"\n  ... 共 {len(failed_sources)} 个"

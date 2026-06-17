@@ -4,6 +4,7 @@
 不走 DuckDB —— job_execution_logs 在 OLTP DB（PG/SQLite），
 和 stats.py 的 DuckDB 分析路径独立。复用 json_cache 做轻量缓存。
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -137,17 +138,19 @@ async def _build_job_stats_payload(*, days: int, job_key: Optional[str]) -> dict
                 .limit(1)
             )
             last = (await db.execute(last_stmt)).one_or_none()
-            by_job_key.append({
-                "job_key": r_job_key,
-                "runs": int(r_runs),
-                "success_count": success_count,
-                "success_rate": round(success_count / int(r_runs), 4) if r_runs else 0.0,
-                "avg_duration_ms": 0,  # populated below in aggregate query
-                "last_status": last[0] if last else None,
-                "last_run_at": last[1].isoformat() if last and last[1] else None,
-                "last_duration_ms": int(last[2]) if last and last[2] else None,
-                "last_error": (last[3] or "")[:500] if last and last[3] else None,
-            })
+            by_job_key.append(
+                {
+                    "job_key": r_job_key,
+                    "runs": int(r_runs),
+                    "success_count": success_count,
+                    "success_rate": round(success_count / int(r_runs), 4) if r_runs else 0.0,
+                    "avg_duration_ms": 0,  # populated below in aggregate query
+                    "last_status": last[0] if last else None,
+                    "last_run_at": last[1].isoformat() if last and last[1] else None,
+                    "last_duration_ms": int(last[2]) if last and last[2] else None,
+                    "last_error": (last[3] or "")[:500] if last and last[3] else None,
+                }
+            )
 
         # ── per-job_key avg_duration (single aggregate query) ──
         if per_key_rows:
@@ -216,10 +219,7 @@ async def _build_job_stats_payload(*, days: int, job_key: Optional[str]) -> dict
             "avg_duration_ms": avg_duration_ms,
             "max_duration_ms": max_duration_ms,
         },
-        "by_status": [
-            {"status": k, "count": v}
-            for k, v in sorted(by_status.items())
-        ],
+        "by_status": [{"status": k, "count": v} for k, v in sorted(by_status.items())],
         "by_job_key": by_job_key,
         "recent_failures": recent_failures,
     }

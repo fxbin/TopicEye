@@ -1,6 +1,7 @@
 """
 Repository for MonthlyDigest — monthly newsletter queries.
 """
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence
@@ -22,24 +23,17 @@ class MonthlyDigestRepository(BaseRepository[MonthlyDigest]):
         return result.scalar_one_or_none()
 
     async def get_latest(self, limit: int = 12) -> Sequence[MonthlyDigest]:
-        stmt = (
-            select(self.model)
-            .order_by(self.model.month_start.desc())
-            .limit(limit)
-        )
+        stmt = select(self.model).order_by(self.model.month_start.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
     async def get_months_with_digests(self) -> List[Dict[str, Optional[str]]]:
-        stmt = (
-            select(
-                self.model.month_key,
-                self.model.month_label,
-                self.model.takeaway,
-                self.model.status,
-            )
-            .order_by(self.model.month_start.desc())
-        )
+        stmt = select(
+            self.model.month_key,
+            self.model.month_label,
+            self.model.takeaway,
+            self.model.status,
+        ).order_by(self.model.month_start.desc())
         result = await self.db.execute(stmt)
         return [
             {

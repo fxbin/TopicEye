@@ -1,4 +1,5 @@
 """少数派热门 — https://sspai.com/api/v1/article/index/page/get?limit=30&offset=0&type=hot_to_all"""
+
 from __future__ import annotations
 
 import logging
@@ -16,10 +17,7 @@ class SspaiTrending(BaseTrendingScraper):
     CATEGORY = "tech"
 
     async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
-        url = (
-            "https://sspai.com/api/v1/article/index/page/get"
-            "?limit=30&offset=0&type=hot_to_all"
-        )
+        url = "https://sspai.com/api/v1/article/index/page/get?limit=30&offset=0&type=hot_to_all"
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -52,19 +50,21 @@ class SspaiTrending(BaseTrendingScraper):
             comment_count = item.get("comment_count", 0)
             hot_value = like_count * 100 + comment_count * 10
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": f"https://sspai.com/post/{article_id}",
-                "hot_value": hot_value,
-                "hot_value_raw": f"赞{like_count} 评{comment_count}",
-                "trend": "up" if idx <= 5 else "stable",
-                "extra": {
-                    "slug": item.get("slug", ""),
-                    "like_count": like_count,
-                    "comment_count": comment_count,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": f"https://sspai.com/post/{article_id}",
+                    "hot_value": hot_value,
+                    "hot_value_raw": f"赞{like_count} 评{comment_count}",
+                    "trend": "up" if idx <= 5 else "stable",
+                    "extra": {
+                        "slug": item.get("slug", ""),
+                        "like_count": like_count,
+                        "comment_count": comment_count,
+                    },
+                }
+            )
 
         logger.info("sspai trending: fetched %d items", len(results))
         return results

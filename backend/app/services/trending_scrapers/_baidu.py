@@ -1,4 +1,5 @@
 """百度热搜 — https://top.baidu.com/board?tab=realtime"""
+
 from __future__ import annotations
 
 import logging
@@ -81,19 +82,21 @@ class BaiduTrending(BaseTrendingScraper):
                 elif label_tag_name:
                     trend = "up"
 
-                results.append({
-                    "title": title,
-                    "rank": rank,
-                    "url": item.get("rawUrl", item.get("url", f"https://www.baidu.com/s?wd={title}")),
-                    "hot_value": hot_val,
-                    "hot_value_raw": str(hot_score),
-                    "trend": trend,
-                    "cover_url": item.get("img", ""),
-                    "extra": {
-                        "desc": item.get("desc", ""),
-                        "label": new_hot_name or label_tag_name,
-                    },
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "rank": rank,
+                        "url": item.get("rawUrl", item.get("url", f"https://www.baidu.com/s?wd={title}")),
+                        "hot_value": hot_val,
+                        "hot_value_raw": str(hot_score),
+                        "trend": trend,
+                        "cover_url": item.get("img", ""),
+                        "extra": {
+                            "desc": item.get("desc", ""),
+                            "label": new_hot_name or label_tag_name,
+                        },
+                    }
+                )
             if rank > 50:
                 break
 

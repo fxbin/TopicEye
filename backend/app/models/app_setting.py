@@ -21,13 +21,17 @@ class AppSetting(Base):
     Keys:
       - rsshub_instances: JSON list of {"url": "...", "enabled": true, "priority": 0}
     """
+
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -45,9 +49,7 @@ def get_rsshub_instances() -> list[dict]:
 
     async def _get():
         async with async_session() as db:
-            result = await db.execute(
-                select(AppSetting).where(AppSetting.key == "rsshub_instances")
-            )
+            result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
             row = result.scalar_one_or_none()
             if row and row.value:
                 try:
@@ -58,6 +60,7 @@ def get_rsshub_instances() -> list[dict]:
             return DEFAULT_RSSHUB_INSTANCES
 
     import asyncio
+
     return asyncio.run(_get())
 
 
@@ -66,13 +69,12 @@ async def get_rsshub_instances_async(db=None) -> list[dict]:
     close_after = False
     if db is None:
         from app.core.database import async_session
+
         db = async_session()
         close_after = True
 
     try:
-        result = await db.execute(
-            select(AppSetting).where(AppSetting.key == "rsshub_instances")
-        )
+        result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
         row = result.scalar_one_or_none()
         if row and row.value:
             try:

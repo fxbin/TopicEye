@@ -1,4 +1,5 @@
 """雪球热帖 — https://xueqiu.com/statuses/hot/listV2.json"""
+
 from __future__ import annotations
 
 import logging
@@ -16,10 +17,7 @@ class XueqiuTrending(BaseTrendingScraper):
     CATEGORY = "finance"
 
     async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
-        url = (
-            "https://xueqiu.com/statuses/hot/listV2.json"
-            "?since_id=-1&max_id=0&size=30"
-        )
+        url = "https://xueqiu.com/statuses/hot/listV2.json?since_id=-1&max_id=0&size=30"
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -60,23 +58,23 @@ class XueqiuTrending(BaseTrendingScraper):
             user_info = item.get("user") or {}
             screen_name = user_info.get("screen_name", "")
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": f"https://xueqiu.com/{target}" if target else "",
-                "hot_value": hot_value,
-                "hot_value_raw": (
-                    f"赞{like_count} 转{retweet_count} 评{reply_count}"
-                ),
-                "trend": "up" if hot_value > 100 else "stable",
-                "extra": {
-                    "text": text[:200],
-                    "retweet_count": retweet_count,
-                    "reply_count": reply_count,
-                    "like_count": like_count,
-                    "screen_name": screen_name,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": f"https://xueqiu.com/{target}" if target else "",
+                    "hot_value": hot_value,
+                    "hot_value_raw": (f"赞{like_count} 转{retweet_count} 评{reply_count}"),
+                    "trend": "up" if hot_value > 100 else "stable",
+                    "extra": {
+                        "text": text[:200],
+                        "retweet_count": retweet_count,
+                        "reply_count": reply_count,
+                        "like_count": like_count,
+                        "screen_name": screen_name,
+                    },
+                }
+            )
 
         logger.info("xueqiu trending: fetched %d items", len(results))
         return results

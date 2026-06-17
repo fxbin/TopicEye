@@ -153,6 +153,7 @@ async def generate_creation_plan(
     """
     # 1. Fetch content + analysis
     from sqlalchemy import select
+
     latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
     result = await db.execute(
         select(ContentItem, AiAnalysis)
@@ -188,7 +189,7 @@ async def generate_creation_plan(
 
 {chr(10).join(source_info)}
 
-请基于以上素材，生成{platform_config['name']}创作方案。"""
+请基于以上素材，生成{platform_config["name"]}创作方案。"""
 
     messages = [
         {"role": "system", "content": platform_config["instruction"]},

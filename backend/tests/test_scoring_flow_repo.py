@@ -172,22 +172,24 @@ async def test_content_analyses_relationship_orders_latest_last():
                 crawled_at=now,
             )
         )
-        db.add_all([
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                summary="较新的分析",
-                curation_score=90,
-                created_at=now + timedelta(minutes=1),
-            ),
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                summary="较旧的分析",
-                curation_score=20,
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    summary="较新的分析",
+                    curation_score=90,
+                    created_at=now + timedelta(minutes=1),
+                ),
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    summary="较旧的分析",
+                    curation_score=20,
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         item = await ContentRepo(db).get_detail(1)
@@ -256,22 +258,24 @@ async def test_report_window_uses_latest_analysis_for_risk_gate():
                 crawled_at=now,
             )
         )
-        db.add_all([
-            AiAnalysis(
-                id=2,
-                content_id=1,
-                curation_score=90,
-                risk_score=10,
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=20,
-                risk_score=95,
-                created_at=now + timedelta(minutes=1),
-            ),
-        ])
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=2,
+                    content_id=1,
+                    curation_score=90,
+                    risk_score=10,
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=20,
+                    risk_score=95,
+                    created_at=now + timedelta(minutes=1),
+                ),
+            ]
+        )
         await db.commit()
 
         repo = ContentRepo(db)
@@ -314,46 +318,50 @@ async def test_report_window_uses_unified_risk_threshold():
                 weight=3,
             )
         )
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="统一风险门内",
-                url="https://example.com/risk-80",
-                source_id=1,
-                source_name="测试信源",
-                source_type="RSS",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="统一风险门外",
-                url="https://example.com/risk-83",
-                source_id=1,
-                source_name="测试信源",
-                source_type="RSS",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=90,
-                risk_score=80,
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                curation_score=90,
-                risk_score=83,
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="统一风险门内",
+                    url="https://example.com/risk-80",
+                    source_id=1,
+                    source_name="测试信源",
+                    source_type="RSS",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="统一风险门外",
+                    url="https://example.com/risk-83",
+                    source_id=1,
+                    source_name="测试信源",
+                    source_type="RSS",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=90,
+                    risk_score=80,
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    curation_score=90,
+                    risk_score=83,
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         repo = ContentRepo(db)
@@ -388,46 +396,50 @@ async def test_today_picks_fallback_uses_unified_risk_threshold():
                 weight=3,
             )
         )
-        db.add_all([
-            ContentItem(
-                id=1,
-                title="今日推荐风险门内",
-                url="https://example.com/today-risk-80",
-                source_id=1,
-                source_name="测试信源",
-                source_type="RSS",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-            ContentItem(
-                id=2,
-                title="今日推荐风险门外",
-                url="https://example.com/today-risk-83",
-                source_id=1,
-                source_name="测试信源",
-                source_type="RSS",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            ),
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=90,
-                risk_score=80,
-                created_at=now,
-            ),
-            AiAnalysis(
-                id=2,
-                content_id=2,
-                curation_score=90,
-                risk_score=83,
-                created_at=now,
-            ),
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=1,
+                    title="今日推荐风险门内",
+                    url="https://example.com/today-risk-80",
+                    source_id=1,
+                    source_name="测试信源",
+                    source_type="RSS",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+                ContentItem(
+                    id=2,
+                    title="今日推荐风险门外",
+                    url="https://example.com/today-risk-83",
+                    source_id=1,
+                    source_name="测试信源",
+                    source_type="RSS",
+                    category="AI",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=1,
+                    content_id=1,
+                    curation_score=90,
+                    risk_score=80,
+                    created_at=now,
+                ),
+                AiAnalysis(
+                    id=2,
+                    content_id=2,
+                    curation_score=90,
+                    risk_score=83,
+                    created_at=now,
+                ),
+            ]
+        )
         await db.commit()
 
         repo = ContentRepo(db)

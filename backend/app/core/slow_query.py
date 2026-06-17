@@ -1,4 +1,3 @@
-
 """
 慢查询监听 + 告警。
 
@@ -8,6 +7,7 @@ SQLAlchemy event listener 拦截每条 SQL 的执行时间：
   （复用 alerting 模块，1h 内同 sql 去重）
 - 通过 /metrics 暴露 slow_queries_total 计数器
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +59,9 @@ def _register_listeners(engine: Engine) -> None:
         stmt_preview = " ".join(statement.split())[:300]
         logger.warning(
             "Slow query: %.0fms (>%dms): %s",
-            elapsed, SLOW_QUERY_THRESHOLD_MS, stmt_preview,
+            elapsed,
+            SLOW_QUERY_THRESHOLD_MS,
+            stmt_preview,
         )
 
         if elapsed >= SLOW_QUERY_ALERT_MS:
@@ -72,7 +74,7 @@ def _maybe_alert(stmt_preview: str, elapsed_ms: float) -> None:
 
     # Dedup key: first 200 chars of statement + elapsed bucket
     bucket = int(elapsed_ms / 1000)  # 5s, 6s, 7s...
-    alert_key = f"slow_query:{hash(stmt_preview[:200]) & 0xffffffff}:{bucket}"
+    alert_key = f"slow_query:{hash(stmt_preview[:200]) & 0xFFFFFFFF}:{bucket}"
 
     now = time.monotonic()
     last = _alerted_keys.get(alert_key)
@@ -85,19 +87,23 @@ def _maybe_alert(stmt_preview: str, elapsed_ms: float) -> None:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # We're inside an async context; schedule as background task
-            asyncio.create_task(send_alert(
-                title="慢查询告警",
-                message=message,
-                alert_key=alert_key,
-                severity="warning",
-            ))
+            asyncio.create_task(
+                send_alert(
+                    title="慢查询告警",
+                    message=message,
+                    alert_key=alert_key,
+                    severity="warning",
+                )
+            )
         else:
-            asyncio.run(send_alert(
-                title="慢查询告警",
-                message=message,
-                alert_key=alert_key,
-                severity="warning",
-            ))
+            asyncio.run(
+                send_alert(
+                    title="慢查询告警",
+                    message=message,
+                    alert_key=alert_key,
+                    severity="warning",
+                )
+            )
     except Exception as exc:
         logger.debug("Slow query alert skipped: %s", exc)
 
@@ -109,8 +115,10 @@ def get_slow_count() -> int:
 def attach_to_all_engines() -> None:
     """Call once at startup. Iterates known engines and attaches listeners."""
     from app.core.database import engine
+
     _register_listeners(engine.sync_engine)
     # Also attach to any async engines (each has its own pool but listeners
     # fire on the underlying sync engine)
-    logger.info("Slow query listener attached (threshold=%dms, alert=%dms)",
-                SLOW_QUERY_THRESHOLD_MS, SLOW_QUERY_ALERT_MS)
+    logger.info(
+        "Slow query listener attached (threshold=%dms, alert=%dms)", SLOW_QUERY_THRESHOLD_MS, SLOW_QUERY_ALERT_MS
+    )

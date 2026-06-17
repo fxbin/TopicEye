@@ -1,6 +1,7 @@
 """
 Daily Report service — generate versioned daily snapshots and final editions.
 """
+
 from __future__ import annotations
 
 import json
@@ -157,11 +158,13 @@ async def _fetch_report_inputs(
 ) -> tuple[list[dict], list[dict]]:
     repo = ContentRepo(db)
     query_start, query_end = _local_window_to_utc_naive(window_start, window_end)
-    items = list(await repo.list_for_report_window(
-        window_start=query_start,
-        window_end=query_end,
-        visible_user_id=visible_user_id,
-    ))
+    items = list(
+        await repo.list_for_report_window(
+            window_start=query_start,
+            window_end=query_end,
+            visible_user_id=visible_user_id,
+        )
+    )
     scoring_inputs, item_map, _ = await build_scoring_inputs(db, items)
     scored = score_items(scoring_inputs) if scoring_inputs else []
 
@@ -250,7 +253,9 @@ async def get_latest_today_report(
     if report:
         return report
     return await generate_daily_report(
-        db, target_date=_local_today(), edition=_edition_for_now(),
+        db,
+        target_date=_local_today(),
+        edition=_edition_for_now(),
         owner_user_id=owner_user_id,
     )
 
@@ -396,11 +401,7 @@ async def generate_daily_report(
         raw_picks = result.get("top_picks", [])
         picks = []
         curated_by_title = {item["title"]: item for item in curated_items}
-        curated_by_url = {
-            normalize_zhihu_url(item.get("url", "")): item
-            for item in curated_items
-            if item.get("url")
-        }
+        curated_by_url = {normalize_zhihu_url(item.get("url", "")): item for item in curated_items if item.get("url")}
         curated_titles = set(curated_by_title)
         selected_source_ids: list[int] = []
         for pick in raw_picks:
@@ -428,12 +429,15 @@ async def generate_daily_report(
         report.top_picks = json.dumps(picks, ensure_ascii=False)
         report.platform_tips = json.dumps(result.get("platform_tips", {}), ensure_ascii=False)
         report.topic_count = len(picks)
-        report.source_item_ids = json.dumps(selected_source_ids or [item["id"] for item in curated_items], ensure_ascii=False)
+        report.source_item_ids = json.dumps(
+            selected_source_ids or [item["id"] for item in curated_items], ensure_ascii=False
+        )
         report.status = "DONE"
         report.updated_at = _local_now()
         await db.commit()
         try:
             from app.services.notification_service import push_notification
+
             await push_notification(
                 "success",
                 "daily_report",
@@ -449,6 +453,7 @@ async def generate_daily_report(
         await db.commit()
         try:
             from app.services.notification_service import push_notification
+
             await push_notification("error", "daily_report", "日报生成失败", str(exc)[:200])
         except Exception:
             pass
@@ -465,6 +470,9 @@ async def generate_previous_day_final_report(
     """Generate yesterday's final full-day edition."""
     yesterday = _local_today() - timedelta(days=1)
     return await generate_daily_report(
-        db, target_date=yesterday, edition="final", force=force,
+        db,
+        target_date=yesterday,
+        edition="final",
+        force=force,
         owner_user_id=owner_user_id,
     )

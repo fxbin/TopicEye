@@ -16,6 +16,7 @@ The runner is synchronous on purpose: Alembic's command API is synchronous,
 and wrapping it in ``asyncio.to_thread`` keeps the async startup path clean
 without contending with the async engine.
 """
+
 from __future__ import annotations
 
 import logging
@@ -133,19 +134,16 @@ def run_startup_migrations() -> None:
     pg_lock_conn = None
     if profile.is_postgresql:
         from sqlalchemy import create_engine as _ce
+
         pg_lock_conn = _ce(sync_url).connect()
         pg_lock_conn.execution_options(autocommit=True)
-        pg_lock_conn.execute(
-            __import__("sqlalchemy").text(f"SELECT pg_advisory_lock({_migration_lock_key})")
-        )
+        pg_lock_conn.execute(__import__("sqlalchemy").text(f"SELECT pg_advisory_lock({_migration_lock_key})"))
     try:
         _stamp_or_upgrade(cfg, has_version_table=has_version_table, has_app_tables=has_app_tables)
     finally:
         if pg_lock_conn is not None:
             try:
-                pg_lock_conn.execute(
-                    __import__("sqlalchemy").text(f"SELECT pg_advisory_unlock({_migration_lock_key})")
-                )
+                pg_lock_conn.execute(__import__("sqlalchemy").text(f"SELECT pg_advisory_unlock({_migration_lock_key})"))
                 pg_lock_conn.close()
             except Exception:
                 pass

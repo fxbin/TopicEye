@@ -1,4 +1,5 @@
 """今日头条热榜 — https://www.toutiao.com/hot-event/hot-board/"""
+
 from __future__ import annotations
 
 import logging
@@ -48,19 +49,21 @@ class ToutiaoTrending(BaseTrendingScraper):
                 pass
 
             url_val = item.get("Url", "")
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": url_val,
-                "hot_value": hot_val,
-                "hot_value_raw": str(hot_raw),
-                "trend": "up" if item.get("Label", "") else "stable",
-                "cover_url": item.get("Image", {}).get("url", "") if isinstance(item.get("Image"), dict) else "",
-                "extra": {
-                    "cluster_id": item.get("ClusterId", ""),
-                    "label": item.get("Label", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": url_val,
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(hot_raw),
+                    "trend": "up" if item.get("Label", "") else "stable",
+                    "cover_url": item.get("Image", {}).get("url", "") if isinstance(item.get("Image"), dict) else "",
+                    "extra": {
+                        "cluster_id": item.get("ClusterId", ""),
+                        "label": item.get("Label", ""),
+                    },
+                }
+            )
 
         logger.info("toutiao trending: fetched %d items", len(results))
         return results

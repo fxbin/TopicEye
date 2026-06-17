@@ -27,6 +27,7 @@ class AppException(Exception):
 
 # ── Resource errors ──────────────────────────────────────────────────
 
+
 class NotFoundError(AppException):
     """Requested resource does not exist."""
 
@@ -49,6 +50,7 @@ class AlreadyExistsError(AppException):
 
 # ── Validation errors ────────────────────────────────────────────────
 
+
 class ValidationError(AppException):
     """Input validation failure."""
 
@@ -57,6 +59,7 @@ class ValidationError(AppException):
 
 
 # ── External service errors ──────────────────────────────────────────
+
 
 class ExternalServiceError(AppException):
     """Third-party service failure (LLM, scraper, etc.)."""
@@ -88,6 +91,7 @@ class RateLimitExceeded(AppException):
 
 
 # ── Pipeline errors ──────────────────────────────────────────────────
+
 
 class PipelineError(AppException):
     """Content pipeline processing error."""

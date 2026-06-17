@@ -1,4 +1,5 @@
 """Build read-only explanation payloads for the scoring funnel UI."""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -138,12 +139,14 @@ async def build_scoring_flow_payload(
         "samples": [
             sample
             for breakdown, scoring_input in scored[:sample_limit]
-            if (sample := build_sample_payload(
-                breakdown,
-                scoring_input,
-                item_map,
-                feedback_scores,
-            ))
+            if (
+                sample := build_sample_payload(
+                    breakdown,
+                    scoring_input,
+                    item_map,
+                    feedback_scores,
+                )
+            )
         ],
         "category_mix": [{"label": k, "count": v} for k, v in category_counts.most_common(8)],
         "source_mix": [{"label": k, "count": v} for k, v in source_counts.most_common(8)],

@@ -65,9 +65,10 @@ PRESCREEN_PROMPT = """
 
 # ── Language detection (no external deps) ─────────────────────────────
 
+
 def _detect_lang(title: str, content: str) -> str:
     """Detect whether content is primarily Chinese or English.
-    
+
     Uses character-range heuristics: CJK range vs Latin ASCII letters.
     Returns 'en' if ASCII letters dominate the sample, else 'zh'.
     """
@@ -85,9 +86,7 @@ def _detect_lang(title: str, content: str) -> str:
 def _valid_analysis_result(result: Any) -> bool:
     """Return whether the model result contains the minimum analysis contract."""
     return (
-        isinstance(result, dict)
-        and isinstance(result.get("scores"), dict)
-        and isinstance(result.get("curation"), dict)
+        isinstance(result, dict) and isinstance(result.get("scores"), dict) and isinstance(result.get("curation"), dict)
     )
 
 
@@ -267,7 +266,9 @@ def _analysis_result_from_prescreen(
     return result
 
 
-async def _run_lite_prescreen(content: ContentItem, *, title: str, truncated: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+async def _run_lite_prescreen(
+    content: ContentItem, *, title: str, truncated: str
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     messages = [
         {"role": "system", "content": PRESCREEN_SYSTEM_PROMPT},
         {"role": "user", "content": PRESCREEN_PROMPT.format(title=title, content=truncated[:1800])},
@@ -298,11 +299,7 @@ def _local_analysis_result(content: ContentItem, *, lang: str) -> dict[str, Any]
     freshness_score = 70
     risk_score = 28
     curation_score = round(
-        quality_score * 0.28
-        + creator_score * 0.28
-        + hot_score * 0.18
-        + freshness_score * 0.14
-        + viral_score * 0.12,
+        quality_score * 0.28 + creator_score * 0.28 + hot_score * 0.18 + freshness_score * 0.14 + viral_score * 0.12,
         1,
     )
 
@@ -361,21 +358,17 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
     PG 接受 naive (session 设 UTC). Python 层比较仍用 aware.
     """
     from app.core.db_backend import ensure_naive_utc
+
     cutoff = ensure_naive_utc(stale_cutoff)
     return (
         (ContentItem.status == ContentStatus.PENDING)
-        | (
-            (ContentItem.status == ContentStatus.ANALYZING)
-            & (ContentItem.updated_at <= cutoff)
-        )
-        | (
-            (ContentItem.status == ContentStatus.ERROR)
-            & (ContentItem.updated_at <= cutoff)
-        )
+        | ((ContentItem.status == ContentStatus.ANALYZING) & (ContentItem.updated_at <= cutoff))
+        | ((ContentItem.status == ContentStatus.ERROR) & (ContentItem.updated_at <= cutoff))
     )
 
 
 # ── Core analysis function ───────────────────────────────────────
+
 
 async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     """Run full AI analysis on a single content item (single LLM call)."""
@@ -446,6 +439,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             # other LLM failures (timeout, network, RuntimeError) still
             # propagate up so the caller can record ERROR status + retry.
             from app.services.llm.circuit_breaker import CircuitOpenError
+
             if isinstance(llm_exc, CircuitOpenError):
                 logger.warning(
                     "LLM circuit breaker open for content id=%d, using local fallback",
@@ -484,7 +478,10 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             curation_score += bonus
             logger.info(
                 "Cross-market bonus +%d for content id=%d (source=%s, curation=%.0f)",
-                bonus, content.id, content.source_name, curation_score,
+                bonus,
+                content.id,
+                content.source_name,
+                curation_score,
             )
 
     # Build analysis record
@@ -518,9 +515,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
         prescreen_confidence=prescreen_confidence,
         prescreen_score=prescreen_score,
         summary_source=(
-            "local_fallback" if fallback_used
-            else "llm_lite" if analysis_mode == "lite_only"
-            else "llm_pro"
+            "local_fallback" if fallback_used else "llm_lite" if analysis_mode == "lite_only" else "llm_pro"
         ),
     )
 
@@ -606,6 +601,7 @@ async def analyze_one_claimed(
     stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
     try:
         if not assume_claimed:
+
             async def _mark_analyzing() -> bool:
                 result = await db.execute(
                     update(ContentItem)

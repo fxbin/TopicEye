@@ -221,7 +221,8 @@ class FavoriteRepo:
 
     async def next_position_for_status(self, status: Union[FavoriteStatus, str]) -> int:
         result = await self.db.execute(
-            select(func.min(FavoriteItem.position)).where(FavoriteItem.status == status)
+            select(func.min(FavoriteItem.position))
+            .where(FavoriteItem.status == status)
             .where(FavoriteItem.user_id == self.user_id)
         )
         current_min = result.scalar()
@@ -363,7 +364,9 @@ class FavoriteRepo:
             return
         if not is_favorited:
             result = await self.db.execute(
-                select(func.count()).select_from(FavoriteItem).where(
+                select(func.count())
+                .select_from(FavoriteItem)
+                .where(
                     FavoriteItem.target_type == FavoriteTargetType.CONTENT,
                     FavoriteItem.target_key == item.target_key,
                     FavoriteItem.user_id != self.user_id,

@@ -394,6 +394,7 @@ async def test_ignore_actions_use_sqlite_lock_retry(monkeypatch):
 
 # ── T1-4: content owner_user_id visibility ─────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_content_visibility_filter_excludes_other_users_private_content(monkeypatch):
     """User A's private content (from private source) must not leak into user B's list."""
@@ -403,16 +404,72 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
         await conn.run_sync(Base.metadata.create_all)
 
     # Seed: user A (id=10, pro), user B (id=11, free)
-    user_a = User(id=10, email="a@example.com", password_hash="x", plan="pro", role="user", is_active=True, display_name="A")
-    user_b = User(id=11, email="b@example.com", password_hash="x", plan="free", role="user", is_active=True, display_name="B")
+    user_a = User(
+        id=10, email="a@example.com", password_hash="x", plan="pro", role="user", is_active=True, display_name="A"
+    )
+    user_b = User(
+        id=11, email="b@example.com", password_hash="x", plan="free", role="user", is_active=True, display_name="B"
+    )
 
     # Public source (admin) and private source for user A
-    public_src = Source(id=1, name="Public", url="https://pub.com/rss", source_type=SourceType.RSS, owner_user_id=None, scope="system", status=SourceStatus.ACTIVE, weight=3, sort_order=0, enabled=True, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
-    private_src = Source(id=2, name="A-private", url="https://a.com/rss", source_type=SourceType.RSS, owner_user_id=10, scope="user", status=SourceStatus.ACTIVE, weight=3, sort_order=0, enabled=True, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+    public_src = Source(
+        id=1,
+        name="Public",
+        url="https://pub.com/rss",
+        source_type=SourceType.RSS,
+        owner_user_id=None,
+        scope="system",
+        status=SourceStatus.ACTIVE,
+        weight=3,
+        sort_order=0,
+        enabled=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    private_src = Source(
+        id=2,
+        name="A-private",
+        url="https://a.com/rss",
+        source_type=SourceType.RSS,
+        owner_user_id=10,
+        scope="user",
+        status=SourceStatus.ACTIVE,
+        weight=3,
+        sort_order=0,
+        enabled=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
 
     # Content from each source
-    public_content = ContentItem(id=100, title="Public content", url="https://pub.com/1", source_id=1, source_name="Public", source_type="RSS", owner_user_id=None, status=ContentStatus.ANALYZED, content_hash="h1", crawled_at=datetime.now(timezone.utc), created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
-    private_content = ContentItem(id=200, title="A private content", url="https://a.com/1", source_id=2, source_name="A-private", source_type="RSS", owner_user_id=10, status=ContentStatus.ANALYZED, content_hash="h2", crawled_at=datetime.now(timezone.utc), created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+    public_content = ContentItem(
+        id=100,
+        title="Public content",
+        url="https://pub.com/1",
+        source_id=1,
+        source_name="Public",
+        source_type="RSS",
+        owner_user_id=None,
+        status=ContentStatus.ANALYZED,
+        content_hash="h1",
+        crawled_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    private_content = ContentItem(
+        id=200,
+        title="A private content",
+        url="https://a.com/1",
+        source_id=2,
+        source_name="A-private",
+        source_type="RSS",
+        owner_user_id=10,
+        status=ContentStatus.ANALYZED,
+        content_hash="h2",
+        crawled_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
 
     async with session_factory() as db:
         db.add_all([user_a, user_b, public_src, private_src, public_content, private_content])

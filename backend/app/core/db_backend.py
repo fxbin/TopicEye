@@ -4,6 +4,7 @@ The app uses SQLAlchemy for OLTP writes and DuckDB for OLAP reads.  Keep the
 backend detection here so SQLite/PostgreSQL differences do not leak through the
 service layer.
 """
+
 from __future__ import annotations
 
 import os
@@ -132,10 +133,7 @@ def sqlite_domain_urls(base_url: str, domain_dir: str) -> Dict[str, str]:
     if database_backend(base_url) != "sqlite":
         return {}
     root = Path(domain_dir).expanduser().resolve()
-    return {
-        domain: f"sqlite+aiosqlite:///{root / f'topiceye_{domain}.db'}"
-        for domain in SQLITE_DOMAIN_TABLES
-    }
+    return {domain: f"sqlite+aiosqlite:///{root / f'topiceye_{domain}.db'}" for domain in SQLITE_DOMAIN_TABLES}
 
 
 def create_database_profile(

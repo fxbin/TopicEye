@@ -6,6 +6,7 @@
 - 返回 TrendingEntry dict
 - pipeline 只做批量替换存储
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,9 +28,11 @@ _TRENDING_REGISTRY: Dict[str, type] = {}
 
 def register_trending(source: str):
     """Decorator: register a trending scraper."""
+
     def _cls(cls):
         _TRENDING_REGISTRY[source] = cls
         return cls
+
     return _cls
 
 

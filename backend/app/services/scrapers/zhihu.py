@@ -39,6 +39,7 @@ USER_AGENT = (
 
 # ── curl-based HTTP helper ──────────────────────────────────────────
 
+
 async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
     """Run curl subprocess to fetch JSON from Zhihu, bypassing TLS fingerprinting."""
     if params:
@@ -47,15 +48,23 @@ async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Option
         full_url = url
 
     cmd = [
-        "curl", "-sS", "--max-time", "20",
-        "-H", f"User-Agent: {USER_AGENT}",
-        "-H", "Accept: application/json,text/plain,*/*",
-        "-H", "Accept-Language: zh-CN,zh;q=0.9,en-US;q=0.8",
-        "-H", "Referer: https://www.zhihu.com/hot",
+        "curl",
+        "-sS",
+        "--max-time",
+        "20",
+        "-H",
+        f"User-Agent: {USER_AGENT}",
+        "-H",
+        "Accept: application/json,text/plain,*/*",
+        "-H",
+        "Accept-Language: zh-CN,zh;q=0.9,en-US;q=0.8",
+        "-H",
+        "Referer: https://www.zhihu.com/hot",
     ]
 
     # Add proxy if available
     import os
+
     proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
     if proxy:
         cmd.extend(["--proxy", proxy])

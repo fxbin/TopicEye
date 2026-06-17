@@ -18,8 +18,12 @@ from app.core.exceptions import NotFoundError
 from app.models.user import User
 from app.models.source import Source, SourceType, SourceStatus
 from app.schemas.source import (
-    SourceCreate, SourceUpdate, SourceResponse, SourceListResponse,
-    SourceReorderRequest, SyncResultResponse,
+    SourceCreate,
+    SourceUpdate,
+    SourceResponse,
+    SourceListResponse,
+    SourceReorderRequest,
+    SyncResultResponse,
     normalize_source_url_value,
     normalize_api_source_config_value,
 )
@@ -208,13 +212,15 @@ def _parse_source_batch(content: str, default_category: str) -> list[dict]:
                     url = normalize_source_url_value(outline.get("xmlUrl", ""))
                 except ValueError:
                     continue
-                sources.append({
-                    "name": (outline.get("title") or outline.get("text") or url).strip()[:255],
-                    "url": url,
-                    "source_type": _guess_source_type(url),
-                    "category": outline.get("category") or default_category,
-                    "platform": _guess_platform(url),
-                })
+                sources.append(
+                    {
+                        "name": (outline.get("title") or outline.get("text") or url).strip()[:255],
+                        "url": url,
+                        "source_type": _guess_source_type(url),
+                        "category": outline.get("category") or default_category,
+                        "platform": _guess_platform(url),
+                    }
+                )
         except ET.ParseError:
             pass
 
@@ -227,13 +233,15 @@ def _parse_source_batch(content: str, default_category: str) -> list[dict]:
     markdown_link_re = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", re.IGNORECASE)
     for name, url in markdown_link_re.findall(text):
         url = normalize_source_url_value(url)
-        sources.append({
-            "name": name.strip()[:255],
-            "url": url,
-            "source_type": _guess_source_type(url),
-            "category": default_category,
-            "platform": _guess_platform(url),
-        })
+        sources.append(
+            {
+                "name": name.strip()[:255],
+                "url": url,
+                "source_type": _guess_source_type(url),
+                "category": default_category,
+                "platform": _guess_platform(url),
+            }
+        )
 
     line_url_re = re.compile(r"(?P<url>https?://[^\s)\]\"']+)", re.IGNORECASE)
     for line in text.splitlines():
@@ -244,13 +252,15 @@ def _parse_source_batch(content: str, default_category: str) -> list[dict]:
         raw_url = match.group("url").rstrip(".,;")
         url = normalize_source_url_value(raw_url)
         name = clean_line.replace(raw_url, "").strip(" :-—|") or url
-        sources.append({
-            "name": name[:255],
-            "url": url,
-            "source_type": _guess_source_type(url),
-            "category": default_category,
-            "platform": _guess_platform(url),
-        })
+        sources.append(
+            {
+                "name": name[:255],
+                "url": url,
+                "source_type": _guess_source_type(url),
+                "category": default_category,
+                "platform": _guess_platform(url),
+            }
+        )
 
     deduped: dict[str, dict] = {}
     for item in sources:
@@ -280,8 +290,7 @@ async def _preview_source_batch_items(db: AsyncSession, content: str, category: 
     ]
 
 
-@router.post("", response_model=SourceResponse, status_code=201,
-             dependencies=[Depends(get_current_admin_user)])
+@router.post("", response_model=SourceResponse, status_code=201, dependencies=[Depends(get_current_admin_user)])
 async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
     payload = data.model_dump()
@@ -343,22 +352,22 @@ async def list_sources(
         cleaned_keyword = keyword.strip() if keyword else ""
         if cleaned_keyword:
             pattern = f"%{cleaned_keyword}%"
-            filters.append(or_(
-                Source.name.ilike(pattern),
-                Source.url.ilike(pattern),
-                Source.platform.ilike(pattern),
-                Source.category.ilike(pattern),
-                Source.keyword.ilike(pattern),
-            ))
+            filters.append(
+                or_(
+                    Source.name.ilike(pattern),
+                    Source.url.ilike(pattern),
+                    Source.platform.ilike(pattern),
+                    Source.category.ilike(pattern),
+                    Source.keyword.ilike(pattern),
+                )
+            )
         for item_filter in filters:
             stmt = stmt.where(item_filter)
             count_stmt = count_stmt.where(item_filter)
 
         total = int(await db.scalar(count_stmt) or 0)
         result = await db.execute(
-            stmt.order_by(Source.sort_order.asc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
         )
         items = list(result.scalars().all())
     payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size).model_dump()
@@ -373,6 +382,7 @@ async def list_sources(
 # ── /me series: user-owned private sources ─────────────────────────────
 # Declared BEFORE /{source_id} routes so FastAPI matches the literal
 # "me" segment before the {source_id} path parameter.
+
 
 @router.get("/me", response_model=SourceListResponse)
 async def list_my_sources(
@@ -418,22 +428,22 @@ async def list_my_sources(
         cleaned_keyword = keyword.strip() if keyword else ""
         if cleaned_keyword:
             pattern = f"%{cleaned_keyword}%"
-            filters.append(or_(
-                Source.name.ilike(pattern),
-                Source.url.ilike(pattern),
-                Source.platform.ilike(pattern),
-                Source.category.ilike(pattern),
-                Source.keyword.ilike(pattern),
-            ))
+            filters.append(
+                or_(
+                    Source.name.ilike(pattern),
+                    Source.url.ilike(pattern),
+                    Source.platform.ilike(pattern),
+                    Source.category.ilike(pattern),
+                    Source.keyword.ilike(pattern),
+                )
+            )
         for item_filter in filters:
             stmt = stmt.where(item_filter)
             count_stmt = count_stmt.where(item_filter)
 
         total = int(await db.scalar(count_stmt) or 0)
         result = await db.execute(
-            stmt.order_by(Source.sort_order.asc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
         )
         items = list(result.scalars().all())
     payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size).model_dump()
@@ -574,10 +584,11 @@ async def sync_my_source(
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")
     _request_post_sync_pipeline(stats)
     return SyncResultResponse(
-        fetched=stats["fetched"], new=stats["new"], duplicates=stats["duplicates"],
+        fetched=stats["fetched"],
+        new=stats["new"],
+        duplicates=stats["duplicates"],
         source_info=SourceResponse.model_validate(source),
     )
-
 
 
 @router.post("/reorder", dependencies=[Depends(get_current_admin_user)])
@@ -588,10 +599,7 @@ async def reorder_sources(data: SourceReorderRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=400, detail="ordered_ids cannot be empty")
 
     # Admin reorder only touches system-scope sources
-    result = await db.execute(
-        select(Source)
-        .where(Source.id.in_(unique_ids), Source.scope == "system")
-    )
+    result = await db.execute(select(Source).where(Source.id.in_(unique_ids), Source.scope == "system"))
     sources_by_id = {source.id: source for source in result.scalars().all()}
     missing_ids = [source_id for source_id in unique_ids if source_id not in sources_by_id]
     if missing_ids:
@@ -639,23 +647,27 @@ async def import_opml(
 
         # URL -> source_type auto-detection (T1-3b): replaces the hard-coded
         # xgo.ing branch and adds YouTube / Podcast / Newsletter recognition.
-        source_type, normalized_url, extra_config = recognize_source_type(
-            feed_url, name=name
-        )
+        source_type, normalized_url, extra_config = recognize_source_type(feed_url, name=name)
         keyword = json.dumps(extra_config) if extra_config else None
 
         await repo.create(
-            name=name, url=feed_url,
-            source_type=source_type, category="导入",
-            owner_user_id=None, scope="system",
-            enabled=True, status=SourceStatus.ACTIVE,
+            name=name,
+            url=feed_url,
+            source_type=source_type,
+            category="导入",
+            owner_user_id=None,
+            scope="system",
+            enabled=True,
+            status=SourceStatus.ACTIVE,
             keyword=keyword,
         )
         created += 1
 
     _invalidate_source_cache()
     return {
-        "created": created, "skipped": skipped, "total": len(outlines),
+        "created": created,
+        "skipped": skipped,
+        "total": len(outlines),
         "message": f"成功导入 {created} 个源，跳过 {skipped} 个重复。",
     }
 
@@ -703,7 +715,8 @@ async def import_source_batch(
             platform=item.platform,
             weight=data.weight,
             sort_order=next_order,
-            owner_user_id=None, scope="system",
+            owner_user_id=None,
+            scope="system",
             enabled=data.enabled,
             status=SourceStatus.ACTIVE if data.enabled else SourceStatus.DISABLED,
         )
@@ -719,8 +732,7 @@ async def import_source_batch(
     }
 
 
-@router.get("/{source_id}", response_model=SourceResponse,
-            dependencies=[Depends(get_current_admin_user)])
+@router.get("/{source_id}", response_model=SourceResponse, dependencies=[Depends(get_current_admin_user)])
 async def get_source(source_id: int, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
     # Admin can only see system-scope sources
@@ -733,11 +745,8 @@ async def get_source(source_id: int, db: AsyncSession = Depends(get_db)):
     return existing
 
 
-@router.put("/{source_id}", response_model=SourceResponse,
-            dependencies=[Depends(get_current_admin_user)])
-async def update_source(
-    source_id: int, data: SourceUpdate, db: AsyncSession = Depends(get_db)
-):
+@router.put("/{source_id}", response_model=SourceResponse, dependencies=[Depends(get_current_admin_user)])
+async def update_source(source_id: int, data: SourceUpdate, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
     # Admin can only update system-scope sources
     current = await repo.get_one(Source.id == source_id, Source.scope == "system")
@@ -761,8 +770,7 @@ async def update_source(
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
-@router.delete("/{source_id}", status_code=204,
-               dependencies=[Depends(get_current_admin_user)])
+@router.delete("/{source_id}", status_code=204, dependencies=[Depends(get_current_admin_user)])
 async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
     # Admin can only delete system-scope sources
@@ -776,8 +784,7 @@ async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
-@router.post("/{source_id}/sync", response_model=SyncResultResponse,
-             dependencies=[Depends(get_current_admin_user)])
+@router.post("/{source_id}/sync", response_model=SyncResultResponse, dependencies=[Depends(get_current_admin_user)])
 async def sync_source(source_id: int, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
     # Admin can only sync system-scope sources
@@ -804,6 +811,8 @@ async def sync_source(source_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")
     _request_post_sync_pipeline(stats)
     return SyncResultResponse(
-        fetched=stats["fetched"], new=stats["new"], duplicates=stats["duplicates"],
+        fetched=stats["fetched"],
+        new=stats["new"],
+        duplicates=stats["duplicates"],
         source_info=SourceResponse.model_validate(source),
     )

@@ -18,10 +18,12 @@ async def test_semantic_dedup_ignores_pairs_outside_current_batch(monkeypatch):
 
     monkeypatch.setattr(semantic_dedup, "call_llm_json", fake_llm_json)
 
-    result = await semantic_dedup._dedup_one_batch([
-        {"id": 1, "title": "canonical", "curation_score": 80},
-        {"id": 2, "title": "duplicate", "curation_score": 60},
-    ])
+    result = await semantic_dedup._dedup_one_batch(
+        [
+            {"id": 1, "title": "canonical", "curation_score": 80},
+            {"id": 2, "title": "duplicate", "curation_score": 60},
+        ]
+    )
 
     assert result == {2: 1}
 
@@ -46,10 +48,7 @@ async def test_semantic_dedup_runs_batches_with_bounded_concurrency(monkeypatch)
     monkeypatch.setattr(semantic_dedup, "SEMANTIC_DEDUP_CONCURRENCY", 2)
     monkeypatch.setattr(semantic_dedup, "_dedup_one_batch", fake_dedup_one_batch)
 
-    items = [
-        {"id": item_id, "title": f"item {item_id}", "curation_score": 50}
-        for item_id in range(1, 9)
-    ]
+    items = [{"id": item_id, "title": f"item {item_id}", "curation_score": 50} for item_id in range(1, 9)]
 
     result = await semantic_dedup.semantic_dedup(items)
 
@@ -110,6 +109,4 @@ async def test_cluster_and_dedup_with_lease_skips_active_run(monkeypatch):
 
     assert stats is None
     assert claimed is False
-    assert skipped_jobs == [
-        (topic_clustering.TOPIC_CLUSTERING_JOB_KEY, "manual", "话题聚类仍在运行，本次触发已跳过")
-    ]
+    assert skipped_jobs == [(topic_clustering.TOPIC_CLUSTERING_JOB_KEY, "manual", "话题聚类仍在运行，本次触发已跳过")]

@@ -1,4 +1,5 @@
 """V2EX 热门话题 — https://www.v2ex.com/api/topics/hot.json"""
+
 from __future__ import annotations
 
 import logging
@@ -37,18 +38,20 @@ class V2EXTrending(BaseTrendingScraper):
             member = item.get("member", {})
             node = item.get("node", {})
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": url,
-                "hot_value": replies,
-                "hot_value_raw": str(replies),
-                "trend": "up" if replies > 50 else "stable",
-                "extra": {
-                    "username": member.get("username", ""),
-                    "node_name": node.get("name", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": url,
+                    "hot_value": replies,
+                    "hot_value_raw": str(replies),
+                    "trend": "up" if replies > 50 else "stable",
+                    "extra": {
+                        "username": member.get("username", ""),
+                        "node_name": node.get("name", ""),
+                    },
+                }
+            )
 
         logger.info("v2ex trending: fetched %d items", len(results))
         return results

@@ -85,10 +85,7 @@ def test_mid_risk_item_is_penalized_without_being_hard_filtered():
 
 
 def test_source_and_category_diversity_reduce_repeated_items():
-    items = [
-        _item(i, source_id=1, category="AI", curation_score=85, creator_score=85)
-        for i in range(1, 6)
-    ]
+    items = [_item(i, source_id=1, category="AI", curation_score=85, creator_score=85) for i in range(1, 6)]
 
     scored = score_items(items)
     by_id = {item.content_id: breakdown for breakdown, item in scored}

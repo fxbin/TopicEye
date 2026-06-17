@@ -42,11 +42,7 @@ def resolve_litellm_model(model: ModelLike) -> str:
     if "/" in model_id:
         return model_id
 
-    provider = _clean(
-        params.get("litellm_provider")
-        or litellm_params.get("custom_llm_provider")
-        or model.provider
-    )
+    provider = _clean(params.get("litellm_provider") or litellm_params.get("custom_llm_provider") or model.provider)
 
     if provider:
         return f"{provider}/{model_id}"

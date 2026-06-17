@@ -10,6 +10,7 @@ Design inspired by multi-stage recommendation pipelines:
 
 All tuning constants live in the CONFIG dict at the top for easy adjustment.
 """
+
 from __future__ import annotations
 
 import math
@@ -21,71 +22,75 @@ from typing import Optional
 
 CONFIG = {
     # 6-dimension weights (must sum to 1.0)
-    "w_info_density": 0.25,    # 信息密度
-    "w_actionability": 0.20,   # 可操作性
-    "w_creator_value": 0.18,   # 创作者价值
+    "w_info_density": 0.25,  # 信息密度
+    "w_actionability": 0.20,  # 可操作性
+    "w_creator_value": 0.18,  # 创作者价值
     "w_viral_potential": 0.15,  # 爆文潜力
-    "w_source_authority": 0.12, # 来源权威度
-    "w_freshness": 0.10,        # 时效新鲜度
-
+    "w_source_authority": 0.12,  # 来源权威度
+    "w_freshness": 0.10,  # 时效新鲜度
     # Source weight mapping (source.weight 1-5 → bonus)
     "source_weight_bonus_factor": 6.0,  # per weight-unit above 3
-
     # Time decay
     "time_decay_lambda": 0.02,  # decay rate: exp(-lambda * hours)
-    "time_decay_floor": 0.3,    # minimum time decay (never fully kill)
-
+    "time_decay_floor": 0.3,  # minimum time decay (never fully kill)
     # Content quality gates
-    "quality_gate_min": 45,          # below this, content is probably too thin for curation
-    "quality_gate_strong": 70,       # full trust above this composite quality level
-    "quality_gate_floor": 0.55,      # lowest multiplier for weak-but-not-risky content
-    "min_selected_base_score": 58,   # do not select weak items just because a batch is weak
-
+    "quality_gate_min": 45,  # below this, content is probably too thin for curation
+    "quality_gate_strong": 70,  # full trust above this composite quality level
+    "quality_gate_floor": 0.55,  # lowest multiplier for weak-but-not-risky content
+    "min_selected_base_score": 58,  # do not select weak items just because a batch is weak
     # Source diversity
     "diversity_penalty_base": 0.85,  # multiplier per same-source duplicate in top-N
     "category_diversity_penalty_base": 0.92,
-    "diversity_top_n": 50,           # count diversity within top-N candidates
-    "same_source_grace": 1,          # first item per source is free
-    "same_category_grace": 3,        # first few items per category are free
-
+    "diversity_top_n": 50,  # count diversity within top-N candidates
+    "same_source_grace": 1,  # first item per source is free
+    "same_category_grace": 3,  # first few items per category are free
     # Risk
-    "risk_threshold": 82,          # hard-exclude above this
-    "risk_soft_start": 45,         # risk starts reducing rank after this
-    "risk_soft_floor": 0.55,       # minimum multiplier before hard exclusion
-
+    "risk_threshold": 82,  # hard-exclude above this
+    "risk_soft_start": 45,  # risk starts reducing rank after this
+    "risk_soft_floor": 0.55,  # minimum multiplier before hard exclusion
     # Curation threshold (minimum final score to be selected)
     "curation_threshold": 55,  # slightly lower than before, because scores are now more calibrated
-
     # Fallback: when curation_score is 0 but other scores exist
     "fallback_use_avg": True,
-
     # ── Percentile-based curation mode ──
-    "curation_mode": "percentile",       # "percentile" | "fixed"
-    "curation_percentile": 70,           # top ~30% selected (P70 and above) → ~25-30% curation rate
-
+    "curation_mode": "percentile",  # "percentile" | "fixed"
+    "curation_percentile": 70,  # top ~30% selected (P70 and above) → ~25-30% curation rate
     # ── User feedback signal ──
-    "w_feedback": 0.15,                  # 15% weight for feedback_score
-    "feedback_score_min": -20.0,         # one effective negative vote should not dominate ranking
-    "feedback_score_max": 20.0,          # one effective positive vote should not dominate ranking
+    "w_feedback": 0.15,  # 15% weight for feedback_score
+    "feedback_score_min": -20.0,  # one effective negative vote should not dominate ranking
+    "feedback_score_max": 20.0,  # one effective positive vote should not dominate ranking
 }
 
 
 # ── Data containers ──────────────────────────────────────────────────
 
+
 class ScoringInput:
     """Lightweight input for the scorer — avoids ORM coupling."""
 
     __slots__ = (
-        "content_id", "title", "category", "source_id", "source_name", "published_at",
+        "content_id",
+        "title",
+        "category",
+        "source_id",
+        "source_name",
+        "published_at",
         "crawled_at",
         # Analysis dimensions
-        "curation_score", "info_density", "actionability", "source_weight",
-        "creator_score", "viral_score", "freshness_score", "quality_score",
-        "hot_score", "risk_score",
+        "curation_score",
+        "info_density",
+        "actionability",
+        "source_weight",
+        "creator_score",
+        "viral_score",
+        "freshness_score",
+        "quality_score",
+        "hot_score",
+        "risk_score",
         # Source
         "source_weight_db",  # Source.weight from DB (1-5)
         # Feedback signal
-        "feedback_score",     # user feedback signal (0+, default 0)
+        "feedback_score",  # user feedback signal (0+, default 0)
     )
 
     def __init__(self, **kwargs):
@@ -101,16 +106,16 @@ class ScoreBreakdown:
 
     __slots__ = (
         "content_id",
-        "base_score",           # weighted 6-dim sum
-        "source_bonus",         # source.weight adjustment
-        "quality_factor",       # thin/low-value content penalty multiplier
-        "risk_factor",          # soft risk multiplier
-        "time_decay",           # time decay multiplier (0-1)
-        "diversity_factor",     # diversity penalty multiplier (0-1)
-        "final_score",          # base_score + source_bonus) * time_decay * diversity
-        "dimension_scores",     # dict of individual dimension contributions
-        "selected",             # whether it passes the threshold
-        "threshold_used",       # actual curation threshold applied (for frontend)
+        "base_score",  # weighted 6-dim sum
+        "source_bonus",  # source.weight adjustment
+        "quality_factor",  # thin/low-value content penalty multiplier
+        "risk_factor",  # soft risk multiplier
+        "time_decay",  # time decay multiplier (0-1)
+        "diversity_factor",  # diversity penalty multiplier (0-1)
+        "final_score",  # base_score + source_bonus) * time_decay * diversity
+        "dimension_scores",  # dict of individual dimension contributions
+        "selected",  # whether it passes the threshold
+        "threshold_used",  # actual curation threshold applied (for frontend)
     )
 
     def __init__(self, **kwargs):
@@ -122,6 +127,7 @@ class ScoreBreakdown:
 
 
 # ── Scoring functions ────────────────────────────────────────────────
+
 
 def _clamp(value: float | int | None, lower: float, upper: float, default: float) -> float:
     """Clamp noisy scoring signals into their intended calibration range."""
@@ -162,8 +168,10 @@ def _compute_base_score(item: ScoringInput) -> tuple[float, dict]:
     elif cfg["fallback_use_avg"]:
         # Fallback: average of available scores
         scores = [
-            item.creator_score or 0, item.viral_score or 0,
-            item.quality_score or 0, item.hot_score or 0,
+            item.creator_score or 0,
+            item.viral_score or 0,
+            item.quality_score or 0,
+            item.hot_score or 0,
         ]
         avg = sum(s for s in scores if s > 0) / max(1, sum(1 for s in scores if s > 0))
         base = avg * 0.5 + dim_sum * 0.5
@@ -260,6 +268,7 @@ def _compute_time_decay(item: ScoringInput, now: Optional[datetime] = None) -> f
         t = datetime.fromisoformat(t.replace("Z", ""))
     # DB (SQLite) 读出可能是 naive, 统一 aware UTC 再跟 now 比
     from app.core.db_backend import ensure_aware_utc
+
     t = ensure_aware_utc(t) or now
 
     hours = max(0, (now - t).total_seconds() / 3600)
@@ -295,9 +304,7 @@ def _compute_diversity_penalty(
         category = (items[idx].category or "").strip() or "uncategorized"
         cat_count = category_counts.get(category, 0)
         if cat_count >= cfg["same_category_grace"]:
-            factors[idx] *= cfg["category_diversity_penalty_base"] ** (
-                cat_count - cfg["same_category_grace"] + 1
-            )
+            factors[idx] *= cfg["category_diversity_penalty_base"] ** (cat_count - cfg["same_category_grace"] + 1)
         category_counts[category] = cat_count + 1
 
     return factors
@@ -352,9 +359,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     results: list[tuple[ScoreBreakdown, ScoringInput]] = []
     for i, (bd, item) in enumerate(zip(breakdowns, safe_items)):
         bd.diversity_factor = round(diversity_factors[i], 4)
-        bd.final_score = round(
-            prelim_scores[i] * diversity_factors[i], 2
-        )
+        bd.final_score = round(prelim_scores[i] * diversity_factors[i], 2)
         results.append((bd, item))
 
     # Sort by final_score descending

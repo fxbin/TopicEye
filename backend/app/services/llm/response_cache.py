@@ -11,6 +11,7 @@ temperature 命中相同缓存。温度 0 (deterministic) 缓存收益最大。
 
 单进程内存实现。生产多实例需换 Redis（key 一样）。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -47,7 +48,11 @@ class LLMCache:
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def get(
-        self, messages: list, temperature: float, max_tokens: int, model: str | None,
+        self,
+        messages: list,
+        temperature: float,
+        max_tokens: int,
+        model: str | None,
         ttl_seconds: Optional[int] = None,
     ) -> Optional[str]:
         """Return cached raw response, or None on miss / expiry."""
@@ -102,9 +107,7 @@ class LLMCache:
             "hits": self._hits,
             "misses": self._misses,
             "stores": self._stores,
-            "hit_rate": round(
-                self._hits / max(1, self._hits + self._misses), 4
-            ),
+            "hit_rate": round(self._hits / max(1, self._hits + self._misses), 4),
         }
 
     def clear(self) -> None:

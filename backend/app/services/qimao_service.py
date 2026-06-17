@@ -2,6 +2,7 @@
 七猫小说爬虫服务。
 httpx + py_mini_racer 提取 window.__NUXT__ 数据 (替代原 Playwright 方案)。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,8 +22,16 @@ logger = logging.getLogger(__name__)
 
 # 榜单配置: (channel, rank_type)
 RANK_CONFIGS = [
-    ("boy", "hot"), ("boy", "new"), ("boy", "over"), ("boy", "collect"), ("boy", "update"),
-    ("girl", "hot"), ("girl", "new"), ("girl", "over"), ("girl", "collect"), ("girl", "update"),
+    ("boy", "hot"),
+    ("boy", "new"),
+    ("boy", "over"),
+    ("boy", "collect"),
+    ("boy", "update"),
+    ("girl", "hot"),
+    ("girl", "new"),
+    ("girl", "over"),
+    ("girl", "collect"),
+    ("girl", "update"),
 ]
 
 
@@ -108,6 +117,7 @@ async def sync_qimao_ranks() -> dict:
     # 通知
     try:
         from app.services.notification_service import push_notification
+
         await push_notification(
             "success" if errors == 0 else "warning",
             "qimao_sync",

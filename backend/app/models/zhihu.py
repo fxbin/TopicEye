@@ -1,6 +1,7 @@
 """
 知乎盐选专栏数据模型。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,7 +15,8 @@ from app.core.database import Base
 
 class ZhihuAlbum(Base):
     """知乎盐选专栏/有声书专辑."""
-    __tablename__ = 'zhihu_albums'
+
+    __tablename__ = "zhihu_albums"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # 知乎业务 ID（用于拼接 URL）
@@ -75,33 +77,35 @@ class ZhihuAlbum(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint('business_id', 'sort_type', name='uq_zhihu_albums_bid_sort'),
-        Index('ix_zhihu_albums_sort_pos', 'sort_type', 'position'),
-        Index('ix_zhihu_albums_category1_sort', 'category1_name', 'sort_type'),
+        UniqueConstraint("business_id", "sort_type", name="uq_zhihu_albums_bid_sort"),
+        Index("ix_zhihu_albums_sort_pos", "sort_type", "position"),
+        Index("ix_zhihu_albums_category1_sort", "category1_name", "sort_type"),
     )
 
     @property
     def url(self) -> str:
-        return f'https://www.zhihu.com/xen/market/remix/paid_column/{self.business_id}'
+        return f"https://www.zhihu.com/xen/market/remix/paid_column/{self.business_id}"
 
     @property
     def price_yuan(self) -> str:
         if self.price == 0:
-            return '免费'
-        return f'¥{self.price / 100:.2f}'
+            return "免费"
+        return f"¥{self.price / 100:.2f}"
 
     @property
     def chapter_count(self) -> Optional[int]:
         if not self.chapter_text:
             return None
         import re
-        m = re.search(r'(\d+)', self.chapter_text)
+
+        m = re.search(r"(\d+)", self.chapter_text)
         return int(m.group(1)) if m else None
 
 
 class ZhihuCategory(Base):
     """知乎盐选分类（一级+二级）。"""
-    __tablename__ = 'zhihu_categories'
+
+    __tablename__ = "zhihu_categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     zhihu_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
@@ -113,12 +117,13 @@ class ZhihuCategory(Base):
     artwork: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (Index('ix_zhihu_cat_parent', 'parent_id', 'sort'),)
+    __table_args__ = (Index("ix_zhihu_cat_parent", "parent_id", "sort"),)
 
 
 class ZhihuRankSnapshot(Base):
     """知乎榜单快照（用于计算 rank_pos_diff）。"""
-    __tablename__ = 'zhihu_rank_snapshots'
+
+    __tablename__ = "zhihu_rank_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     snapshot_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)

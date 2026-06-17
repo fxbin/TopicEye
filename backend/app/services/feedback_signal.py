@@ -1,4 +1,5 @@
 """Helpers for converting user feedback into scoring signals."""
+
 from __future__ import annotations
 
 from sqlalchemy import func, select

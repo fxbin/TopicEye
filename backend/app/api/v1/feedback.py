@@ -28,12 +28,8 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 def _is_feedback_unique_conflict(exc: IntegrityError) -> bool:
     message = str(exc).lower()
-    return (
-        "uq_user_feedback_content_user" in message
-        or (
-            "user_feedback" in message
-            and ("unique constraint" in message or "duplicate key" in message)
-        )
+    return "uq_user_feedback_content_user" in message or (
+        "user_feedback" in message and ("unique constraint" in message or "duplicate key" in message)
     )
 
 
@@ -158,9 +154,7 @@ async def get_feedback_stats(
     by_type = {str(row[0]): row[1] for row in type_result.all()}
 
     # Average score delta
-    avg_result = await db.execute(
-        select(func.avg(UserFeedback.score_delta))
-    )
+    avg_result = await db.execute(select(func.avg(UserFeedback.score_delta)))
     avg_score = avg_result.scalar() or 0.0
 
     return FeedbackStatsResponse(

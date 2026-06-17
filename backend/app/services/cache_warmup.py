@@ -8,7 +8,11 @@ from app.core.database import async_session
 from app.repositories.content_repo import ContentRepo
 from app.repositories.source_repo import SourceRepository
 from app.schemas.source import SourceListResponse
-from app.services.content_list_cache import HOME_CONTENT_LIST_CACHE_LABEL, home_content_list_cache_params, set_cached_content_list
+from app.services.content_list_cache import (
+    HOME_CONTENT_LIST_CACHE_LABEL,
+    home_content_list_cache_params,
+    set_cached_content_list,
+)
 from app.services.content_serialization import content_with_latest_analysis
 from app.services.json_cache import set_cached_json
 from app.services.source_cache import (

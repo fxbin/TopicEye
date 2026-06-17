@@ -17,6 +17,7 @@
     * types 路径是数字约定, 平台改版后需重新发现.
     * 付费章节 (`isCharge=1`) 拿不到正文 —— 不强行抓.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,16 +48,16 @@ class IshuguiTrending(BaseTrendingScraper):
     # 男生 (rankType=1): 畅销/完本/新书/热读/好评/经典
     # 女生 (rankType=2): 畅销/完本/新书/热读/好评/经典
     ALL_RANKS = [
-        ("1-1",  "男生小说畅销榜", "male"),
-        ("1-3",  "男生小说完本榜", "male"),
-        ("1-5",  "男生小说新书榜", "male"),
-        ("1-7",  "男生小说热读榜", "male"),
+        ("1-1", "男生小说畅销榜", "male"),
+        ("1-3", "男生小说完本榜", "male"),
+        ("1-5", "男生小说新书榜", "male"),
+        ("1-7", "男生小说热读榜", "male"),
         ("1-11", "男生小说好评榜", "male"),
         ("1-20", "男生小说经典榜", "male"),
-        ("2-2",  "女生小说畅销榜", "female"),
-        ("2-4",  "女生小说完本榜", "female"),
-        ("2-6",  "女生小说新书榜", "female"),
-        ("2-8",  "女生小说热读榜", "female"),
+        ("2-2", "女生小说畅销榜", "female"),
+        ("2-4", "女生小说完本榜", "female"),
+        ("2-6", "女生小说新书榜", "female"),
+        ("2-8", "女生小说热读榜", "female"),
         ("2-12", "女生小说好评榜", "female"),
         ("2-21", "女生小说经典榜", "female"),
     ]
@@ -91,8 +92,7 @@ class IshuguiTrending(BaseTrendingScraper):
             results.extend(rank_entries)
             await asyncio.sleep(self.THROTTLE_SECONDS)
 
-        logger.info("ishugui trending: fetched %d unique books (build_id=%s, 12 ranks)",
-                    len(results), build_id)
+        logger.info("ishugui trending: fetched %d unique books (build_id=%s, 12 ranks)", len(results), build_id)
         return results
 
     # ── Build ID discovery ────────────────────────────────────────
@@ -135,21 +135,23 @@ class IshuguiTrending(BaseTrendingScraper):
                 continue
             global_rank += 1
             seen.add(book_id)
-            entries.append({
-                "title": (banner.get("name") or "").strip(),
-                "rank": global_rank,
-                "hot_value": max(1, 1000 - global_rank),
-                "url": f"https://www.ishugui.com/book/{book_id}",
-                "hot_value_raw": "首页 banner",
-                "trend": "stable",
-                "cover_url": banner.get("pcUrl") or banner.get("wapUrl") or "",
-                "extra": {
-                    "platform": "ishugui",
-                    "book_id": book_id,
-                    "shelf": "首页 banner",
-                    "shelf_id": "banner",
-                },
-            })
+            entries.append(
+                {
+                    "title": (banner.get("name") or "").strip(),
+                    "rank": global_rank,
+                    "hot_value": max(1, 1000 - global_rank),
+                    "url": f"https://www.ishugui.com/book/{book_id}",
+                    "hot_value_raw": "首页 banner",
+                    "trend": "stable",
+                    "cover_url": banner.get("pcUrl") or banner.get("wapUrl") or "",
+                    "extra": {
+                        "platform": "ishugui",
+                        "book_id": book_id,
+                        "shelf": "首页 banner",
+                        "shelf_id": "banner",
+                    },
+                }
+            )
         return entries
 
     # ── Rank pagination ───────────────────────────────────────────
@@ -181,8 +183,7 @@ class IshuguiTrending(BaseTrendingScraper):
                 resp.raise_for_status()
                 payload = resp.json()
             except Exception as exc:
-                logger.warning("ishugui rank %s page %d fetch failed: %s",
-                               types_path, page, exc)
+                logger.warning("ishugui rank %s page %d fetch failed: %s", types_path, page, exc)
                 return entries
 
             page_props = payload.get("pageProps") or {}
@@ -193,7 +194,11 @@ class IshuguiTrending(BaseTrendingScraper):
 
             for info in records:
                 entry = self._build_entry(
-                    info, rank_name, rank_position + 1, gender_label, types_path,
+                    info,
+                    rank_name,
+                    rank_position + 1,
+                    gender_label,
+                    types_path,
                 )
                 if entry and entry["extra"]["book_id"] not in seen:
                     seen.add(entry["extra"]["book_id"])
@@ -209,8 +214,13 @@ class IshuguiTrending(BaseTrendingScraper):
             await asyncio.sleep(self.THROTTLE_SECONDS)
 
         if entries:
-            logger.info("ishugui rank %s (%s): %d books across %d pages",
-                        types_path, rank_name, len(entries), min(max_pages, total_pages or 0))
+            logger.info(
+                "ishugui rank %s (%s): %d books across %d pages",
+                types_path,
+                rank_name,
+                len(entries),
+                min(max_pages, total_pages or 0),
+            )
         return entries
 
     # ── Entry builder ─────────────────────────────────────────────

@@ -1,6 +1,7 @@
 """
 七猫小说 API。
 """
+
 from __future__ import annotations
 
 
@@ -73,11 +74,13 @@ async def categories(
     cats = []
     for row in rows:
         if row.category1_name:
-            cats.append({
-                "name": row.category1_name,
-                "channel": row.channel,
-                "book_count": row.book_count,
-            })
+            cats.append(
+                {
+                    "name": row.category1_name,
+                    "channel": row.channel,
+                    "book_count": row.book_count,
+                }
+            )
     return {"categories": cats, "total": len(cats)}
 
 

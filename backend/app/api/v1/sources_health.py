@@ -7,6 +7,7 @@
 
 数据来自 sources 表（不依赖 job_execution_logs）。
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -46,20 +47,13 @@ async def get_sources_health(
     """
     async with async_session() as db:
         # per-source 内容统计（子查询避免 N+1）
-        total_subq = (
-            select(ContentItem.source_id, func.count().label("cnt"))
-            .group_by(ContentItem.source_id)
-            .subquery()
-        )
+        total_subq = select(ContentItem.source_id, func.count().label("cnt")).group_by(ContentItem.source_id).subquery()
         recent_cutoff = datetime.now(timezone.utc).toordinal()  # placeholder
 
-        stmt = (
-            select(
-                Source,
-                func.coalesce(total_subq.c.cnt, 0).label("content_count"),
-            )
-            .outerjoin(total_subq, total_subq.c.source_id == Source.id)
-        )
+        stmt = select(
+            Source,
+            func.coalesce(total_subq.c.cnt, 0).label("content_count"),
+        ).outerjoin(total_subq, total_subq.c.source_id == Source.id)
         if status_filter:
             stmt = stmt.where(Source.status == status_filter)
         stmt = stmt.order_by(desc(Source.last_sync_at)).limit(limit)
@@ -69,22 +63,27 @@ async def get_sources_health(
         # 最近 24h 内容数（单独查，避免复杂 JOIN）
         now = datetime.now(timezone.utc)
         from datetime import timedelta
+
         recent_cutoff_dt = now - timedelta(hours=24)
 
         sources_health = []
         for source, content_count in rows:
             # recent count per source
-            recent_count = await db.scalar(
-                select(func.count()).select_from(ContentItem).where(
-                    ContentItem.source_id == source.id,
-                    ContentItem.crawled_at >= recent_cutoff_dt,
+            recent_count = (
+                await db.scalar(
+                    select(func.count())
+                    .select_from(ContentItem)
+                    .where(
+                        ContentItem.source_id == source.id,
+                        ContentItem.crawled_at >= recent_cutoff_dt,
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
             last_sync_aware = source.last_sync_at
             last_sync_ago = (
-                int((now - last_sync_aware.replace(tzinfo=timezone.utc)).total_seconds())
-                if last_sync_aware else None
+                int((now - last_sync_aware.replace(tzinfo=timezone.utc)).total_seconds()) if last_sync_aware else None
             )
 
             interval_seconds = (source.fetch_interval_minutes or 60) * 60
@@ -94,29 +93,30 @@ async def get_sources_health(
 
             # stale SYNCING 判定（> 3 × SOURCE_SYNC_TIMEOUT_SECONDS）
             from app.core.config import settings
+
             stale_threshold = int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3
             is_stale = (
-                source.status == SourceStatus.SYNCING
-                and last_sync_ago is not None
-                and last_sync_ago > stale_threshold
+                source.status == SourceStatus.SYNCING and last_sync_ago is not None and last_sync_ago > stale_threshold
             )
 
-            sources_health.append({
-                "id": source.id,
-                "name": source.name,
-                "source_type": source.source_type,
-                "platform": source.platform,
-                "enabled": source.enabled,
-                "fetch_interval_minutes": source.fetch_interval_minutes,
-                "status": source.status,
-                "last_sync_at": source.last_sync_at.isoformat() if source.last_sync_at else None,
-                "last_sync_ago_seconds": last_sync_ago,
-                "next_sync_in_seconds": next_sync_in,
-                "sync_error": (source.sync_error or "")[:300] or None,
-                "content_count": content_count,
-                "recent_content_count_24h": recent_count,
-                "is_stale": is_stale,
-            })
+            sources_health.append(
+                {
+                    "id": source.id,
+                    "name": source.name,
+                    "source_type": source.source_type,
+                    "platform": source.platform,
+                    "enabled": source.enabled,
+                    "fetch_interval_minutes": source.fetch_interval_minutes,
+                    "status": source.status,
+                    "last_sync_at": source.last_sync_at.isoformat() if source.last_sync_at else None,
+                    "last_sync_ago_seconds": last_sync_ago,
+                    "next_sync_in_seconds": next_sync_in,
+                    "sync_error": (source.sync_error or "")[:300] or None,
+                    "content_count": content_count,
+                    "recent_content_count_24h": recent_count,
+                    "is_stale": is_stale,
+                }
+            )
 
     # 汇总
     total = len(sources_health)

@@ -49,7 +49,7 @@ async def test_fetch_analyzed_content_uses_duckdb_candidates_and_unified_scorer(
             "curation_score": 70,
             "source_weight_db": 3,
             "feedback_score": 0,
-        }
+        },
     ]
     calls = []
 
@@ -60,26 +60,28 @@ async def test_fetch_analyzed_content_uses_duckdb_candidates_and_unified_scorer(
     monkeypatch.setattr(digest_context, "query_content_for_weekly", fake_query_content_for_weekly)
 
     result = await digest_context.fetch_analyzed_content(FailingDb(), "2026-06-01", "2026-06-07")
-    expected_breakdown = score_items([
-        ScoringInput(
-            content_id=1,
-            title="DuckDB 摘要上下文样本",
-            category="AI",
-            source_name="测试信源",
-            crawled_at="2026-06-06T00:00:00",
-            curation_score=82,
-            info_density=78,
-            actionability=76,
-            source_weight=70,
-            creator_score=80,
-            viral_score=70,
-            freshness_score=85,
-            quality_score=75,
-            risk_score=10,
-            source_weight_db=3,
-            feedback_score=20,
-        )
-    ])[0][0].to_dict()
+    expected_breakdown = score_items(
+        [
+            ScoringInput(
+                content_id=1,
+                title="DuckDB 摘要上下文样本",
+                category="AI",
+                source_name="测试信源",
+                crawled_at="2026-06-06T00:00:00",
+                curation_score=82,
+                info_density=78,
+                actionability=76,
+                source_weight=70,
+                creator_score=80,
+                viral_score=70,
+                freshness_score=85,
+                quality_score=75,
+                risk_score=10,
+                source_weight_db=3,
+                feedback_score=20,
+            )
+        ]
+    )[0][0].to_dict()
 
     assert [row["id"] for row in result] == [1]
     assert result[0]["adjusted_score"] == expected_breakdown["final_score"]
@@ -104,23 +106,25 @@ async def test_fetch_analyzed_content_expands_window_without_db_fallback(monkeyp
     calls = []
     end_date = date(2026, 6, 30)
     expanded_start = (end_date - timedelta(days=29)).isoformat()
-    expected = [{
-        "id": 2,
-        "title": "扩展窗口样本",
-        "category": "产品",
-        "source_name": "测试信源",
-        "crawled_at": "2026-06-29T00:00:00",
-        "creator_score": 82,
-        "viral_score": 78,
-        "quality_score": 84,
-        "info_density": 82,
-        "actionability": 80,
-        "source_weight": 70,
-        "freshness_score": 88,
-        "risk_score": 12,
-        "curation_score": 86,
-        "source_weight_db": 3,
-    }]
+    expected = [
+        {
+            "id": 2,
+            "title": "扩展窗口样本",
+            "category": "产品",
+            "source_name": "测试信源",
+            "crawled_at": "2026-06-29T00:00:00",
+            "creator_score": 82,
+            "viral_score": 78,
+            "quality_score": 84,
+            "info_density": 82,
+            "actionability": 80,
+            "source_weight": 70,
+            "freshness_score": 88,
+            "risk_score": 12,
+            "curation_score": 86,
+            "source_weight_db": 3,
+        }
+    ]
 
     def fake_query_content_for_weekly(start_date: str, end_date: str):
         calls.append((start_date, end_date))
@@ -164,25 +168,27 @@ def test_build_items_text_prefers_adjusted_score_for_digest_prompt():
 
 
 def test_digest_row_to_scoring_input_preserves_full_duckdb_signals():
-    scoring_input = digest_context._row_to_scoring_input({
-        "id": 7,
-        "title": "完整 DuckDB scorer 输入",
-        "category": "AI",
-        "source_name": "权重信源",
-        "crawled_at": "2026-06-06T00:00:00",
-        "curation_score": 82,
-        "info_density": 79,
-        "actionability": 77,
-        "source_weight": 71,
-        "creator_score": 80,
-        "viral_score": 70,
-        "freshness_score": 88,
-        "quality_score": 76,
-        "hot_score": 69,
-        "risk_score": 12,
-        "source_weight_db": 5,
-        "feedback_score": 20,
-    })
+    scoring_input = digest_context._row_to_scoring_input(
+        {
+            "id": 7,
+            "title": "完整 DuckDB scorer 输入",
+            "category": "AI",
+            "source_name": "权重信源",
+            "crawled_at": "2026-06-06T00:00:00",
+            "curation_score": 82,
+            "info_density": 79,
+            "actionability": 77,
+            "source_weight": 71,
+            "creator_score": 80,
+            "viral_score": 70,
+            "freshness_score": 88,
+            "quality_score": 76,
+            "hot_score": 69,
+            "risk_score": 12,
+            "source_weight_db": 5,
+            "feedback_score": 20,
+        }
+    )
 
     assert scoring_input.content_id == 7
     assert scoring_input.info_density == 79

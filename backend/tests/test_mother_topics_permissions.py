@@ -27,10 +27,12 @@ async def test_mother_topics_user_and_admin_boundaries():
         admin = await create_user(db, email="mother-admin@example.com", password="Password123", role="admin")
         user_token, _ = await create_session(db, user)
         admin_token, _ = await create_session(db, admin)
-        db.add_all([
-            MotherTopic(name="AI 工具", keywords=["AI", "效率"], is_active=True, display_order=1),
-            MotherTopic(name="停用母题", keywords=["旧"], is_active=False, display_order=2),
-        ])
+        db.add_all(
+            [
+                MotherTopic(name="AI 工具", keywords=["AI", "效率"], is_active=True, display_order=1),
+                MotherTopic(name="停用母题", keywords=["旧"], is_active=False, display_order=2),
+            ]
+        )
         await db.commit()
 
     app = FastAPI()

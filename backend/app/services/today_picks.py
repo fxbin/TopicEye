@@ -1,4 +1,5 @@
 """Today-picks business logic backed by DuckDB analytical reads."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -14,7 +15,11 @@ TODAY_PICKS_THRESHOLD = 55
 
 
 async def build_today_picks(
-    db: AsyncSession, *, category: Optional[str] = None, hours: int = 48, limit: Optional[int] = None,
+    db: AsyncSession,
+    *,
+    category: Optional[str] = None,
+    hours: int = 48,
+    limit: Optional[int] = None,
 ) -> dict:
     """Return today-picks payload through the fixed DuckDB analytical layer."""
     _ = db
@@ -41,16 +46,18 @@ async def build_today_picks(
 
 def _empty_payload() -> dict:
     return {
-        "items": [], "total": 0, "duplicates_hidden": 0,
-        "topics": [], "page": 1, "page_size": 0,
+        "items": [],
+        "total": 0,
+        "duplicates_hidden": 0,
+        "topics": [],
+        "page": 1,
+        "page_size": 0,
     }
 
 
 def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
     input_rows: list[tuple[ScoringInput, dict]] = [
-        (_row_to_scoring_input(row), row)
-        for row in rows
-        if row.get("duplicate_of") is None
+        (_row_to_scoring_input(row), row) for row in rows if row.get("duplicate_of") is None
     ]
     row_map = {item.content_id: row for item, row in input_rows}
     scored = score_items([item for item, _row in input_rows])

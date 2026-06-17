@@ -14,6 +14,7 @@ Evaluation:
   GET    /evaluations/runs/{run_id}  — get results for a specific run
   PUT    /evaluations/{id}/score     — human score a single eval result
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -130,11 +131,13 @@ def _completion_kwargs(
     extra_params = model.extra_params if isinstance(model.extra_params, dict) else {}
     litellm_params = extra_params.get("litellm_params")
     if isinstance(litellm_params, dict):
-        kwargs.update({
-            key: value
-            for key, value in litellm_params.items()
-            if key in LITELLM_COMPLETION_PARAM_KEYS and value is not None
-        })
+        kwargs.update(
+            {
+                key: value
+                for key, value in litellm_params.items()
+                if key in LITELLM_COMPLETION_PARAM_KEYS and value is not None
+            }
+        )
     if model.api_key:
         kwargs["api_key"] = model.api_key
     if model.api_base:
@@ -147,7 +150,7 @@ def _sample_payload(sample_content: Optional[str]) -> dict:
         return {
             "title": "OpenAI 发布 GPT-5: 多模态能力大幅提升",
             "content": "OpenAI 今日正式发布 GPT-5 模型，在多模态理解、代码生成和长文本处理方面均有显著提升。"
-                       "新模型在多项基准测试中刷新纪录，引发行业广泛讨论。",
+            "新模型在多项基准测试中刷新纪录，引发行业广泛讨论。",
         }
 
     try:
@@ -191,6 +194,7 @@ def _auto_score_response(content: str) -> float:
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────
+
 
 class ModelCreateRequest(BaseModel):
     preset_key: Optional[str] = None
@@ -265,8 +269,11 @@ class ModelUpdateRequest(BaseModel):
 
 class EvalRunRequest(BaseModel):
     """Request to run an A/B evaluation."""
+
     model_ids: list[int] = Field(..., description="要对比的模型 ID 列表")
-    prompt_type: str = Field("analysis", description="测评类型: analysis/daily_report/weekly_digest/classification/custom")
+    prompt_type: str = Field(
+        "analysis", description="测评类型: analysis/daily_report/weekly_digest/classification/custom"
+    )
     custom_prompt: Optional[str] = Field(None, description="自定义 prompt (prompt_type=custom 时必填)")
     sample_content: Optional[str] = Field(None, description="用于测评的内容样例(JSON)")
 
@@ -437,6 +444,7 @@ def _new_model_from_request(
 
 # ── Model Config CRUD ─────────────────────────────────────────────────
 
+
 @router.get("", dependencies=[Depends(get_current_admin_user)])
 async def list_models(db: AsyncSession = Depends(get_db)):
     """List all configured LLM models."""
@@ -470,6 +478,7 @@ async def list_models(db: AsyncSession = Depends(get_db)):
 @router.post("", dependencies=[Depends(get_current_admin_user)])
 async def create_model(req: ModelCreateRequest, db: AsyncSession = Depends(get_db)):
     """Add a new LLM model configuration."""
+
     async def _create():
         model = _new_model_from_request(req)
         db.add(model)
@@ -713,6 +722,7 @@ async def get_usage_summary(
 @router.put("/{model_id}", dependencies=[Depends(get_current_admin_user)])
 async def update_model(model_id: int, req: ModelUpdateRequest, db: AsyncSession = Depends(get_db)):
     """Update an existing model configuration."""
+
     async def _update():
         result = await db.execute(select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id.is_(None)))
         model = result.scalar_one_or_none()
@@ -729,6 +739,7 @@ async def update_model(model_id: int, req: ModelUpdateRequest, db: AsyncSession 
 @router.delete("/{model_id}", dependencies=[Depends(get_current_admin_user)])
 async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a model configuration."""
+
     async def _delete():
         result = await db.execute(select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id.is_(None)))
         model = result.scalar_one_or_none()
@@ -886,8 +897,10 @@ async def _run_one_evaluation(
             return await operation()
 
     if _missing_explicit_api_key(model):
+
         async def _write_missing_key():
             async with async_session() as eval_db:
+
                 async def _mark_missing_key():
                     result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
                     current = result.scalar_one()
@@ -897,6 +910,7 @@ async def _run_one_evaluation(
 
                 await _retry_write(eval_db, _mark_missing_key)
                 await eval_db.commit()
+
         await _run_db_write(_write_missing_key)
         return
 
@@ -918,6 +932,7 @@ async def _run_one_evaluation(
 
         async def _write_done():
             async with async_session() as eval_db:
+
                 async def _mark_done():
                     result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
                     current = result.scalar_one()
@@ -931,6 +946,7 @@ async def _run_one_evaluation(
 
                 await _retry_write(eval_db, _mark_done)
                 await eval_db.commit()
+
         await _run_db_write(_write_done)
         await record_llm_call_in_new_session(
             model=model,
@@ -946,6 +962,7 @@ async def _run_one_evaluation(
 
         async def _write_failed():
             async with async_session() as eval_db:
+
                 async def _mark_failed():
                     result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
                     current = result.scalar_one()
@@ -956,6 +973,7 @@ async def _run_one_evaluation(
 
                 await _retry_write(eval_db, _mark_failed)
                 await eval_db.commit()
+
         await _run_db_write(_write_failed)
         await record_llm_call_in_new_session(
             model=model,
@@ -997,6 +1015,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
     eval_run_id = f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
     evaluations = []
+
     async def _create_records():
         for model in models:
             eval_record = ModelEvaluation(
@@ -1089,9 +1108,7 @@ async def list_eval_runs(
 async def get_eval_run(run_id: str, db: AsyncSession = Depends(get_db)):
     """Get all evaluation results for a specific run."""
     result = await db.execute(
-        select(ModelEvaluation)
-        .where(ModelEvaluation.eval_run_id == run_id)
-        .order_by(ModelEvaluation.model_name)
+        select(ModelEvaluation).where(ModelEvaluation.eval_run_id == run_id).order_by(ModelEvaluation.model_name)
     )
     evals = result.scalars().all()
 
@@ -1129,9 +1146,7 @@ async def score_evaluation(
     db: AsyncSession = Depends(get_db),
 ):
     """Human-score a single evaluation result."""
-    result = await db.execute(
-        select(ModelEvaluation).where(ModelEvaluation.id == eval_id)
-    )
+    result = await db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
     evaluation = result.scalar_one_or_none()
     if not evaluation:
         raise HTTPException(404, f"Evaluation {eval_id} not found")

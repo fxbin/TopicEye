@@ -44,7 +44,7 @@ def decrypt_secret(value: Optional[str]) -> Optional[str]:
         return None
     if not stored.startswith(SECRET_PREFIX):
         return stored
-    token = stored[len(SECRET_PREFIX):]
+    token = stored[len(SECRET_PREFIX) :]
     try:
         return _fernet().decrypt(token.encode("ascii")).decode("utf-8")
     except (InvalidToken, UnicodeDecodeError) as exc:

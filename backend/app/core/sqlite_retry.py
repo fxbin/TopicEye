@@ -37,7 +37,7 @@ async def retry_sqlite_locked(
             last_exc = exc
             if on_retry is not None:
                 await on_retry()
-            await asyncio.sleep(base_delay * (2 ** index))
+            await asyncio.sleep(base_delay * (2**index))
 
     raise last_exc  # pragma: no cover
 

@@ -1,4 +1,5 @@
 """IT之家热榜 — RSS https://www.ithome.com/rss/"""
+
 from __future__ import annotations
 
 import logging
@@ -46,14 +47,16 @@ class ITHomeTrending(BaseTrendingScraper):
             if not title:
                 continue
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": link,
-                "hot_value": 0,
-                "hot_value_raw": "",
-                "trend": "stable",
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": link,
+                    "hot_value": 0,
+                    "hot_value_raw": "",
+                    "trend": "stable",
+                }
+            )
 
         logger.info("ithome trending: fetched %d items", len(results))
         return results

@@ -6,6 +6,7 @@ NOT a pytest test — requires DuckDB + sqlite extension installed.
 Run manually:
     python scripts/duckdb_check.py
 """
+
 import sys
 import os
 
@@ -18,6 +19,7 @@ from app.services.duckdb_service import (
     query_topics,
     query_daily_stats,
 )
+
 
 def main():
     analytics = DuckDBAnalytics()
@@ -46,6 +48,7 @@ def main():
     print("Stats:", stats)
 
     print("\nALL OK")
+
 
 if __name__ == "__main__":
     main()

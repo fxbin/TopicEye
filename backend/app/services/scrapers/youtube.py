@@ -38,9 +38,7 @@ class YouTubeScraper(BaseScraper):
 
     def __init__(self, source_url: str, source_config=None):
         super().__init__(source_url, source_config)
-        self.channel_id: Optional[str] = (
-            source_config.get("channel_id") if source_config else None
-        )
+        self.channel_id: Optional[str] = source_config.get("channel_id") if source_config else None
         self._rss_url: Optional[str] = None
 
     @staticmethod
@@ -128,18 +126,17 @@ class YouTubeScraper(BaseScraper):
                 if isinstance(mc, list) and mc and "url" in mc[0]:
                     cover_url = mc[0].get("url", "")
 
-            entries.append({
-                "title": entry.get("title", ""),
-                "url": entry.get("link", ""),
-                "author": author,
-                "summary": entry.get("summary", ""),
-                "raw_content": (
-                    entry.get("content", [{}])[0].get("value", "")
-                    if entry.get("content") else ""
-                ),
-                "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
-                "published_at": published_at,
-                "cover_url": cover_url,
-            })
+            entries.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": entry.get("link", ""),
+                    "author": author,
+                    "summary": entry.get("summary", ""),
+                    "raw_content": (entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""),
+                    "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
+                    "published_at": published_at,
+                    "cover_url": cover_url,
+                }
+            )
 
         return entries

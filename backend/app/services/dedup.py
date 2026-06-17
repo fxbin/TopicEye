@@ -17,9 +17,7 @@ def build_hash(text: str) -> str:
     return content_hash(text)
 
 
-def filter_duplicates(
-    items: list[dict], text_key: str = "title"
-) -> tuple[list[dict], list[dict]]:
+def filter_duplicates(items: list[dict], text_key: str = "title") -> tuple[list[dict], list[dict]]:
     """
     Split *items* into (unique, duplicates) based on content_hash of *text_key*.
 

@@ -2,6 +2,7 @@
 番茄小说榜单抓取服务。
 定时任务：每日凌晨1点抓取分类 + 四大榜单 + 36个分类书单。
 """
+
 from __future__ import annotations
 
 import json
@@ -70,19 +71,19 @@ async def sync_categories() -> list[dict]:
             continue
         seen_ids.add(fid)
 
-        categories.append({
-            "fanqie_id": fid,
-            "name": cat["name"],
-            "group": group,
-            "display_order": idx,
-        })
+        categories.append(
+            {
+                "fanqie_id": fid,
+                "name": cat["name"],
+                "group": group,
+                "display_order": idx,
+            }
+        )
 
     # Upsert 模式：已存在则更新分组/名称
     async with async_session() as db:
         for cat in categories:
-            result = await db.execute(
-                select(FanqieCategory).where(FanqieCategory.fanqie_id == cat["fanqie_id"])
-            )
+            result = await db.execute(select(FanqieCategory).where(FanqieCategory.fanqie_id == cat["fanqie_id"]))
             existing = result.scalar_one_or_none()
             if existing:
                 existing.name = cat["name"]
@@ -110,16 +111,18 @@ async def sync_category_books(categories: list[dict]) -> None:
             is_male = group == "male"
             gender = 1 if is_male else 0
 
-            for rank_idx, (rank_mold, rank_suffix) in enumerate([
-                (2, "reading"),   # 阅读榜
-                (1, "new"),       # 新书榜
-            ]):
+            for rank_idx, (rank_mold, rank_suffix) in enumerate(
+                [
+                    (2, "reading"),  # 阅读榜
+                    (1, "new"),  # 新书榜
+                ]
+            ):
                 # 不同 rank_mold 之间额外等待 1s
                 if rank_idx > 0:
                     await asyncio.sleep(1)
                 params = {
                     "app_id": 2503,
-                    "rank_list_type": 3,   # 固定传3，通过 rankMold 区分阅读/新书
+                    "rank_list_type": 3,  # 固定传3，通过 rankMold 区分阅读/新书
                     "offset": 0,
                     "limit": 100,
                     "category_id": fanqie_id,
@@ -137,10 +140,15 @@ async def sync_category_books(categories: list[dict]) -> None:
                 book_list = data["data"]["book_list"]
                 clean_books(book_list)  # 解码乱码文本
                 rank_type = f"male_{rank_suffix}" if is_male else f"female_{rank_suffix}"
-                await _upsert_books(db, book_list, rank_type, {
-                    "category_id": fanqie_id,
-                    "category_name": cat["name"],
-                })
+                await _upsert_books(
+                    db,
+                    book_list,
+                    rank_type,
+                    {
+                        "category_id": fanqie_id,
+                        "category_name": cat["name"],
+                    },
+                )
                 logger.info(f"分类 {cat['name']}[{rank_type}] 抓取 {len(book_list)} 本")
                 await asyncio.sleep(1.5)
 
@@ -249,6 +257,7 @@ async def full_sync() -> dict:
     # 推送通知
     try:
         from app.services.notification_service import push_notification
+
         await push_notification(
             type="success",
             category="fanqie_sync",
@@ -266,16 +275,13 @@ async def full_sync() -> dict:
 
 # ── 快照逻辑 ──────────────────────────────────────────────────
 
+
 async def _save_daily_snapshot(db: AsyncSession) -> int:
     """将当前排名数据保存为当日快照（幂等，重复调用不会重复写入）。"""
     today = date.today().isoformat()
 
     # 检查今天是否已有快照
-    existing = await db.execute(
-        select(FanqieRankSnapshot)
-        .where(FanqieRankSnapshot.snapshot_date == today)
-        .limit(1)
-    )
+    existing = await db.execute(select(FanqieRankSnapshot).where(FanqieRankSnapshot.snapshot_date == today).limit(1))
     if existing.scalar_one_or_none():
         logger.info(f"快照 {today} 已存在，跳过")
         return 0
@@ -314,13 +320,12 @@ async def _save_daily_snapshot(db: AsyncSession) -> int:
 async def _cleanup_old_snapshots(db: AsyncSession, days: int = 30) -> int:
     """删除 N 天前的快照。"""
     cutoff = (date.today() - __import__("datetime").timedelta(days=days)).isoformat()
-    result = await db.execute(
-        delete(FanqieRankSnapshot).where(FanqieRankSnapshot.snapshot_date < cutoff)
-    )
+    result = await db.execute(delete(FanqieRankSnapshot).where(FanqieRankSnapshot.snapshot_date < cutoff))
     return result.rowcount
 
 
 # ── 供 scheduler 调用的入口 ────────────────────────────────────
+
 
 def run_sync():
     """供 cronjob 同步的入口（同步运行）。"""
@@ -329,6 +334,7 @@ def run_sync():
 
 if __name__ == "__main__":
     import sys
+
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     result = asyncio.run(full_sync())
     print(json.dumps(result, ensure_ascii=False, indent=2))

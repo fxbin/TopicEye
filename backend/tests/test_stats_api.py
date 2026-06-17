@@ -107,12 +107,28 @@ async def test_dashboard_stats_cache_returns_workspace_payload(monkeypatch):
         "query_dashboard_stats",
         lambda days=7: {
             "overview": {"total": 1, "analyzed": 1, "curated": 1, "today_new": 1},
-            "sources": [{"source_name": "测试信源", "source_type": "rss", "content_count": 1, "curated_count": 1, "curation_rate": 100}],
+            "sources": [
+                {
+                    "source_name": "测试信源",
+                    "source_type": "rss",
+                    "content_count": 1,
+                    "curated_count": 1,
+                    "curation_rate": 100,
+                }
+            ],
             "categories": [{"category": "AI", "content_count": 1, "avg_score": 82}],
             "trend": [{"date": "2026-06-04", "content_count": 1, "curated_count": 1, "analyzed_count": 1}],
             "platforms": [{"name": "番茄小说", "table": "fanqie", "count": 1, "last_sync": None}],
             "kpi": {"total_crawled": 1, "total_curated": 1, "avg_curation": 82, "active_sources": 1},
-            "source_breakdown": [{"source_name": "测试信源", "source_type": "rss", "content_count": 1, "curated_count": 1, "avg_score": 82}],
+            "source_breakdown": [
+                {
+                    "source_name": "测试信源",
+                    "source_type": "rss",
+                    "content_count": 1,
+                    "curated_count": 1,
+                    "avg_score": 82,
+                }
+            ],
             "daily_trend": [{"date": "2026-06-04", "content_count": 1, "curated_count": 1, "avg_curation": 82}],
         },
     )

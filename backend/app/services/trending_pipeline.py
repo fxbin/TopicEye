@@ -6,6 +6,7 @@
 2. 删除该 source 的旧数据
 3. 批量插入新数据
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,9 +50,7 @@ async def sync_trending_source(source_name: str, db: AsyncSession) -> Dict[str, 
             return {"fetched": 0}
 
         # 删除该 source 的旧数据
-        await db.execute(
-            delete(TrendingItem).where(TrendingItem.source == source_name)
-        )
+        await db.execute(delete(TrendingItem).where(TrendingItem.source == source_name))
 
         # 批量插入
         for entry in entries:

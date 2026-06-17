@@ -1,6 +1,7 @@
 """
 七猫小说模型。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,6 +15,7 @@ from app.core.database import Base
 
 class QimaoBook(Base):
     """七猫小说榜单图书。"""
+
     __tablename__ = "qimao_books"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -24,24 +26,24 @@ class QimaoBook(Base):
     category1_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     category2_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     thumb_uri: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    words_num: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)   # "859.29万字"
+    words_num: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # "859.29万字"
     collect_count: Mapped[Optional[float]] = mapped_column(Integer, nullable=True)  # 收藏数
     latest_chapter_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     latest_chapter_title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     update_time: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)        # 1=连载
-    is_over: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)        # 0=未完结
-    is_new: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)          # 0/1
-    is_continue_top: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # 霸榜
-    index_change: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # 排名变化
-    surge_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)      # 飙升排名
-    bonus: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)         # 奖励
+    status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1=连载
+    is_over: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0=未完结
+    is_new: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0/1
+    is_continue_top: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 霸榜
+    index_change: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 排名变化
+    surge_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 飙升排名
+    bonus: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 奖励
 
     # 榜单维度
     channel: Mapped[Literal["boy", "girl"]] = mapped_column(String(10), nullable=False)  # 男/女
     rank_type: Mapped[Literal["hot", "new", "over", "collect", "update"]] = mapped_column(String(20), nullable=False)
-    date_type: Mapped[str] = mapped_column(String(10), nullable=False)            # ""/"day"/"month"
-    position: Mapped[int] = mapped_column(Integer, nullable=False)              # 榜单内排名
+    date_type: Mapped[str] = mapped_column(String(10), nullable=False)  # ""/"day"/"month"
+    position: Mapped[int] = mapped_column(Integer, nullable=False)  # 榜单内排名
 
     crawled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False)
 

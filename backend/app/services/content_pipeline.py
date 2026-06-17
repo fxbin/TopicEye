@@ -99,7 +99,8 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         if scraper_cls is None:
             logger.warning(
                 "No scraper registered for source_type '%s' (source %d)",
-                source_type_str, source.id,
+                source_type_str,
+                source.id,
             )
             _update_source_error(source, f"No scraper registered for source_type '{source_type_str}'")
             await db.flush()
@@ -109,6 +110,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         source_config = {}
         if source.keyword:
             import json
+
             try:
                 source_config = json.loads(source.keyword)
             except (json.JSONDecodeError, TypeError):
@@ -145,7 +147,9 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         if not entries:
             logger.info(
                 "Source %s (%d): no entries fetched in %dms",
-                source.name, source.id, fetch_elapsed_ms,
+                source.name,
+                source.id,
+                fetch_elapsed_ms,
             )
             _update_source_status(source, SourceStatus.ACTIVE)
             await db.flush()
@@ -245,14 +249,8 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             # Exclude autoincrement PK from explicit values: PG rejects
             # NULL on a SERIAL PK (NotNullViolationError) while SQLite silently
             # generates a rowid. Excluding makes both backends auto-generate.
-            column_names = [
-                c.name for c in ContentItem.__table__.columns
-                if not (c.primary_key and c.autoincrement)
-            ]
-            new_records = [
-                {col: getattr(item, col) for col in column_names}
-                for item in new_items
-            ]
+            column_names = [c.name for c in ContentItem.__table__.columns if not (c.primary_key and c.autoincrement)]
+            new_records = [{col: getattr(item, col) for col in column_names} for item in new_items]
             insert_stmt = _backend_insert(ContentItem).values(new_records)
             insert_stmt = insert_stmt.on_conflict_do_nothing(
                 index_elements=["source_id", "content_hash"],
@@ -284,8 +282,14 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
 
         logger.info(
             "Source %s (%d): fetched=%d, new=%d, dupes=%d, fetch=%dms, classify=%dms, db=%dms, total=%dms",
-            source.name, source.id, fetched_count, new_count, duplicate_count,
-            fetch_elapsed_ms, classify_elapsed_ms, db_elapsed_ms,
+            source.name,
+            source.id,
+            fetched_count,
+            new_count,
+            duplicate_count,
+            fetch_elapsed_ms,
+            classify_elapsed_ms,
+            db_elapsed_ms,
             int((time.perf_counter() - started_at) * 1000),
         )
 
@@ -554,6 +558,4 @@ def _backend_insert(model):
         return sqlite_insert(model)
     if database_profile.is_postgresql:
         return postgresql_insert(model)
-    raise RuntimeError(
-        f"Unsupported database backend for on_conflict upsert: {database_profile.backend}"
-    )
+    raise RuntimeError(f"Unsupported database backend for on_conflict upsert: {database_profile.backend}")

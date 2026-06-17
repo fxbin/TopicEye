@@ -34,12 +34,14 @@ class WebsiteScraper(BaseScraper):
         title_tag = soup.find("title")
         title = title_tag.get_text(strip=True) if title_tag else ""
 
-        return [{
-            "title": title,
-            "url": self.url,
-            "author": None,
-            "summary": main_text[:500] if main_text else "",
-            "raw_content": main_text,
-            "cover_url": cover_url,
-            "published_at": datetime.now(timezone.utc),
-        }]
+        return [
+            {
+                "title": title,
+                "url": self.url,
+                "author": None,
+                "summary": main_text[:500] if main_text else "",
+                "raw_content": main_text,
+                "cover_url": cover_url,
+                "published_at": datetime.now(timezone.utc),
+            }
+        ]

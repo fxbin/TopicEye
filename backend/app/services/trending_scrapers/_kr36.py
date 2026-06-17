@@ -1,4 +1,5 @@
 """36氪人气榜 — https://36kr.com/hot-list/catalog"""
+
 from __future__ import annotations
 
 import logging
@@ -50,19 +51,21 @@ class Kr36Trending(BaseTrendingScraper):
             except (ValueError, TypeError):
                 hot_val = 0
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": f"https://36kr.com/p/{item.get('id', '')}",
-                "hot_value": hot_val,
-                "hot_value_raw": str(pv),
-                "trend": "stable",
-                "cover_url": item.get("widgetContent", {}).get("cover", ""),
-                "extra": {
-                    "summary": item.get("widgetContent", {}).get("summary", ""),
-                    "author": item.get("widgetContent", {}).get("author", {}).get("name", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": f"https://36kr.com/p/{item.get('id', '')}",
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(pv),
+                    "trend": "stable",
+                    "cover_url": item.get("widgetContent", {}).get("cover", ""),
+                    "extra": {
+                        "summary": item.get("widgetContent", {}).get("summary", ""),
+                        "author": item.get("widgetContent", {}).get("author", {}).get("name", ""),
+                    },
+                }
+            )
 
         logger.info("36kr trending: fetched %d items", len(results))
         return results

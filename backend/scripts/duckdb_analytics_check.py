@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Verify DuckDB analytics layer works correctly."""
+
 import sys
-sys.path.insert(0, '.')
+
+sys.path.insert(0, ".")
 
 from app.services.duckdb_service import (
-    DuckDBAnalytics, get_analytics, query_today_picks, query_topics,
-    query_trend_topics, query_keyword_cloud, query_content_for_report,
+    DuckDBAnalytics,
+    get_analytics,
+    query_today_picks,
+    query_topics,
+    query_trend_topics,
+    query_keyword_cloud,
+    query_content_for_report,
 )
 
 print("All imports OK")

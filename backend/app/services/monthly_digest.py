@@ -1,6 +1,7 @@
 """
 Monthly Digest service — generate AI-powered monthly curated newsletter.
 """
+
 from __future__ import annotations
 
 import json
@@ -187,6 +188,7 @@ async def generate_monthly_digest(
         logger.info("Monthly digest generated: %s (%s)", month_key, month_label)
         try:
             from app.services.notification_service import push_notification
+
             await push_notification("success", "monthly_digest", "AI月刊生成完成", f"{month_label} 已生成")
         except Exception:
             pass
@@ -197,6 +199,7 @@ async def generate_monthly_digest(
         logger.error("Monthly digest generation failed for %s: %s", month_key, exc)
         try:
             from app.services.notification_service import push_notification
+
             await push_notification("error", "monthly_digest", "AI月刊生成失败", str(exc)[:200])
         except Exception:
             pass

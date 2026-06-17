@@ -33,6 +33,7 @@ from app.services.daily_report import (
 def _restore_daily_report_module_state():
     """Snapshot & restore module-level symbols monkeypatched by the tests below."""
     import app.services.daily_report as svc
+
     saved = (
         svc._local_now,
         svc._fetch_report_inputs,
@@ -62,9 +63,7 @@ async def _make_user(db: AsyncSession, *, id: int, plan: str = "pro") -> User:
     return user
 
 
-async def _make_private_source(
-    db: AsyncSession, *, id: int, owner_user_id: int
-) -> Source:
+async def _make_private_source(db: AsyncSession, *, id: int, owner_user_id: int) -> Source:
     src = Source(
         id=id,
         owner_user_id=owner_user_id,
@@ -135,6 +134,7 @@ async def test_fetch_report_inputs_passes_visible_user_id_to_repo():
     try:
         from app.services import daily_report as dr
         from app.services.daily_report import _fetch_report_inputs
+
         result = await _fetch_report_inputs(
             __import__("app.core.database", fromlist=["async_session"]).async_session().__class__,
             window_start=datetime(2026, 5, 27, 0, 0, 0),
@@ -160,10 +160,19 @@ async def test_claim_generation_isolates_per_owner():
     async def fake_inputs(db, *, window_start, window_end, visible_user_id=None):
         # Generate a tiny but real curated/background set so report reaches DONE
         item = {
-            "id": 1, "title": "T", "url": "u", "category": "c",
-            "source_name": "s", "creator_score": 0.5, "viral_score": 0.5,
-            "quality_score": 0.5, "risk_score": 0.1, "curation_score": 0.5,
-            "adjusted_score": 0.5, "summary": "x", "recommendation": "",
+            "id": 1,
+            "title": "T",
+            "url": "u",
+            "category": "c",
+            "source_name": "s",
+            "creator_score": 0.5,
+            "viral_score": 0.5,
+            "quality_score": 0.5,
+            "risk_score": 0.1,
+            "curation_score": 0.5,
+            "adjusted_score": 0.5,
+            "summary": "x",
+            "recommendation": "",
         }
         return [item], [item]
 
@@ -172,23 +181,31 @@ async def test_claim_generation_isolates_per_owner():
     try:
         async with sf() as session:
             await generate_daily_report(
-                session, target_date=date(2026, 5, 27), edition="noon", owner_user_id=10,
+                session,
+                target_date=date(2026, 5, 27),
+                edition="noon",
+                owner_user_id=10,
             )
             await generate_daily_report(
-                session, target_date=date(2026, 5, 27), edition="noon", owner_user_id=11,
+                session,
+                target_date=date(2026, 5, 27),
+                edition="noon",
+                owner_user_id=11,
             )
 
         async with sf() as session:
-            rows = (await session.execute(
-                select(DailyReport).where(DailyReport.report_date == "2026-05-27")
-            )).scalars().all()
+            rows = (
+                (await session.execute(select(DailyReport).where(DailyReport.report_date == "2026-05-27")))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 2
         owner_ids = {r.owner_user_id for r in rows}
         assert owner_ids == {10, 11}
     finally:
-        daily_report_svc._fetch_report_inputs = (
-            __import__("app.services.daily_report", fromlist=["_fetch_report_inputs"])._fetch_report_inputs
-        )
+        daily_report_svc._fetch_report_inputs = __import__(
+            "app.services.daily_report", fromlist=["_fetch_report_inputs"]
+        )._fetch_report_inputs
     await engine.dispose()
 
 
@@ -202,25 +219,47 @@ async def test_get_latest_today_report_filters_by_owner():
     iso = today.isoformat()
     async with sf() as db:
         # Public report (owner=None)
-        db.add(DailyReport(
-            report_date=iso, weekday="X", edition="snapshot", generated_at=datetime.now(timezone.utc),
-            window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc),
-            cutoff_at=datetime.now(timezone.utc), status="DONE", topic_count=1, content_count=1,
-            analyzed_count=1, owner_user_id=None,
-        ))
+        db.add(
+            DailyReport(
+                report_date=iso,
+                weekday="X",
+                edition="snapshot",
+                generated_at=datetime.now(timezone.utc),
+                window_start=datetime.now(timezone.utc),
+                window_end=datetime.now(timezone.utc),
+                cutoff_at=datetime.now(timezone.utc),
+                status="DONE",
+                topic_count=1,
+                content_count=1,
+                analyzed_count=1,
+                owner_user_id=None,
+            )
+        )
         # User A's report
-        db.add(DailyReport(
-            report_date=iso, weekday="X", edition="snapshot", generated_at=datetime.now(timezone.utc),
-            window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc),
-            cutoff_at=datetime.now(timezone.utc), status="DONE", topic_count=1, content_count=1,
-            analyzed_count=1, owner_user_id=10,
-        ))
+        db.add(
+            DailyReport(
+                report_date=iso,
+                weekday="X",
+                edition="snapshot",
+                generated_at=datetime.now(timezone.utc),
+                window_start=datetime.now(timezone.utc),
+                window_end=datetime.now(timezone.utc),
+                cutoff_at=datetime.now(timezone.utc),
+                status="DONE",
+                topic_count=1,
+                content_count=1,
+                analyzed_count=1,
+                owner_user_id=10,
+            )
+        )
         await db.commit()
 
     # Stub generate_daily_report so fallback does not insert a new row for owner=11
     orig_gen = daily_report_svc.generate_daily_report
+
     async def fake_gen(*args, **kwargs):
         return None  # treat "no report" as "no report"
+
     daily_report_svc.generate_daily_report = fake_gen
     try:
         async with sf() as session:
@@ -261,9 +300,9 @@ async def test_me_today_requires_pro_plan(tmp_path, monkeypatch):
         await _make_user(db, id=10, plan="free")
 
     app = _build_test_app()
-    user = User(id=10, email="a@x", password_hash="x", plan="free", role="user",
-                is_active=True, display_name="A")
+    user = User(id=10, email="a@x", password_hash="x", plan="free", role="user", is_active=True, display_name="A")
     from app.api.v1.auth import get_current_user
+
     app.dependency_overrides[get_current_user] = lambda: user
 
     async def override_db():
@@ -274,7 +313,9 @@ async def test_me_today_requires_pro_plan(tmp_path, monkeypatch):
             except Exception:
                 await s.rollback()
                 raise
+
     from app.core.database import get_db
+
     app.dependency_overrides[get_db] = override_db
     daily_reports_svc_mod = daily_report_svc  # alias for type checker
 
@@ -297,10 +338,10 @@ async def test_me_today_generates_user_owned_report(tmp_path):
         await _make_user(db, id=10, plan="pro")
 
     app = _build_test_app()
-    user = User(id=10, email="a@x", password_hash="x", plan="pro", role="user",
-                is_active=True, display_name="A")
+    user = User(id=10, email="a@x", password_hash="x", plan="pro", role="user", is_active=True, display_name="A")
     from app.api.v1.auth import get_current_user
     from app.core.database import get_db
+
     app.dependency_overrides[get_current_user] = lambda: user
 
     async def override_db():
@@ -311,11 +352,13 @@ async def test_me_today_generates_user_owned_report(tmp_path):
             except Exception:
                 await s.rollback()
                 raise
+
     app.dependency_overrides[get_db] = override_db
 
     # Stub _fetch_report_inputs to avoid LLM
     async def fake_inputs(db, *, window_start, window_end, visible_user_id=None):
         return [], []
+
     orig_local_now2 = daily_report_svc._local_now
     daily_report_svc._fetch_report_inputs = fake_inputs
     daily_report_svc._local_now = lambda: datetime.now(timezone.utc)
@@ -328,9 +371,9 @@ async def test_me_today_generates_user_owned_report(tmp_path):
         data = resp.json()
         assert data["owner_user_id"] == 10
     finally:
-        daily_report_svc._fetch_report_inputs = (
-            __import__("app.services.daily_report", fromlist=["_fetch_report_inputs"])._fetch_report_inputs
-        )
+        daily_report_svc._fetch_report_inputs = __import__(
+            "app.services.daily_report", fromlist=["_fetch_report_inputs"]
+        )._fetch_report_inputs
         daily_report_svc._local_now = orig_local_now2
     await engine.dispose()
 
@@ -348,31 +391,61 @@ async def test_me_dates_lists_only_user_owned(tmp_path):
     async with sf() as db:
         await _make_user(db, id=10, plan="pro")
         await _make_user(db, id=11, plan="pro")
-        db.add(DailyReport(
-            report_date=iso, weekday="X", edition="snapshot", generated_at=datetime.now(timezone.utc),
-            window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc),
-            cutoff_at=datetime.now(timezone.utc), status="DONE", topic_count=1, content_count=1,
-            analyzed_count=1, owner_user_id=10,
-        ))
-        db.add(DailyReport(
-            report_date=iso, weekday="X", edition="snapshot", generated_at=datetime.now(timezone.utc),
-            window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc),
-            cutoff_at=datetime.now(timezone.utc), status="DONE", topic_count=1, content_count=1,
-            analyzed_count=1, owner_user_id=11,
-        ))
-        db.add(DailyReport(
-            report_date=iso, weekday="X", edition="snapshot", generated_at=datetime.now(timezone.utc),
-            window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc),
-            cutoff_at=datetime.now(timezone.utc), status="DONE", topic_count=1, content_count=1,
-            analyzed_count=1, owner_user_id=None,  # public
-        ))
+        db.add(
+            DailyReport(
+                report_date=iso,
+                weekday="X",
+                edition="snapshot",
+                generated_at=datetime.now(timezone.utc),
+                window_start=datetime.now(timezone.utc),
+                window_end=datetime.now(timezone.utc),
+                cutoff_at=datetime.now(timezone.utc),
+                status="DONE",
+                topic_count=1,
+                content_count=1,
+                analyzed_count=1,
+                owner_user_id=10,
+            )
+        )
+        db.add(
+            DailyReport(
+                report_date=iso,
+                weekday="X",
+                edition="snapshot",
+                generated_at=datetime.now(timezone.utc),
+                window_start=datetime.now(timezone.utc),
+                window_end=datetime.now(timezone.utc),
+                cutoff_at=datetime.now(timezone.utc),
+                status="DONE",
+                topic_count=1,
+                content_count=1,
+                analyzed_count=1,
+                owner_user_id=11,
+            )
+        )
+        db.add(
+            DailyReport(
+                report_date=iso,
+                weekday="X",
+                edition="snapshot",
+                generated_at=datetime.now(timezone.utc),
+                window_start=datetime.now(timezone.utc),
+                window_end=datetime.now(timezone.utc),
+                cutoff_at=datetime.now(timezone.utc),
+                status="DONE",
+                topic_count=1,
+                content_count=1,
+                analyzed_count=1,
+                owner_user_id=None,  # public
+            )
+        )
         await db.commit()
 
     app = _build_test_app()
-    user_a = User(id=10, email="a@x", password_hash="x", plan="pro", role="user",
-                  is_active=True, display_name="A")
+    user_a = User(id=10, email="a@x", password_hash="x", plan="pro", role="user", is_active=True, display_name="A")
     from app.api.v1.auth import get_current_user
     from app.core.database import get_db
+
     app.dependency_overrides[get_current_user] = lambda: user_a
 
     async def override_db():
@@ -383,6 +456,7 @@ async def test_me_dates_lists_only_user_owned(tmp_path):
             except Exception:
                 await s.rollback()
                 raise
+
     app.dependency_overrides[get_db] = override_db
 
     transport = ASGITransport(app=app)

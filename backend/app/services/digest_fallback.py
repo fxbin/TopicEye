@@ -56,17 +56,18 @@ def build_digest_fallback(
         else:
             reason_parts.append("可作为后续人工筛选和创作判断的基础素材")
 
-        top_picks.append({
-            "title": title,
-            "reason": "；".join(reason_parts),
-            "score": round(_score(item), 1),
-            "platforms": ["公众号", "小红书", "短视频"],
-            "source_url": _text(item.get("url")),
-        })
+        top_picks.append(
+            {
+                "title": title,
+                "reason": "；".join(reason_parts),
+                "score": round(_score(item), 1),
+                "platforms": ["公众号", "小红书", "短视频"],
+                "source_url": _text(item.get("url")),
+            }
+        )
 
     category_summary = {
-        category: f"{label}内该方向素材较集中，适合继续观察选题密度和创作转化空间。"
-        for category in categories
+        category: f"{label}内该方向素材较集中，适合继续观察选题密度和创作转化空间。" for category in categories
     }
 
     return {

@@ -13,6 +13,7 @@ Unified HTTP client builder for scrapers.
 Scraper 侧不变：仍写 ``async with httpx.AsyncClient(**kwargs) as client: client.get(self.url)``。
 ``client.headers`` 会被应用到所有 ``client.get()`` 调用。
 """
+
 from __future__ import annotations
 
 import os
@@ -56,10 +57,7 @@ def build_scraper_client_kwargs(
         "trust_env": False,
         "headers": {
             "User-Agent": _DEFAULT_USER_AGENT,
-            "Accept": (
-                "application/rss+xml, application/atom+xml, "
-                "application/xml;q=0.9, */*;q=0.8"
-            ),
+            "Accept": ("application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8"),
             "Accept-Encoding": "gzip, deflate",
         },
     }

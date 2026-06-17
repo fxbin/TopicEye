@@ -5,6 +5,7 @@
 2. ensure_aware_utc 工具函数对 naive/aware/None 的处理
 3. SQLite 端写入 aware datetime 不报错 (即使底层丢 tzinfo)
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -49,6 +50,7 @@ def test_ensure_aware_utc_naive_assumed_utc():
 def test_ensure_aware_utc_already_aware():
     """已经是 aware 的转 UTC (其他时区会转换)."""
     from datetime import timedelta
+
     # +08:00 时区, 12:00 → UTC 04:00
     cst = timezone(timedelta(hours=8))
     aware_cst = datetime(2024, 1, 1, 12, 0, 0, tzinfo=cst)

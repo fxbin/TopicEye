@@ -56,10 +56,12 @@ class CrossPlatformCacheParams:
 
     @property
     def key(self) -> str:
-        return TRENDING_CROSS_PLATFORM_CACHE_PREFIX + urlencode({
-            "min_resonance": self.min_resonance,
-            "limit": self.limit,
-        })
+        return TRENDING_CROSS_PLATFORM_CACHE_PREFIX + urlencode(
+            {
+                "min_resonance": self.min_resonance,
+                "limit": self.limit,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -70,11 +72,13 @@ class PersistentTopicsCacheParams:
 
     @property
     def key(self) -> str:
-        return TRENDING_PERSISTENT_CACHE_PREFIX + urlencode({
-            "min_days": self.min_days,
-            "min_sources": self.min_sources,
-            "days_back": self.days_back,
-        })
+        return TRENDING_PERSISTENT_CACHE_PREFIX + urlencode(
+            {
+                "min_days": self.min_days,
+                "min_sources": self.min_sources,
+                "days_back": self.days_back,
+            }
+        )
 
 
 def get_cached_cross_platform(params: CrossPlatformCacheParams, *, ttl_seconds: float):

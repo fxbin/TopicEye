@@ -32,7 +32,9 @@ class FavoriteItem(Base):
     __tablename__ = "favorite_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     target_type: Mapped[str] = mapped_column(value_enum(FavoriteTargetType), nullable=False)
     target_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_key: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -46,8 +48,15 @@ class FavoriteItem(Base):
     status: Mapped[str] = mapped_column(value_enum(FavoriteStatus), nullable=False, default=FavoriteStatus.INBOX)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     user: Mapped[User] = relationship()
 

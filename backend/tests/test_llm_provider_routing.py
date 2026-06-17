@@ -33,7 +33,9 @@ async def test_call_llm_fails_over_across_ordered_model_chain(monkeypatch):
     async def route_models(group="default", user_id=None):
         return models
 
-    async def fake_call(messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene):
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
         calls.append(model)
         if model == "openai/first":
             raise RuntimeError("first failed")
@@ -57,7 +59,9 @@ async def test_call_llm_skips_cooling_down_candidate(monkeypatch):
     async def route_models(group="default", user_id=None):
         return models
 
-    async def fake_call(messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene):
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
         calls.append(model)
         return f"ok from {model}"
 
@@ -79,7 +83,9 @@ async def test_call_llm_with_metadata_returns_selected_model(monkeypatch):
     async def route_models(group="default", user_id=None):
         return models
 
-    async def fake_call(messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene):
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
         return "{}"
 
     monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
@@ -107,7 +113,9 @@ async def test_call_llm_uses_requested_routing_group(monkeypatch):
         observed["user_id"] = user_id
         return models
 
-    async def fake_call(messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene):
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
         return f"ok from {model}"
 
     monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
@@ -147,7 +155,9 @@ async def test_call_llm_passes_user_id_to_route_model_cache(monkeypatch):
         observed["user_id"] = user_id
         return models
 
-    async def fake_call(messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene):
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
         return f"ok from {model}"
 
     monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
@@ -193,20 +203,22 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
     monkeypatch.setattr(provider, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
-        await asyncio.gather(*[
-            provider._call_llm_single(
-                [{"role": "user", "content": f"hello {index}"}],
-                "openai/test",
-                "test-key",
-                "https://example.test/v1",
-                0.2,
-                100,
-                None,
-                None,
-                "test",
-            )
-            for index in range(5)
-        ])
+        await asyncio.gather(
+            *[
+                provider._call_llm_single(
+                    [{"role": "user", "content": f"hello {index}"}],
+                    "openai/test",
+                    "test-key",
+                    "https://example.test/v1",
+                    0.2,
+                    100,
+                    None,
+                    None,
+                    "test",
+                )
+                for index in range(5)
+            ]
+        )
 
         assert max_active == 2
     finally:
@@ -255,20 +267,22 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
     monkeypatch.setattr(provider, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
-        await asyncio.gather(*[
-            provider._call_llm_single(
-                [{"role": "user", "content": f"hello {index}"}],
-                "openai/limited",
-                "test-key",
-                "https://example.test/v1",
-                0.2,
-                100,
-                None,
-                model_config,
-                "test",
-            )
-            for index in range(3)
-        ])
+        await asyncio.gather(
+            *[
+                provider._call_llm_single(
+                    [{"role": "user", "content": f"hello {index}"}],
+                    "openai/limited",
+                    "test-key",
+                    "https://example.test/v1",
+                    0.2,
+                    100,
+                    None,
+                    model_config,
+                    "test",
+                )
+                for index in range(3)
+            ]
+        )
 
         assert max_active == 1
     finally:

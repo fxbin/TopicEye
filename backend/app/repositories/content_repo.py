@@ -73,18 +73,13 @@ class ContentRepo(BaseRepository[ContentItem]):
 
     async def get_by_url(self, url: str) -> Optional[ContentItem]:
         """Find a content item by its URL."""
-        result = await self.db.execute(
-            select(self.model).where(self.model.url == url)
-        )
+        result = await self.db.execute(select(self.model).where(self.model.url == url))
         return result.scalar_one_or_none()
-
 
     async def get_with_analyses(self, id: int) -> Optional[ContentItem]:
         """Fetch a content item eagerly loaded with its AI analyses."""
         result = await self.db.execute(
-            select(self.model)
-            .options(selectinload(self.model.analyses))
-            .where(self.model.id == id)
+            select(self.model).options(selectinload(self.model.analyses)).where(self.model.id == id)
         )
         return result.scalar_one_or_none()
 
@@ -119,14 +114,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             select(self.model)
             .where(
                 (self.model.status == ContentStatus.PENDING)
-                | (
-                    (self.model.status == ContentStatus.ANALYZING)
-                    & (self.model.updated_at <= stale_cutoff)
-                )
-                | (
-                    (self.model.status == ContentStatus.ERROR)
-                    & (self.model.updated_at <= stale_cutoff)
-                )
+                | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
+                | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
             )
             .order_by(self.model.crawled_at.desc(), self.model.created_at.desc())
             .limit(limit)
@@ -143,6 +132,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         hours: Optional[int] = None,
     ) -> list[int]:
         """Claim pending or stale analysis candidates and return claimed IDs in queue order."""
+
         async def _claim() -> list[int]:
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
@@ -153,14 +143,8 @@ class ContentRepo(BaseRepository[ContentItem]):
                 select(self.model.id)
                 .where(
                     (self.model.status == ContentStatus.PENDING)
-                    | (
-                        (self.model.status == ContentStatus.ANALYZING)
-                        & (self.model.updated_at <= stale_cutoff)
-                    )
-                    | (
-                        (self.model.status == ContentStatus.ERROR)
-                        & (self.model.updated_at <= stale_cutoff)
-                    )
+                    | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
+                    | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
                 )
                 .order_by(self.model.crawled_at.desc(), self.model.created_at.desc())
                 .limit(limit)
@@ -180,14 +164,8 @@ class ContentRepo(BaseRepository[ContentItem]):
                 .where(self.model.id.in_(pending_ids))
                 .where(
                     (self.model.status == ContentStatus.PENDING)
-                    | (
-                        (self.model.status == ContentStatus.ANALYZING)
-                        & (self.model.updated_at <= stale_cutoff)
-                    )
-                    | (
-                        (self.model.status == ContentStatus.ERROR)
-                        & (self.model.updated_at <= stale_cutoff)
-                    )
+                    | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
+                    | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
                 )
                 .values(status=ContentStatus.ANALYZING, updated_at=claimed_at)
             )
@@ -302,10 +280,7 @@ class ContentRepo(BaseRepository[ContentItem]):
 
     async def count_by_status(self) -> dict[ContentStatus, int]:
         """Return a breakdown of item counts per status."""
-        stmt = (
-            select(self.model.status, func.count())
-            .group_by(self.model.status)
-        )
+        stmt = select(self.model.status, func.count()).group_by(self.model.status)
         result = await self.db.execute(stmt)
         return {status: count for status, count in result.all()}
 
@@ -322,6 +297,7 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def delete_old_pending(self, cutoff_days: int = 90) -> int:
         """删除超过指定天数的 pending 状态内容。返回删除数量。"""
         from sqlalchemy import delete as sa_delete
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
         stmt = (
             sa_delete(self.model)
@@ -357,14 +333,18 @@ class ContentRepo(BaseRepository[ContentItem]):
         stmt = select(self.model).options(selectinload(self.model.analyses))
         count_stmt = select(func.count()).select_from(self.model)
         if visible_user_id is not None:
-            stmt = stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
-            count_stmt = count_stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
+            count_stmt = count_stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
 
         if filters:
             for field, value in filters.items():
@@ -408,9 +388,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         total = total_result.scalar() or 0
 
         sort_col = getattr(self.model, sort_by, self.model.created_at)
-        stmt = stmt.order_by(
-            sort_col.desc() if sort_order == "desc" else sort_col.asc()
-        )
+        stmt = stmt.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
         offset = (page - 1) * page_size
         stmt = stmt.offset(offset).limit(page_size)
@@ -439,17 +417,21 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(self.model.id == id)
         )
         if visible_user_id is not None:
-            stmt = stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     # ── Favorites listing ─────────────────────────────────────────
 
     async def list_favorites(
-        self, page: int = 1, page_size: int = 20,
+        self,
+        page: int = 1,
+        page_size: int = 20,
     ) -> tuple[Sequence[ContentItem], int]:
         """Paginated listing of favorited items with analyses."""
         return await self.list_paginated_with_analyses(
@@ -494,10 +476,12 @@ class ContentRepo(BaseRepository[ContentItem]):
         if category:
             stmt = stmt.where(self.model.category == category)
         if visible_user_id is not None:
-            stmt = stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
         result = await self.db.execute(stmt)
         return result.scalars().unique().all()
 
@@ -533,10 +517,12 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(AiAnalysis.curation_score.isnot(None))
         )
         if visible_user_id is not None:
-            stmt = stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
         if category:
             stmt = stmt.where(self.model.category == category)
         result = await self.db.execute(stmt)
@@ -566,9 +552,11 @@ class ContentRepo(BaseRepository[ContentItem]):
         latest_analysis_id = self._latest_analysis_id_subquery(AiAnalysis)
 
         # Count query — all analyzed matching filters
-        count_stmt = select(func.count(self.model.id)).join(
-            AiAnalysis, AiAnalysis.id == latest_analysis_id
-        ).where(self.model.status == ContentStatus.ANALYZED)
+        count_stmt = (
+            select(func.count(self.model.id))
+            .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
+            .where(self.model.status == ContentStatus.ANALYZED)
+        )
 
         # Data query — eager-load analyses + source
         data_stmt = (
@@ -604,14 +592,18 @@ class ContentRepo(BaseRepository[ContentItem]):
             count_stmt = count_stmt.where(self.model.crawled_at >= time_cutoff)
             data_stmt = data_stmt.where(self.model.crawled_at >= time_cutoff)
         if visible_user_id is not None:
-            count_stmt = count_stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
-            data_stmt = data_stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            count_stmt = count_stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
+            data_stmt = data_stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
 
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
@@ -722,10 +714,12 @@ class ContentRepo(BaseRepository[ContentItem]):
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
         if visible_user_id is not None:
-            stmt = stmt.where(or_(
-                self.model.owner_user_id.is_(None),
-                self.model.owner_user_id == visible_user_id,
-            ))
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
 
         stmt = stmt.order_by(self.model.crawled_at.desc()).limit(limit)
         result = await self.db.execute(stmt)

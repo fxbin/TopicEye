@@ -2,6 +2,7 @@
 番茄小说榜单 API。
 提供分类列表、四大榜单、各分类书单。
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +27,7 @@ def _book_url(book_id: str) -> str:
 
 
 # ── Pydantic 模型 ──────────────────────────────────────────────
+
 
 class BookItem(BaseModel):
     book_id: str
@@ -66,6 +68,7 @@ class RankingItem(BaseModel):
 
 # ── API 端点 ───────────────────────────────────────────────────
 
+
 @router.get("/categories")
 async def list_categories(
     db: AsyncSession = Depends(get_db),
@@ -79,10 +82,7 @@ async def list_categories(
         )
     )
     cats = result.scalars().all()
-    return [
-        {"fanqie_id": c.fanqie_id, "name": c.name, "group": c.group}
-        for c in cats
-    ]
+    return [{"fanqie_id": c.fanqie_id, "name": c.name, "group": c.group} for c in cats]
 
 
 @router.get("/rankings")
@@ -106,10 +106,7 @@ async def list_rankings(
     out = {}
     for rt in types:
         result = await db.execute(
-            select(FanqieBook)
-            .where(FanqieBook.rank_type == rt)
-            .order_by(FanqieBook.current_pos)
-            .limit(100)
+            select(FanqieBook).where(FanqieBook.rank_type == rt).order_by(FanqieBook.current_pos).limit(100)
         )
         books = result.scalars().all()
         out[rt] = {
@@ -149,9 +146,7 @@ async def category_books(
     通过 pos 字段过滤（同一本书可能在多个榜单上有排名）。
     """
     # 先查分类信息确定 gender
-    cat_result = await db.execute(
-        select(FanqieCategory).where(FanqieCategory.fanqie_id == fanqie_id)
-    )
+    cat_result = await db.execute(select(FanqieCategory).where(FanqieCategory.fanqie_id == fanqie_id))
     cat = cat_result.scalar_one_or_none()
     gender = cat.group if cat else "male"
 
@@ -162,10 +157,15 @@ async def category_books(
         pos_field = "male_new_pos" if gender == "male" else "female_new_pos"
 
     # 查询：只返回在该榜单有排名的书
-    query = select(FanqieBook).where(
-        FanqieBook.category_id == fanqie_id,
-        getattr(FanqieBook, pos_field) != None,  # type: ignore
-    ).order_by(getattr(FanqieBook, pos_field)).limit(limit)
+    query = (
+        select(FanqieBook)
+        .where(
+            FanqieBook.category_id == fanqie_id,
+            getattr(FanqieBook, pos_field) != None,  # type: ignore
+        )
+        .order_by(getattr(FanqieBook, pos_field))
+        .limit(limit)
+    )
 
     result = await db.execute(query)
     books = result.scalars().all()

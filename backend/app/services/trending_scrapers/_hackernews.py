@@ -1,4 +1,5 @@
 """Hacker News Top — https://hacker-news.firebaseio.com/"""
+
 from __future__ import annotations
 
 import logging
@@ -45,19 +46,21 @@ class HackerNewsTrending(BaseTrendingScraper):
             score = item.get("score", 0)
             url = item.get("url", f"https://news.ycombinator.com/item?id={item_id}")
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": url,
-                "hot_value": score,
-                "hot_value_raw": str(score),
-                "trend": "up" if score > 100 else "stable",
-                "extra": {
-                    "by": item.get("by", ""),
-                    "descendants": item.get("descendants", 0),
-                    "hn_link": f"https://news.ycombinator.com/item?id={item_id}",
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": url,
+                    "hot_value": score,
+                    "hot_value_raw": str(score),
+                    "trend": "up" if score > 100 else "stable",
+                    "extra": {
+                        "by": item.get("by", ""),
+                        "descendants": item.get("descendants", 0),
+                        "hn_link": f"https://news.ycombinator.com/item?id={item_id}",
+                    },
+                }
+            )
 
         logger.info("hackernews trending: fetched %d items", len(results))
         return results

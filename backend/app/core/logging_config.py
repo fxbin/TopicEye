@@ -7,6 +7,7 @@
 
 所有 LogRecord 都会自动带 request_id（来自 RequestIdFilter in main.py）。
 """
+
 from __future__ import annotations
 
 import json
@@ -21,10 +22,28 @@ class JsonFormatter(logging.Formatter):
 
     # Standard LogRecord attributes to exclude from the JSON payload
     _RESERVED = {
-        "args", "asctime", "created", "exc_info", "exc_text", "filename",
-        "funcName", "levelname", "levelno", "lineno", "message", "module",
-        "msecs", "msg", "name", "pathname", "process", "processName",
-        "relativeCreated", "stack_info", "thread", "threadName",
+        "args",
+        "asctime",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "message",
+        "module",
+        "msecs",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "thread",
+        "threadName",
     }
 
     def format(self, record: logging.LogRecord) -> str:

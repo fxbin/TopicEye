@@ -17,6 +17,7 @@ Usage:
     analytics = DuckDBAnalytics()
     picks = analytics.query_today_picks(hours=48)
 """
+
 from __future__ import annotations
 
 import json
@@ -94,6 +95,7 @@ ignored_content AS (
 """
 
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
+
 
 class DuckDBAnalytics:
     """
@@ -229,7 +231,8 @@ class DuckDBAnalytics:
             params.append(category)
         _ = limit
 
-        results = conn.execute(f"""
+        results = conn.execute(
+            f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
             {IGNORED_CONTENT_CTE}
@@ -269,44 +272,81 @@ class DuckDBAnalytics:
               AND a.curation_score IS NOT NULL
               {category_clause}
             ORDER BY adjusted_curation_score DESC
-        """, params).fetchall()
+        """,
+            params,
+        ).fetchall()
 
         columns = [
-            'id', 'title', 'url', 'source_id', 'source_name', 'source_type',
-            'platform', 'author', 'published_at', 'crawled_at',
-            'content_hash', 'summary', 'raw_content', 'cover_url',
-            'category', 'tags', 'language', 'status', 'is_favorited',
-            'topic_id', 'duplicate_of', 'similarity_score',
-            'created_at', 'updated_at',
-            'analysis_id', 'analysis_created_at',
-            'quality_score', 'hot_score', 'freshness_score',
-            'creator_score', 'viral_score', 'risk_score',
-            'curation_score', 'info_density', 'actionability',
-            'recommended_reason', 'recommendation',
-            'ai_summary', 'ai_tags',
-            'enrichment_status', 'enrichment', 'source_weight_db',
-            'feedback_score',
-            'adjusted_curation_score',
+            "id",
+            "title",
+            "url",
+            "source_id",
+            "source_name",
+            "source_type",
+            "platform",
+            "author",
+            "published_at",
+            "crawled_at",
+            "content_hash",
+            "summary",
+            "raw_content",
+            "cover_url",
+            "category",
+            "tags",
+            "language",
+            "status",
+            "is_favorited",
+            "topic_id",
+            "duplicate_of",
+            "similarity_score",
+            "created_at",
+            "updated_at",
+            "analysis_id",
+            "analysis_created_at",
+            "quality_score",
+            "hot_score",
+            "freshness_score",
+            "creator_score",
+            "viral_score",
+            "risk_score",
+            "curation_score",
+            "info_density",
+            "actionability",
+            "recommended_reason",
+            "recommendation",
+            "ai_summary",
+            "ai_tags",
+            "enrichment_status",
+            "enrichment",
+            "source_weight_db",
+            "feedback_score",
+            "adjusted_curation_score",
         ]
 
         items: List[Dict[str, Any]] = []
         for row in results:
             item = dict(zip(columns, row))
-            if item['adjusted_curation_score'] < curation_threshold:
+            if item["adjusted_curation_score"] < curation_threshold:
                 continue
             # Serialize datetime fields
-            for dt_field in ('published_at', 'crawled_at', 'created_at', 'updated_at', 'analysis_created_at'):
+            for dt_field in ("published_at", "crawled_at", "created_at", "updated_at", "analysis_created_at"):
                 val = item.get(dt_field)
-                if val and hasattr(val, 'isoformat'):
+                if val and hasattr(val, "isoformat"):
                     item[dt_field] = val.isoformat()
             # Round floats
-            item['adjusted_curation_score'] = round(float(item['adjusted_curation_score']), 1)
+            item["adjusted_curation_score"] = round(float(item["adjusted_curation_score"]), 1)
             for score_field in (
-                'quality_score', 'hot_score', 'freshness_score',
-                'creator_score', 'viral_score', 'risk_score',
-                'curation_score', 'info_density', 'actionability',
-                'feedback_score',
-                'similarity_score',
+                "quality_score",
+                "hot_score",
+                "freshness_score",
+                "creator_score",
+                "viral_score",
+                "risk_score",
+                "curation_score",
+                "info_density",
+                "actionability",
+                "feedback_score",
+                "similarity_score",
             ):
                 val = item.get(score_field)
                 if val is not None:
@@ -352,7 +392,7 @@ class DuckDBAnalytics:
 
         return [
             {
-                "date": str(row[0]) if hasattr(row[0], 'isoformat') else str(row[0]),
+                "date": str(row[0]) if hasattr(row[0], "isoformat") else str(row[0]),
                 "topic_id": row[1],
                 "topic_name": row[2],
                 "content_count": row[3],
@@ -387,10 +427,7 @@ class DuckDBAnalytics:
             LIMIT {limit}
         """).fetchall()
 
-        return [
-            {"keyword": row[0], "count": int(row[1])}
-            for row in results
-        ]
+        return [{"keyword": row[0], "count": int(row[1])} for row in results]
 
     def query_stats_curation_threshold(self, days: int = 7) -> float:
         """Unified scorer threshold for the stats surfaces."""
@@ -407,7 +444,8 @@ class DuckDBAnalytics:
         conn = self._get_conn()
         window = timedelta(hours=hours) if hours is not None else timedelta(days=days)
         cutoff = (datetime.now(timezone.utc) - window).isoformat()
-        rows = conn.execute(f"""
+        rows = conn.execute(
+            f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
             {IGNORED_CONTENT_CTE}
@@ -439,13 +477,29 @@ class DuckDBAnalytics:
               AND ignored.content_id IS NULL
               AND c.duplicate_of IS NULL
               AND a.curation_score IS NOT NULL
-        """, [cutoff]).fetchall()
+        """,
+            [cutoff],
+        ).fetchall()
 
         columns = [
-            "id", "source_id", "source_name", "source_type", "category", "crawled_at",
-            "curation_score", "info_density", "actionability", "analysis_source_weight",
-            "creator_score", "viral_score", "freshness_score", "quality_score",
-            "hot_score", "risk_score", "source_weight_db", "feedback_score",
+            "id",
+            "source_id",
+            "source_name",
+            "source_type",
+            "category",
+            "crawled_at",
+            "curation_score",
+            "info_density",
+            "actionability",
+            "analysis_source_weight",
+            "creator_score",
+            "viral_score",
+            "freshness_score",
+            "quality_score",
+            "hot_score",
+            "risk_score",
+            "source_weight_db",
+            "feedback_score",
         ]
         item_rows = [dict(zip(columns, row)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}
@@ -572,9 +626,7 @@ class DuckDBAnalytics:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
-        selected_counts = self._stats_selected_counts_by_source(
-            scored_items
-        )
+        selected_counts = self._stats_selected_counts_by_source(scored_items)
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
             {IGNORED_CONTENT_CTE}
@@ -598,13 +650,15 @@ class DuckDBAnalytics:
         for row in rows:
             content_count = row[2] or 0
             curated_count = selected_counts.get((row[0], row[1]), 0)
-            sources.append({
-                "source_name": row[0],
-                "source_type": row[1],
-                "content_count": content_count,
-                "curated_count": curated_count,
-                "curation_rate": round(curated_count / content_count * 100, 1) if content_count else 0,
-            })
+            sources.append(
+                {
+                    "source_name": row[0],
+                    "source_type": row[1],
+                    "content_count": content_count,
+                    "curated_count": curated_count,
+                    "curation_rate": round(curated_count / content_count * 100, 1) if content_count else 0,
+                }
+            )
         return {"sources": sources}
 
     def query_stats_category_distribution(self, days: int = 7) -> Dict[str, Any]:
@@ -648,9 +702,7 @@ class DuckDBAnalytics:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
-        selected_counts = self._stats_selected_counts_by_date(
-            scored_items
-        )
+        selected_counts = self._stats_selected_counts_by_date(scored_items)
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
             {IGNORED_CONTENT_CTE}
@@ -839,10 +891,10 @@ class DuckDBAnalytics:
             ],
             "daily_trend": [
                 {
-                    "date": row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+                    "date": row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]),
                     "content_count": row[1] or 0,
                     "curated_count": selected_by_date.get(
-                        row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+                        row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]),
                         0,
                     ),
                     "avg_curation": round(float(row[2] or 0), 1),
@@ -986,38 +1038,50 @@ def close_analytics() -> None:
 # These match the original function signatures so existing callers work
 # without any changes.
 
+
 def query_today_picks(hours: int = 48, **kwargs) -> List[Dict[str, Any]]:
     return get_analytics().query_today_picks(hours=hours, **kwargs)
+
 
 def query_topics() -> List[Dict[str, Any]]:
     return get_analytics().query_topics()
 
+
 def query_trend_topics(days: int = 7) -> List[Dict[str, Any]]:
     return get_analytics().query_trend_topics(days=days)
+
 
 def query_keyword_cloud(days: int = 7, limit: int = 50) -> List[Dict[str, Any]]:
     return get_analytics().query_keyword_cloud(days=days, limit=limit)
 
+
 def query_stats_overview(days: int = 7) -> Dict[str, Any]:
     return get_analytics().query_stats_overview(days=days)
+
 
 def query_stats_source_distribution(days: int = 7) -> Dict[str, Any]:
     return get_analytics().query_stats_source_distribution(days=days)
 
+
 def query_stats_category_distribution(days: int = 7) -> Dict[str, Any]:
     return get_analytics().query_stats_category_distribution(days=days)
+
 
 def query_stats_daily_trend(days: int = 7) -> Dict[str, Any]:
     return get_analytics().query_stats_daily_trend(days=days)
 
+
 def query_stats_novel_platforms() -> Dict[str, Any]:
     return get_analytics().query_stats_novel_platforms()
+
 
 def query_daily_stats() -> Dict[str, Any]:
     return get_analytics().query_daily_stats()
 
+
 def query_dashboard_stats(days: int = 7) -> Dict[str, Any]:
     return get_analytics().query_dashboard_stats(days=days)
+
 
 def query_content_for_report(hours: int = 48) -> List[Dict[str, Any]]:
     return get_analytics().query_content_for_report(hours=hours)

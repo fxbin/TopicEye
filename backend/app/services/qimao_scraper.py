@@ -19,6 +19,7 @@
 - fetch_list_data(channel, rank_type) -> Optional[list[dict]]
 - fetch_all_ranks() -> dict[tuple[str, str], list[dict]]
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,8 +50,16 @@ HEADERS = {
 
 # channel + rank_type 配置 (与 qimao_service.RANK_CONFIGS 保持一致)
 RANK_CONFIGS = [
-    ("boy", "hot"), ("boy", "new"), ("boy", "over"), ("boy", "collect"), ("boy", "update"),
-    ("girl", "hot"), ("girl", "new"), ("girl", "over"), ("girl", "collect"), ("girl", "update"),
+    ("boy", "hot"),
+    ("boy", "new"),
+    ("boy", "over"),
+    ("boy", "collect"),
+    ("boy", "update"),
+    ("girl", "hot"),
+    ("girl", "new"),
+    ("girl", "over"),
+    ("girl", "collect"),
+    ("girl", "update"),
 ]
 
 
@@ -68,7 +77,7 @@ def _extract_nuxt_iife(html: str) -> Optional[str]:
     end = html.find("</script>", start)
     if end < 0:
         return None
-    raw = html[start + len(start_marker):end].rstrip().rstrip(";").strip()
+    raw = html[start + len(start_marker) : end].rstrip().rstrip(";").strip()
     if not raw.startswith("(function"):
         return None
     return raw
@@ -114,7 +123,7 @@ async def _fetch_html(client: httpx.AsyncClient, url: str) -> Optional[str]:
             resp.raise_for_status()
             return resp.text
         except Exception as e:
-            logger.warning(f"七猫 GET {url} attempt {i+1} 失败: {e}")
+            logger.warning(f"七猫 GET {url} attempt {i + 1} 失败: {e}")
             await asyncio.sleep(0.5 * (i + 1))
     return None
 

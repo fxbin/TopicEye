@@ -99,9 +99,7 @@ class TwitterScraper(BaseScraper):
         logger.info("TwitterScraper: fetched %d tweets", len(entries))
         return entries
 
-    async def _wait_for_run(
-        self, client: httpx.AsyncClient, token: str, run_id: str
-    ) -> bool:
+    async def _wait_for_run(self, client: httpx.AsyncClient, token: str, run_id: str) -> bool:
         url = f"{_APIFY_BASE}/actor-runs/{run_id}?token={token}"
         elapsed = 0.0
         while elapsed < _MAX_WAIT:
@@ -121,9 +119,7 @@ class TwitterScraper(BaseScraper):
         logger.warning("TwitterScraper: run %s timed out after %ds", run_id, _MAX_WAIT)
         return False
 
-    async def _fetch_dataset(
-        self, client: httpx.AsyncClient, token: str, dataset_id: str
-    ) -> list:
+    async def _fetch_dataset(self, client: httpx.AsyncClient, token: str, dataset_id: str) -> list:
         url = f"{_APIFY_BASE}/datasets/{dataset_id}/items?token={token}"
         try:
             resp = await client.get(url, timeout=30.0)
@@ -143,9 +139,11 @@ class TwitterScraper(BaseScraper):
 
             try:
                 from dateutil.parser import isoparse
+
                 published_at = isoparse(created_at_str)
             except Exception:
                 from datetime import datetime as _dt
+
                 published_at = _dt.strptime(created_at_str, "%a %b %d %H:%M:%S %z %Y")
 
             if published_at.tzinfo is None:
@@ -159,11 +157,7 @@ class TwitterScraper(BaseScraper):
 
             user = raw.get("user") or {}
             screen_name = (
-                user.get("screen_name")
-                or user.get("username")
-                or user.get("handle")
-                or raw.get("handle")
-                or "unknown"
+                user.get("screen_name") or user.get("username") or user.get("handle") or raw.get("handle") or "unknown"
             )
             author = user.get("name") or screen_name
 

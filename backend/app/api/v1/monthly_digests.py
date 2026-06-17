@@ -1,6 +1,7 @@
 """
 Monthly Digest API endpoints.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -67,11 +68,7 @@ async def list_digests(limit: int = 12, db: AsyncSession = Depends(get_db)):
     count_result = await db.execute(select(func.count()).select_from(MonthlyDigest))
     total = count_result.scalar() or 0
 
-    result = await db.execute(
-        select(MonthlyDigest)
-        .order_by(MonthlyDigest.month_start.desc())
-        .limit(limit)
-    )
+    result = await db.execute(select(MonthlyDigest).order_by(MonthlyDigest.month_start.desc()).limit(limit))
     return {"items": result.scalars().all(), "total": total}
 
 
@@ -86,9 +83,7 @@ async def trigger_generate(
         target_key = f"{reference_date.year}-{reference_date.month:02d}"
 
     if target_key:
-        existing = await db.execute(
-            select(MonthlyDigest).where(MonthlyDigest.month_key == target_key)
-        )
+        existing = await db.execute(select(MonthlyDigest).where(MonthlyDigest.month_key == target_key))
         existing_digest = existing.scalar_one_or_none()
         if existing_digest:
             existing_digest.status = "PENDING"

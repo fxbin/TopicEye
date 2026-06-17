@@ -94,10 +94,7 @@ async def test_zhihu_sync_invalidates_novel_platform_stats_cache(monkeypatch):
     calls = []
 
     async def fetch_html(_url):
-        return (
-            '{"categories":[{"id":"1512","name":"故事","level":1,"sort":1,'
-            '"sub_category":[]}]}'
-        )
+        return '{"categories":[{"id":"1512","name":"故事","level":1,"sort":1,"sub_category":[]}]}'
 
     async def fetch_api(_sort_type, limit=20, offset=0, category_id=None):
         return [{"business_id": f"{category_id}-{_sort_type}"}]

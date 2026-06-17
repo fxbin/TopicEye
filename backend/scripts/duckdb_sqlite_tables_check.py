@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check DuckDB sqlite_scanner table listing and verify key tables."""
+
 import duckdb
 import os
 
@@ -17,7 +18,7 @@ except Exception as e:
     print(f"information_schema failed: {e}")
 
 # Check individual tables
-for t in ['content_items', 'ai_analyses', 'sources', 'topic_groups', 'topic_trends']:
+for t in ["content_items", "ai_analyses", "sources", "topic_groups", "topic_trends"]:
     try:
         cnt = conn.execute(f"SELECT COUNT(*) FROM oltp_db.{t}").fetchone()
         print(f"  {t}: {cnt[0]} rows")

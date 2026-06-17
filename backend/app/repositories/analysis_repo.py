@@ -90,13 +90,12 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         return [
             int(item.content_id)
             for breakdown, item in score_items(scoring_inputs)
-            if breakdown.selected
-            and breakdown.final_score >= min_score
-            and item.content_id in candidate_ids
+            if breakdown.selected and breakdown.final_score >= min_score and item.content_id in candidate_ids
         ][:limit]
 
     async def claim_pending_enrichment_ids(self, min_score: float, limit: int) -> list[int]:
         """Claim unified-scored enrichment candidates so concurrent batches do not duplicate work."""
+
         async def _claim() -> list[int]:
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
@@ -125,14 +124,9 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
             if not locked_rows:
                 return []
 
-            analysis_ids_by_content = {
-                int(content_id): int(analysis_id)
-                for analysis_id, content_id in locked_rows
-            }
+            analysis_ids_by_content = {int(content_id): int(analysis_id) for analysis_id, content_id in locked_rows}
             ordered_content_ids = [
-                int(content_id)
-                for content_id in candidate_ids
-                if int(content_id) in analysis_ids_by_content
+                int(content_id) for content_id in candidate_ids if int(content_id) in analysis_ids_by_content
             ][:limit]
             analysis_ids = [analysis_ids_by_content[content_id] for content_id in ordered_content_ids]
             if not analysis_ids:
@@ -170,6 +164,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
 
     async def claim_enrichment_for_content(self, content_id: int) -> Optional[AiAnalysis]:
         """Claim the latest analysis for one content item before running enrichment."""
+
         async def _claim() -> Optional[AiAnalysis]:
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
@@ -229,6 +224,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
     ):
         """List analyses with optional score thresholds."""
         from sqlalchemy import func
+
         filters = {}
         if min_creator_score is not None:
             filters["min_creator_score"] = min_creator_score

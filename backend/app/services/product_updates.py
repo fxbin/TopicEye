@@ -5,4 +5,5 @@
 DB 是唯一数据源. 这一层暂无函数, 保留文件作为占位以便未来加业务逻辑
 (例如: 聚合统计、版本间 diff、外部 webhook 等).
 """
+
 from __future__ import annotations

@@ -22,6 +22,7 @@ class AuthRegisterRequest(BaseModel):
     @classmethod
     def validate_password(cls, value: str) -> str:
         from app.core.validators import validate_password_strength
+
         return validate_password_strength(value)
 
 

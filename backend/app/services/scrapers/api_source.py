@@ -127,14 +127,16 @@ class APIScraper(BaseScraper):
             if not title and not mapped.get("summary"):
                 continue
 
-            entries.append({
-                "title": title or str(mapped.get("summary", ""))[:80],
-                "url": url,
-                "author": mapped.get("author"),
-                "summary": str(mapped.get("summary") or "")[:1000],
-                "raw_content": mapped.get("raw_content") or mapped.get("summary") or "",
-                "published_at": _parse_datetime(mapped.get("published_at")),
-                "cover_url": mapped.get("cover_url"),
-            })
+            entries.append(
+                {
+                    "title": title or str(mapped.get("summary", ""))[:80],
+                    "url": url,
+                    "author": mapped.get("author"),
+                    "summary": str(mapped.get("summary") or "")[:1000],
+                    "raw_content": mapped.get("raw_content") or mapped.get("summary") or "",
+                    "published_at": _parse_datetime(mapped.get("published_at")),
+                    "cover_url": mapped.get("cover_url"),
+                }
+            )
 
         return entries

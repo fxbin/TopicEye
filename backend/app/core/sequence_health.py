@@ -12,6 +12,7 @@
 
 幂等：sequence 已经 >= max(id) 时不做任何事。
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +37,8 @@ async def ensure_sequences_synced() -> list[str]:
 
     async with async_session() as db:
         # 发现所有有 SERIAL sequence 的 (table, column)
-        rows = await db.execute(text("""
+        rows = await db.execute(
+            text("""
             SELECT c.relname AS table_name,
                    a.attname AS column_name
             FROM pg_class c
@@ -45,7 +47,8 @@ async def ensure_sequences_synced() -> list[str]:
               AND c.relnamespace = 'public'::regnamespace
               AND a.attisdropped = false
               AND pg_get_serial_sequence(c.relname::text, a.attname) IS NOT NULL
-        """))
+        """)
+        )
 
         candidates = [(r[0], r[1]) for r in rows]
         if not candidates:
@@ -58,18 +61,17 @@ async def ensure_sequences_synced() -> list[str]:
             curr_val = await get_seq_last_value(db, table_name, column_name)
 
             if curr_val is not None and max_id is not None and curr_val < max_id:
-                await db.execute(text(
-                    f"SELECT setval("
-                    f"pg_get_serial_sequence('{table_name}', '{column_name}'), "
-                    f"{max_id}, true)"
-                ))
+                await db.execute(
+                    text(f"SELECT setval(pg_get_serial_sequence('{table_name}', '{column_name}'), {max_id}, true)")
+                )
                 fixed.append(f"{table_name}.{column_name}: {curr_val} → {max_id}")
 
         if fixed:
             await db.commit()
             logger.warning(
                 "Sequences resynced at startup (%d tables): %s",
-                len(fixed), fixed,
+                len(fixed),
+                fixed,
             )
         else:
             logger.info("Startup sequence check: all %d sequences in sync", len(candidates))
@@ -78,9 +80,7 @@ async def ensure_sequences_synced() -> list[str]:
 
 
 async def get_max_id(db, table_name: str, column_name: str):
-    result = await db.execute(
-        text(f"SELECT COALESCE(MAX({column_name}), 0) FROM {table_name}")
-    )
+    result = await db.execute(text(f"SELECT COALESCE(MAX({column_name}), 0) FROM {table_name}"))
     return result.scalar()
 
 

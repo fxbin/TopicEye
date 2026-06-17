@@ -98,10 +98,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: Optional[date] = 
         topic_name = tg.name if tg else f"Topic-{topic_id}"
 
         row_map = {row.id: row for row in rows}
-        scored_items = score_items([
-            _trend_row_to_scoring_input(row, feedback_scores.get(row.id, 0))
-            for row in rows
-        ])
+        scored_items = score_items([_trend_row_to_scoring_input(row, feedback_scores.get(row.id, 0)) for row in rows])
         final_scores = [breakdown.final_score for breakdown, _item in scored_items]
         top_items = [
             {
@@ -151,9 +148,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: Optional[date] = 
                 keyword_stats.setdefault(tag, []).append(0)  # just counting
 
     keyword_count = 0
-    for kw, occurrences in sorted(
-        keyword_stats.items(), key=lambda x: len(x[1]), reverse=True
-    )[:50]:  # top 50 keywords
+    for kw, occurrences in sorted(keyword_stats.items(), key=lambda x: len(x[1]), reverse=True)[:50]:  # top 50 keywords
         snap = TopicTrend(
             snapshot_date=target_date,
             keyword=kw,
@@ -168,7 +163,9 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: Optional[date] = 
     await db.flush()
     logger.info(
         "Trend snapshot for %s: %d topics, %d keywords",
-        target_date, topic_count, keyword_count,
+        target_date,
+        topic_count,
+        keyword_count,
     )
 
     return {"topics": topic_count, "keywords": keyword_count, "date": target_date.isoformat()}
@@ -199,9 +196,7 @@ def _trend_row_to_scoring_input(row, feedback_score: float = 0) -> ScoringInput:
     )
 
 
-async def get_topic_trends(
-    db: AsyncSession, days: int = 7
-) -> list[dict]:
+async def get_topic_trends(db: AsyncSession, days: int = 7) -> list[dict]:
     """Get topic trend data for the last N days."""
     cutoff = date.today() - timedelta(days=days)
 
@@ -231,9 +226,7 @@ async def get_topic_trends(
     ]
 
 
-async def get_keyword_cloud(
-    db: AsyncSession, days: int = 7, limit: int = 50
-) -> list[dict]:
+async def get_keyword_cloud(db: AsyncSession, days: int = 7, limit: int = 50) -> list[dict]:
     """Get keyword frequency for word cloud, aggregated over N days."""
     cutoff = date.today() - timedelta(days=days)
 
@@ -253,7 +246,4 @@ async def get_keyword_cloud(
         .limit(limit)
     )
 
-    return [
-        {"keyword": r.keyword, "count": int(r.total)}
-        for r in rows
-    ]
+    return [{"keyword": r.keyword, "count": int(r.total)} for r in rows]

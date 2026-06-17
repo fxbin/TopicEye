@@ -116,13 +116,15 @@ class DailyReportRepository(BaseRepository[DailyReport]):
             if row[0] in seen:
                 continue
             seen.add(row[0])
-            dates.append({
-                "report_date": row[0],
-                "weekday": row[1],
-                "takeaway": row[2][:60] if row[2] else None,
-                "status": row[3],
-                "edition": row[4],
-                "generated_at": row[5],
-                "cutoff_at": row[6],
-            })
+            dates.append(
+                {
+                    "report_date": row[0],
+                    "weekday": row[1],
+                    "takeaway": row[2][:60] if row[2] else None,
+                    "status": row[3],
+                    "edition": row[4],
+                    "generated_at": row[5],
+                    "cutoff_at": row[6],
+                }
+            )
         return dates

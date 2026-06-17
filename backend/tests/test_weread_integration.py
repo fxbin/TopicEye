@@ -124,12 +124,14 @@ async def test_weread_integration_reads_legacy_plaintext_key(monkeypatch):
 
     async with session_factory() as db:
         user = await create_user(db, email="legacy-weread@example.com", password="Password123")
-        db.add(UserIntegration(
-            user_id=user.id,
-            provider=WEREAD_PROVIDER,
-            api_key="wr_secret_legacy_123456",
-            config={},
-        ))
+        db.add(
+            UserIntegration(
+                user_id=user.id,
+                provider=WEREAD_PROVIDER,
+                api_key="wr_secret_legacy_123456",
+                config={},
+            )
+        )
         await db.flush()
 
         status = await get_weread_integration(user, db)
@@ -418,10 +420,7 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
 async def test_weread_sync_failure_persists_redacted_error(monkeypatch):
     async def failed_fetch(api_key: str, *, limit: int = 50):
         assert api_key == "wr_secret_leaky_123456"
-        raise RuntimeError(
-            "Skill rejected Authorization: Bearer wr_secret_leaky_123456 "
-            "token=wr_secret_leaky_123456"
-        )
+        raise RuntimeError("Skill rejected Authorization: Bearer wr_secret_leaky_123456 token=wr_secret_leaky_123456")
 
     monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", "http://127.0.0.1:9999/weread")
     monkeypatch.setattr(weread_materials, "fetch_weread_materials", failed_fetch)
@@ -467,10 +466,7 @@ async def test_weread_sync_failure_persists_redacted_error(monkeypatch):
 async def test_weread_sync_unknown_error_is_redacted_at_api_boundary(monkeypatch):
     async def failed_sync(db, integration, *, api_key: str, limit: int = 50):
         assert api_key == "wr_secret_boundary_123456"
-        raise ValueError(
-            "raw failure Authorization: Bearer wr_secret_boundary_123456 "
-            "token=wr_secret_boundary_123456"
-        )
+        raise ValueError("raw failure Authorization: Bearer wr_secret_boundary_123456 token=wr_secret_boundary_123456")
 
     monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", "http://127.0.0.1:9999/weread")
     monkeypatch.setattr("app.api.v1.integrations.sync_weread_materials", failed_sync)
@@ -567,12 +563,14 @@ async def test_weread_sync_imports_materials_and_deduplicates(monkeypatch):
         assert source.sync_error is None
 
         rows = (
-            await db.execute(
-                select(ContentItem)
-                .where(ContentItem.source_id == source.id)
-                .order_by(ContentItem.title.asc())
+            (
+                await db.execute(
+                    select(ContentItem).where(ContentItem.source_id == source.id).order_by(ContentItem.title.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert [item.title for item in rows] == ["微信读书选题一", "微信读书选题二"]
         assert {item.platform for item in rows} == {"微信读书"}
         assert {item.category for item in rows} == {"阅读素材"}

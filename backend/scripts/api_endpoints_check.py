@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Check API endpoints via HTTP requests."""
+
 import json
 import os
 import urllib.request
 
 BASE = os.getenv("TOPICEYE_API_BASE", "http://localhost:8000")
+
 
 def fetch(path):
     req = urllib.request.Request(f"{BASE}{path}")
@@ -12,17 +14,13 @@ def fetch(path):
     with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode())
 
+
 def main():
     data = fetch("/health")
     print(f"Health: {data}")
 
     data = fetch("/api/v1/contents/today-picks")
-    print(
-        "today-picks: "
-        f"items={data['total']}, "
-        f"dup_hidden={data['duplicates_hidden']}, "
-        f"topics={len(data['topics'])}"
-    )
+    print(f"today-picks: items={data['total']}, dup_hidden={data['duplicates_hidden']}, topics={len(data['topics'])}")
     if data["items"]:
         item = data["items"][0]
         print(f"  First: [{item['id']}] {item['title'][:60]}...")

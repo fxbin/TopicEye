@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test DuckDB sqlite extension + ATTACH capability."""
+
 import duckdb
 import os
 
@@ -28,9 +29,7 @@ except Exception as e:
 
 # 3. List attached OLTP tables
 try:
-    tables = conn.execute(
-        "SELECT table_name FROM information_schema.tables WHERE table_catalog='oltp_db'"
-    ).fetchall()
+    tables = conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='oltp_db'").fetchall()
     print(f"Tables: {[t[0] for t in tables]}")
 except Exception as e:
     print(f"List tables failed: {e}")

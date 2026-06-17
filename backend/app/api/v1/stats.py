@@ -1,4 +1,5 @@
 """Dashboard statistics API endpoints backed by DuckDB analytics."""
+
 from __future__ import annotations
 
 import logging

@@ -23,15 +23,17 @@ _SCRAPER_REGISTRY: Dict[str, type] = {}
 
 def register_scraper(source_type: str):
     """Decorator: register a scraper class for a given source_type string."""
+
     def _cls(cls):
         _SCRAPER_REGISTRY[source_type] = cls
         return cls
+
     return _cls
 
 
 def get_scraper_cls(source_type: str) -> Optional[type]:
     """Look up the scraper class for a source type.
-    
+
     Tries exact match first, then case-insensitive fallback.
     """
     cls = _SCRAPER_REGISTRY.get(source_type)
@@ -46,6 +48,7 @@ def get_scraper_cls(source_type: str) -> Optional[type]:
 
 
 # ── Base class ────────────────────────────────────────────────────────
+
 
 class BaseScraper(ABC):
     """
@@ -88,15 +91,15 @@ class BaseScraper(ABC):
 
 # ── Auto-import submodules to trigger @register_scraper ───────────────
 
-from . import rss as _rss_mod        # noqa: E402, F401
+from . import rss as _rss_mod  # noqa: E402, F401
 from . import website as _website_mod  # noqa: E402, F401
 from . import twitter as _twitter_mod  # noqa: E402, F401
-from . import rsshub as _rsshub_mod   # noqa: E402, F401
-from . import reddit as _reddit_mod       # noqa: E402, F401
-from . import zhihu as _zhihu_mod         # noqa: E402, F401
+from . import rsshub as _rsshub_mod  # noqa: E402, F401
+from . import reddit as _reddit_mod  # noqa: E402, F401
+from . import zhihu as _zhihu_mod  # noqa: E402, F401
 from . import twitter_rss as _twitter_rss_mod  # noqa: E402, F401
-from . import douyin_hot as _douyin_hot_mod    # noqa: E402, F401
-from . import api_source as _api_source_mod    # noqa: E402, F401
-from . import youtube as _youtube_mod          # noqa: E402, F401
-from . import podcast as _podcast_mod          # noqa: E402, F401
-from . import newsletter as _newsletter_mod    # noqa: E402, F401
+from . import douyin_hot as _douyin_hot_mod  # noqa: E402, F401
+from . import api_source as _api_source_mod  # noqa: E402, F401
+from . import youtube as _youtube_mod  # noqa: E402, F401
+from . import podcast as _podcast_mod  # noqa: E402, F401
+from . import newsletter as _newsletter_mod  # noqa: E402, F401

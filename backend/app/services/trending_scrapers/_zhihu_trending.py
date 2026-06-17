@@ -1,4 +1,5 @@
 """知乎热榜 — https://www.zhihu.com/api/v3/feed/topstory/hot-list-web"""
+
 from __future__ import annotations
 
 import logging
@@ -50,6 +51,7 @@ class ZhihuTrending(BaseTrendingScraper):
             if hot_text:
                 try:
                     import re
+
                     num_match = re.match(r"([\d.]+)\s*(万)?", hot_text)
                     if num_match:
                         val = float(num_match.group(1))
@@ -72,18 +74,20 @@ class ZhihuTrending(BaseTrendingScraper):
                 elif tv < 0:
                     trend_val = "down"
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": link,
-                "hot_value": hot_val,
-                "hot_value_raw": hot_text,
-                "trend": trend_val,
-                "cover_url": target.get("image_area", {}).get("url", ""),
-                "extra": {
-                    "excerpt": excerpt,
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": link,
+                    "hot_value": hot_val,
+                    "hot_value_raw": hot_text,
+                    "trend": trend_val,
+                    "cover_url": target.get("image_area", {}).get("url", ""),
+                    "extra": {
+                        "excerpt": excerpt,
+                    },
+                }
+            )
 
         logger.info("zhihu trending: fetched %d items", len(results))
         return results

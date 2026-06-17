@@ -69,8 +69,7 @@ def test_content_list_cache_key_and_invalidation():
     )
     key = params.key
     assert key == (
-        "contents:list:page=1&page_size=50&include_trend_sources=0"
-        "&sort_by=created_at&sort_order=desc&user_id=&hours=48"
+        "contents:list:page=1&page_size=50&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&hours=48"
     )
 
     set_cached_json(key, {"items": [], "total": 0})
@@ -137,14 +136,17 @@ def test_content_read_cache_invalidation_covers_content_derived_views():
     set_cached_json("contents:favorites:list:1:20", {"items": []})
     set_cached_json("stats:overview:7", {"total": 1})
     set_cached_json("stats:dashboard:7", {"kpi": {}})
-    cache_payload((48, 160, 80), build_empty_payload(
-        hours=48,
-        analyzed_total=0,
-        window_total=0,
-        ignored_count=0,
-        limit=160,
-        sample_limit=80,
-    ))
+    cache_payload(
+        (48, 160, 80),
+        build_empty_payload(
+            hours=48,
+            analyzed_total=0,
+            window_total=0,
+            ignored_count=0,
+            limit=160,
+            sample_limit=80,
+        ),
+    )
 
     invalidate_content_read_caches()
 
@@ -215,6 +217,9 @@ def test_trending_cache_invalidation_is_scoped():
     assert get_cached_json(f"{TRENDING_LIST_CACHE_PREFIX}limit=50", ttl_seconds=10) is None
     assert get_cached_json(TRENDING_SOURCES_CACHE_KEY, ttl_seconds=10) is None
     assert get_cached_json(f"{TRENDING_CROSS_PLATFORM_CACHE_PREFIX}min_resonance=2&limit=50", ttl_seconds=10) is None
-    assert get_cached_json(f"{TRENDING_PERSISTENT_CACHE_PREFIX}min_days=2&min_sources=1&days_back=7", ttl_seconds=10) is None
+    assert (
+        get_cached_json(f"{TRENDING_PERSISTENT_CACHE_PREFIX}min_days=2&min_sources=1&days_back=7", ttl_seconds=10)
+        is None
+    )
     assert get_cached_json("contents:list:example", ttl_seconds=10) is not None
     invalidate_json_cache()

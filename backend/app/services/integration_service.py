@@ -64,11 +64,7 @@ async def claim_user_integration_sync(
 
     async def _claim() -> Optional[UserIntegration]:
         await begin_immediate_for_sqlite(db)
-        result = await db.execute(
-            select(UserIntegration)
-            .where(UserIntegration.id == integration_id)
-            .with_for_update()
-        )
+        result = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id).with_for_update())
         integration = result.scalar_one_or_none()
         if integration is None:
             return None

@@ -21,14 +21,20 @@ class ContentItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
-    source_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
+    )
     source_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     source_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     platform: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    owner_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="冗余 source.owner_user_id；NULL=公共内容池")
+    owner_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="冗余 source.owner_user_id；NULL=公共内容池"
+    )
     author: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    crawled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    crawled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -40,12 +46,28 @@ class ContentItem(Base):
     is_favorited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Topic clustering fields
-    topic_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("topic_groups.id", ondelete="SET NULL"), nullable=True)
-    duplicate_of: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True, comment="Points to canonical item if duplicate")
-    similarity_score: Mapped[Optional[float]] = mapped_column(Float, default=0.0, comment="Similarity score to group representative")
+    topic_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("topic_groups.id", ondelete="SET NULL"), nullable=True
+    )
+    duplicate_of: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("content_items.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Points to canonical item if duplicate",
+    )
+    similarity_score: Mapped[Optional[float]] = mapped_column(
+        Float, default=0.0, comment="Similarity score to group representative"
+    )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     __table_args__ = (
         Index("ix_content_items_owner", "owner_user_id"),

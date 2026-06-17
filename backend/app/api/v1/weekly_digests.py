@@ -1,6 +1,7 @@
 """
 Weekly Digest API endpoints.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -58,16 +59,10 @@ async def list_digests(
     db: AsyncSession = Depends(get_db),
 ):
     """List recent weekly digests."""
-    count_result = await db.execute(
-        select(func.count()).select_from(WeeklyDigest)
-    )
+    count_result = await db.execute(select(func.count()).select_from(WeeklyDigest))
     total = count_result.scalar() or 0
 
-    result = await db.execute(
-        select(WeeklyDigest)
-        .order_by(WeeklyDigest.week_start.desc())
-        .limit(limit)
-    )
+    result = await db.execute(select(WeeklyDigest).order_by(WeeklyDigest.week_start.desc()).limit(limit))
     items = result.scalars().all()
 
     return {"items": items, "total": total}
@@ -91,21 +86,20 @@ async def trigger_generate(
             reference_date = date.fromisocalendar(year, week_num, 1)
         except (ValueError, IndexError):
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid week_key format: {week_key}. Use YYYY-WNN format, e.g. 2025-W21"
+                status_code=400, detail=f"Invalid week_key format: {week_key}. Use YYYY-WNN format, e.g. 2025-W21"
             )
 
     # Delete existing digest to force regeneration
     if reference_date:
         from app.services.weekly_digest import _get_week_range
+
         wk, _, _, _ = _get_week_range(reference_date)
     else:
         from app.services.weekly_digest import _get_week_range
+
         wk, _, _, _ = _get_week_range()
 
-    existing = await db.execute(
-        select(WeeklyDigest).where(WeeklyDigest.week_key == wk)
-    )
+    existing = await db.execute(select(WeeklyDigest).where(WeeklyDigest.week_key == wk))
     existing_digest = existing.scalar_one_or_none()
     if existing_digest:
         existing_digest.status = "PENDING"

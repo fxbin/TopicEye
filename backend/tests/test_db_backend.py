@@ -92,10 +92,7 @@ def test_database_secret_redaction_covers_urls_conninfo_and_attach_sql():
     url = "postgresql+asyncpg://topiceye:s3 cr'et@localhost:5432/topiceye"
     profile = create_database_profile(url)
     attach_sql = duckdb_attach_sql(profile)
-    raw_error = (
-        f"failed for {url}; conninfo password='s3 cr\\'et'; "
-        f"attach={attach_sql}"
-    )
+    raw_error = f"failed for {url}; conninfo password='s3 cr\\'et'; attach={attach_sql}"
 
     redacted = redact_database_secrets(raw_error, profile)
 

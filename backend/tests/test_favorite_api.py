@@ -95,7 +95,9 @@ async def test_favorites_api_create_state_list_and_cache_invalidation(favorites_
         {"target_key": "missing", "is_favorited": False, "favorite_id": None},
     ]
 
-    cached_state = await favorites_client.get("/favorites/state?target_type=book&target_keys=missing,fanqie:1001,fanqie:1001")
+    cached_state = await favorites_client.get(
+        "/favorites/state?target_type=book&target_keys=missing,fanqie:1001,fanqie:1001"
+    )
     assert cached_state.status_code == 200
     assert cached_state.headers["x-favorites-cache"] == "HIT"
     assert float(cached_state.headers["x-favorites-cache-age-ms"]) >= 0
@@ -137,29 +139,28 @@ async def test_favorites_api_create_state_list_and_cache_invalidation(favorites_
     assert invalid_state.json()["detail"] == "target_ids must be comma-separated integers"
 
     too_many_keys = ",".join(f"book:{index}" for index in range(favorites_api.MAX_FAVORITE_STATE_TARGETS + 1))
-    too_many_state = await favorites_client.get(
-        f"/favorites/state?target_type=book&target_keys={too_many_keys}"
-    )
+    too_many_state = await favorites_client.get(f"/favorites/state?target_type=book&target_keys={too_many_keys}")
     assert too_many_state.status_code == 422
     assert too_many_state.json()["detail"] == "favorites state target count must be <= 200"
 
     too_long_key = "x" * (favorites_api.MAX_FAVORITE_STATE_TARGET_KEY_LENGTH + 1)
-    too_long_state = await favorites_client.get(
-        f"/favorites/state?target_type=book&target_keys={too_long_key}"
-    )
+    too_long_state = await favorites_client.get(f"/favorites/state?target_type=book&target_keys={too_long_key}")
     assert too_long_state.status_code == 422
     assert too_long_state.json()["detail"] == "favorites state target key length must be <= 255"
 
 
 def _prime_scoring_flow_cache() -> None:
-    cache_payload((24, 160, 80), build_empty_payload(
-        hours=24,
-        analyzed_total=0,
-        window_total=0,
-        ignored_count=0,
-        limit=160,
-        sample_limit=80,
-    ))
+    cache_payload(
+        (24, 160, 80),
+        build_empty_payload(
+            hours=24,
+            analyzed_total=0,
+            window_total=0,
+            ignored_count=0,
+            limit=160,
+            sample_limit=80,
+        ),
+    )
     assert get_cached_scoring_flow_json(hours=24, limit=160) is not None
 
 

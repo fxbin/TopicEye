@@ -40,12 +40,8 @@ class PodcastScraper(BaseScraper):
     def __init__(self, source_url: str, source_config=None):
         super().__init__(source_url, source_config)
         # source_config may carry a pre-resolved feedUrl (e.g. from recognizer)
-        self.rss_url: Optional[str] = (
-            source_config.get("resolved_rss_url") if source_config else None
-        )
-        self.itunes_id: Optional[str] = (
-            source_config.get("itunes_id") if source_config else None
-        )
+        self.rss_url: Optional[str] = source_config.get("resolved_rss_url") if source_config else None
+        self.itunes_id: Optional[str] = source_config.get("itunes_id") if source_config else None
 
     async def _resolve_rss_url(self, client: httpx.AsyncClient) -> str:
         """Map a podcast landing URL to its underlying RSS feed URL."""
@@ -64,9 +60,7 @@ class PodcastScraper(BaseScraper):
                 m = re.search(r"/id(\d+)", path)
                 itunes_id = m.group(1) if m else None
             if itunes_id:
-                lookup_url = (
-                    f"https://itunes.apple.com/lookup?id={itunes_id}&entity=podcast"
-                )
+                lookup_url = f"https://itunes.apple.com/lookup?id={itunes_id}&entity=podcast"
                 try:
                     resp = await client.get(lookup_url)
                     resp.raise_for_status()
@@ -96,9 +90,7 @@ class PodcastScraper(BaseScraper):
         return self.url
 
     @staticmethod
-    async def _extract_rss_from_html(
-        client: httpx.AsyncClient, url: str
-    ) -> Optional[str]:
+    async def _extract_rss_from_html(client: httpx.AsyncClient, url: str) -> Optional[str]:
         """Best-effort: fetch ``url`` as HTML and look for an RSS <link>."""
         try:
             resp = await client.get(url, follow_redirects=True)
@@ -141,18 +133,17 @@ class PodcastScraper(BaseScraper):
             elif "image" in entry and hasattr(entry.image, "get"):
                 cover_url = entry.image.get("href", "")
 
-            entries.append({
-                "title": entry.get("title", ""),
-                "url": entry.get("link", ""),
-                "author": entry.get("author", ""),
-                "summary": entry.get("summary", ""),
-                "raw_content": (
-                    entry.get("content", [{}])[0].get("value", "")
-                    if entry.get("content") else ""
-                ),
-                "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
-                "published_at": published_at,
-                "cover_url": cover_url,
-            })
+            entries.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": entry.get("link", ""),
+                    "author": entry.get("author", ""),
+                    "summary": entry.get("summary", ""),
+                    "raw_content": (entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""),
+                    "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
+                    "published_at": published_at,
+                    "cover_url": cover_url,
+                }
+            )
 
         return entries

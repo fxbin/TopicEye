@@ -73,8 +73,10 @@ class IssueFeedbackListResponse(BaseModel):
 
 # ── Product updates: 1 version = 1 record, items[] 装多条更新 ────────────────
 
+
 class ProductUpdateEntry(BaseModel):
     """版本里的一项更新。kind 仅决定展示图标 (release/improvement/fix/roadmap)。"""
+
     title: str = Field(min_length=2, max_length=200)
     description: str = Field(min_length=5, max_length=5000)
     kind: ProductUpdateKind = ProductUpdateKind.improvement
@@ -89,6 +91,7 @@ class ProductUpdateEntry(BaseModel):
 
 class ProductUpdateCreate(BaseModel):
     """创建一个版本记录。items 必填，至少 1 条。"""
+
     version: str = Field(min_length=1, max_length=50)
     status: ProductUpdateStatus = ProductUpdateStatus.planned
     target_date: Optional[date] = None
@@ -116,6 +119,7 @@ class ProductUpdatePatch(BaseModel):
 
 class ProductUpdateResponse(BaseModel):
     """1 个版本对应 1 条记录; 该版本的多项更新挂在 items[] 上."""
+
     id: int
     version: str
     status: ProductUpdateStatus

@@ -53,6 +53,7 @@ def _session_factory_from_session(db: AsyncSession) -> Callable[[], Any]:
         return async_session
     return async_sessionmaker(bind, expire_on_commit=False)
 
+
 SYSTEM_PROMPT = """你是一位资深内容策展编辑，擅长从创作者视角挖掘选题价值。
 
 你的工作是对一条新闻/事件进行深度 enrichment，帮助创作者：
@@ -96,8 +97,7 @@ async def _build_related_context(items: list[dict]) -> str:
     lines = []
     for item in items[:5]:  # cap at 5 related items
         lines.append(
-            f"- [{item['id']}] {item['title']}"
-            + (f" | 摘要: {item['summary'][:80]}" if item.get("summary") else "")
+            f"- [{item['id']}] {item['title']}" + (f" | 摘要: {item['summary'][:80]}" if item.get("summary") else "")
         )
     return "\n".join(lines)
 
@@ -114,13 +114,10 @@ async def enrich_content(
     # Load content + analysis + topic
     latest_analysis_id = latest_analysis_id_for_content_id(content_id)
     result = await db.execute(
-        select(AiAnalysis, ContentItem, TopicGroup).join(
-            ContentItem, AiAnalysis.content_id == ContentItem.id
-        ).outerjoin(
-            TopicGroup, ContentItem.topic_id == TopicGroup.id
-        ).where(
-            AiAnalysis.id == latest_analysis_id
-        )
+        select(AiAnalysis, ContentItem, TopicGroup)
+        .join(ContentItem, AiAnalysis.content_id == ContentItem.id)
+        .outerjoin(TopicGroup, ContentItem.topic_id == TopicGroup.id)
+        .where(AiAnalysis.id == latest_analysis_id)
     )
     row = result.first()
     if not row:
@@ -133,23 +130,26 @@ async def enrich_content(
     if content.topic_id:
         related_latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
         rel_result = await db.execute(
-            select(ContentItem, AiAnalysis).join(
-                AiAnalysis, AiAnalysis.id == related_latest_analysis_id
-            ).where(
+            select(ContentItem, AiAnalysis)
+            .join(AiAnalysis, AiAnalysis.id == related_latest_analysis_id)
+            .where(
                 and_(
                     ContentItem.topic_id == content.topic_id,
                     ContentItem.id != content_id,
                     AiAnalysis.summary.isnot(None),
                 )
-            ).order_by(AiAnalysis.curation_score.desc())
+            )
+            .order_by(AiAnalysis.curation_score.desc())
             .limit(5)
         )
         for rel_content, rel_analysis in rel_result.all():
-            related_items.append({
-                "id": rel_content.id,
-                "title": rel_content.title,
-                "summary": rel_analysis.summary or "",
-            })
+            related_items.append(
+                {
+                    "id": rel_content.id,
+                    "title": rel_content.title,
+                    "summary": rel_analysis.summary or "",
+                }
+            )
 
     # Build tags string
     tags_str = ""
@@ -189,7 +189,9 @@ async def enrich_content(
             "story_hooks": result_data.get("story_hooks", [])[:3],
         }
 
-        logger.info("Enrichment done for content_id=%d: %s", content_id, enrichment.get("background_knowledge", "")[:50])
+        logger.info(
+            "Enrichment done for content_id=%d: %s", content_id, enrichment.get("background_knowledge", "")[:50]
+        )
         return enrichment
 
     except Exception as exc:
@@ -223,9 +225,7 @@ async def enrich_batch(
 async def _enrich_one_claimed(cid: int, db: AsyncSession) -> dict[str, Any]:
     try:
         data = await enrich_content(cid, db)
-        result = await db.execute(
-            select(AiAnalysis).where(AiAnalysis.id == latest_analysis_id_for_content_id(cid))
-        )
+        result = await db.execute(select(AiAnalysis).where(AiAnalysis.id == latest_analysis_id_for_content_id(cid)))
         record = result.scalar_one_or_none()
         if record:
             record.enrichment = data
@@ -237,9 +237,7 @@ async def _enrich_one_claimed(cid: int, db: AsyncSession) -> dict[str, Any]:
         logger.error("Enrich batch item %d failed: %s", cid, e)
         await db.rollback()
         try:
-            result = await db.execute(
-                select(AiAnalysis).where(AiAnalysis.id == latest_analysis_id_for_content_id(cid))
-            )
+            result = await db.execute(select(AiAnalysis).where(AiAnalysis.id == latest_analysis_id_for_content_id(cid)))
             record = result.scalar_one_or_none()
             if record:
                 record.enrichment_status = "error"

@@ -1,4 +1,5 @@
 """虎扑热帖 — https://bbs.hupu.com/all-games"""
+
 from __future__ import annotations
 
 import logging
@@ -46,14 +47,16 @@ class HupuTrending(BaseTrendingScraper):
             if not title or title in seen:
                 continue
             seen.add(title)
-            results.append({
-                "title": title,
-                "rank": len(results) + 1,
-                "url": f"https://bbs.hupu.com{href}",
-                "hot_value": 0,
-                "hot_value_raw": "",
-                "trend": "stable",
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": len(results) + 1,
+                    "url": f"https://bbs.hupu.com{href}",
+                    "hot_value": 0,
+                    "hot_value_raw": "",
+                    "trend": "stable",
+                }
+            )
             if len(results) >= 30:
                 break
 

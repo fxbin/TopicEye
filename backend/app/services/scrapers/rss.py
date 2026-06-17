@@ -39,17 +39,16 @@ class RSSScraper(BaseScraper):
             published = entry.get("published_parsed") or entry.get("updated_parsed")
             published_at = datetime(*published[:6]) if published else datetime.now(timezone.utc)
 
-            entries.append({
-                "title": entry.get("title", ""),
-                "url": entry.get("link", ""),
-                "author": entry.get("author", ""),
-                "summary": entry.get("summary", ""),
-                "raw_content": (
-                    entry.get("content", [{}])[0].get("value", "")
-                    if entry.get("content") else ""
-                ),
-                "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
-                "published_at": published_at,
-            })
+            entries.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": entry.get("link", ""),
+                    "author": entry.get("author", ""),
+                    "summary": entry.get("summary", ""),
+                    "raw_content": (entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""),
+                    "tags": [tag.get("term", "") for tag in entry.get("tags", [])],
+                    "published_at": published_at,
+                }
+            )
 
         return entries

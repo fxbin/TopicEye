@@ -6,6 +6,7 @@ MotherTopic — 公众号母题配置。
 
 当前版本：单用户（user_id 预留，后续多租户扩展）。
 """
+
 from __future__ import annotations
 
 import enum
@@ -20,12 +21,13 @@ from app.core.database import Base
 
 class ContentType(str, enum.Enum):
     """内容类型枚举，描述该母题适合产出的内容形式。"""
-    TOOL_REVIEW = "工具评测"       # AI工具/软件/硬件评测
-    METHODOLOGY = "方法论"         # 经验总结/工作流/方法论
-    OBSERVATION = "观察"           # 时代观察/趋势分析
-    PERSONAL = "随笔"              # 个人思考/记录/生活
-    TUTORIAL = "教程"              # 教程/教学/科普
-    OPINION = "观点"               # 观点输出/评论
+
+    TOOL_REVIEW = "工具评测"  # AI工具/软件/硬件评测
+    METHODOLOGY = "方法论"  # 经验总结/工作流/方法论
+    OBSERVATION = "观察"  # 时代观察/趋势分析
+    PERSONAL = "随笔"  # 个人思考/记录/生活
+    TUTORIAL = "教程"  # 教程/教学/科普
+    OPINION = "观点"  # 观点输出/评论
 
 
 class MotherTopic(Base):

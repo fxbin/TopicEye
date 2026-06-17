@@ -2,6 +2,7 @@
 母题相关 API。
 提供母题的 CRUD、关键词打分、内容匹配接口。
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/mother-topics", tags=["母题"])
 
 
 # ── Pydantic 请求/响应模型 ─────────────────────────────────────────────
+
 
 class MotherTopicBase(BaseModel):
     name: str
@@ -91,6 +93,7 @@ class ContentScoringResult(BaseModel):
 
 
 # ── 路由 ─────────────────────────────────────────────────────────────
+
 
 @router.get("", response_model=list[MotherTopicOut], include_in_schema=False)
 @router.get("/", response_model=list[MotherTopicOut])
@@ -203,13 +206,15 @@ async def score_content(
         raw = keyword_score * topic.weight + freshness * 0.1
         # 归一化到 0-100，理论上限约 110
         final = round(min(raw * (100 / 1.1), 100), 1)
-        topic_scores.append({
-            "name": topic.name,
-            "keyword_score": round(keyword_score, 3),
-            "weight": topic.weight,
-            "freshness": round(freshness, 3),
-            "final": final,
-        })
+        topic_scores.append(
+            {
+                "name": topic.name,
+                "keyword_score": round(keyword_score, 3),
+                "weight": topic.weight,
+                "freshness": round(freshness, 3),
+                "final": final,
+            }
+        )
 
     # 按最终分数排序
     topic_scores.sort(key=lambda x: x["final"], reverse=True)
@@ -250,15 +255,17 @@ async def score_content_batch(
     topics = result.scalars().all()
 
     if not topics:
-        return BatchScoringResult(results=[
-            ContentScoringResult(
-                title=item.title,
-                topic_scores=[],
-                top_topic=None,
-                final_score=0.0,
-            )
-            for item in req.items
-        ])
+        return BatchScoringResult(
+            results=[
+                ContentScoringResult(
+                    title=item.title,
+                    topic_scores=[],
+                    top_topic=None,
+                    final_score=0.0,
+                )
+                for item in req.items
+            ]
+        )
 
     results: list[ContentScoringResult] = []
     for item in req.items:
@@ -270,24 +277,28 @@ async def score_content_batch(
             keyword_score = topic.match_score(text)
             raw = keyword_score * topic.weight + freshness * 0.1
             final = round(min(raw * (100 / 1.1), 100), 1)
-            topic_scores.append({
-                "name": topic.name,
-                "keyword_score": round(keyword_score, 3),
-                "weight": topic.weight,
-                "freshness": round(freshness, 3),
-                "final": final,
-            })
+            topic_scores.append(
+                {
+                    "name": topic.name,
+                    "keyword_score": round(keyword_score, 3),
+                    "weight": topic.weight,
+                    "freshness": round(freshness, 3),
+                    "final": final,
+                }
+            )
 
         topic_scores.sort(key=lambda x: x["final"], reverse=True)
         top = topic_scores[0] if topic_scores else None
         final_score = top["final"] if top else 0.0
 
-        results.append(ContentScoringResult(
-            title=item.title,
-            topic_scores=topic_scores,
-            top_topic=top["name"] if top else None,
-            final_score=final_score,
-        ))
+        results.append(
+            ContentScoringResult(
+                title=item.title,
+                topic_scores=topic_scores,
+                top_topic=top["name"] if top else None,
+                final_score=final_score,
+            )
+        )
 
     return BatchScoringResult(results=results)
 
@@ -314,12 +325,14 @@ async def match_content_to_topics(
     for topic in topics:
         keyword_score = topic.match_score(text)
         final = round(keyword_score * topic.weight, 3)
-        topic_scores.append({
-            "name": topic.name,
-            "keyword_score": round(keyword_score, 3),
-            "weight": topic.weight,
-            "final": final,
-        })
+        topic_scores.append(
+            {
+                "name": topic.name,
+                "keyword_score": round(keyword_score, 3),
+                "weight": topic.weight,
+                "final": final,
+            }
+        )
 
     topic_scores.sort(key=lambda x: x["final"], reverse=True)
     top = topic_scores[0] if topic_scores else None

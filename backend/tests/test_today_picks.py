@@ -108,62 +108,68 @@ def _duckdb_rows():
 def _duckdb_rows_with_weak_candidate():
     rows = _duckdb_rows()
     weak = dict(rows[0])
-    weak.update({
-        "id": 3,
-        "title": "低质量预筛样本",
-        "url": "https://example.com/weak",
-        "quality_score": 30.0,
-        "info_density": 30.0,
-        "actionability": 30.0,
-        "creator_score": 30.0,
-        "viral_score": 30.0,
-        "curation_score": 70.0,
-        "adjusted_curation_score": 90.0,
-        "topic_id": 11,
-        "duplicate_of": None,
-    })
+    weak.update(
+        {
+            "id": 3,
+            "title": "低质量预筛样本",
+            "url": "https://example.com/weak",
+            "quality_score": 30.0,
+            "info_density": 30.0,
+            "actionability": 30.0,
+            "creator_score": 30.0,
+            "viral_score": 30.0,
+            "curation_score": 70.0,
+            "adjusted_curation_score": 90.0,
+            "topic_id": 11,
+            "duplicate_of": None,
+        }
+    )
     return [weak, *rows]
 
 
 def _duckdb_rows_with_mid_risk_candidate():
     rows = _duckdb_rows()
     candidate = dict(rows[0])
-    candidate.update({
-        "id": 4,
-        "title": "统一风险门候选",
-        "url": "https://example.com/mid-risk",
-        "risk_score": 80.0,
-        "topic_id": 12,
-        "duplicate_of": None,
-    })
+    candidate.update(
+        {
+            "id": 4,
+            "title": "统一风险门候选",
+            "url": "https://example.com/mid-risk",
+            "risk_score": 80.0,
+            "topic_id": 12,
+            "duplicate_of": None,
+        }
+    )
     return [candidate, *rows]
 
 
 def _expected_breakdown_for_first_row():
     row = _duckdb_rows()[0]
-    return score_items([
-        ScoringInput(
-            content_id=row["id"],
-            title=row["title"],
-            category=row["category"],
-            source_id=row["source_id"],
-            source_name=row["source_name"],
-            published_at=row["published_at"],
-            crawled_at=row["crawled_at"],
-            curation_score=row["curation_score"],
-            info_density=row["info_density"],
-            actionability=row["actionability"],
-            source_weight=row["analysis_source_weight"],
-            creator_score=row["creator_score"],
-            viral_score=row["viral_score"],
-            freshness_score=row["freshness_score"],
-            quality_score=row["quality_score"],
-            hot_score=row["hot_score"],
-            risk_score=row["risk_score"],
-            source_weight_db=row["source_weight_db"],
-            feedback_score=row["feedback_score"],
-        )
-    ])[0][0].to_dict()
+    return score_items(
+        [
+            ScoringInput(
+                content_id=row["id"],
+                title=row["title"],
+                category=row["category"],
+                source_id=row["source_id"],
+                source_name=row["source_name"],
+                published_at=row["published_at"],
+                crawled_at=row["crawled_at"],
+                curation_score=row["curation_score"],
+                info_density=row["info_density"],
+                actionability=row["actionability"],
+                source_weight=row["analysis_source_weight"],
+                creator_score=row["creator_score"],
+                viral_score=row["viral_score"],
+                freshness_score=row["freshness_score"],
+                quality_score=row["quality_score"],
+                hot_score=row["hot_score"],
+                risk_score=row["risk_score"],
+                source_weight_db=row["source_weight_db"],
+                feedback_score=row["feedback_score"],
+            )
+        ]
+    )[0][0].to_dict()
 
 
 @pytest.mark.asyncio
@@ -188,7 +194,9 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     assert payload["total"] == 1
     assert payload["duplicates_hidden"] == 1
     assert payload["page_size"] == 1
-    assert payload["topics"] == [{"id": 10, "name": "AI 话题", "summary": "摘要", "keywords": ["AI"], "best_score": 104.0}]
+    assert payload["topics"] == [
+        {"id": 10, "name": "AI 话题", "summary": "摘要", "keywords": ["AI"], "best_score": 104.0}
+    ]
     item = payload["items"][0]
     expected = _expected_breakdown_for_first_row()
     assert item["id"] == 1
@@ -210,12 +218,14 @@ async def test_build_today_picks_filters_prescreened_items_with_unified_scorer(m
     query_args = []
 
     def fake_query_today_picks(hours=48, category=None, limit=None, curation_threshold=55):
-        query_args.append({
-            "hours": hours,
-            "category": category,
-            "limit": limit,
-            "curation_threshold": curation_threshold,
-        })
+        query_args.append(
+            {
+                "hours": hours,
+                "category": category,
+                "limit": limit,
+                "curation_threshold": curation_threshold,
+            }
+        )
         return _duckdb_rows_with_weak_candidate()
 
     monkeypatch.setattr(
@@ -237,9 +247,11 @@ async def test_build_today_picks_lets_unified_scorer_decide_mid_risk_candidates(
     query_args = []
 
     def fake_query_today_picks(hours=48, category=None, limit=None, curation_threshold=55):
-        query_args.append({
-            "curation_threshold": curation_threshold,
-        })
+        query_args.append(
+            {
+                "curation_threshold": curation_threshold,
+            }
+        )
         return _duckdb_rows_with_mid_risk_candidate()
 
     monkeypatch.setattr(today_picks, "query_today_picks", fake_query_today_picks)

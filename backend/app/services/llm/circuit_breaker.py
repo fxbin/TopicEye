@@ -9,6 +9,7 @@ LLM circuit breaker — 防止 LLM 持续故障时浪费配额 + 拖慢抓取。
 
 线程安全：单进程 asyncio，用 asyncio.Lock 保护状态转换。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,9 +59,7 @@ class CircuitBreaker:
         async with self._lock:
             if self._state == CircuitState.OPEN:
                 # 检查 cooldown 是否已过
-                if self._last_failure_time and (
-                    time.monotonic() - self._last_failure_time >= self.cooldown_seconds
-                ):
+                if self._last_failure_time and (time.monotonic() - self._last_failure_time >= self.cooldown_seconds):
                     self._state = CircuitState.HALF_OPEN
                     logger.info(
                         "CircuitBreaker[%s]: OPEN → HALF_OPEN (cooldown elapsed, probing)",
@@ -75,7 +74,9 @@ class CircuitBreaker:
         async with self._lock:
             if self._state != CircuitState.CLOSED:
                 logger.info(
-                    "CircuitBreaker[%s]: %s → CLOSED (success)", self.name, self._state.value,
+                    "CircuitBreaker[%s]: %s → CLOSED (success)",
+                    self.name,
+                    self._state.value,
                 )
             self._state = CircuitState.CLOSED
             self._failure_count = 0
@@ -89,7 +90,8 @@ class CircuitBreaker:
                 # 试探失败，重新 OPEN
                 self._state = CircuitState.OPEN
                 logger.warning(
-                    "CircuitBreaker[%s]: HALF_OPEN → OPEN (probe failed)", self.name,
+                    "CircuitBreaker[%s]: HALF_OPEN → OPEN (probe failed)",
+                    self.name,
                 )
                 return
 
@@ -97,7 +99,9 @@ class CircuitBreaker:
                 self._state = CircuitState.OPEN
                 logger.warning(
                     "CircuitBreaker[%s]: CLOSED → OPEN (consecutive failures=%d, cooldown=%.0fs)",
-                    self.name, self._failure_count, self.cooldown_seconds,
+                    self.name,
+                    self._failure_count,
+                    self.cooldown_seconds,
                 )
 
     def status(self) -> dict:
@@ -109,8 +113,7 @@ class CircuitBreaker:
             "failure_threshold": self.failure_threshold,
             "cooldown_seconds": self.cooldown_seconds,
             "last_failure_ago_seconds": (
-                round(time.monotonic() - self._last_failure_time, 1)
-                if self._last_failure_time else None
+                round(time.monotonic() - self._last_failure_time, 1) if self._last_failure_time else None
             ),
         }
 

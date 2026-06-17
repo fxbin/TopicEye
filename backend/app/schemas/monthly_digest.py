@@ -1,6 +1,7 @@
 """
 Monthly Digest schema — request/response models.
 """
+
 from datetime import datetime
 from typing import Any, Optional
 

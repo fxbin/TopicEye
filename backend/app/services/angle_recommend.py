@@ -11,6 +11,7 @@
 - contrast_angles: 反差角度（1-2个真正有价值的创作方向）
 - reasoning: 为什么这些角度有效（1-2句话）
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,12 +71,12 @@ async def generate_angles_for_topic(
         }
     """
     # 防御 prompt injection：清洗用户输入，移除控制字符，限制长度
-    clean_topic = re.sub(r'[\x00-\x1f\x7f]', '', topic)[:40]
-    clean_keywords = re.sub(r'[\x00-\x1f\x7f]', '', ', '.join(keywords))[:200]
-    clean_titles = '\n'.join(f"- {t}" for t in platform_titles[:8])
+    clean_topic = re.sub(r"[\x00-\x1f\x7f]", "", topic)[:40]
+    clean_keywords = re.sub(r"[\x00-\x1f\x7f]", "", ", ".join(keywords))[:200]
+    clean_titles = "\n".join(f"- {t}" for t in platform_titles[:8])
     # 限制标题总长度，防止超长输入耗尽 LLM token
     if len(clean_titles) > 2000:
-        clean_titles = clean_titles[:2000] + '\n...(truncated)'
+        clean_titles = clean_titles[:2000] + "\n...(truncated)"
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},

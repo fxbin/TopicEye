@@ -1,4 +1,5 @@
 """抖音热榜（趋势雷达版）— 复用 douyin_hot 的 API"""
+
 from __future__ import annotations
 
 import logging
@@ -77,18 +78,20 @@ class DouyinTrending(BaseTrendingScraper):
             if isinstance(raw_labels, list):
                 labels = [l.get("name", "") for l in raw_labels if isinstance(l, dict) and l.get("name")]
 
-            results.append({
-                "title": word,
-                "rank": idx,
-                "url": jump_url,
-                "hot_value": hot_score,
-                "hot_value_raw": str(hot_value_raw),
-                "trend": "up" if idx <= 5 else "stable",
-                "extra": {
-                    "sentence_title": sentence.get("title", ""),
-                    "labels": labels,
-                },
-            })
+            results.append(
+                {
+                    "title": word,
+                    "rank": idx,
+                    "url": jump_url,
+                    "hot_value": hot_score,
+                    "hot_value_raw": str(hot_value_raw),
+                    "trend": "up" if idx <= 5 else "stable",
+                    "extra": {
+                        "sentence_title": sentence.get("title", ""),
+                        "labels": labels,
+                    },
+                }
+            )
 
         logger.info("douyin trending: fetched %d items", len(results))
         return results

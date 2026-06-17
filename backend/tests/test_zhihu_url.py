@@ -13,21 +13,12 @@ def test_normalize_zhihu_question_answer_api_url():
 
 
 def test_normalize_zhihu_question_and_answer_urls():
-    assert (
-        normalize_zhihu_url("https://api.zhihu.com/questions/123")
-        == "https://www.zhihu.com/question/123"
-    )
-    assert (
-        normalize_zhihu_url("https://api.zhihu.com/answers/456")
-        == "https://www.zhihu.com/answer/456"
-    )
+    assert normalize_zhihu_url("https://api.zhihu.com/questions/123") == "https://www.zhihu.com/question/123"
+    assert normalize_zhihu_url("https://api.zhihu.com/answers/456") == "https://www.zhihu.com/answer/456"
 
 
 def test_normalize_zhihu_article_url():
-    assert (
-        normalize_zhihu_url("https://api.zhihu.com/articles/789")
-        == "https://zhuanlan.zhihu.com/p/789"
-    )
+    assert normalize_zhihu_url("https://api.zhihu.com/articles/789") == "https://zhuanlan.zhihu.com/p/789"
 
 
 def test_normalize_zhihu_url_leaves_other_hosts_unchanged():
@@ -59,8 +50,6 @@ def test_daily_report_response_parses_and_normalizes_top_pick_urls():
         top_picks='[{"title":"t","source_url":"https://api.zhihu.com/questions/123"}]',
     )
 
-    assert response.model_dump()["top_picks"] == [
-        {"title": "t", "source_url": "https://www.zhihu.com/question/123"}
-    ]
+    assert response.model_dump()["top_picks"] == [{"title": "t", "source_url": "https://www.zhihu.com/question/123"}]
     assert response.model_dump()["edition"] == "final"
     assert response.model_dump()["source_item_ids"] == [1, 2]

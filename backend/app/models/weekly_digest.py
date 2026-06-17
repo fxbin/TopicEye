@@ -1,6 +1,7 @@
 """
 Weekly Digest model — AI-generated weekly curated newsletter.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -23,7 +24,7 @@ class WeeklyDigest(Base):
     week_label: Mapped[str] = mapped_column(String(50), nullable=False)  # e.g. "5月19日 ~ 5月25日"
     # ISO start / end dates
     week_start: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
-    week_end: Mapped[str] = mapped_column(String(10), nullable=False)    # YYYY-MM-DD
+    week_end: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
 
     # ── Generated content fields (all stored as JSON text) ──
 
@@ -67,4 +68,6 @@ class WeeklyDigest(Base):
     status: Mapped[str] = mapped_column(String(20), default="PENDING")  # PENDING / GENERATING / DONE / ERROR
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )

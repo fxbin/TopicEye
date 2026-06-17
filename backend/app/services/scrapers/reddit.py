@@ -42,6 +42,7 @@ _COMMENT_SEMAPHORE = asyncio.Semaphore(2)
 
 # ── curl-based HTTP helper ──────────────────────────────────────────
 
+
 async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
     """Run curl subprocess to fetch JSON from Reddit, bypassing TLS fingerprinting."""
     if params:
@@ -50,15 +51,23 @@ async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Option
         full_url = url
 
     cmd = [
-        "curl", "-sS", "--max-time", "20",
-        "-H", f"User-Agent: {USER_AGENT}",
-        "-H", "Accept: application/json,text/plain,*/*",
-        "-H", "Accept-Language: en-US,en;q=0.9",
-        "-H", f"Referer: {REDDIT_BASE}/",
+        "curl",
+        "-sS",
+        "--max-time",
+        "20",
+        "-H",
+        f"User-Agent: {USER_AGENT}",
+        "-H",
+        "Accept: application/json,text/plain,*/*",
+        "-H",
+        "Accept-Language: en-US,en;q=0.9",
+        "-H",
+        f"Referer: {REDDIT_BASE}/",
     ]
 
     # Add proxy if available
     import os
+
     proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
     if proxy:
         cmd.extend(["--proxy", proxy])
@@ -136,11 +145,7 @@ class RedditScraper(BaseScraper):
         if not data:
             return []
 
-        posts = [
-            child["data"]
-            for child in data.get("data", {}).get("children", [])
-            if child.get("kind") == "t3"
-        ]
+        posts = [child["data"] for child in data.get("data", {}).get("children", []) if child.get("kind") == "t3"]
 
         # Optionally fetch top comments for each qualifying post
         comment_futures: list[asyncio.Task] = []

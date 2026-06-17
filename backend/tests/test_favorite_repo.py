@@ -200,9 +200,15 @@ async def test_reorder_status_updates_positions_and_status():
 
     async with session_factory() as db:
         repo = FavoriteRepo(db, 1)
-        first = await repo.upsert(FavoriteCreate(target_type=FavoriteTargetType.BOOK, target_key="book:1", title="第一本"))
-        second = await repo.upsert(FavoriteCreate(target_type=FavoriteTargetType.BOOK, target_key="book:2", title="第二本"))
-        third = await repo.upsert(FavoriteCreate(target_type=FavoriteTargetType.SOURCE, target_key="source:1", title="信源"))
+        first = await repo.upsert(
+            FavoriteCreate(target_type=FavoriteTargetType.BOOK, target_key="book:1", title="第一本")
+        )
+        second = await repo.upsert(
+            FavoriteCreate(target_type=FavoriteTargetType.BOOK, target_key="book:2", title="第二本")
+        )
+        third = await repo.upsert(
+            FavoriteCreate(target_type=FavoriteTargetType.SOURCE, target_key="source:1", title="信源")
+        )
 
         ordered = await repo.reorder_status(
             status=FavoriteStatus.RESEARCHING,

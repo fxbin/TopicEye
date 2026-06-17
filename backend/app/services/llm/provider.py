@@ -64,11 +64,13 @@ def _litellm_extra_kwargs(model_config: Any = None) -> dict[str, Any]:
 
 # ── DB-backed model config cache ──────────────────────────────────────
 
+
 class ModelConfigCache:
     """
     Caches enabled model route configs from DB.
     Refreshes every 60 seconds so changes in the UI take effect quickly.
     """
+
     def __init__(self):
         self._route_models: list[Any] = []
         self._user_route_models: dict[int, list[Any]] = {}
@@ -161,7 +163,9 @@ async def invalidate_model_cache() -> None:
     reset_model_rate_limiters()
     _failover.reset()
 
+
 # ── Model failover state tracker ──────────────────────────────────────
+
 
 class ModelFailover:
     """
@@ -233,6 +237,7 @@ def _candidate_from_db_model(model_config: Any, temperature: float, max_tokens: 
 
 
 # ── Rate limiter (simple token bucket) ────────────────────────────────
+
 
 class RateLimiter:
     """Simple token-bucket rate limiter for LLM API calls."""
@@ -335,11 +340,14 @@ def reset_completion_semaphore() -> None:
 
 # ── LLM call wrapper ──────────────────────────────────────────────────
 
+
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Detect if an exception is a rate limit (429) error."""
     msg = str(exc).lower()
-    return any(k in msg for k in ["429", "rate limit", "rate_limit", "quota exceeded",
-                                   "请求过于频繁", "调用额度", "额度用完", "已达"])
+    return any(
+        k in msg
+        for k in ["429", "rate limit", "rate_limit", "quota exceeded", "请求过于频繁", "调用额度", "额度用完", "已达"]
+    )
 
 
 def _parse_reset_time(exc: Exception) -> datetime | None:
@@ -351,15 +359,18 @@ def _parse_reset_time(exc: Exception) -> datetime | None:
     Returns UTC datetime or None if not parseable.
     """
     import re
+
     msg = str(exc)
     # Match Chinese format: "2026-05-18 21:11:16"
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})", msg)
     if m:
         try:
-            dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
-                         int(m.group(4)), int(m.group(5)), int(m.group(6)))
+            dt = datetime(
+                int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6))
+            )
             # Chinese servers are likely CST (UTC+8)
             from datetime import timedelta, timezone
+
             cst = timezone(timedelta(hours=8))
             dt = dt.replace(tzinfo=cst)
             return dt.astimezone(UTC)
@@ -464,16 +475,18 @@ async def call_llm_with_metadata(
     """Call LLM with automatic ordered failover and return the selected route metadata."""
     # Circuit breaker: skip LLM call entirely when in OPEN state
     from app.services.llm.circuit_breaker import get_llm_circuit_breaker
+
     breaker = get_llm_circuit_breaker()
     if not await breaker.allow_request():
         from app.services.llm.circuit_breaker import CircuitOpenError
+
         raise CircuitOpenError(
-            f"LLM circuit breaker OPEN (failures={breaker.status()['failure_count']}); "
-            f"callers should use fallback"
+            f"LLM circuit breaker OPEN (failures={breaker.status()['failure_count']}); callers should use fallback"
         )
 
     # Response cache: same (messages, temperature, model) → return cached raw
     from app.services.llm.response_cache import get_llm_cache
+
     cache = get_llm_cache()
     cached = cache.get(messages, temperature, max_tokens, model=None)
     if cached is not None:
@@ -481,17 +494,26 @@ async def call_llm_with_metadata(
 
     try:
         result = await _call_llm_with_metadata_inner(
-            messages, temperature, max_tokens, scene, user_id, routing_group,
+            messages,
+            temperature,
+            max_tokens,
+            scene,
+            user_id,
+            routing_group,
         )
         await breaker.record_success()
         cache.set(
-            messages, temperature, max_tokens, model=None,
+            messages,
+            temperature,
+            max_tokens,
+            model=None,
             raw_response=result[0],
         )
         return result
     except Exception as exc:
         # Only count genuine LLM/API failures, not caller-side issues
         from app.services.llm.circuit_breaker import CircuitOpenError
+
         if not isinstance(exc, CircuitOpenError):
             await breaker.record_failure()
         raise

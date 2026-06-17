@@ -15,6 +15,7 @@
       平台改版后失效, 届时 fail-fast 即可, 不要默默写空盘.
     * 详情/章节: 需 udid, 这里**不抓** (plan 范围外).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -70,8 +71,7 @@ class HeiyanTrending(BaseTrendingScraper):
                     if entry and entry["extra"]["book_id"] not in seen:
                         seen.add(entry["extra"]["book_id"])
                         results.append(entry)
-            logger.info("heiyan home: %d unique books from %d shelves",
-                        len(results), len(home_shelves))
+            logger.info("heiyan home: %d unique books from %d shelves", len(results), len(home_shelves))
 
         # 2) 书库全量 (search/new/all, 10 页, 183 本, sortName 分类)
         search_all = await self._fetch_search_all_pages(client, seen)
@@ -157,8 +157,7 @@ class HeiyanTrending(BaseTrendingScraper):
                 await asyncio.sleep(0.3 * (i + 1))
                 continue
             if not (payload.get("success") and payload.get("code") == 1):
-                logger.warning("heiyan %s: code=%s msg=%s",
-                               context, payload.get("code"), payload.get("message"))
+                logger.warning("heiyan %s: code=%s msg=%s", context, payload.get("code"), payload.get("message"))
                 await asyncio.sleep(0.3 * (i + 1))
                 continue
             return payload
@@ -269,8 +268,8 @@ class HeiyanTrending(BaseTrendingScraper):
                 "words": book.get("words"),
                 "words_str": book.get("wordsStr", ""),
                 "tags": tags,
-                "sortName": sort_name,           # 现言/古言/世情/...
-                "type": book.get("booktype"),   # 1=短篇 3=长篇
+                "sortName": sort_name,  # 现言/古言/世情/...
+                "type": book.get("booktype"),  # 1=短篇 3=长篇
                 "wx_book_id": book.get("wxbookid", ""),
                 "tk_book_id": book.get("tkbookid", ""),
                 "finished": bool(book.get("finished")),

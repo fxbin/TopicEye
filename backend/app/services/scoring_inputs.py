@@ -1,4 +1,5 @@
 """Adapters from ORM content rows to scoring engine inputs."""
+
 from __future__ import annotations
 
 from typing import Any

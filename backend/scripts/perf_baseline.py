@@ -4,6 +4,7 @@
 This script intentionally uses only the Python standard library so it can run
 inside the existing backend venv without adding benchmark dependencies.
 """
+
 from __future__ import annotations
 
 import argparse

@@ -40,6 +40,7 @@ _cache_warmup_task: asyncio.Task | None = None
 
 # ── Structured logging (JSON for production aggregation) ──
 from app.core.logging_config import configure_logging
+
 _log_format = getattr(settings, "LOG_FORMAT", "text")
 configure_logging(log_format=_log_format)
 
@@ -91,12 +92,8 @@ class ProcessTimeHeaderMiddleware:
         async def send_with_process_time(message):
             if message["type"] == "http.response.start":
                 elapsed_ms = (time.perf_counter() - started_at) * 1000
-                message.setdefault("headers", []).append(
-                    (b"x-process-time-ms", f"{elapsed_ms:.3f}".encode("ascii"))
-                )
-                message["headers"].append(
-                    (b"x-request-id", req_id.encode("ascii"))
-                )
+                message.setdefault("headers", []).append((b"x-process-time-ms", f"{elapsed_ms:.3f}".encode("ascii")))
+                message["headers"].append((b"x-request-id", req_id.encode("ascii")))
             await send(message)
 
         try:
@@ -123,6 +120,7 @@ def ensure_runtime_secret_safety() -> None:
 # now run via ``run_startup_migrations`` (stamp head for legacy DBs, upgrade
 # head for new DBs) inside ``lifespan`` below.
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cache_warmup_task
@@ -134,6 +132,7 @@ async def lifespan(app: FastAPI):
     # brand-new databases are built via `upgrade head`.
     if settings.AUTO_CREATE_TABLES_ON_STARTUP:
         from app.core.migrations import run_startup_migrations
+
         await asyncio.to_thread(run_startup_migrations)
     else:
         logger.info("Startup schema migration skipped by config")
@@ -143,6 +142,7 @@ async def lifespan(app: FastAPI):
     # sequences stale, causing UniqueViolationError on subsequent inserts.
     try:
         from app.core.sequence_health import ensure_sequences_synced
+
         await ensure_sequences_synced()
     except Exception as exc:
         logger.warning("Sequence sync check failed (non-fatal): %s", exc)
@@ -150,6 +150,7 @@ async def lifespan(app: FastAPI):
     # Slow query listener (SQL > 1s log warning, > 5s alert webhook)
     try:
         from app.core.slow_query import attach_to_all_engines
+
         attach_to_all_engines()
     except Exception as exc:
         logger.warning("Slow query listener setup failed (non-fatal): %s", exc)
@@ -159,6 +160,7 @@ async def lifespan(app: FastAPI):
     if settings.ADMIN_SEED_ENABLED and admin_email and admin_password:
         try:
             from app.services.auth_service import ensure_admin_user
+
             async with async_session() as admin_db:
                 admin = await ensure_admin_user(
                     admin_db,
@@ -179,6 +181,7 @@ async def lifespan(app: FastAPI):
     if settings.STARTUP_SEED_ENABLED:
         try:
             from app.services.classifier import seed_categories
+
             async with async_session() as seed_db:
                 await seed_categories(seed_db)
                 await seed_db.commit()
@@ -191,6 +194,7 @@ async def lifespan(app: FastAPI):
     if settings.STARTUP_SEED_ENABLED:
         try:
             from app.services.mother_topic_seed import seed_mother_topics
+
             async with async_session() as seed_db:
                 added = await seed_mother_topics()
                 await seed_db.commit()
@@ -204,6 +208,7 @@ async def lifespan(app: FastAPI):
     if settings.STARTUP_SEED_ENABLED:
         try:
             from app.services.source_seed import seed_default_sources
+
             async with async_session() as seed_db:
                 added = await seed_default_sources(seed_db)
                 await seed_db.commit()
@@ -216,6 +221,7 @@ async def lifespan(app: FastAPI):
     # Initialize DuckDB analytical layer (in-memory + ATTACH SQLite)
     try:
         from app.services.duckdb_service import get_analytics
+
         analytics = get_analytics()
         if analytics.available:
             logger.info(
@@ -239,7 +245,9 @@ async def lifespan(app: FastAPI):
 
         critical_warmup_result = await warmup_startup_critical_caches()
         if critical_warmup_result["errors"]:
-            logger.warning("Startup critical read cache warmup completed with errors: %s", critical_warmup_result["errors"])
+            logger.warning(
+                "Startup critical read cache warmup completed with errors: %s", critical_warmup_result["errors"]
+            )
         else:
             logger.info("Startup critical read caches warmed")
 
@@ -265,6 +273,7 @@ async def lifespan(app: FastAPI):
     # Close DuckDB analytics connection
     try:
         from app.services.duckdb_service import close_analytics
+
         close_analytics()
     except Exception:
         pass
@@ -303,6 +312,7 @@ app.include_router(v1_router)
 
 # ── Global exception handlers ─────────────────────────────────────────
 
+
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
     return JSONResponse(
@@ -339,6 +349,7 @@ async def health_live():
     try:
         async with async_session() as db:
             from sqlalchemy import text
+
             await db.execute(text("SELECT 1"))
     except Exception as exc:
         db_ok = False
@@ -374,6 +385,7 @@ async def health_ready():
     # scheduler 是否在跑
     try:
         from app.scheduler import scheduler as _scheduler
+
         scheduler_running = _scheduler.running
     except Exception:
         scheduler_running = False

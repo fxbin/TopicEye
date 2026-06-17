@@ -76,24 +76,18 @@ def test_youtube_is_registered():
 
 
 def test_extract_channel_id_from_channel_url():
-    cid = YouTubeScraper._extract_channel_id_from_url(
-        "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"
-    )
+    cid = YouTubeScraper._extract_channel_id_from_url("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
     assert cid == "UCabcdefghijklmnopqrstuv"
 
 
 def test_extract_channel_id_from_feed_url():
-    cid = YouTubeScraper._extract_channel_id_from_url(
-        "https://www.youtube.com/feeds/videos.xml?channel_id=UCxyz123"
-    )
+    cid = YouTubeScraper._extract_channel_id_from_url("https://www.youtube.com/feeds/videos.xml?channel_id=UCxyz123")
     assert cid == "UCxyz123"
 
 
 def test_extract_channel_id_returns_none_for_handle():
     """@handle URLs need network resolution — extraction alone returns None."""
-    cid = YouTubeScraper._extract_channel_id_from_url(
-        "https://www.youtube.com/@OpenAI"
-    )
+    cid = YouTubeScraper._extract_channel_id_from_url("https://www.youtube.com/@OpenAI")
     assert cid is None
 
 
@@ -109,21 +103,18 @@ async def test_fetch_uses_pre_resolved_channel_id():
         "https://www.youtube.com/channel/UCabc",
         source_config={"channel_id": "UCabc"},
     )
-    client = FakeClient(routes={
-        "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc": FakeResponse(
-            text=SAMPLE_YOUTUBE_FEED
-        ),
-    })
+    client = FakeClient(
+        routes={
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc": FakeResponse(text=SAMPLE_YOUTUBE_FEED),
+        }
+    )
     entries = await scraper.fetch(client)
 
     assert len(entries) == 2
     assert entries[0]["title"] == "First Video"
     assert entries[0]["url"] == "https://www.youtube.com/watch?v=abc123"
     assert entries[0]["author"] == "Test Channel"
-    assert (
-        entries[0]["cover_url"]
-        == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
-    )
+    assert entries[0]["cover_url"] == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
     assert entries[1]["title"] == "Second Video"
     # No page fetch was made — only the feed URL was requested
     assert all("/@openai" not in u.lower() for u in client.requested_urls)
@@ -133,12 +124,14 @@ async def test_fetch_uses_pre_resolved_channel_id():
 async def test_fetch_resolves_handle_to_channel_id():
     """@handle URL — scraper fetches the page, extracts channel_id, then RSS."""
     scraper = YouTubeScraper("https://www.youtube.com/@TestChannel")
-    client = FakeClient(routes={
-        "https://www.youtube.com/@TestChannel": FakeResponse(text=CHANNEL_PAGE_HTML),
-        "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv": FakeResponse(
-            text=SAMPLE_YOUTUBE_FEED
-        ),
-    })
+    client = FakeClient(
+        routes={
+            "https://www.youtube.com/@TestChannel": FakeResponse(text=CHANNEL_PAGE_HTML),
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv": FakeResponse(
+                text=SAMPLE_YOUTUBE_FEED
+            ),
+        }
+    )
     entries = await scraper.fetch(client)
 
     # channel_id was resolved from the HTML meta tag
@@ -164,8 +157,10 @@ async def test_fetch_returns_empty_on_304():
         "https://www.youtube.com/channel/UCabc",
         source_config={"channel_id": "UCabc"},
     )
-    client = FakeClient(routes={
-        "https://www.youtube.com/feeds/videos.xml": FakeResponse(status_code=304),
-    })
+    client = FakeClient(
+        routes={
+            "https://www.youtube.com/feeds/videos.xml": FakeResponse(status_code=304),
+        }
+    )
     entries = await scraper.fetch(client)
     assert entries == []

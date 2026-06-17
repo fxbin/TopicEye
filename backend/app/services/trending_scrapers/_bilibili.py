@@ -1,4 +1,5 @@
 """B站热搜 — https://s.search.bilibili.com/main/hotword"""
+
 from __future__ import annotations
 
 import logging
@@ -45,19 +46,21 @@ class BilibiliTrending(BaseTrendingScraper):
             except (ValueError, TypeError):
                 hot_val = 0
 
-            results.append({
-                "title": keyword,
-                "rank": idx,
-                "url": f"https://search.bilibili.com/all?keyword={keyword}",
-                "hot_value": hot_val,
-                "hot_value_raw": str(score),
-                "trend": "up" if item.get("heat_score", 0) > 0 else "stable",
-                "cover_url": item.get("icon", ""),
-                "extra": {
-                    "keyword": item.get("keyword", ""),
-                    "goto_type": item.get("goto_type", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": keyword,
+                    "rank": idx,
+                    "url": f"https://search.bilibili.com/all?keyword={keyword}",
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(score),
+                    "trend": "up" if item.get("heat_score", 0) > 0 else "stable",
+                    "cover_url": item.get("icon", ""),
+                    "extra": {
+                        "keyword": item.get("keyword", ""),
+                        "goto_type": item.get("goto_type", ""),
+                    },
+                }
+            )
 
         logger.info("bilibili trending: fetched %d items", len(results))
         return results

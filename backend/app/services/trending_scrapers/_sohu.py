@@ -1,4 +1,5 @@
 """搜狐热搜 — https://v2.sohu.com/landing-page/statistics-hot-news"""
+
 from __future__ import annotations
 
 import json
@@ -125,26 +126,14 @@ class SohuTrending(BaseTrendingScraper):
             if not isinstance(item, dict):
                 continue
 
-            title = (
-                item.get("title")
-                or item.get("name")
-                or item.get("word")
-                or item.get("text")
-                or ""
-            )
+            title = item.get("title") or item.get("name") or item.get("word") or item.get("text") or ""
             if isinstance(title, str):
                 title = title.strip()
             if not title:
                 continue
 
             # URL
-            article_url = (
-                item.get("url")
-                or item.get("link")
-                or item.get("href")
-                or item.get("shareUrl")
-                or ""
-            )
+            article_url = item.get("url") or item.get("link") or item.get("href") or item.get("shareUrl") or ""
 
             # viewCount → hot_value
             view_count = item.get("viewCount") or item.get("pv") or item.get("hot") or item.get("hotScore") or 0
@@ -153,19 +142,21 @@ class SohuTrending(BaseTrendingScraper):
             except (ValueError, TypeError):
                 hot_val = 0
 
-            results.append({
-                "title": title,
-                "rank": rank,
-                "url": article_url,
-                "hot_value": hot_val,
-                "hot_value_raw": str(view_count),
-                "trend": "stable",
-                "cover_url": item.get("coverUrl") or item.get("img") or item.get("pic") or "",
-                "extra": {
-                    "source": item.get("source") or item.get("authorName") or "",
-                    "news_id": item.get("newsId") or item.get("id") or item.get("_id") or "",
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": rank,
+                    "url": article_url,
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(view_count),
+                    "trend": "stable",
+                    "cover_url": item.get("coverUrl") or item.get("img") or item.get("pic") or "",
+                    "extra": {
+                        "source": item.get("source") or item.get("authorName") or "",
+                        "news_id": item.get("newsId") or item.get("id") or item.get("_id") or "",
+                    },
+                }
+            )
 
         return results
 
@@ -201,14 +192,16 @@ class SohuTrending(BaseTrendingScraper):
         # 搜狐热榜通常在特定容器中
         for match in re.finditer(
             r'<a[^>]+href=["\'](https?://www\.sohu\.com/a/[^"\']+)["\'][^>]*>'
-            r'[^<]*<[^>]*>([^<]{4,80})</[^>]*>',
+            r"[^<]*<[^>]*>([^<]{4,80})</[^>]*>",
             html,
         ):
-            items.append({
-                "title": match.group(2).strip(),
-                "url": match.group(1),
-                "viewCount": 0,
-            })
+            items.append(
+                {
+                    "title": match.group(2).strip(),
+                    "url": match.group(1),
+                    "viewCount": 0,
+                }
+            )
             if len(items) >= 30:
                 break
         return items

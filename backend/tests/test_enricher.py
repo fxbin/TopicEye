@@ -24,27 +24,31 @@ async def test_enrich_batch_runs_with_bounded_concurrency(monkeypatch):
     engine, session_factory = await _session_factory()
     now = datetime.now(timezone.utc)
     async with session_factory() as db:
-        db.add_all([
-            ContentItem(
-                id=index,
-                title=f"批量增强内容 {index}",
-                url=f"https://example.com/enrich-batch-{index}",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            )
-            for index in (1, 2, 3)
-        ])
-        db.add_all([
-            AiAnalysis(
-                id=index,
-                content_id=index,
-                summary=f"摘要 {index}",
-                curation_score=80,
-                enrichment_status="processing",
-                created_at=now,
-            )
-            for index in (1, 2, 3)
-        ])
+        db.add_all(
+            [
+                ContentItem(
+                    id=index,
+                    title=f"批量增强内容 {index}",
+                    url=f"https://example.com/enrich-batch-{index}",
+                    status=ContentStatus.ANALYZED,
+                    crawled_at=now,
+                )
+                for index in (1, 2, 3)
+            ]
+        )
+        db.add_all(
+            [
+                AiAnalysis(
+                    id=index,
+                    content_id=index,
+                    summary=f"摘要 {index}",
+                    curation_score=80,
+                    enrichment_status="processing",
+                    created_at=now,
+                )
+                for index in (1, 2, 3)
+            ]
+        )
         await db.commit()
 
     active = 0

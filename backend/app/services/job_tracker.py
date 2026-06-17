@@ -8,6 +8,7 @@ Usage:
 
 Every invocation is logged to job_execution_logs with start/end/status/duration.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,9 +41,7 @@ def _get_job_lock(job_key: str) -> asyncio.Lock:
 async def _upsert_job_config(job_key: str, name: str, description: str = "") -> None:
     """Ensure scheduled_jobs has a record for this job_key (idempotent)."""
     async with async_session() as db:
-        existing = await db.execute(
-            select(ScheduledJob).where(ScheduledJob.job_key == job_key)
-        )
+        existing = await db.execute(select(ScheduledJob).where(ScheduledJob.job_key == job_key))
         job = existing.scalar_one_or_none()
         if job:
             # Update name/description if changed
@@ -69,12 +68,11 @@ async def _claim_job_run(job_key: str, name: str, description: str, timeout: int
     for attempt in range(3):
         now = datetime.now(timezone.utc)
         async with async_session() as db:
+
             async def _claim() -> bool:
                 await begin_immediate_for_sqlite(db)
                 existing = await db.execute(
-                    select(ScheduledJob)
-                    .where(ScheduledJob.job_key == job_key)
-                    .with_for_update()
+                    select(ScheduledJob).where(ScheduledJob.job_key == job_key).with_for_update()
                 )
                 job = existing.scalar_one_or_none()
                 if job is None:
@@ -139,14 +137,14 @@ async def _create_log(job_key: str, trigger_type: str = "scheduler") -> int:
         return log.id
 
 
-async def _finish_log(log_id: int, status: str, result_summary: str = "",
-                      error_message: str = "", duration_ms: int = 0) -> None:
+async def _finish_log(
+    log_id: int, status: str, result_summary: str = "", error_message: str = "", duration_ms: int = 0
+) -> None:
     """Update log entry with final status."""
     from sqlalchemy import select
+
     async with async_session() as db:
-        existing = await db.execute(
-            select(JobExecutionLog).where(JobExecutionLog.id == log_id)
-        )
+        existing = await db.execute(select(JobExecutionLog).where(JobExecutionLog.id == log_id))
         log = existing.scalar_one_or_none()
         if not log:
             return
@@ -163,9 +161,7 @@ async def _finish_log(log_id: int, status: str, result_summary: str = "",
 async def _update_job_last_run(job_key: str, status: str) -> None:
     """Update scheduled_jobs.last_run_at and last_status."""
     async with async_session() as db:
-        existing = await db.execute(
-            select(ScheduledJob).where(ScheduledJob.job_key == job_key)
-        )
+        existing = await db.execute(select(ScheduledJob).where(ScheduledJob.job_key == job_key))
         job = existing.scalar_one_or_none()
         if job:
             job.last_run_at = datetime.now(timezone.utc)
@@ -184,8 +180,7 @@ async def _record_skipped_job(job_key: str, trigger_type: str, summary: str) -> 
     )
 
 
-def track_job(job_key: str, name: str = "", timeout: int = 300,
-              description: str = "", trigger_type: str = "scheduler"):
+def track_job(job_key: str, name: str = "", timeout: int = 300, description: str = "", trigger_type: str = "scheduler"):
     """Decorator that wraps an async job function with execution tracking.
 
     Args:
@@ -195,6 +190,7 @@ def track_job(job_key: str, name: str = "", timeout: int = 300,
         description: Job description stored in scheduled_jobs
         trigger_type: "scheduler" or "manual"
     """
+
     def decorator(func: Callable) -> Callable:
         _name = name or func.__name__
 
@@ -226,6 +222,7 @@ def track_job(job_key: str, name: str = "", timeout: int = 300,
                         result_summary = result[:2000]
                     elif isinstance(result, dict):
                         import json
+
                         result_summary = json.dumps(result, ensure_ascii=False)[:2000]
                     elif result is not None:
                         result_summary = str(result)[:2000]
@@ -241,7 +238,8 @@ def track_job(job_key: str, name: str = "", timeout: int = 300,
                     duration_ms = int((time.monotonic() - start) * 1000)
 
                 await _finish_log(
-                    log_id, status,
+                    log_id,
+                    status,
                     result_summary=result_summary,
                     error_message=error_message,
                     duration_ms=duration_ms,
@@ -250,7 +248,9 @@ def track_job(job_key: str, name: str = "", timeout: int = 300,
 
                 logger.info(
                     "Job %s %s in %dms",
-                    job_key, status, duration_ms,
+                    job_key,
+                    status,
+                    duration_ms,
                 )
 
         # Attach metadata for scheduler registration
@@ -258,14 +258,17 @@ def track_job(job_key: str, name: str = "", timeout: int = 300,
         wrapper._job_name = _name
         wrapper._job_description = description
         return wrapper
+
     return decorator
 
 
 # ── Query helpers ──────────────────────────────────────────────────────
 
+
 async def get_recent_logs(job_key: str = "", limit: int = 50) -> list[dict]:
     """Get recent execution logs, optionally filtered by job_key."""
     from sqlalchemy import select, desc
+
     async with async_session() as db:
         q = select(JobExecutionLog).order_by(desc(JobExecutionLog.started_at)).limit(limit)
         if job_key:
@@ -291,10 +294,9 @@ async def get_recent_logs(job_key: str = "", limit: int = 50) -> list[dict]:
 async def get_all_job_configs() -> list[dict]:
     """Get all scheduled job configurations with last run info."""
     from sqlalchemy import select
+
     async with async_session() as db:
-        result = await db.execute(
-            select(ScheduledJob).order_by(ScheduledJob.id)
-        )
+        result = await db.execute(select(ScheduledJob).order_by(ScheduledJob.id))
         jobs = result.scalars().all()
         return [
             {

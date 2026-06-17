@@ -9,6 +9,7 @@
 - Notification.is_read 字段保留作为历史兼容，但新代码不再使用
 - 实际"是否已读"由 NotificationRead 表控制（per-user 复合主键）
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,19 +44,32 @@ async def push_notification(
     target_list = list(target_user_ids) if target_user_ids is not None else None
     async with async_session() as db:
         if target_list is None:
-            notifs = [Notification(
-                type=type, category=category, title=title, message=message,
-                target_user_id=None,
-            )]
+            notifs = [
+                Notification(
+                    type=type,
+                    category=category,
+                    title=title,
+                    message=message,
+                    target_user_id=None,
+                )
+            ]
         elif len(target_list) == 1:
-            notifs = [Notification(
-                type=type, category=category, title=title, message=message,
-                target_user_id=target_list[0],
-            )]
+            notifs = [
+                Notification(
+                    type=type,
+                    category=category,
+                    title=title,
+                    message=message,
+                    target_user_id=target_list[0],
+                )
+            ]
         else:
             notifs = [
                 Notification(
-                    type=type, category=category, title=title, message=message,
+                    type=type,
+                    category=category,
+                    title=title,
+                    message=message,
                     target_user_id=uid,
                 )
                 for uid in target_list
@@ -67,7 +81,8 @@ async def push_notification(
             await db.refresh(n)
         logger.info(
             "通知推送: [%s] %s (recipients=%s)",
-            type, title,
+            type,
+            title,
             "broadcast" if target_list is None else len(target_list),
         )
         return notifs
@@ -85,10 +100,7 @@ async def get_notifications(
         # 可视范围：广播 OR 定向到该用户
         visibility = (Notification.target_user_id.is_(None)) | (Notification.target_user_id == user_id)
         # 排除已读：左连接 NotificationRead，未读 = 无匹配
-        read_subq = (
-            select(NotificationRead.notification_id)
-            .where(NotificationRead.user_id == user_id)
-        )
+        read_subq = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
         stmt = (
             select(Notification)
             .where(visibility, ~Notification.id.in_(read_subq) if unread_only else True)
@@ -106,14 +118,8 @@ async def get_unread_count(user_id: int) -> int:
     """获取指定用户的未读通知数。"""
     async with async_session() as db:
         visibility = (Notification.target_user_id.is_(None)) | (Notification.target_user_id == user_id)
-        read_subq = (
-            select(NotificationRead.notification_id)
-            .where(NotificationRead.user_id == user_id)
-        )
-        stmt = (
-            select(func.count(Notification.id))
-            .where(visibility, ~Notification.id.in_(read_subq))
-        )
+        read_subq = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
+        stmt = select(func.count(Notification.id)).where(visibility, ~Notification.id.in_(read_subq))
         result = await db.execute(stmt)
         return int(result.scalar() or 0)
 
@@ -123,9 +129,7 @@ async def mark_read(user_id: int, notification_id: int) -> bool:
     async with async_session() as db:
         # 校验通知对该用户可见
         visibility = (Notification.target_user_id.is_(None)) | (Notification.target_user_id == user_id)
-        notif = await db.execute(
-            select(Notification.id).where(Notification.id == notification_id, visibility)
-        )
+        notif = await db.execute(select(Notification.id).where(Notification.id == notification_id, visibility))
         if notif.scalar_one_or_none() is None:
             return False
         # 用 INSERT ... ON CONFLICT DO NOTHING (PG/SQLite) 幂等写入
@@ -134,10 +138,15 @@ async def mark_read(user_id: int, notification_id: int) -> bool:
         from app.core.database import database_profile
 
         inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
-        stmt = inserter(NotificationRead).values(
-            user_id=user_id, notification_id=notification_id,
-        ).on_conflict_do_nothing(
-            index_elements=["user_id", "notification_id"],
+        stmt = (
+            inserter(NotificationRead)
+            .values(
+                user_id=user_id,
+                notification_id=notification_id,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "notification_id"],
+            )
         )
         await db.execute(stmt)
         await db.commit()
@@ -151,15 +160,12 @@ async def mark_all_read(user_id: int) -> int:
     """
     async with async_session() as db:
         visibility = (Notification.target_user_id.is_(None)) | (Notification.target_user_id == user_id)
-        read_subq = (
-            select(NotificationRead.notification_id)
-            .where(NotificationRead.user_id == user_id)
-        )
+        read_subq = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
         unread_ids = (
-            await db.execute(
-                select(Notification.id).where(visibility, ~Notification.id.in_(read_subq))
-            )
-        ).scalars().all()
+            (await db.execute(select(Notification.id).where(visibility, ~Notification.id.in_(read_subq))))
+            .scalars()
+            .all()
+        )
         if not unread_ids:
             return 0
 
@@ -168,12 +174,11 @@ async def mark_all_read(user_id: int) -> int:
         from app.core.database import database_profile
 
         inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
-        records = [
-            {"user_id": user_id, "notification_id": nid}
-            for nid in unread_ids
-        ]
-        stmt = inserter(NotificationRead).values(records).on_conflict_do_nothing(
-            index_elements=["user_id", "notification_id"]
+        records = [{"user_id": user_id, "notification_id": nid} for nid in unread_ids]
+        stmt = (
+            inserter(NotificationRead)
+            .values(records)
+            .on_conflict_do_nothing(index_elements=["user_id", "notification_id"])
         )
         await db.execute(stmt)
         await db.commit()
@@ -187,6 +192,7 @@ async def delete_notification(user_id: int, notification_id: int) -> bool:
     （避免影响其他用户）。NotificationRead 通过 ON DELETE CASCADE 自动清理。
     """
     from sqlalchemy import delete
+
     async with async_session() as db:
         result = await db.execute(
             delete(Notification).where(
@@ -205,8 +211,6 @@ async def cleanup_old_notifications(*, days: int = 30) -> int:
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     async with async_session() as db:
-        result = await db.execute(
-            delete(Notification).where(Notification.created_at < cutoff)
-        )
+        result = await db.execute(delete(Notification).where(Notification.created_at < cutoff))
         await db.commit()
         return result.rowcount

@@ -21,14 +21,18 @@ async def test_track_job_skips_overlapping_run(monkeypatch):
         calls["logs"].append({"id": log_id, "job_key": job_key, "trigger_type": trigger_type})
         return log_id
 
-    async def fake_finish_log(log_id: int, status: str, result_summary: str = "", error_message: str = "", duration_ms: int = 0):
-        calls["finished"].append({
-            "id": log_id,
-            "status": status,
-            "result_summary": result_summary,
-            "error_message": error_message,
-            "duration_ms": duration_ms,
-        })
+    async def fake_finish_log(
+        log_id: int, status: str, result_summary: str = "", error_message: str = "", duration_ms: int = 0
+    ):
+        calls["finished"].append(
+            {
+                "id": log_id,
+                "status": status,
+                "result_summary": result_summary,
+                "error_message": error_message,
+                "duration_ms": duration_ms,
+            }
+        )
 
     async def fake_update_last(job_key: str, status: str):
         calls["last"].append((job_key, status))
@@ -77,14 +81,18 @@ async def test_track_job_skips_when_database_lease_is_active(monkeypatch):
         calls["logs"].append({"id": log_id, "job_key": job_key, "trigger_type": trigger_type})
         return log_id
 
-    async def fake_finish_log(log_id: int, status: str, result_summary: str = "", error_message: str = "", duration_ms: int = 0):
-        calls["finished"].append({
-            "id": log_id,
-            "status": status,
-            "result_summary": result_summary,
-            "error_message": error_message,
-            "duration_ms": duration_ms,
-        })
+    async def fake_finish_log(
+        log_id: int, status: str, result_summary: str = "", error_message: str = "", duration_ms: int = 0
+    ):
+        calls["finished"].append(
+            {
+                "id": log_id,
+                "status": status,
+                "result_summary": result_summary,
+                "error_message": error_message,
+                "duration_ms": duration_ms,
+            }
+        )
 
     async def fake_update_last(job_key: str, status: str):
         calls["last"].append((job_key, status))

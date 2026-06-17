@@ -1,6 +1,7 @@
 """
 Validators 单元测试。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -39,6 +40,7 @@ class TestPasswordStrength:
 class TestAuthRegisterPasswordIntegration:
     def test_register_request_enforces_password_strength(self):
         from app.schemas.auth import AuthRegisterRequest
+
         # weak password should fail
         with pytest.raises(ValidationError) as exc_info:
             AuthRegisterRequest(email="user@example.com", password="weakpass")

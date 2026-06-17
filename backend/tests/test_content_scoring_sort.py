@@ -97,19 +97,13 @@ def _breakdown(content_id: int, final_score: float):
 
 
 async def _fake_build_scoring_inputs(db, items):
-    scoring_inputs = [
-        ScoringInput(content_id=item.id, title=item.title)
-        for item in items
-    ]
+    scoring_inputs = [ScoringInput(content_id=item.id, title=item.title) for item in items]
     return scoring_inputs, {item.id: item for item in items}, {}
 
 
 def _fake_score_items(scoring_inputs):
     scores = {1: 90.0, 2: 30.0, 3: 60.0}
-    scored = [
-        (_breakdown(item.content_id, scores[item.content_id]), item)
-        for item in scoring_inputs
-    ]
+    scored = [(_breakdown(item.content_id, scores[item.content_id]), item) for item in scoring_inputs]
     return [scored[2], scored[0], scored[1]]
 
 

@@ -8,6 +8,7 @@ TrendingSnapshot — 趋势雷达历史快照。
 - TrendingItem：实时数据，每次同步替换
 - TrendingSnapshot：历史存档，永久保留15天
 """
+
 from __future__ import annotations
 
 import enum
@@ -72,7 +73,9 @@ class TrendingItem(Base):
     trend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # up/down/new/stable
     cover_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     batch_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
 
 
@@ -82,6 +85,7 @@ class TrendingSnapshot(Base):
     每天 4 个快照点（08/12/18/22），保留 7 天。
     用 (snapshot_date, snapshot_hour, source) 唯一标识一份快照。
     """
+
     __tablename__ = "trending_snapshots"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -91,4 +95,6 @@ class TrendingSnapshot(Base):
     category: Mapped[str] = mapped_column(String(20), nullable=False, default="hot")
     items: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )

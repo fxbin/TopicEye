@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.v1 import plans as plans_api
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
-from app.services.plan_catalog import get_plan_catalog, get_plan_catalog_for_user, get_tier_by_key, plan_allows_custom_ai
+from app.services.plan_catalog import (
+    get_plan_catalog,
+    get_plan_catalog_for_user,
+    get_tier_by_key,
+    plan_allows_custom_ai,
+)
 
 
 def test_plan_catalog_declares_free_and_paid_boundaries():

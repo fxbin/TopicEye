@@ -1,6 +1,7 @@
 """
 Daily Report schema — request/response models.
 """
+
 import json
 from datetime import datetime
 from typing import Optional, Any
@@ -42,9 +43,9 @@ class DailyReportResponse(BaseModel):
     source_item_ids: Optional[Any] = None
     overview: Optional[str] = None
     takeaway: Optional[str] = None
-    keywords: Optional[Any] = None      # parsed JSON array
-    trends: Optional[Any] = None         # parsed JSON array
-    top_picks: Optional[Any] = None      # parsed JSON array
+    keywords: Optional[Any] = None  # parsed JSON array
+    trends: Optional[Any] = None  # parsed JSON array
+    top_picks: Optional[Any] = None  # parsed JSON array
     platform_tips: Optional[Any] = None  # parsed JSON object
     topic_count: int = 0
     content_count: int = 0
@@ -71,6 +72,7 @@ class DailyReportListResponse(BaseModel):
 
 class DailyReportDateSummary(BaseModel):
     """Lightweight summary for the date sidebar."""
+
     report_date: str
     weekday: str
     takeaway: Optional[str] = None
@@ -82,11 +84,13 @@ class DailyReportDateSummary(BaseModel):
 
 class DailyReportDatesResponse(BaseModel):
     """Response for the dates-list endpoint."""
+
     dates: list[DailyReportDateSummary]
 
 
 class DailyReportCalendarDay(BaseModel):
     """One day in the report recovery calendar."""
+
     report_date: str
     weekday: str
     status: str = "MISSING"
@@ -104,6 +108,7 @@ class DailyReportCalendarDay(BaseModel):
 
 class DailyReportCalendarResponse(BaseModel):
     """Response for the daily-report date map."""
+
     days: list[DailyReportCalendarDay]
     total_days: int
     done_count: int

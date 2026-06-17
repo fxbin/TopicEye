@@ -1,4 +1,5 @@
 """豆瓣热搜 — https://m.douban.com/rexxar/api/v2/search/hots"""
+
 from __future__ import annotations
 
 import logging
@@ -62,18 +63,20 @@ class DoubanTrending(BaseTrendingScraper):
                 else:
                     hot_raw = str(read_count)
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": url_val,
-                "hot_value": hot_val,
-                "hot_value_raw": hot_raw or subtitle,
-                "trend": "up" if hot_val > 50000 else "stable",
-                "extra": {
-                    "type": item.get("type", ""),
-                    "id": item.get("id", ""),
-                },
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": url_val,
+                    "hot_value": hot_val,
+                    "hot_value_raw": hot_raw or subtitle,
+                    "trend": "up" if hot_val > 50000 else "stable",
+                    "extra": {
+                        "type": item.get("type", ""),
+                        "id": item.get("id", ""),
+                    },
+                }
+            )
 
         logger.info("douban trending: fetched %d items", len(results))
         return results

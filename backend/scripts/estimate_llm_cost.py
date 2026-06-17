@@ -6,13 +6,16 @@ NOT a pytest test — this script makes real API calls to measure token usage
 and estimate monthly costs. Run manually:
     python scripts/estimate_llm_cost.py
 """
+
 import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
 import asyncio
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+
 load_dotenv()
 
 SYSTEM_PROMPT = """你是一位资深内容策展分析师，负责评估内容的选题价值并决定是否入选精选。
@@ -72,6 +75,7 @@ fake_content = """AI算力需求暴增导致全球光纤产能紧张，多家运
 
 分析师指出，这一趋势对光纤产业链上下游都将产生深远影响，从光纤预制棒到光模块厂商都可能受益。投资者可关注相关产业链标的。"""
 
+
 async def test():
     client = AsyncOpenAI(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
@@ -81,10 +85,13 @@ async def test():
         model="deepseek-v4-flash",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": ANALYSIS_PROMPT.format(
-                title="AI数据中心致光纤价格暴涨，交货期限延长至20周以上",
-                content=fake_content,
-            )},
+            {
+                "role": "user",
+                "content": ANALYSIS_PROMPT.format(
+                    title="AI数据中心致光纤价格暴涨，交货期限延长至20周以上",
+                    content=fake_content,
+                ),
+            },
         ],
         temperature=0.25,
         max_tokens=1500,
@@ -94,9 +101,9 @@ async def test():
     print(f"prompt_tokens: {u.prompt_tokens}")
     print(f"completion_tokens: {u.completion_tokens}")
     print(f"total_tokens: {u.total_tokens}")
-    if hasattr(u, 'prompt_cache_hit_tokens'):
+    if hasattr(u, "prompt_cache_hit_tokens"):
         print(f"cache_hit: {u.prompt_cache_hit_tokens}")
-    if hasattr(u, 'prompt_cache_miss_tokens'):
+    if hasattr(u, "prompt_cache_miss_tokens"):
         print(f"cache_miss: {u.prompt_cache_miss_tokens}")
 
     # DeepSeek V4 Flash pricing (RMB per million tokens)
@@ -114,7 +121,8 @@ async def test():
     print(f"\n=== Monthly Projection ===")
     for daily_items in [50, 100, 200]:
         cost = (input_miss + output) * daily_items * 30
-        print(f"  {daily_items}条/天 × 30天 = {daily_items*30}次/月 → {cost:.2f} 元/月")
+        print(f"  {daily_items}条/天 × 30天 = {daily_items * 30}次/月 → {cost:.2f} 元/月")
+
 
 if __name__ == "__main__":
     asyncio.run(test())

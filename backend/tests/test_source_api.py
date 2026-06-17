@@ -223,48 +223,50 @@ async def test_enabled_sources_are_syncable_and_user_ordered():
         await conn.run_sync(Base.metadata.create_all)
 
     async with session_factory() as db:
-        db.add_all([
-            Source(
-                name="后同步",
-                url="https://example.com/sync-later.xml",
-                source_type=SourceType.RSS,
-                enabled=True,
-                status=SourceStatus.ACTIVE,
-                sort_order=30,
-            ),
-            Source(
-                name="先同步",
-                url="https://example.com/sync-first.xml",
-                source_type=SourceType.RSS,
-                enabled=True,
-                status=SourceStatus.ACTIVE,
-                sort_order=10,
-            ),
-            Source(
-                name="同序号稳定同步",
-                url="https://example.com/sync-same-order.xml",
-                source_type=SourceType.RSS,
-                enabled=True,
-                status=SourceStatus.ACTIVE,
-                sort_order=10,
-            ),
-            Source(
-                name="禁用状态不应同步",
-                url="https://example.com/status-disabled.xml",
-                source_type=SourceType.RSS,
-                enabled=True,
-                status=SourceStatus.DISABLED,
-                sort_order=1,
-            ),
-            Source(
-                name="关闭开关不应同步",
-                url="https://example.com/enabled-false.xml",
-                source_type=SourceType.RSS,
-                enabled=False,
-                status=SourceStatus.ACTIVE,
-                sort_order=1,
-            ),
-        ])
+        db.add_all(
+            [
+                Source(
+                    name="后同步",
+                    url="https://example.com/sync-later.xml",
+                    source_type=SourceType.RSS,
+                    enabled=True,
+                    status=SourceStatus.ACTIVE,
+                    sort_order=30,
+                ),
+                Source(
+                    name="先同步",
+                    url="https://example.com/sync-first.xml",
+                    source_type=SourceType.RSS,
+                    enabled=True,
+                    status=SourceStatus.ACTIVE,
+                    sort_order=10,
+                ),
+                Source(
+                    name="同序号稳定同步",
+                    url="https://example.com/sync-same-order.xml",
+                    source_type=SourceType.RSS,
+                    enabled=True,
+                    status=SourceStatus.ACTIVE,
+                    sort_order=10,
+                ),
+                Source(
+                    name="禁用状态不应同步",
+                    url="https://example.com/status-disabled.xml",
+                    source_type=SourceType.RSS,
+                    enabled=True,
+                    status=SourceStatus.DISABLED,
+                    sort_order=1,
+                ),
+                Source(
+                    name="关闭开关不应同步",
+                    url="https://example.com/enabled-false.xml",
+                    source_type=SourceType.RSS,
+                    enabled=False,
+                    status=SourceStatus.ACTIVE,
+                    sort_order=1,
+                ),
+            ]
+        )
         await db.flush()
 
         sources = await SourceRepository(db).get_enabled_sources()
@@ -953,9 +955,27 @@ async def dual_track_client(monkeypatch):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    pro_user = UserModel(id=10, email="pro@example.com", password_hash="x", plan="pro", role="user", is_active=True, display_name="Pro")
-    free_user = UserModel(id=11, email="free@example.com", password_hash="x", plan="free", role="user", is_active=True, display_name="Free")
-    admin_user = UserModel(id=1, email="admin@example.com", password_hash="x", plan="studio", role="admin", is_active=True, display_name="Admin")
+    pro_user = UserModel(
+        id=10, email="pro@example.com", password_hash="x", plan="pro", role="user", is_active=True, display_name="Pro"
+    )
+    free_user = UserModel(
+        id=11,
+        email="free@example.com",
+        password_hash="x",
+        plan="free",
+        role="user",
+        is_active=True,
+        display_name="Free",
+    )
+    admin_user = UserModel(
+        id=1,
+        email="admin@example.com",
+        password_hash="x",
+        plan="studio",
+        role="admin",
+        is_active=True,
+        display_name="Admin",
+    )
 
     app = FastAPI()
     app.include_router(sources_router)
@@ -963,6 +983,7 @@ async def dual_track_client(monkeypatch):
 
     def current_user_dep() -> UserModel:
         from fastapi import Request
+
         return pro_user  # default
 
     app.dependency_overrides[get_current_user] = lambda: pro_user
@@ -1017,6 +1038,7 @@ async def test_free_user_cannot_create_private_source(dual_track_client):
 
     # Re-override to free user
     from app.api.v1.sources import router as _  # ensure import
+
     # Swap the dependency on the same app — need to re-create the app context
     # Use a fresh client with free user override
     app = client._transport.app  # type: ignore[attr-defined]

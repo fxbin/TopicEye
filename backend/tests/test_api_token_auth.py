@@ -8,6 +8,7 @@ User API token 测试。
 - get_user_for_token 支持 API token 鉴权（fallback to API token）
 - 撤销后鉴权失效
 """
+
 from __future__ import annotations
 
 import pytest
@@ -43,7 +44,9 @@ async def test_api_token_crud_and_auth_flow():
         # ── 1. alice creates a token ──
         async with session_factory() as db:
             raw_token, record = await create_api_token(
-                db, user_id=alice_id, name="CI 脚本",
+                db,
+                user_id=alice_id,
+                name="CI 脚本",
             )
             await db.commit()
             assert record.id > 0
@@ -89,7 +92,9 @@ async def test_api_token_crud_and_auth_flow():
         # ── 8. alice creates another token and deletes it ──
         async with session_factory() as db:
             raw2, record2 = await create_api_token(
-                db, user_id=alice_id, name="temp",
+                db,
+                user_id=alice_id,
+                name="temp",
             )
             await db.commit()
             token2_id = record2.id
@@ -103,7 +108,9 @@ async def test_api_token_crud_and_auth_flow():
         # ── 9. last_used_at updated on auth ──
         async with session_factory() as db:
             raw3, record3 = await create_api_token(
-                db, user_id=alice_id, name="track",
+                db,
+                user_id=alice_id,
+                name="track",
             )
             await db.commit()
             assert record3.last_used_at is None
@@ -112,9 +119,8 @@ async def test_api_token_crud_and_auth_flow():
             await db.commit()
         async with session_factory() as db:
             from sqlalchemy import select
-            tracked = (await db.execute(
-                select(UserApiToken).where(UserApiToken.id == record3.id)
-            )).scalar_one()
+
+            tracked = (await db.execute(select(UserApiToken).where(UserApiToken.id == record3.id))).scalar_one()
             assert tracked.last_used_at is not None
     finally:
         await engine.dispose()

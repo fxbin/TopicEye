@@ -1,4 +1,5 @@
 """百度贴吧热议榜 — https://tieba.baidu.com/hottopic/browse/topiclist"""
+
 from __future__ import annotations
 
 import logging
@@ -55,14 +56,16 @@ class TiebaTrending(BaseTrendingScraper):
             except (ValueError, TypeError):
                 hot_val = 0
 
-            results.append({
-                "title": title,
-                "rank": idx,
-                "url": topic_url,
-                "hot_value": hot_val,
-                "hot_value_raw": str(discuss_num),
-                "trend": "stable",
-            })
+            results.append(
+                {
+                    "title": title,
+                    "rank": idx,
+                    "url": topic_url,
+                    "hot_value": hot_val,
+                    "hot_value_raw": str(discuss_num),
+                    "trend": "stable",
+                }
+            )
             if len(results) >= 50:
                 break
 

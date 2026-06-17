@@ -32,15 +32,9 @@ class UserFeedback(Base):
     __tablename__ = "user_feedback"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    content_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
-    )
-    feedback_type: Mapped[str] = mapped_column(
-        value_enum(FeedbackType), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
+    feedback_type: Mapped[str] = mapped_column(value_enum(FeedbackType), nullable=False)
     score_delta: Mapped[float] = mapped_column(Float, nullable=False)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

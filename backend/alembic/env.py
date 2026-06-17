@@ -5,6 +5,7 @@ same env.py works for both SQLite and PostgreSQL. Autogenerate relies on the
 full model metadata, so every ORM module must be imported here — mirroring the
 imports in app/main.py that register tables onto Base.metadata.
 """
+
 from __future__ import annotations
 
 import sys

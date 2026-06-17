@@ -37,14 +37,16 @@ def test_extract_usage_reads_openai_cache_tokens():
 
 
 def test_calculate_cost_uses_per_million_pricing_and_cache_hit_discount():
-    usage = extract_usage({
-        "model": "deepseek-chat",
-        "usage": {
-            "prompt_tokens": 1000,
-            "completion_tokens": 500,
-            "prompt_tokens_details": {"cached_tokens": 200},
-        },
-    })
+    usage = extract_usage(
+        {
+            "model": "deepseek-chat",
+            "usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 500,
+                "prompt_tokens_details": {"cached_tokens": 200},
+            },
+        }
+    )
 
     cost = calculate_cost(
         usage,
@@ -61,14 +63,16 @@ def test_calculate_cost_uses_per_million_pricing_and_cache_hit_discount():
 
 
 def test_calculate_cost_keeps_anthropic_input_tokens_as_fresh_tokens():
-    usage = extract_usage({
-        "usage": {
-            "input_tokens": 1000,
-            "output_tokens": 500,
-            "cache_read_input_tokens": 200,
-            "cache_creation_input_tokens": 100,
+    usage = extract_usage(
+        {
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "cache_read_input_tokens": 200,
+                "cache_creation_input_tokens": 100,
+            }
         }
-    })
+    )
 
     cost = calculate_cost(
         usage,

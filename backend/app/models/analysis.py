@@ -30,13 +30,15 @@ class AiAnalysis(Base):
     risk_notes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     # ── Curation fields ──
     curation_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0.0)
-    tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)          # multi-tag: ["模型","产品"]
-    recommendation: Mapped[Optional[str]] = mapped_column(Text, nullable=True) # AI 生成口语化推荐理由
+    tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # multi-tag: ["模型","产品"]
+    recommendation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # AI 生成口语化推荐理由
     source_weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=50.0)
     info_density: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=50.0)
     actionability: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=50.0)
     # ── Model cascade routing metadata ──
-    analysis_mode: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="pro_only")  # pro_only|lite_only|cascade
+    analysis_mode: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, default="pro_only"
+    )  # pro_only|lite_only|cascade
     prescreen_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     final_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     escalated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
@@ -44,13 +46,19 @@ class AiAnalysis(Base):
     prescreen_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     prescreen_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # ── Round-2 enrichment fields ──
-    enrichment_status: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="pending")  # pending|completed|error
-    enrichment: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # background/related_angles/why_matters/creator_tips
+    enrichment_status: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, default="pending"
+    )  # pending|completed|error
+    enrichment: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True
+    )  # background/related_angles/why_matters/creator_tips
     # ── Summary provenance ──
     # llm_pro = Pro 模型直接生成（pro_only / cascade 中 escalated）
     # llm_lite = Lite 模型生成（cascade 模式 lite_only 命中）
     # local_fallback = LLM 失败后本地兜底（_local_analysis_result）
     summary_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
 
     content: Mapped["ContentItem"] = relationship(back_populates="analyses")

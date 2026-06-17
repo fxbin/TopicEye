@@ -41,9 +41,7 @@ class BaseRepository(Generic[ModelType]):
 
     async def get_by_id(self, id: int) -> Optional[ModelType]:
         """Fetch a single record by primary key. Returns None if not found."""
-        result = await self.db.execute(
-            select(self.model).where(self.model.id == id)
-        )
+        result = await self.db.execute(select(self.model).where(self.model.id == id))
         return result.scalar_one_or_none()
 
     async def get_by_id_or_raise(self, id: int, resource_name: str = "") -> ModelType:
@@ -111,9 +109,7 @@ class BaseRepository(Generic[ModelType]):
         # Sort
         sort_col = getattr(self.model, sort_by, None)
         if sort_col is not None:
-            stmt = stmt.order_by(
-                sort_col.desc() if sort_order == "desc" else sort_col.asc()
-            )
+            stmt = stmt.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
         # Paginate
         offset = (page - 1) * page_size

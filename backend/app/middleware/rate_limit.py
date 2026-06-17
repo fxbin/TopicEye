@@ -10,6 +10,7 @@
 - 其他 /api/v1/*      : 200 req/min（常规 API）
 - /health, /metrics   : 不限（监控 scrape）
 """
+
 from __future__ import annotations
 
 import time

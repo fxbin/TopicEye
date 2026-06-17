@@ -63,11 +63,7 @@ async def claim_source_sync(
 
     async def _claim() -> Source | None:
         await begin_immediate_for_sqlite(db)
-        result = await db.execute(
-            select(Source)
-            .where(Source.id == source_id)
-            .with_for_update()
-        )
+        result = await db.execute(select(Source).where(Source.id == source_id).with_for_update())
         source = result.scalar_one_or_none()
         if source is None:
             return None
@@ -75,6 +71,7 @@ async def claim_source_sync(
             return None
         # DB (SQLite) 读出 last_sync_at 可能是 naive, 统一 aware UTC 再比较
         from app.core.db_backend import ensure_aware_utc
+
         last_sync_aware = ensure_aware_utc(source.last_sync_at)
         if source.status == SourceStatus.SYNCING and last_sync_aware is not None and last_sync_aware > lease_cutoff:
             return None

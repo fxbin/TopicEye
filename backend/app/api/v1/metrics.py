@@ -12,6 +12,7 @@ Prometheus 兼容的 /metrics 端点。
 - topiceye_job_runs_total{status}: job 运行数（从 job_execution_logs）
 - topiceye_uptime_seconds: 进程运行时间
 """
+
 from __future__ import annotations
 
 import time
@@ -49,30 +50,27 @@ async def prometheus_metrics():
 
     async with async_session() as db:
         # ── Sources by status ──
-        rows = await db.execute(
-            select(Source.status, func.count()).group_by(Source.status)
-        )
+        rows = await db.execute(select(Source.status, func.count()).group_by(Source.status))
         for status, count in rows:
             gauge("topiceye_sources_total", count, "Sources by status", {"status": status})
 
         # ── Content by status ──
-        rows = await db.execute(
-            select(ContentItem.status, func.count()).group_by(ContentItem.status)
-        )
+        rows = await db.execute(select(ContentItem.status, func.count()).group_by(ContentItem.status))
         for status, count in rows:
             gauge("topiceye_content_total", count, "Content items by status", {"status": status})
 
         # ── Recent content (24h) ──
         cutoff = now - timedelta(hours=24)
-        recent = await db.scalar(
-            select(func.count()).select_from(ContentItem).where(ContentItem.crawled_at >= cutoff)
-        ) or 0
+        recent = (
+            await db.scalar(select(func.count()).select_from(ContentItem).where(ContentItem.crawled_at >= cutoff)) or 0
+        )
         gauge("topiceye_content_recent_24h", recent, "Content items crawled in last 24h")
 
         # ── Analyses total ──
         analyses = await db.scalar(select(func.count()).select_from(JobExecutionLog.__table__)) or 0
         # Actually count from a known analysis table; JobExecutionLog is jobs, not analyses
         from app.models.analysis import AiAnalysis
+
         analyses = await db.scalar(select(func.count()).select_from(AiAnalysis)) or 0
         gauge("topiceye_analyses_total", analyses, "Total AI analyses")
 
@@ -86,9 +84,7 @@ async def prometheus_metrics():
             gauge("topiceye_job_runs_total", count, "Job runs in last 24h by status", {"status": status})
 
         # ── Notifications unread ──
-        unread = await db.scalar(
-            select(func.count()).select_from(Notification)
-        ) or 0
+        unread = await db.scalar(select(func.count()).select_from(Notification)) or 0
         gauge("topiceye_notifications_total", unread, "Total notifications")
 
     # ── Uptime ──
@@ -97,8 +93,8 @@ async def prometheus_metrics():
 
     # ── Slow queries (cumulative since startup) ──
     from app.core.slow_query import get_slow_count
-    gauge("topiceye_slow_queries_total", get_slow_count(),
-          "SQL queries exceeding slow query threshold (cumulative)")
+
+    gauge("topiceye_slow_queries_total", get_slow_count(), "SQL queries exceeding slow query threshold (cumulative)")
 
     return Response(
         content="\n".join(lines) + "\n",

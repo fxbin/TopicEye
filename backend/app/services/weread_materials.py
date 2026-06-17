@@ -84,19 +84,28 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
         if not isinstance(raw, dict):
             continue
         title = str(raw.get("title") or raw.get("book_title") or raw.get("bookTitle") or raw.get("name") or "").strip()
-        note = str(raw.get("note") or raw.get("review") or raw.get("markText") or raw.get("abstract") or raw.get("summary") or "").strip()
+        note = str(
+            raw.get("note")
+            or raw.get("review")
+            or raw.get("markText")
+            or raw.get("abstract")
+            or raw.get("summary")
+            or ""
+        ).strip()
         if not title and not note:
             continue
         author = raw.get("author") or raw.get("book_author") or raw.get("bookAuthor")
-        entries.append({
-            "title": title or note[:80],
-            "url": _entry_url(raw),
-            "author": str(author).strip() if author else None,
-            "summary": note[:1000],
-            "raw_content": note or title,
-            "cover_url": raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
-            "published_at": datetime.now(timezone.utc),
-        })
+        entries.append(
+            {
+                "title": title or note[:80],
+                "url": _entry_url(raw),
+                "author": str(author).strip() if author else None,
+                "summary": note[:1000],
+                "raw_content": note or title,
+                "cover_url": raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
+                "published_at": datetime.now(timezone.utc),
+            }
+        )
     return entries
 
 
@@ -171,23 +180,25 @@ async def sync_weread_materials(
             if exists:
                 duplicates += 1
                 continue
-            db.add(ContentItem(
-                title=str(entry["title"])[:500],
-                url=str(entry.get("url") or WEREAD_SOURCE_URL)[:1024],
-                source_id=source.id,
-                source_name=source.name,
-                source_type=SourceType.API.value,
-                platform="微信读书",
-                author=entry.get("author"),
-                published_at=entry.get("published_at") or now,
-                content_hash=content_hash,
-                summary=entry.get("summary") or None,
-                raw_content=entry.get("raw_content") or None,
-                cover_url=entry.get("cover_url"),
-                category="阅读素材",
-                tags=["微信读书", "阅读笔记"],
-                status=ContentStatus.PENDING,
-            ))
+            db.add(
+                ContentItem(
+                    title=str(entry["title"])[:500],
+                    url=str(entry.get("url") or WEREAD_SOURCE_URL)[:1024],
+                    source_id=source.id,
+                    source_name=source.name,
+                    source_type=SourceType.API.value,
+                    platform="微信读书",
+                    author=entry.get("author"),
+                    published_at=entry.get("published_at") or now,
+                    content_hash=content_hash,
+                    summary=entry.get("summary") or None,
+                    raw_content=entry.get("raw_content") or None,
+                    cover_url=entry.get("cover_url"),
+                    category="阅读素材",
+                    tags=["微信读书", "阅读笔记"],
+                    status=ContentStatus.PENDING,
+                )
+            )
             new += 1
 
         source.last_sync_at = now
@@ -201,6 +212,7 @@ async def sync_weread_materials(
         if new:
             invalidate_content_read_caches()
             from app.scheduler import _request_post_sync_pipeline
+
             _request_post_sync_pipeline({"new": new})
         return {
             "fetched": fetched,

@@ -196,8 +196,4 @@ def apply_model_preset(payload: dict[str, Any], preset_key: str | None) -> dict[
         "channel_name": preset.get("channel_name"),
         "description": preset.get("description"),
     }
-    return {
-        key: value
-        for key, value in {**defaults, **payload}.items()
-        if value is not None
-    }
+    return {key: value for key, value in {**defaults, **payload}.items() if value is not None}

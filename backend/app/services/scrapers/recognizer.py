@@ -119,12 +119,7 @@ def recognize_source_type(
 
     # ── RSS fallback (default + explicit feed hints) ───────────────────
     # Explicit RSS feed hints — keep as RSS but more confident.
-    if (
-        host.startswith("feeds.")
-        or path.endswith((".xml", ".rss", ".atom"))
-        or "/feed" in path
-        or "/rss" in path
-    ):
+    if host.startswith("feeds.") or path.endswith((".xml", ".rss", ".atom")) or "/feed" in path or "/rss" in path:
         return SourceType.RSS, url, None
 
     return SourceType.RSS, url, None

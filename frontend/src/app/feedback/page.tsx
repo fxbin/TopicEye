@@ -226,6 +226,9 @@ function UpdateBadge({ status }: { status: ProductUpdateStatus }) {
 }
 
 export default function FeedbackPage() {
+  // Menu entry moved to /changelog. This page remains accessible via direct
+  // URL (e.g. admin power users / deep links) with the full workbench:
+  // admin view, status machine, all-issue filters, etc.
   const { currentUser, authLoading } = useAppContext();
   const isAdmin = currentUser?.role === 'admin';
   const [loading, setLoading] = useState(true);

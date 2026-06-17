@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlencode
 
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
-
 
 TRENDING_LIST_CACHE_PREFIX = "trending:list:"
 TRENDING_SOURCES_CACHE_KEY = "trending:sources"
@@ -17,18 +15,21 @@ TRENDING_PERSISTENT_CACHE_PREFIX = "trending:persistent:"
 
 @dataclass(frozen=True)
 class TrendingListCacheParams:
-    category: Optional[str] = None
-    source: Optional[str] = None
+    category: str | None = None
+    source: str | None = None
     limit: int = 30
+    exclude_sources: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
-        params = {"limit": self.limit}
-        optional = {
-            "category": self.category,
-            "source": self.source,
-        }
-        params.update({key: value for key, value in optional.items() if value not in (None, "")})
+        params: dict = {"limit": self.limit}
+        if self.category:
+            params["category"] = self.category
+        if self.source:
+            params["source"] = self.source
+        if self.exclude_sources:
+            # Sort for stable cache key regardless of param ordering
+            params["exclude_sources"] = ",".join(sorted(self.exclude_sources))
         return TRENDING_LIST_CACHE_PREFIX + urlencode(params)
 
 

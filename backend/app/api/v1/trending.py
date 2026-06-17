@@ -4,23 +4,21 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
-from pydantic import field_serializer
-from sqlalchemy import select, func
+from pydantic import BaseModel, field_serializer
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.config import settings
 from app.core.database import async_session, get_db
-from app.models.trending import TrendingItem, TrendingCategory, TrendingSource
+from app.models.trending import TrendingCategory, TrendingItem, TrendingSource
 from app.services.trending_cache import (
+    TRENDING_SOURCES_CACHE_KEY,
     CrossPlatformCacheParams,
     PersistentTopicsCacheParams,
-    TRENDING_SOURCES_CACHE_KEY,
     TrendingListCacheParams,
     get_cached_cross_platform,
     get_cached_persistent_topics,
@@ -32,7 +30,7 @@ from app.services.trending_cache import (
     set_cached_trending_list,
     set_cached_trending_sources,
 )
-from app.services.trending_pipeline import sync_trending_source, sync_all_trending
+from app.services.trending_pipeline import sync_all_trending, sync_trending_source
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
@@ -54,9 +52,9 @@ class TrendingItemOut(BaseModel):
     url: str
     hot_value: int
     hot_value_raw: str
-    trend: Optional[str] = None
-    cover_url: Optional[str] = None
-    extra: Optional[dict] = None
+    trend: str | None = None
+    cover_url: str | None = None
+    extra: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -69,17 +67,24 @@ class TrendingSourceInfo(BaseModel):
     source: str
     category: str
     count: int
-    last_synced: Optional[str] = None
+    last_synced: str | None = None
 
 
 @router.get("", response_model=list[TrendingItemOut])
 async def get_trending(
-    category: Optional[str] = Query(None, description="分类筛选: hot/tech/finance/entertainment/community"),
-    source: Optional[str] = Query(None, description="信源筛选: weibo/baidu/douyin/..."),
+    category: str | None = Query(None, description="分类筛选: hot/tech/finance/entertainment/community"),
+    source: str | None = Query(None, description="信源筛选: weibo/baidu/douyin/..."),
+    exclude_sources: str | None = Query(
+        None,
+        description="排除的信源，逗号分隔（如 'heiyan,ishugui' 排除网文平台）",
+    ),
     limit: int = Query(30, ge=1, le=500),
 ):
     """获取趋势雷达数据。支持按分类和信源筛选。"""
-    cache_params = TrendingListCacheParams(category=category, source=source, limit=limit)
+    exclude_list = [s.strip() for s in (exclude_sources or "").split(",") if s.strip()]
+    cache_params = TrendingListCacheParams(
+        category=category, source=source, limit=limit, exclude_sources=tuple(exclude_list),
+    )
     cached = get_cached_trending_list(cache_params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
         content, age_seconds = cached
@@ -95,6 +100,7 @@ async def get_trending(
             category=category,
             source=source,
             limit=limit,
+            exclude_sources=exclude_list or None,
         )
     content = set_cached_trending_list(cache_params, payload)
     return Response(
@@ -107,8 +113,9 @@ async def get_trending(
 async def build_trending_list_payload(
     db: AsyncSession,
     *,
-    category: Optional[str] = None,
-    source: Optional[str] = None,
+    category: str | None = None,
+    source: str | None = None,
+    exclude_sources: list[str] | None = None,
     limit: int = 30,
 ) -> list[dict]:
     stmt = select(TrendingItem)
@@ -125,6 +132,16 @@ async def build_trending_list_payload(
             stmt = stmt.where(TrendingItem.source == src_enum)
         except ValueError:
             pass
+    if exclude_sources:
+        # Convert string source names to TrendingSource enums (silently skip unknowns)
+        exclude_enums = []
+        for s in exclude_sources:
+            try:
+                exclude_enums.append(TrendingSource(s))
+            except ValueError:
+                pass
+        if exclude_enums:
+            stmt = stmt.where(TrendingItem.source.notin_(exclude_enums))
 
     stmt = stmt.order_by(TrendingItem.source, TrendingItem.rank).limit(limit * 10)
     result = await db.execute(stmt)

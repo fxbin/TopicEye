@@ -1393,12 +1393,17 @@ export interface TrendingAngleRecommendation {
 
 export const trendingApi = {
   /** 获取趋势数据 */
-  list(params?: { category?: string; source?: string; limit?: number }): Promise<TrendingItem[]> {
+  list(params?: {
+    category?: string;
+    source?: string;
+    exclude_sources?: string[];
+    limit?: number;
+  }): Promise<TrendingItem[]> {
     const query = params
       ? '?' + new URLSearchParams(
           Object.entries(params)
-            .filter(([, v]) => v !== undefined && v !== '')
-            .map(([k, v]) => [k, String(v)])
+            .filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0))
+            .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)])
         ).toString()
       : '';
     return request(`/trending${query}`);

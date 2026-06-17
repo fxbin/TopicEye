@@ -499,9 +499,11 @@ function TrendingPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
+      // 黑岩/点众是网文平台，不属于"普通热榜"——它们在网文雷达页面 (/novel) 看
       const itemList = await trendingApi.list({
         category: selectedCategory || undefined,
         source: selectedSource || undefined,
+        exclude_sources: ['heiyan', 'ishugui'],
         limit: 200,
       });
       setItems(itemList);

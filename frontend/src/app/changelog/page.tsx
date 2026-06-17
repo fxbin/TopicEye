@@ -358,6 +358,7 @@ export default function ChangelogPage() {
   const [updates, setUpdates] = useState<ProductUpdateItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
 
   const loadData = useCallback(async () => {
     try {
@@ -371,6 +372,10 @@ export default function ChangelogPage() {
       setLoading(false);
     }
   }, []);
+
+  const filteredUpdates = statusFilter === 'all'
+    ? updates
+    : updates.filter((u) => u.status === statusFilter);
 
   useEffect(() => {
     void loadData();
@@ -424,15 +429,49 @@ export default function ChangelogPage() {
           </div>
         )}
 
+        {/* Status filter tabs */}
+        {updates.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {([
+              { value: 'all', label: '全部', count: updates.length },
+              { value: 'shipped', label: '已发布', count: updates.filter((u) => u.status === 'shipped').length },
+              { value: 'in_progress', label: '进行中', count: updates.filter((u) => u.status === 'in_progress').length },
+              { value: 'planned', label: '已规划', count: updates.filter((u) => u.status === 'planned').length },
+            ] as const).map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setStatusFilter(tab.value as 'all' | ProductUpdateStatus)}
+                className={cx(
+                  'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
+                  statusFilter === tab.value
+                    ? 'border-orange bg-orange text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                )}
+              >
+                {tab.label}
+                <span className={cx(
+                  'rounded-full px-1.5 text-[10px]',
+                  statusFilter === tab.value ? 'bg-white/20' : 'bg-gray-100',
+                )}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Timeline */}
-        {updates.length === 0 ? (
+        {filteredUpdates.length === 0 ? (
           <Panel className="p-8 text-center">
             <ShieldCheck className="mx-auto mb-3 h-10 w-10 text-gray-300" />
-            <p className="text-[14px] text-gray-500">暂无更新记录</p>
+            <p className="text-[14px] text-gray-500">
+              {statusFilter === 'all' ? '暂无更新记录' : `暂无「${statusFilter}」状态的发版记录`}
+            </p>
           </Panel>
         ) : (
           <div className="space-y-3">
-            {updates.map((item) => (
+            {filteredUpdates.map((item) => (
               <UpdateCard key={item.id} item={item} />
             ))}
           </div>

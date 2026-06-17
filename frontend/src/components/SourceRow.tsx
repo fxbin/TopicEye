@@ -95,6 +95,8 @@ interface SourceRowProps {
   favorite?: boolean;
   favoritePending?: boolean;
   onFavorite?: () => void;
+  selected?: boolean;
+  onSelect?: (source: BackendSource, checked: boolean) => void;
 }
 
 export default function SourceRowComponent({
@@ -110,6 +112,8 @@ export default function SourceRowComponent({
   favorite = false,
   favoritePending = false,
   onFavorite,
+  selected = false,
+  onSelect,
 }: SourceRowProps) {
   const [intervalOpen, setIntervalOpen] = useState(false);
   const typeClass = typeColors[source.source_type] || 'bg-gray-100 text-gray-600';
@@ -123,10 +127,17 @@ export default function SourceRowComponent({
     <div
       onMouseLeave={() => setIntervalOpen(false)}
       className={cx(
-        'grid grid-cols-[2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center border-b border-gray-100 bg-white px-6 py-3.5 text-[13px] text-gray-700 transition hover:bg-gray-50',
+        'grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center border-b border-gray-100 bg-white px-6 py-3.5 text-[13px] text-gray-700 transition hover:bg-gray-50',
         deleting && 'opacity-50',
       )}
     >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={(e) => onSelect?.(source, e.target.checked)}
+        onClick={(e) => e.stopPropagation()}
+        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-orange focus:ring-orange"
+      />
       <div className="min-w-0">
         <span className="font-bold">{source.name}</span>
         {displayUrl && (

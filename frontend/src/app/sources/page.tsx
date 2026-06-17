@@ -776,6 +776,45 @@ export default function SourcesPage() {
 
   // ─── Toggle source enabled (soft pause / resume) ───
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  // 批量选择：多选 + 批量启用/暂停
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
+  const handleSelectSource = (source: BackendSource, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(source.id);
+      else next.delete(source.id);
+      return next;
+    });
+  };
+  const handleSelectAllVisible = (sources: BackendSource[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) sources.forEach((s) => next.add(s.id));
+      else sources.forEach((s) => next.delete(s.id));
+      return next;
+    });
+  };
+  const handleBatchToggle = async (enabled: boolean) => {
+    if (selectedIds.size === 0 || batchProcessing) return;
+    setBatchProcessing(true);
+    try {
+      // 循环调 update 端点（已存在，单 source 调）
+      const ids = Array.from(selectedIds);
+      for (const id of ids) {
+        try {
+          await sourcesApi.update(id, { enabled });
+        } catch (err) {
+          console.error(`Batch toggle source ${id} failed:`, err);
+        }
+      }
+      setSelectedIds(new Set());
+      await fetchSources();
+      await fetchSourceMap();
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
   const handleToggleEnabled = async (source: BackendSource) => {
     if (togglingIds.has(source.id)) return;
     const nextEnabled = !source.enabled;
@@ -989,6 +1028,39 @@ export default function SourcesPage() {
       {/* Header */}
       <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-1.5 rounded-sm border border-orange/30 bg-orange/5 px-2.5 py-1 text-[12px]">
+                <span className="font-mono font-semibold text-orange">{selectedIds.size}</span>
+                <span className="text-gray-600">已选</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="ml-1 text-[11px] text-gray-500 hover:text-gray-700"
+                >
+                  清除
+                </button>
+                <span className="mx-1 h-3 w-px bg-gray-300" />
+                <button
+                  type="button"
+                  onClick={() => void handleBatchToggle(true)}
+                  disabled={batchProcessing}
+                  className="text-[12px] text-teal hover:underline disabled:opacity-50"
+                >
+                  批量启用
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => void handleBatchToggle(false)}
+                  disabled={batchProcessing}
+                  className="text-[12px] text-red hover:underline disabled:opacity-50"
+                >
+                  批量暂停
+                </button>
+              </div>
+            )}
+          </div>
           <h1 className="mb-1.5 text-[26px] font-black text-gray-900">信源管理</h1>
           <p className="text-[13px] text-gray-400">
             共 <b className="font-mono text-gray-600">{total}</b> 个信源 ·
@@ -1234,6 +1306,8 @@ export default function SourcesPage() {
                   favorite={favoriteTargets.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id })) || sourceFavoriteKeys.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id }))}
                   favoritePending={favoriteTargetPendingKeys.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id }))}
                   onFavorite={() => handleToggleSourceFavorite(src)}
+                  selected={selectedIds.has(src.id)}
+                  onSelect={handleSelectSource}
                 />
               ))}
             </Panel>

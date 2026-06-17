@@ -66,9 +66,7 @@ def build_digest_fallback(
             }
         )
 
-    category_summary = {
-        category: f"{label}内该方向素材较集中，适合继续观察选题密度和创作转化空间。" for category in categories
-    }
+    category_summary = dict.fromkeys(categories, f"{label}内该方向素材较集中，适合继续观察选题密度和创作转化空间。")
 
     return {
         "overview": (

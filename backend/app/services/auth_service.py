@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 import base64
 import hashlib
 import hmac
@@ -59,7 +59,7 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     result = await db.execute(select(User).where(User.email == normalize_email(email)))
     return result.scalar_one_or_none()
 
@@ -69,7 +69,7 @@ async def create_user(
     *,
     email: str,
     password: str,
-    display_name: Optional[str] = None,
+    display_name: str | None = None,
     role: str = "user",
 ) -> User:
     user = User(
@@ -89,7 +89,7 @@ async def ensure_admin_user(
     *,
     email: str,
     password: str,
-    display_name: Optional[str] = None,
+    display_name: str | None = None,
 ) -> User:
     user = await get_user_by_email(db, email)
     if not user:
@@ -115,13 +115,13 @@ async def ensure_admin_user(
         user.display_name = display_name
         changed = True
     if changed:
-        user.updated_at = datetime.now(timezone.utc)
+        user.updated_at = datetime.now(UTC)
         await db.flush()
         await db.refresh(user)
     return user
 
 
-async def authenticate_user(db: AsyncSession, *, email: str, password: str) -> Optional[User]:
+async def authenticate_user(db: AsyncSession, *, email: str, password: str) -> User | None:
     user = await get_user_by_email(db, email)
     if not user or not user.is_active:
         return None
@@ -135,7 +135,7 @@ async def create_session(db: AsyncSession, user: User, *, days: int = 30) -> tup
     session = UserSession(
         user_id=user.id,
         token_hash=hash_token(token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=days),
+        expires_at=datetime.now(UTC) + timedelta(days=days),
     )
 
     async def insert_session() -> UserSession:
@@ -148,9 +148,9 @@ async def create_session(db: AsyncSession, user: User, *, days: int = 30) -> tup
     return token, session
 
 
-async def get_user_for_token(db: AsyncSession, token: str) -> Optional[User]:
+async def get_user_for_token(db: AsyncSession, token: str) -> User | None:
     """Resolve a Bearer token to a User. Tries UserSession first, then UserApiToken."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token_h = hash_token(token)
 
     # 1. Try session token (浏览器登录会话)
@@ -207,7 +207,7 @@ async def revoke_token(db: AsyncSession, token: str) -> bool:
     session = result.scalar_one_or_none()
     if not session:
         return False
-    session.revoked_at = datetime.now(timezone.utc)
+    session.revoked_at = datetime.now(UTC)
     await db.flush()
     return True
 
@@ -227,7 +227,7 @@ async def create_api_token(
     *,
     user_id: int,
     name: str,
-    expires_at: Optional[datetime] = None,
+    expires_at: datetime | None = None,
 ) -> tuple[str, UserApiToken]:
     """创建一个 API token。返回 (明文 token, record)。
 
@@ -266,7 +266,7 @@ async def revoke_api_token(db: AsyncSession, *, user_id: int, token_id: int) -> 
     record = result.scalar_one_or_none()
     if not record or record.revoked_at is not None:
         return False
-    record.revoked_at = datetime.now(timezone.utc)
+    record.revoked_at = datetime.now(UTC)
     await db.flush()
     return True
 

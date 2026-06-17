@@ -18,7 +18,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -40,7 +40,7 @@ USER_AGENT = (
 # ── curl-based HTTP helper ──────────────────────────────────────────
 
 
-async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
+async def _curl_get(url: str, params: dict[str, Any] | None = None) -> Any | None:
     """Run curl subprocess to fetch JSON from Zhihu, bypassing TLS fingerprinting."""
     full_url = f"{url}?{urlencode(params)}" if params else url
 
@@ -93,7 +93,7 @@ async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Option
 
         return json.loads(text)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("curl timeout for %s", full_url)
         return None
     except json.JSONDecodeError as e:
@@ -137,7 +137,7 @@ class ZhihuScraper(BaseScraper):
     using curl to bypass potential TLS fingerprinting.
     """
 
-    def __init__(self, source_url: str, source_config: Optional[dict] = None):
+    def __init__(self, source_url: str, source_config: dict | None = None):
         super().__init__(source_url, source_config or {})
         # source_url is not used for Zhihu (hot list is fixed)
         self.fetch_limit = min(self.config.get("fetch_limit", 50), 50)
@@ -175,7 +175,7 @@ class ZhihuScraper(BaseScraper):
     # ── Parse ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_item(item: dict) -> Optional[dict[str, Any]]:
+    def _parse_item(item: dict) -> dict[str, Any] | None:
         target = item.get("target", {})
         if not target:
             return None
@@ -226,7 +226,7 @@ class ZhihuScraper(BaseScraper):
             "summary": summary,
             "raw_content": raw_content if raw_content else None,
             "tags": tags,
-            "published_at": datetime.now(timezone.utc),
+            "published_at": datetime.now(UTC),
             "cover_url": thumbnail,
             # Zhihu-specific metadata stored for scoring engine
             "_zhihu_meta": {

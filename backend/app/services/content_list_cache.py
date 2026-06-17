@@ -16,17 +16,17 @@ HOME_CONTENT_LIST_CACHE_LABEL = "contents:list:1:50:48"
 class ContentListCacheParams:
     page: int
     page_size: int
-    source_type: Optional[str] = None
-    platform: Optional[str] = None
-    status: Optional[str] = None
-    category: Optional[str] = None
-    keyword: Optional[str] = None
-    source_id: Optional[int] = None
+    source_type: str | None = None
+    platform: str | None = None
+    status: str | None = None
+    category: str | None = None
+    keyword: str | None = None
+    source_id: int | None = None
     include_trend_sources: bool = False
-    hours: Optional[int] = None
+    hours: int | None = None
     sort_by: str = "created_at"
     sort_order: str = "desc"
-    user_id: Optional[int] = None  # None = anonymous (public-only), int = user-scoped
+    user_id: int | None = None  # None = anonymous (public-only), int = user-scoped
 
     @property
     def cacheable(self) -> bool:

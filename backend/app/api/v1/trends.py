@@ -29,7 +29,7 @@ ANALYTICS_HEADERS = {"X-Analytics-Backend": "duckdb"}
 
 @router.post("/snapshot", dependencies=[Depends(get_current_admin_user)])
 async def trigger_snapshot(
-    target_date: Optional[str] = Query(None, description="YYYY-MM-DD, defaults to today"),
+    target_date: str | None = Query(None, description="YYYY-MM-DD, defaults to today"),
 ):
     """Manually trigger a trend snapshot for a given date."""
     td = date.fromisoformat(target_date) if target_date else None

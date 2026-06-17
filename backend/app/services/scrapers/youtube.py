@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -38,11 +38,11 @@ class YouTubeScraper(BaseScraper):
 
     def __init__(self, source_url: str, source_config=None):
         super().__init__(source_url, source_config)
-        self.channel_id: Optional[str] = source_config.get("channel_id") if source_config else None
-        self._rss_url: Optional[str] = None
+        self.channel_id: str | None = source_config.get("channel_id") if source_config else None
+        self._rss_url: str | None = None
 
     @staticmethod
-    def _extract_channel_id_from_url(url: str) -> Optional[str]:
+    def _extract_channel_id_from_url(url: str) -> str | None:
         """Best-effort channel_id extraction without network access."""
         if not url:
             return None
@@ -66,7 +66,7 @@ class YouTubeScraper(BaseScraper):
 
         return None
 
-    async def _resolve_channel_id(self, client: httpx.AsyncClient) -> Optional[str]:
+    async def _resolve_channel_id(self, client: httpx.AsyncClient) -> str | None:
         """Resolve a /@handle or /user/<name> URL to a UC channel_id."""
         # First try the URL itself
         direct = self._extract_channel_id_from_url(self.url)
@@ -110,7 +110,7 @@ class YouTubeScraper(BaseScraper):
 
         for entry in feed.entries:
             published = entry.get("published_parsed") or entry.get("updated_parsed")
-            published_at = datetime(*published[:6]) if published else datetime.now(timezone.utc)
+            published_at = datetime(*published[:6]) if published else datetime.now(UTC)
             # Atom feed uses <author><name>; feedparser surfaces as entry.author
             author = entry.get("author", "")
             # cover_url from media:thumbnail / media:group

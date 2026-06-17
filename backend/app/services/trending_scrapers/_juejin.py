@@ -16,7 +16,7 @@ class JuejinTrending(BaseTrendingScraper):
     SOURCE = "juejin"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://api.juejin.cn/recommend_api/v1/article/recommend_all_feed"
         payload = {
             "id_type": 2,
@@ -43,7 +43,7 @@ class JuejinTrending(BaseTrendingScraper):
             logger.warning("juejin trending: empty data")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, raw in enumerate(raw_items[:30], start=1):
             # 数据在 item_info.article_info 里
             item_info = raw.get("item_info", {})

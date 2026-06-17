@@ -16,7 +16,7 @@ class XueqiuTrending(BaseTrendingScraper):
     SOURCE = "xueqiu"
     CATEGORY = "finance"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://xueqiu.com/statuses/hot/listV2.json?since_id=-1&max_id=0&size=30"
         headers = {
             "User-Agent": (
@@ -39,7 +39,7 @@ class XueqiuTrending(BaseTrendingScraper):
             logger.warning("xueqiu trending: empty items")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items[:30], start=1):
             title = (item.get("title") or "").strip()
             text = (item.get("text") or "").strip()

@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 from urllib.parse import quote
 
@@ -67,7 +67,7 @@ async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]
             _ingest_from_source_inner(source, db),
             timeout=settings.SOURCE_SYNC_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         message = f"Source sync timed out after {settings.SOURCE_SYNC_TIMEOUT_SECONDS}s"
         logger.warning("Source %s (%d): %s", source.name, source.id, message)
         _update_source_error(source, message)
@@ -233,7 +233,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         if new_items:
             # dialect.insert does not trigger ORM `default=` callables, so
             # populate NOT-NULL columns that have no server_default.
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for item in new_items:
                 if item.crawled_at is None:
                     item.crawled_at = now
@@ -384,18 +384,18 @@ async def _register_new_categories(
 
 def _update_source_status(source: Source, status: SourceStatus) -> None:
     """Set source sync metadata."""
-    source.last_sync_at = datetime.now(timezone.utc)
+    source.last_sync_at = datetime.now(UTC)
     source.status = status
     source.sync_error = None
-    source.updated_at = datetime.now(timezone.utc)
+    source.updated_at = datetime.now(UTC)
 
 
 def _update_source_error(source: Source, message: str) -> None:
     """Record a failed sync attempt without causing immediate retry loops."""
-    source.last_sync_at = datetime.now(timezone.utc)
+    source.last_sync_at = datetime.now(UTC)
     source.status = SourceStatus.ERROR
     source.sync_error = redact_source_sync_error(message)[:500]
-    source.updated_at = datetime.now(timezone.utc)
+    source.updated_at = datetime.now(UTC)
 
 
 def redact_source_sync_error(message: str) -> str:

@@ -25,6 +25,7 @@ from app.services.today_picks_cache import (
     default_today_picks_cache_params,
     set_cached_today_picks,
 )
+from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ async def warmup_content_list(db) -> None:
         sort_order=params.sort_order,
         exclude_ids=ignored_ids,
         exclude_source_types={"DouyinHot"},
-        time_cutoff=datetime.now(timezone.utc) - timedelta(hours=params.hours or 48),
+        time_cutoff=datetime.now(UTC) - timedelta(hours=params.hours or 48),
     )
     payload = {
         "items": [content_with_latest_analysis(item) for item in items],

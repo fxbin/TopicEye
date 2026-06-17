@@ -19,7 +19,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from collections.abc import Callable
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -39,7 +40,7 @@ from app.services.llm import call_llm_json
 logger = logging.getLogger(__name__)
 
 
-def _normalize_enrichment_concurrency(value: Optional[int] = None) -> int:
+def _normalize_enrichment_concurrency(value: int | None = None) -> int:
     try:
         parsed = int(value if value is not None else settings.ENRICHMENT_WORKER_CONCURRENCY)
     except (TypeError, ValueError):
@@ -203,7 +204,7 @@ async def enrich_batch(
     content_ids: list[int],
     db: AsyncSession,
     *,
-    concurrency: Optional[int] = None,
+    concurrency: int | None = None,
     session_factory: Callable[[], Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Run enrichment on multiple content items with bounded concurrency."""

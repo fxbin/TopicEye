@@ -16,8 +16,9 @@ import functools
 import logging
 import time
 import traceback
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from datetime import datetime, timezone, UTC
+from typing import Optional
+from collections.abc import Callable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -66,7 +67,7 @@ async def _upsert_job_config(job_key: str, name: str, description: str = "") -> 
 async def _claim_job_run(job_key: str, name: str, description: str, timeout: int) -> bool:
     """Acquire a cross-process lease for a scheduled job run."""
     for attempt in range(3):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with async_session() as db:
 
             async def _claim() -> bool:
@@ -129,7 +130,7 @@ async def _create_log(job_key: str, trigger_type: str = "scheduler") -> int:
         log = JobExecutionLog(
             job_key=job_key,
             status="RUNNING",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             trigger_type=trigger_type,
         )
         db.add(log)
@@ -149,7 +150,7 @@ async def _finish_log(
         if not log:
             return
         log.status = status
-        log.finished_at = datetime.now(timezone.utc)
+        log.finished_at = datetime.now(UTC)
         log.duration_ms = duration_ms
         if result_summary:
             log.result_summary = result_summary[:2000]
@@ -164,7 +165,7 @@ async def _update_job_last_run(job_key: str, status: str) -> None:
         existing = await db.execute(select(ScheduledJob).where(ScheduledJob.job_key == job_key))
         job = existing.scalar_one_or_none()
         if job:
-            job.last_run_at = datetime.now(timezone.utc)
+            job.last_run_at = datetime.now(UTC)
             job.last_status = status
             await db.commit()
 
@@ -226,7 +227,7 @@ def track_job(job_key: str, name: str = "", timeout: int = 300, description: str
                         result_summary = json.dumps(result, ensure_ascii=False)[:2000]
                     elif result is not None:
                         result_summary = str(result)[:2000]
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     status = "TIMEOUT"
                     error_message = f"Job timed out after {timeout}s"
                     logger.error("Job %s timed out after %ds", job_key, timeout)

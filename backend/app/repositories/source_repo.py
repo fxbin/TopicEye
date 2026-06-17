@@ -4,8 +4,8 @@ Repository for Source model operations.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Sequence
+from datetime import datetime, timedelta, timezone, UTC
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +57,7 @@ async def claim_source_sync(
     min_interval_seconds: int = 0,
 ) -> Source | None:
     """Acquire a cross-process source-sync lease via ``last_sync_at``."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lease_cutoff = now - timedelta(seconds=max(int(lease_seconds), 1))
     interval_cutoff = now - timedelta(seconds=max(int(min_interval_seconds), 0))
 

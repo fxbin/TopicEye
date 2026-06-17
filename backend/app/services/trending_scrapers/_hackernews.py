@@ -16,7 +16,7 @@ class HackerNewsTrending(BaseTrendingScraper):
     SOURCE = "hackernews"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         try:
             # 获取 top stories IDs
             resp = await client.get(
@@ -28,7 +28,7 @@ class HackerNewsTrending(BaseTrendingScraper):
             logger.warning("hackernews trending fetch failed: %s", e)
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item_id in enumerate(ids, start=1):
             try:
                 item_resp = await client.get(

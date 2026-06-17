@@ -22,22 +22,22 @@ class QimaoBook(Base):
     book_id: Mapped[str] = mapped_column(String(50), nullable=False)  # 同书可出现在不同榜单
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     author: Mapped[str] = mapped_column(String(200), nullable=False)
-    abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category1_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    category2_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    thumb_uri: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    words_num: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # "859.29万字"
-    collect_count: Mapped[Optional[float]] = mapped_column(Integer, nullable=True)  # 收藏数
-    latest_chapter_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    latest_chapter_title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    update_time: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1=连载
-    is_over: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0=未完结
-    is_new: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0/1
-    is_continue_top: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 霸榜
-    index_change: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 排名变化
-    surge_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 飙升排名
-    bonus: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 奖励
+    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category1_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    category2_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    thumb_uri: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    words_num: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "859.29万字"
+    collect_count: Mapped[float | None] = mapped_column(Integer, nullable=True)  # 收藏数
+    latest_chapter_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    latest_chapter_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    update_time: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    status: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1=连载
+    is_over: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0=未完结
+    is_new: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0/1
+    is_continue_top: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 霸榜
+    index_change: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 排名变化
+    surge_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 飙升排名
+    bonus: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 奖励
 
     # 榜单维度
     channel: Mapped[Literal["boy", "girl"]] = mapped_column(String(10), nullable=False)  # 男/女

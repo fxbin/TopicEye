@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 from app.services.scoring_engine import CONFIG, ScoringInput, score_items
 
@@ -55,8 +55,8 @@ def test_stale_high_quality_batch_can_still_select_percentile_winners():
     stale_items = [
         _item(
             i,
-            published_at=datetime.now(timezone.utc) - timedelta(days=5),
-            crawled_at=datetime.now(timezone.utc) - timedelta(days=5),
+            published_at=datetime.now(UTC) - timedelta(days=5),
+            crawled_at=datetime.now(UTC) - timedelta(days=5),
             curation_score=86 + i,
             info_density=82,
             actionability=82,

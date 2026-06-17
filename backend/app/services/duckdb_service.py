@@ -24,7 +24,7 @@ import json
 import logging
 from pathlib import Path
 import threading
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
@@ -113,8 +113,8 @@ class DuckDBAnalytics:
             sqlite_domain_dir=settings.DATABASE_SQLITE_DOMAIN_DIR,
         )
         self._attach_alias = "oltp_db"
-        self._available: Optional[bool] = None  # tri-state: None=unchecked
-        self._last_error: Optional[str] = None
+        self._available: bool | None = None  # tri-state: None=unchecked
+        self._last_error: str | None = None
 
     def _get_conn(self):
         """Get or create a thread-local DuckDB connection with OLTP attached."""
@@ -173,7 +173,7 @@ class DuckDBAnalytics:
         self._available = None
         self._last_error = None
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Return operational status for health and settings endpoints."""
         available = self.available
         return {
@@ -208,10 +208,10 @@ class DuckDBAnalytics:
         hours: int = 48,
         curation_threshold: float = 55,
         weight_bonus: int = 8,
-        risk_threshold: Optional[float] = None,
-        category: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        risk_threshold: float | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Top curated picks from the last N hours.
 
@@ -219,8 +219,8 @@ class DuckDBAnalytics:
         Returns items with adjusted_curation_score >= threshold.
         """
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        params: List[Any] = [cutoff]
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        params: list[Any] = [cutoff]
         feedback_min = float(SCORING_CONFIG["feedback_score_min"])
         feedback_max = float(SCORING_CONFIG["feedback_score_max"])
         feedback_weight = float(SCORING_CONFIG["w_feedback"])
@@ -323,7 +323,7 @@ class DuckDBAnalytics:
             "adjusted_curation_score",
         ]
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for row in results:
             item = dict(zip(columns, row))
             if item["adjusted_curation_score"] < curation_threshold:
@@ -355,7 +355,7 @@ class DuckDBAnalytics:
 
         return items
 
-    def query_topics(self) -> List[Dict[str, Any]]:
+    def query_topics(self) -> list[dict[str, Any]]:
         """Get all topic groups ordered by best_score."""
         conn = self._get_conn()
         results = conn.execute("""
@@ -376,7 +376,7 @@ class DuckDBAnalytics:
             for row in results
         ]
 
-    def query_trend_topics(self, days: int = 7) -> List[Dict[str, Any]]:
+    def query_trend_topics(self, days: int = 7) -> list[dict[str, Any]]:
         """Get topic trend data for the last N days."""
         conn = self._get_conn()
         cutoff = (date.today() - timedelta(days=days)).isoformat()
@@ -412,7 +412,7 @@ class DuckDBAnalytics:
             for row in results
         ]
 
-    def query_keyword_cloud(self, days: int = 7, limit: int = 50) -> List[Dict[str, Any]]:
+    def query_keyword_cloud(self, days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
         """Get keyword frequency for word cloud, aggregated over N days."""
         conn = self._get_conn()
         cutoff = (date.today() - timedelta(days=days)).isoformat()
@@ -438,12 +438,12 @@ class DuckDBAnalytics:
         self,
         days: int = 7,
         *,
-        hours: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        hours: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Return latest analyzed stats candidates with unified scorer results."""
         conn = self._get_conn()
         window = timedelta(hours=hours) if hours is not None else timedelta(days=days)
-        cutoff = (datetime.now(timezone.utc) - window).isoformat()
+        cutoff = (datetime.now(UTC) - window).isoformat()
         rows = conn.execute(
             f"""
             WITH {LATEST_ANALYSIS_CTE},
@@ -504,7 +504,7 @@ class DuckDBAnalytics:
         item_rows = [dict(zip(columns, row)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}
         scored = score_items([self._stats_row_to_scoring_input(row) for row in item_rows])
-        scored_items: List[Dict[str, Any]] = []
+        scored_items: list[dict[str, Any]] = []
         for breakdown, item in scored:
             row = dict(row_map[item.content_id])
             row["final_score"] = breakdown.final_score
@@ -514,7 +514,7 @@ class DuckDBAnalytics:
         return scored_items
 
     @staticmethod
-    def _stats_row_to_scoring_input(row: Dict[str, Any]) -> ScoringInput:
+    def _stats_row_to_scoring_input(row: dict[str, Any]) -> ScoringInput:
         return ScoringInput(
             content_id=row["id"],
             title="",
@@ -537,7 +537,7 @@ class DuckDBAnalytics:
         )
 
     @staticmethod
-    def _stats_threshold_from_scored(scored_items: List[Dict[str, Any]]) -> float:
+    def _stats_threshold_from_scored(scored_items: list[dict[str, Any]]) -> float:
         for item in scored_items:
             threshold = item.get("threshold_used")
             if threshold is not None:
@@ -545,7 +545,7 @@ class DuckDBAnalytics:
         return STATS_CURATION_FALLBACK_THRESHOLD
 
     @staticmethod
-    def _selected_stats_items(scored_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _selected_stats_items(scored_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [item for item in scored_items if item.get("selected")]
 
     @staticmethod
@@ -555,18 +555,18 @@ class DuckDBAnalytics:
         return str(value).split(" ")[0]
 
     @staticmethod
-    def _stats_source_key(item: Dict[str, Any]) -> tuple[str, str]:
+    def _stats_source_key(item: dict[str, Any]) -> tuple[str, str]:
         return (item.get("source_name") or "未知", item.get("source_type") or "unknown")
 
-    def _stats_selected_counts_by_source(self, scored_items: List[Dict[str, Any]]) -> Dict[tuple[str, str], int]:
-        counts: Dict[tuple[str, str], int] = {}
+    def _stats_selected_counts_by_source(self, scored_items: list[dict[str, Any]]) -> dict[tuple[str, str], int]:
+        counts: dict[tuple[str, str], int] = {}
         for item in self._selected_stats_items(scored_items):
             key = self._stats_source_key(item)
             counts[key] = counts.get(key, 0) + 1
         return counts
 
-    def _stats_selected_counts_by_date(self, scored_items: List[Dict[str, Any]]) -> Dict[str, int]:
-        counts: Dict[str, int] = {}
+    def _stats_selected_counts_by_date(self, scored_items: list[dict[str, Any]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
         for item in self._selected_stats_items(scored_items):
             key = self._stats_date_key(item.get("crawled_at"))
             counts[key] = counts.get(key, 0) + 1
@@ -575,12 +575,12 @@ class DuckDBAnalytics:
     def query_stats_overview(
         self,
         days: int = 7,
-        scored_items: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        scored_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Content overview KPI cards, computed in DuckDB."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
         threshold = self._stats_threshold_from_scored(scored_items)
@@ -619,11 +619,11 @@ class DuckDBAnalytics:
     def query_stats_source_distribution(
         self,
         days: int = 7,
-        scored_items: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        scored_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Source distribution, computed in DuckDB."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
         selected_counts = self._stats_selected_counts_by_source(scored_items)
@@ -661,10 +661,10 @@ class DuckDBAnalytics:
             )
         return {"sources": sources}
 
-    def query_stats_category_distribution(self, days: int = 7) -> Dict[str, Any]:
+    def query_stats_category_distribution(self, days: int = 7) -> dict[str, Any]:
         """Category distribution, computed in DuckDB."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
             {IGNORED_CONTENT_CTE}
@@ -695,11 +695,11 @@ class DuckDBAnalytics:
     def query_stats_daily_trend(
         self,
         days: int = 7,
-        scored_items: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        scored_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Daily volume trend, computed in DuckDB."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
         selected_counts = self._stats_selected_counts_by_date(scored_items)
@@ -734,7 +734,7 @@ class DuckDBAnalytics:
             ]
         }
 
-    def query_stats_novel_platforms(self) -> Dict[str, Any]:
+    def query_stats_novel_platforms(self) -> dict[str, Any]:
         """Novel radar platform counts, computed in DuckDB."""
         conn = self._get_conn()
         fanqie = conn.execute("""
@@ -763,10 +763,10 @@ class DuckDBAnalytics:
             ]
         }
 
-    def query_daily_stats(self) -> Dict[str, Any]:
+    def query_daily_stats(self) -> dict[str, Any]:
         """Statistics for daily report generation."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
         scored_items = self._query_stats_scored_items(hours=48)
         risk_threshold = float(SCORING_CONFIG["risk_threshold"])
 
@@ -796,7 +796,7 @@ class DuckDBAnalytics:
             "dup_count": row[4] or 0,
         }
 
-    def query_dashboard_stats(self, days: int = 7) -> Dict[str, Any]:
+    def query_dashboard_stats(self, days: int = 7) -> dict[str, Any]:
         """Full stats workspace payload, with legacy dashboard fields preserved."""
         scored_items = self._query_stats_scored_items(days=days)
         selected_items = self._selected_stats_items(scored_items)
@@ -809,7 +809,7 @@ class DuckDBAnalytics:
         novel_platforms = self.query_stats_novel_platforms()
 
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         # ── KPI row ────────────────────────────────────────────────────────
         kpi_row = conn.execute(f"""
@@ -903,10 +903,10 @@ class DuckDBAnalytics:
             ],
         }
 
-    def query_content_for_report(self, hours: int = 48) -> List[Dict[str, Any]]:
+    def query_content_for_report(self, hours: int = 48) -> list[dict[str, Any]]:
         """Fetch recently analyzed content for daily report generation."""
         conn = self._get_conn()
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
 
         results = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
@@ -941,7 +941,7 @@ class DuckDBAnalytics:
             for row in results
         ]
 
-    def query_content_for_weekly(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    def query_content_for_weekly(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
         """Fetch analyzed content for a given week date range (YYYY-MM-DD strings).
 
         Returns items sorted by curation_score descending, with additional fields
@@ -1012,7 +1012,7 @@ class DuckDBAnalytics:
 
 # ── Module-level singleton ─────────────────────────────────────────────
 
-_analytics: Optional[DuckDBAnalytics] = None
+_analytics: DuckDBAnalytics | None = None
 _lock = threading.Lock()
 
 
@@ -1039,54 +1039,54 @@ def close_analytics() -> None:
 # without any changes.
 
 
-def query_today_picks(hours: int = 48, **kwargs) -> List[Dict[str, Any]]:
+def query_today_picks(hours: int = 48, **kwargs) -> list[dict[str, Any]]:
     return get_analytics().query_today_picks(hours=hours, **kwargs)
 
 
-def query_topics() -> List[Dict[str, Any]]:
+def query_topics() -> list[dict[str, Any]]:
     return get_analytics().query_topics()
 
 
-def query_trend_topics(days: int = 7) -> List[Dict[str, Any]]:
+def query_trend_topics(days: int = 7) -> list[dict[str, Any]]:
     return get_analytics().query_trend_topics(days=days)
 
 
-def query_keyword_cloud(days: int = 7, limit: int = 50) -> List[Dict[str, Any]]:
+def query_keyword_cloud(days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
     return get_analytics().query_keyword_cloud(days=days, limit=limit)
 
 
-def query_stats_overview(days: int = 7) -> Dict[str, Any]:
+def query_stats_overview(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_overview(days=days)
 
 
-def query_stats_source_distribution(days: int = 7) -> Dict[str, Any]:
+def query_stats_source_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_source_distribution(days=days)
 
 
-def query_stats_category_distribution(days: int = 7) -> Dict[str, Any]:
+def query_stats_category_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_category_distribution(days=days)
 
 
-def query_stats_daily_trend(days: int = 7) -> Dict[str, Any]:
+def query_stats_daily_trend(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_daily_trend(days=days)
 
 
-def query_stats_novel_platforms() -> Dict[str, Any]:
+def query_stats_novel_platforms() -> dict[str, Any]:
     return get_analytics().query_stats_novel_platforms()
 
 
-def query_daily_stats() -> Dict[str, Any]:
+def query_daily_stats() -> dict[str, Any]:
     return get_analytics().query_daily_stats()
 
 
-def query_dashboard_stats(days: int = 7) -> Dict[str, Any]:
+def query_dashboard_stats(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_dashboard_stats(days=days)
 
 
-def query_content_for_report(hours: int = 48) -> List[Dict[str, Any]]:
+def query_content_for_report(hours: int = 48) -> list[dict[str, Any]]:
     return get_analytics().query_content_for_report(hours=hours)
 
 
-def query_content_for_weekly(start_date: str, end_date: str) -> List[Dict[str, Any]]:
+def query_content_for_weekly(start_date: str, end_date: str) -> list[dict[str, Any]]:
     """Fetch analyzed content for a given week date range (YYYY-MM-DD strings)."""
     return get_analytics().query_content_for_weekly(start_date=start_date, end_date=end_date)

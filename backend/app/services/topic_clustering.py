@@ -190,7 +190,7 @@ async def cluster_and_dedup_with_lease(
     db: AsyncSession,
     *,
     trigger_type: str = "manual",
-) -> tuple[Optional[dict], bool]:
+) -> tuple[dict | None, bool]:
     """Run clustering under a cross-process lease.
 
     The clustering pass clears and rebuilds topic/duplicate state, so overlapping

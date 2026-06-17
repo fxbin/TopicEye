@@ -40,7 +40,7 @@ class GitHubTrending(BaseTrendingScraper):
         "Chrome/131.0.0.0 Safari/537.36"
     )
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://github.com/trending"
         headers = {
             "User-Agent": self._UA,
@@ -54,7 +54,7 @@ class GitHubTrending(BaseTrendingScraper):
             logger.warning("github trending fetch failed: %s", e)
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, article in enumerate(_ARTICLE.finditer(html), start=1):
             block = article.group(1)
 

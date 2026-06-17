@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -16,7 +16,7 @@ WEREAD_INSTALL_COMMAND = "npx skills add Tencent/WeChatReading -g"
 WEREAD_DOCS_URL = "https://weread.qq.com/r/weread-skills"
 
 
-def api_key_hint(api_key: Optional[str]) -> Optional[str]:
+def api_key_hint(api_key: str | None) -> str | None:
     if not api_key:
         return None
     stripped = api_key.strip()
@@ -31,7 +31,7 @@ def _reset_sync_state(integration: UserIntegration) -> None:
     integration.last_sync_error = None
 
 
-def integration_api_key(integration: Optional[UserIntegration]) -> Optional[str]:
+def integration_api_key(integration: UserIntegration | None) -> str | None:
     if not integration or not integration.api_key:
         return None
     return decrypt_secret(integration.api_key)
@@ -42,7 +42,7 @@ async def get_user_integration(
     *,
     user_id: int,
     provider: str,
-) -> Optional[UserIntegration]:
+) -> UserIntegration | None:
     result = await db.execute(
         select(UserIntegration).where(
             UserIntegration.user_id == user_id,
@@ -57,12 +57,12 @@ async def claim_user_integration_sync(
     *,
     integration_id: int,
     lease_seconds: int,
-) -> Optional[UserIntegration]:
+) -> UserIntegration | None:
     """Acquire a per-user integration sync lease."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lease_cutoff = now - timedelta(seconds=max(int(lease_seconds), 1))
 
-    async def _claim() -> Optional[UserIntegration]:
+    async def _claim() -> UserIntegration | None:
         await begin_immediate_for_sqlite(db)
         result = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id).with_for_update())
         integration = result.scalar_one_or_none()
@@ -92,10 +92,10 @@ async def mark_user_integration_sync_error(
     *,
     message: str,
 ) -> None:
-    integration.last_sync_at = datetime.now(timezone.utc)
+    integration.last_sync_at = datetime.now(UTC)
     integration.last_sync_status = "error"
     integration.last_sync_error = message[:500]
-    integration.updated_at = datetime.now(timezone.utc)
+    integration.updated_at = datetime.now(UTC)
     await db.flush()
 
 
@@ -105,10 +105,10 @@ async def upsert_user_integration(
     user_id: int,
     provider: str,
     api_key: str,
-    config: Optional[dict[str, Any]] = None,
+    config: dict[str, Any] | None = None,
 ) -> UserIntegration:
     integration = await get_user_integration(db, user_id=user_id, provider=provider)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     encrypted_api_key = encrypt_secret(api_key)
     if integration:
         integration.api_key = encrypted_api_key
@@ -145,12 +145,12 @@ async def clear_user_integration(
     integration.api_key = None
     integration.config = {}
     _reset_sync_state(integration)
-    integration.updated_at = datetime.now(timezone.utc)
+    integration.updated_at = datetime.now(UTC)
     await db.flush()
     return True
 
 
-def integration_status(integration: Optional[UserIntegration], provider: str) -> dict[str, Any]:
+def integration_status(integration: UserIntegration | None, provider: str) -> dict[str, Any]:
     is_weread = provider == WEREAD_PROVIDER
     api_key = integration_api_key(integration)
     return {

@@ -55,9 +55,9 @@ class HeiyanTrending(BaseTrendingScraper):
     # 实测不在 home 返回列表里, /shelf/page 也返空, 暂不抓.
 
     # ── Entry point ────────────────────────────────────────────────
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
-        results: List[TrendingEntry] = []
-        seen: Set[str] = set()
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
+        results: list[TrendingEntry] = []
+        seen: set[str] = set()
 
         # 1) 4 个首页 shelves (27 本)
         home_payload = await self._fetch_home(client)
@@ -81,7 +81,7 @@ class HeiyanTrending(BaseTrendingScraper):
         return results
 
     # ── Home API ───────────────────────────────────────────────────
-    async def _fetch_home(self, client: httpx.AsyncClient) -> Optional[dict]:
+    async def _fetch_home(self, client: httpx.AsyncClient) -> dict | None:
         url = f"{self.BASE}/book/cdn/home?pageId={self.HOME_PAGE_ID}"
         payload = await self._safe_get_json(client, url, context="home")
         if payload is None:
@@ -92,10 +92,10 @@ class HeiyanTrending(BaseTrendingScraper):
     async def _fetch_search_all_pages(
         self,
         client: httpx.AsyncClient,
-        seen: Set[str],
+        seen: set[str],
         max_pages: int = 12,
         page_size: int = 20,
-    ) -> List[TrendingEntry]:
+    ) -> list[TrendingEntry]:
         """抓 /search/new/all 全量分页. 失败/0 records 立即停, 防御性 12 页上限.
 
         API quirks (实测):
@@ -110,7 +110,7 @@ class HeiyanTrending(BaseTrendingScraper):
 
         WAF/异常走 3 次退避重试; 全失败则降级返回空 list, 不 throw.
         """
-        entries: List[TrendingEntry] = []
+        entries: list[TrendingEntry] = []
         rank_pos = 0
 
         for page in range(0, max_pages):
@@ -146,7 +146,7 @@ class HeiyanTrending(BaseTrendingScraper):
         *,
         context: str = "",
         attempts: int = 3,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         for i in range(attempts):
             try:
                 resp = await client.get(url, headers=self.HEADERS, timeout=20)
@@ -169,7 +169,7 @@ class HeiyanTrending(BaseTrendingScraper):
         record: dict,
         shelf_label: str,
         shelf_id: str,
-    ) -> Optional[TrendingEntry]:
+    ) -> TrendingEntry | None:
         book = record.get("book") or {}
         book_id = str(book.get("id") or "").strip()
         if not book_id:
@@ -226,7 +226,7 @@ class HeiyanTrending(BaseTrendingScraper):
         self,
         book: dict,
         rank: int,
-    ) -> Optional[TrendingEntry]:
+    ) -> TrendingEntry | None:
         """解析 /search/new/all 响应 (扁平结构, 与 home 嵌套 record.book 不同).
 
         字段差异: id/name/introduce/tags/sortName/booktype/wxbookid/tkbookid

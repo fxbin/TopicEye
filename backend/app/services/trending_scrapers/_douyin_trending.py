@@ -48,7 +48,7 @@ class DouyinTrending(BaseTrendingScraper):
     SOURCE = "douyin"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         try:
             resp = await client.get(HOT_LIST_URL, headers=_HEADERS)
             resp.raise_for_status()
@@ -62,7 +62,7 @@ class DouyinTrending(BaseTrendingScraper):
             logger.warning("douyin trending: word_list empty")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(word_list[:50], start=1):
             word = item.get("word", "").strip()
             if not word:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 import json
 from typing import Optional, Set
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -69,13 +69,13 @@ async def _score_content_page(
     *,
     filters: dict,
     ignored_ids: list[int],
-    time_cutoff: Optional[datetime],
-    exclude_source_types: Optional[Set[str]],
+    time_cutoff: datetime | None,
+    exclude_source_types: set[str] | None,
     page: int,
     page_size: int,
     score_fn,
     sort_order: str = "desc",
-    visible_user_id: Optional[int] = None,
+    visible_user_id: int | None = None,
 ) -> dict:
     from app.services.scoring_inputs import build_scoring_inputs
 
@@ -114,7 +114,7 @@ async def _score_content_page(
     }
 
 
-def _with_scoring_breakdown(item_map: dict, breakdown, scoring_input) -> Optional[dict]:
+def _with_scoring_breakdown(item_map: dict, breakdown, scoring_input) -> dict | None:
     item = item_map.get(scoring_input.content_id)
     if not item:
         return None
@@ -130,15 +130,15 @@ def _with_scoring_breakdown(item_map: dict, breakdown, scoring_input) -> Optiona
 async def list_contents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
-    source_type: Optional[str] = None,
-    platform: Optional[str] = None,
-    status: Optional[str] = None,
-    category: Optional[str] = None,
-    keyword: Optional[str] = None,
-    source_id: Optional[int] = None,
-    q: Optional[str] = Query(None, description="全文搜索（跨 title + summary + raw_content 的 OR 匹配）"),
+    source_type: str | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+    category: str | None = None,
+    keyword: str | None = None,
+    source_id: int | None = None,
+    q: str | None = Query(None, description="全文搜索（跨 title + summary + raw_content 的 OR 匹配）"),
     include_trend_sources: bool = Query(False, description="Include榜单/趋势源 such as DouyinHot"),
-    hours: Optional[int] = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
+    hours: int | None = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
     sort_by: str = Query(
         "created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score|low_follower_viral)$"
     ),
@@ -193,7 +193,7 @@ async def list_contents(
 
         time_cutoff = None
         if hours:
-            time_cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+            time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
         ignored_ids = await IgnoredRepo(db).list_ignored_ids()
         exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
@@ -263,9 +263,9 @@ async def list_contents(
 
 @router.get("/today-picks")
 async def today_picks(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    time_range: Optional[str] = Query(None, description="Time range: 24h, 48h, 7d"),
-    limit: Optional[int] = Query(None, ge=1, le=200, description="Limit returned items while preserving total"),
+    category: str | None = Query(None, description="Filter by category"),
+    time_range: str | None = Query(None, description="Time range: 24h, 48h, 7d"),
+    limit: int | None = Query(None, ge=1, le=200, description="Limit returned items while preserving total"),
 ):
     """Top picks — curation_score adjusted by source weight, threshold 60."""
     from app.services.today_picks import build_today_picks
@@ -305,8 +305,8 @@ async def today_picks(
 
 @router.get("/scoring-flow")
 async def scoring_flow(
-    hours: Optional[int] = Query(None, ge=1, le=720),
-    limit: Optional[int] = Query(None, ge=20, le=500),
+    hours: int | None = Query(None, ge=1, le=720),
+    limit: int | None = Query(None, ge=20, le=500),
     current_user: User = Depends(get_current_user),
 ):
     """Return a read-only explanation payload for the content scoring funnel."""
@@ -487,7 +487,7 @@ async def toggle_favorite(
     current = await favorite_repo.get_by_target(FavoriteTargetType.CONTENT, target_key)
     next_value = current is None
 
-    async def _write() -> Optional[int]:
+    async def _write() -> int | None:
         if next_value:
             favorite = await favorite_repo.create_from_content(content_id)
             favorite_id = favorite.id

@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import select
@@ -32,10 +32,10 @@ DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _get_month_range(reference_date: Optional[date] = None) -> tuple[str, str, str, str]:
+def _get_month_range(reference_date: date | None = None) -> tuple[str, str, str, str]:
     """Return (month_key, month_label, month_start_iso, month_end_iso)."""
     current = reference_date or date.today()
     month_key = f"{current.year}-{current.month:02d}"
@@ -45,7 +45,7 @@ def _get_month_range(reference_date: Optional[date] = None) -> tuple[str, str, s
     return month_key, month_label, month_start.isoformat(), month_end.isoformat()
 
 
-def _previous_month(reference_date: Optional[date] = None) -> date:
+def _previous_month(reference_date: date | None = None) -> date:
     current = reference_date or date.today()
     if current.month == 1:
         return date(current.year - 1, 12, 1)
@@ -61,7 +61,7 @@ def _is_active_generating(digest: MonthlyDigest, now: datetime) -> bool:
 
 async def generate_monthly_digest(
     db: AsyncSession,
-    reference_date: Optional[date] = None,
+    reference_date: date | None = None,
     use_previous_month: bool = True,
 ) -> MonthlyDigest:
     """Generate or regenerate a monthly digest.

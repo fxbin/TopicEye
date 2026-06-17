@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from types import SimpleNamespace
 
 import pytest
@@ -44,7 +44,7 @@ def _album_record():
         "subcategory": "paid_column",
         "business_line": "vip",
         "position": 1,
-        "updated_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(UTC),
     }
 
 

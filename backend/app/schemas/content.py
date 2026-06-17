@@ -10,25 +10,25 @@ class ContentResponse(BaseModel):
     id: int
     title: str
     url: str
-    source_id: Optional[int] = None
-    source_name: Optional[str] = None
-    source_type: Optional[str] = None
-    platform: Optional[str] = None
-    author: Optional[str] = None
-    published_at: Optional[datetime] = None
+    source_id: int | None = None
+    source_name: str | None = None
+    source_type: str | None = None
+    platform: str | None = None
+    author: str | None = None
+    published_at: datetime | None = None
     crawled_at: datetime
-    content_hash: Optional[str] = None
-    summary: Optional[str] = None
-    raw_content: Optional[str] = None
-    cover_url: Optional[str] = None
-    category: Optional[str] = None
-    tags: Optional[Any] = None
-    language: Optional[str] = None
+    content_hash: str | None = None
+    summary: str | None = None
+    raw_content: str | None = None
+    cover_url: str | None = None
+    category: str | None = None
+    tags: Any | None = None
+    language: str | None = None
     status: str
     is_favorited: bool = False
     created_at: datetime
     updated_at: datetime
-    analysis: Optional[AiAnalysisResponse] = None
+    analysis: AiAnalysisResponse | None = None
 
     model_config = {"from_attributes": True}
 
@@ -40,14 +40,14 @@ class ContentResponse(BaseModel):
 class ContentMetricsResponse(BaseModel):
     id: int
     content_id: int
-    views: Optional[int] = 0
-    likes: Optional[int] = 0
-    comments: Optional[int] = 0
-    shares: Optional[int] = 0
-    favorites: Optional[int] = 0
-    followers_count: Optional[int] = 0
-    engagement_rate: Optional[float] = 0.0
-    explosion_ratio: Optional[float] = 0.0
+    views: int | None = 0
+    likes: int | None = 0
+    comments: int | None = 0
+    shares: int | None = 0
+    favorites: int | None = 0
+    followers_count: int | None = 0
+    engagement_rate: float | None = 0.0
+    explosion_ratio: float | None = 0.0
     snapshot_at: datetime
 
     model_config = {"from_attributes": True}

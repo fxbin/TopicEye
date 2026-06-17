@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 import threading
 
 import httpx

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 import json
 import time
 from typing import Optional, Any
@@ -33,7 +33,7 @@ def get_cached_scoring_flow_json(
     hours: int,
     limit: int,
     sample_limit: int = 80,
-) -> Optional[tuple[bytes, float]]:
+) -> tuple[bytes, float] | None:
     """Return pre-serialized cached payload for hot scoring-flow requests."""
     cached = _CACHE.get((hours, limit, sample_limit))
     if not cached:
@@ -53,7 +53,7 @@ async def build_scoring_flow_payload(
     hours: int,
     limit: int,
     sample_limit: int = 80,
-    visible_user_id: Optional[int] = None,
+    visible_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Return scoring funnel stages, candidate samples, and mix pressure data."""
     cache_key = (hours, limit, sample_limit)
@@ -61,7 +61,7 @@ async def build_scoring_flow_payload(
     if cached:
         return cached[1]
 
-    time_cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
     content_repo = ContentRepo(db)
     window_counts = await build_window_counts(content_repo, ignored_ids, requested_hours=hours)
@@ -157,10 +157,10 @@ async def build_scoring_flow_payload(
 async def build_window_counts(
     content_repo: ContentRepo,
     ignored_ids: list[int],
-    requested_hours: Optional[int] = None,
+    requested_hours: int | None = None,
 ) -> list[dict[str, int]]:
     """Count analyzed candidates for the debug window selector."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     counts: list[dict[str, int]] = []
     for hours in debug_window_hours(requested_hours):
         count = await content_repo.count_for_scoring(
@@ -174,10 +174,10 @@ async def build_window_counts(
 async def build_collected_window_counts(
     content_repo: ContentRepo,
     ignored_ids: list[int],
-    requested_hours: Optional[int] = None,
+    requested_hours: int | None = None,
 ) -> list[dict[str, int]]:
     """Count collected items for explaining pre-analysis gaps."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     counts: list[dict[str, int]] = []
     for hours in debug_window_hours(requested_hours):
         count = await content_repo.count_collected_for_scoring_window(
@@ -188,7 +188,7 @@ async def build_collected_window_counts(
     return counts
 
 
-def debug_window_hours(requested_hours: Optional[int] = None) -> tuple[int, ...]:
+def debug_window_hours(requested_hours: int | None = None) -> tuple[int, ...]:
     """Return stable debug windows while preserving a custom requested window."""
     if requested_hours is None:
         return DEBUG_WINDOW_HOURS
@@ -260,8 +260,8 @@ def build_empty_payload(
     limit: int,
     sample_limit: int,
     collected_window_total: int = 0,
-    window_counts: Optional[list[dict[str, int]]] = None,
-    collected_window_counts: Optional[list[dict[str, int]]] = None,
+    window_counts: list[dict[str, int]] | None = None,
+    collected_window_counts: list[dict[str, int]] | None = None,
 ) -> dict[str, Any]:
     """Build a scoring-flow response without loading ORM rows when no samples exist."""
     return {
@@ -300,8 +300,8 @@ def build_diagnostics(
     limit: int,
     sample_limit: int,
     collected_window_total: int = 0,
-    window_counts: Optional[list[dict[str, int]]] = None,
-    collected_window_counts: Optional[list[dict[str, int]]] = None,
+    window_counts: list[dict[str, int]] | None = None,
+    collected_window_counts: list[dict[str, int]] | None = None,
 ) -> dict[str, Any]:
     """Explain why the scoring-flow payload is empty or partial."""
     if collected_window_total > 0 and window_total <= 0:
@@ -340,7 +340,7 @@ def build_diagnostics(
         "candidate_limit": limit,
         "sample_limit": sample_limit,
         "empty_reason": empty_reason,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -390,7 +390,7 @@ def build_sample_payload(
     scoring_input: ScoringInput,
     item_map: dict[int, Any],
     feedback_scores: dict[int, float],
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     item = item_map.get(scoring_input.content_id)
     if not item:
         return None
@@ -422,7 +422,7 @@ def build_sample_payload(
     }
 
 
-def first_text(*values: Optional[str]) -> Optional[str]:
+def first_text(*values: str | None) -> str | None:
     for value in values:
         if value and value.strip():
             return value.strip()

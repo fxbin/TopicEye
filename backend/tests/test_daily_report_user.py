@@ -11,7 +11,7 @@ Covers the owner_user_id plumbing through:
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -75,8 +75,8 @@ async def _make_private_source(db: AsyncSession, *, id: int, owner_user_id: int)
         weight=3,
         sort_order=0,
         enabled=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     db.add(src)
     await db.flush()
@@ -224,10 +224,10 @@ async def test_get_latest_today_report_filters_by_owner():
                 report_date=iso,
                 weekday="X",
                 edition="snapshot",
-                generated_at=datetime.now(timezone.utc),
-                window_start=datetime.now(timezone.utc),
-                window_end=datetime.now(timezone.utc),
-                cutoff_at=datetime.now(timezone.utc),
+                generated_at=datetime.now(UTC),
+                window_start=datetime.now(UTC),
+                window_end=datetime.now(UTC),
+                cutoff_at=datetime.now(UTC),
                 status="DONE",
                 topic_count=1,
                 content_count=1,
@@ -241,10 +241,10 @@ async def test_get_latest_today_report_filters_by_owner():
                 report_date=iso,
                 weekday="X",
                 edition="snapshot",
-                generated_at=datetime.now(timezone.utc),
-                window_start=datetime.now(timezone.utc),
-                window_end=datetime.now(timezone.utc),
-                cutoff_at=datetime.now(timezone.utc),
+                generated_at=datetime.now(UTC),
+                window_start=datetime.now(UTC),
+                window_end=datetime.now(UTC),
+                cutoff_at=datetime.now(UTC),
                 status="DONE",
                 topic_count=1,
                 content_count=1,
@@ -361,7 +361,7 @@ async def test_me_today_generates_user_owned_report(tmp_path):
 
     orig_local_now2 = daily_report_svc._local_now
     daily_report_svc._fetch_report_inputs = fake_inputs
-    daily_report_svc._local_now = lambda: datetime.now(timezone.utc)
+    daily_report_svc._local_now = lambda: datetime.now(UTC)
 
     try:
         transport = ASGITransport(app=app)
@@ -396,10 +396,10 @@ async def test_me_dates_lists_only_user_owned(tmp_path):
                 report_date=iso,
                 weekday="X",
                 edition="snapshot",
-                generated_at=datetime.now(timezone.utc),
-                window_start=datetime.now(timezone.utc),
-                window_end=datetime.now(timezone.utc),
-                cutoff_at=datetime.now(timezone.utc),
+                generated_at=datetime.now(UTC),
+                window_start=datetime.now(UTC),
+                window_end=datetime.now(UTC),
+                cutoff_at=datetime.now(UTC),
                 status="DONE",
                 topic_count=1,
                 content_count=1,
@@ -412,10 +412,10 @@ async def test_me_dates_lists_only_user_owned(tmp_path):
                 report_date=iso,
                 weekday="X",
                 edition="snapshot",
-                generated_at=datetime.now(timezone.utc),
-                window_start=datetime.now(timezone.utc),
-                window_end=datetime.now(timezone.utc),
-                cutoff_at=datetime.now(timezone.utc),
+                generated_at=datetime.now(UTC),
+                window_start=datetime.now(UTC),
+                window_end=datetime.now(UTC),
+                cutoff_at=datetime.now(UTC),
                 status="DONE",
                 topic_count=1,
                 content_count=1,
@@ -428,10 +428,10 @@ async def test_me_dates_lists_only_user_owned(tmp_path):
                 report_date=iso,
                 weekday="X",
                 edition="snapshot",
-                generated_at=datetime.now(timezone.utc),
-                window_start=datetime.now(timezone.utc),
-                window_end=datetime.now(timezone.utc),
-                cutoff_at=datetime.now(timezone.utc),
+                generated_at=datetime.now(UTC),
+                window_start=datetime.now(UTC),
+                window_end=datetime.now(UTC),
+                cutoff_at=datetime.now(UTC),
                 status="DONE",
                 topic_count=1,
                 content_count=1,

@@ -6,16 +6,16 @@ from pydantic import BaseModel
 class TopicAssetResponse(BaseModel):
     id: int
     content_id: int
-    topic_title: Optional[str] = None
-    topic_type: Optional[str] = None
-    target_platforms: Optional[Any] = None
-    target_audience: Optional[str] = None
-    creator_score: Optional[float] = 0.0
-    viral_score: Optional[float] = 0.0
+    topic_title: str | None = None
+    topic_type: str | None = None
+    target_platforms: Any | None = None
+    target_audience: str | None = None
+    creator_score: float | None = 0.0
+    viral_score: float | None = 0.0
     status: str
     is_favorited: bool = False
     is_used: bool = False
-    feedback: Optional[str] = None
+    feedback: str | None = None
     created_at: datetime
     updated_at: datetime
 

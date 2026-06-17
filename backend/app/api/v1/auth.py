@@ -65,7 +65,7 @@ async def enforce_login_rate_limit(request: Request) -> None:
     )
 
 
-def _extract_bearer_token(authorization: Optional[str]) -> str:
+def _extract_bearer_token(authorization: str | None) -> str:
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authorization header")
     scheme, _, token = authorization.partition(" ")
@@ -75,7 +75,7 @@ def _extract_bearer_token(authorization: Optional[str]) -> str:
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(default=None),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     token = _extract_bearer_token(authorization)
@@ -86,7 +86,7 @@ async def get_current_user(
 
 
 async def get_optional_current_user(
-    authorization: Optional[str] = Header(default=None),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> User | None:
     if not authorization:
@@ -140,7 +140,7 @@ async def me(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout")
 async def logout(
-    authorization: Optional[str] = Header(default=None),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     token = _extract_bearer_token(authorization)

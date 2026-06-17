@@ -20,14 +20,14 @@ def is_sqlite_locked(exc: BaseException) -> bool:
     return "database is locked" in message or "database table is locked" in message
 
 
-async def retry_sqlite_locked(
+async def retry_sqlite_locked[T](
     operation: Callable[[], Awaitable[T]],
     *,
     attempts: int = 4,
     base_delay: float = 0.15,
-    on_retry: Optional[Callable[[], Awaitable[None]]] = None,
+    on_retry: Callable[[], Awaitable[None]] | None = None,
 ) -> T:
-    last_exc: Optional[OperationalError] = None
+    last_exc: OperationalError | None = None
     for index in range(attempts):
         try:
             return await operation()

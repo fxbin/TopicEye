@@ -24,4 +24,4 @@ class PlanCatalogResponse(BaseModel):
     currency: str
     source: str
     current_plan: str = "free"
-    current_tier: Optional[PlanTierResponse] = None
+    current_tier: PlanTierResponse | None = None

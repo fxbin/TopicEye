@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -11,7 +11,7 @@ import app.main  # noqa: F401 - import all models for Base.metadata
 from app.api.v1 import auth as auth_api
 from app.api.v1 import contents as contents_api
 from app.core.database import Base
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceType, SourceStatus
 from app.models.user import User
@@ -423,8 +423,8 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
         weight=3,
         sort_order=0,
         enabled=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     private_src = Source(
         id=2,
@@ -437,8 +437,8 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
         weight=3,
         sort_order=0,
         enabled=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
     # Content from each source
@@ -452,9 +452,9 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
         owner_user_id=None,
         status=ContentStatus.ANALYZED,
         content_hash="h1",
-        crawled_at=datetime.now(timezone.utc),
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        crawled_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     private_content = ContentItem(
         id=200,
@@ -466,9 +466,9 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
         owner_user_id=10,
         status=ContentStatus.ANALYZED,
         content_hash="h2",
-        crawled_at=datetime.now(timezone.utc),
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        crawled_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
     async with session_factory() as db:

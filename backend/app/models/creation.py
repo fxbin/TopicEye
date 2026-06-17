@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text
@@ -28,16 +28,16 @@ class CreationPlan(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
     platform: Mapped[str] = mapped_column(String(50), nullable=False)  # xiaohongshu / short_video / wechat
-    platform_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 冗余显示名
-    content_title_snapshot: Mapped[Optional[str]] = mapped_column(
+    platform_name: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 冗余显示名
+    content_title_snapshot: Mapped[str | None] = mapped_column(
         String(500), nullable=True, comment="内容删除后仍能展示历史方案"
     )
     # LLM 生成的完整 plan（titles / structure / scenes / outline 等）
     plan: Mapped[dict] = mapped_column(JSON, nullable=False)
     # 可选的 error 字段，标记生成失败的方案（保留作日志）
-    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (

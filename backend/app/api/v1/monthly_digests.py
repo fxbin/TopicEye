@@ -74,7 +74,7 @@ async def list_digests(limit: int = 12, db: AsyncSession = Depends(get_db)):
 
 @router.post("/generate", response_model=MonthlyDigestResponse)
 async def trigger_generate(
-    month_key: Optional[str] = Query(None, description="Month key to generate, YYYY-MM"),
+    month_key: str | None = Query(None, description="Month key to generate, YYYY-MM"),
     db: AsyncSession = Depends(get_db),
 ):
     reference_date = _parse_month_key(month_key) if month_key else None

@@ -43,7 +43,7 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _match_rule(path: str) -> Optional[tuple[int, int, int]]:
+def _match_rule(path: str) -> tuple[int, int, int] | None:
     """Return (rule_idx, max_requests, window_seconds) or None."""
     for idx, (prefix, max_req, window) in enumerate(_RATE_RULES):
         if path.startswith(prefix):

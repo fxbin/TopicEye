@@ -13,7 +13,7 @@ from app.models.product_feedback import (
 )
 
 
-def _clean_text(value: Optional[str]) -> Optional[str]:
+def _clean_text(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
@@ -35,31 +35,31 @@ class IssueFeedbackCreate(BaseModel):
 
 
 class IssueFeedbackUpdate(BaseModel):
-    status: Optional[IssueFeedbackStatus] = None
-    severity: Optional[IssueFeedbackSeverity] = None
-    area: Optional[str] = Field(default=None, min_length=1, max_length=80)
-    resolution_note: Optional[str] = Field(default=None, max_length=5000)
+    status: IssueFeedbackStatus | None = None
+    severity: IssueFeedbackSeverity | None = None
+    area: str | None = Field(default=None, min_length=1, max_length=80)
+    resolution_note: str | None = Field(default=None, max_length=5000)
 
     @field_validator("area", "resolution_note", mode="before")
     @classmethod
-    def clean_optional_text(cls, value: Optional[str]) -> Optional[str]:
+    def clean_optional_text(cls, value: str | None) -> str | None:
         return _clean_text(value)
 
 
 class IssueFeedbackResponse(BaseModel):
     id: int
-    user_id: Optional[int] = None
+    user_id: int | None = None
     title: str
     description: str
     area: str
     severity: IssueFeedbackSeverity
     status: IssueFeedbackStatus
-    resolution_note: Optional[str] = None
-    fixed_at: Optional[datetime] = None
+    resolution_note: str | None = None
+    fixed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-    reporter_email: Optional[str] = None
-    reporter_name: Optional[str] = None
+    reporter_email: str | None = None
+    reporter_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -94,8 +94,8 @@ class ProductUpdateCreate(BaseModel):
 
     version: str = Field(min_length=1, max_length=50)
     status: ProductUpdateStatus = ProductUpdateStatus.planned
-    target_date: Optional[date] = None
-    shipped_at: Optional[datetime] = None
+    target_date: date | None = None
+    shipped_at: datetime | None = None
     items: list[ProductUpdateEntry] = Field(min_length=1)
 
     @field_validator("version", mode="before")
@@ -105,15 +105,15 @@ class ProductUpdateCreate(BaseModel):
 
 
 class ProductUpdatePatch(BaseModel):
-    version: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    status: Optional[ProductUpdateStatus] = None
-    target_date: Optional[date] = None
-    shipped_at: Optional[datetime] = None
-    items: Optional[list[ProductUpdateEntry]] = Field(default=None, min_length=1)
+    version: str | None = Field(default=None, min_length=1, max_length=50)
+    status: ProductUpdateStatus | None = None
+    target_date: date | None = None
+    shipped_at: datetime | None = None
+    items: list[ProductUpdateEntry] | None = Field(default=None, min_length=1)
 
     @field_validator("version", mode="before")
     @classmethod
-    def clean_version(cls, value: Optional[str]) -> Optional[str]:
+    def clean_version(cls, value: str | None) -> str | None:
         return _clean_text(value)
 
 
@@ -123,10 +123,10 @@ class ProductUpdateResponse(BaseModel):
     id: int
     version: str
     status: ProductUpdateStatus
-    target_date: Optional[date] = None
-    shipped_at: Optional[datetime] = None
+    target_date: date | None = None
+    shipped_at: datetime | None = None
     items: list[ProductUpdateEntry]
-    created_by_id: Optional[int] = None
+    created_by_id: int | None = None
     created_at: datetime
     updated_at: datetime
 

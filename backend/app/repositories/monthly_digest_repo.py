@@ -4,7 +4,8 @@ Repository for MonthlyDigest — monthly newsletter queries.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -17,7 +18,7 @@ class MonthlyDigestRepository(BaseRepository[MonthlyDigest]):
 
     model = MonthlyDigest
 
-    async def get_by_month_key(self, month_key: str) -> Optional[MonthlyDigest]:
+    async def get_by_month_key(self, month_key: str) -> MonthlyDigest | None:
         stmt = select(self.model).where(self.model.month_key == month_key)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -27,7 +28,7 @@ class MonthlyDigestRepository(BaseRepository[MonthlyDigest]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def get_months_with_digests(self) -> List[Dict[str, Optional[str]]]:
+    async def get_months_with_digests(self) -> list[dict[str, str | None]]:
         stmt = select(
             self.model.month_key,
             self.model.month_label,

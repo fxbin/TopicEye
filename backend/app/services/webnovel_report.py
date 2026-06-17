@@ -14,7 +14,7 @@ Webnovel report service — weekly history and rank movement analysis.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 from typing import Optional, Any
 
 from sqlalchemy import func, select
@@ -68,12 +68,12 @@ def _movement_item(
     *,
     platform: str,
     title: str,
-    author: Optional[str],
-    category: Optional[str],
+    author: str | None,
+    category: str | None,
     rank_type: str,
     position: int,
     change: int,
-    url: Optional[str] = None,
+    url: str | None = None,
 ) -> dict:
     return {
         "platform": platform,
@@ -291,7 +291,7 @@ async def _trending_history(db: AsyncSession, source: str, start_date: str, end_
     daily_counter = Counter(s.snapshot_date for s in snapshots)
 
     # 每个快照内，同 title 取最佳 rank（最小值），去重
-    best_rank_per_snap: dict[tuple[date, str], tuple[int, Optional[str]]] = {}
+    best_rank_per_snap: dict[tuple[date, str], tuple[int, str | None]] = {}
     for snap in snapshots:
         for item in snap.items or []:
             title = (item.get("title") or "").strip()
@@ -303,7 +303,7 @@ async def _trending_history(db: AsyncSession, source: str, start_date: str, end_
                 best_rank_per_snap[key] = (rank, item.get("url"))
 
     # 按 title 聚合首末日
-    by_title: dict[str, list[tuple[date, int, Optional[str]]]] = defaultdict(list)
+    by_title: dict[str, list[tuple[date, int, str | None]]] = defaultdict(list)
     for (snap_date, title), (rank, url) in best_rank_per_snap.items():
         by_title[title].append((snap_date, rank, url))
 
@@ -502,7 +502,7 @@ async def build_weekly_webnovel_report(db: AsyncSession, days: int = 7) -> dict:
             "days": safe_days,
             "label": f"{start.month}月{start.day}日 ~ {today.month}月{today.day}日",
         },
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "summary": {
             "total_items": fanqie_count + qimao_count + zhihu_count + heiyan_count + ishugui_count,
             "snapshot_days": len(fanqie_history["snapshot_dates"]),

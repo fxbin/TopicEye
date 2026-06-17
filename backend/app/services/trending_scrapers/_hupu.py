@@ -17,7 +17,7 @@ class HupuTrending(BaseTrendingScraper):
     SOURCE = "hupu"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         # 虎扑步行街热帖 API
         url = "https://bbs.hupu.com/all-games"
         headers = {
@@ -39,7 +39,7 @@ class HupuTrending(BaseTrendingScraper):
             re.DOTALL,
         )
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         seen = set()
         for match in pattern.finditer(html):
             href, title = match.groups()

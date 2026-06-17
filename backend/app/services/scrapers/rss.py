@@ -5,7 +5,7 @@ RSS / Atom feed scraper.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 import feedparser
@@ -37,7 +37,7 @@ class RSSScraper(BaseScraper):
 
         for entry in feed.entries:
             published = entry.get("published_parsed") or entry.get("updated_parsed")
-            published_at = datetime(*published[:6]) if published else datetime.now(timezone.utc)
+            published_at = datetime(*published[:6]) if published else datetime.now(UTC)
 
             entries.append(
                 {

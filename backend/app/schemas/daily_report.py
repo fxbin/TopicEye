@@ -31,28 +31,28 @@ def _normalize_top_pick_urls(value: Any) -> Any:
 
 class DailyReportResponse(BaseModel):
     id: int
-    owner_user_id: Optional[int] = None
+    owner_user_id: int | None = None
     report_date: str
     weekday: str
     edition: str = "snapshot"
-    generated_at: Optional[datetime] = None
-    window_start: Optional[datetime] = None
-    window_end: Optional[datetime] = None
-    cutoff_at: Optional[datetime] = None
+    generated_at: datetime | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    cutoff_at: datetime | None = None
     source_scope: str = "curated"
-    source_item_ids: Optional[Any] = None
-    overview: Optional[str] = None
-    takeaway: Optional[str] = None
-    keywords: Optional[Any] = None  # parsed JSON array
-    trends: Optional[Any] = None  # parsed JSON array
-    top_picks: Optional[Any] = None  # parsed JSON array
-    platform_tips: Optional[Any] = None  # parsed JSON object
+    source_item_ids: Any | None = None
+    overview: str | None = None
+    takeaway: str | None = None
+    keywords: Any | None = None  # parsed JSON array
+    trends: Any | None = None  # parsed JSON array
+    top_picks: Any | None = None  # parsed JSON array
+    platform_tips: Any | None = None  # parsed JSON object
     topic_count: int = 0
     content_count: int = 0
     analyzed_count: int = 0
     status: str = "PENDING"
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -75,11 +75,11 @@ class DailyReportDateSummary(BaseModel):
 
     report_date: str
     weekday: str
-    takeaway: Optional[str] = None
+    takeaway: str | None = None
     status: str = "PENDING"
     edition: str = "snapshot"
-    generated_at: Optional[datetime] = None
-    cutoff_at: Optional[datetime] = None
+    generated_at: datetime | None = None
+    cutoff_at: datetime | None = None
 
 
 class DailyReportDatesResponse(BaseModel):
@@ -94,10 +94,10 @@ class DailyReportCalendarDay(BaseModel):
     report_date: str
     weekday: str
     status: str = "MISSING"
-    edition: Optional[str] = None
-    generated_at: Optional[datetime] = None
-    cutoff_at: Optional[datetime] = None
-    takeaway: Optional[str] = None
+    edition: str | None = None
+    generated_at: datetime | None = None
+    cutoff_at: datetime | None = None
+    takeaway: str | None = None
     content_count: int = 0
     analyzed_count: int = 0
     topic_count: int = 0

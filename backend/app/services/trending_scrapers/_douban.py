@@ -16,7 +16,7 @@ class DoubanTrending(BaseTrendingScraper):
     SOURCE = "douban"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://m.douban.com/rexxar/api/v2/search/hots?ck="
         headers = {
             "User-Agent": (
@@ -40,7 +40,7 @@ class DoubanTrending(BaseTrendingScraper):
             logger.warning("douban trending: empty items")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items, start=1):
             title = (item.get("title") or item.get("name", "")).strip()
             if not title:

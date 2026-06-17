@@ -20,7 +20,7 @@ CODE_START = 58344  # 0xE428
 CODE_END = 58715  # 0xE59B
 
 # 映射表缓存（模块级单例）
-_char_mapping: Optional[dict[int, str]] = None
+_char_mapping: dict[int, str] | None = None
 
 
 def _load_mapping() -> dict[int, str]:

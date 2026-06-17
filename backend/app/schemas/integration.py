@@ -9,14 +9,14 @@ from pydantic import BaseModel, Field, field_validator
 class IntegrationStatusResponse(BaseModel):
     provider: str
     configured: bool
-    api_key_hint: Optional[str] = None
+    api_key_hint: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     sync_endpoint_configured: bool = False
-    install_command: Optional[str] = None
-    docs_url: Optional[str] = None
-    last_sync_at: Optional[datetime] = None
-    last_sync_status: Optional[str] = None
-    last_sync_error: Optional[str] = None
+    install_command: str | None = None
+    docs_url: str | None = None
+    last_sync_at: datetime | None = None
+    last_sync_status: str | None = None
+    last_sync_error: str | None = None
 
 
 class IntegrationUpdateRequest(BaseModel):

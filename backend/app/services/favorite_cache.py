@@ -10,7 +10,7 @@ _CACHE_TTL_SECONDS = 10.0
 _CACHE: dict[str, tuple[float, bytes]] = {}
 
 
-def get_cached_json(cache_key: str) -> Optional[tuple[bytes, float]]:
+def get_cached_json(cache_key: str) -> tuple[bytes, float] | None:
     cached = _CACHE.get(cache_key)
     if not cached:
         return None

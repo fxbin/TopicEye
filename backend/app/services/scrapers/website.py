@@ -5,7 +5,7 @@ Website scraper — fetch a single page and extract main content.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 import httpx
@@ -42,6 +42,6 @@ class WebsiteScraper(BaseScraper):
                 "summary": main_text[:500] if main_text else "",
                 "raw_content": main_text,
                 "cover_url": cover_url,
-                "published_at": datetime.now(timezone.utc),
+                "published_at": datetime.now(UTC),
             }
         ]

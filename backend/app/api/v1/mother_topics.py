@@ -28,11 +28,11 @@ router = APIRouter(prefix="/mother-topics", tags=["母题"])
 
 class MotherTopicBase(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     keywords: list[str] = []
     weight: float = 1.0
-    content_type: Optional[str] = None
-    target_reader: Optional[str] = None
+    content_type: str | None = None
+    target_reader: str | None = None
     is_active: bool = True
     display_order: int = 0
 
@@ -42,25 +42,25 @@ class MotherTopicCreate(MotherTopicBase):
 
 
 class MotherTopicUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    keywords: Optional[list[str]] = None
-    weight: Optional[float] = None
-    content_type: Optional[str] = None
-    target_reader: Optional[str] = None
-    is_active: Optional[bool] = None
-    display_order: Optional[int] = None
+    name: str | None = None
+    description: str | None = None
+    keywords: list[str] | None = None
+    weight: float | None = None
+    content_type: str | None = None
+    target_reader: str | None = None
+    is_active: bool | None = None
+    display_order: int | None = None
 
 
 class MotherTopicOut(MotherTopicBase):
     id: int
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm_model(cls, obj) -> "MotherTopicOut":
+    def from_orm_model(cls, obj) -> MotherTopicOut:
         """Convert SQLAlchemy model to dict, serializing datetimes."""
         d = {
             "id": obj.id,
@@ -80,15 +80,15 @@ class MotherTopicOut(MotherTopicBase):
 
 class ContentScoringRequest(BaseModel):
     title: str
-    summary: Optional[str] = ""
-    source: Optional[str] = None
+    summary: str | None = ""
+    source: str | None = None
     hot_value: int = 0
 
 
 class ContentScoringResult(BaseModel):
     title: str
     topic_scores: list[dict]  # [{name, score, weight, final}]
-    top_topic: Optional[str]
+    top_topic: str | None
     final_score: float
 
 

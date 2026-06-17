@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 
 import pytest
 import pytest_asyncio
@@ -63,7 +63,7 @@ async def seed_cache_warmup_fixture(session_factory) -> None:
                 category="AI",
                 status=ContentStatus.ANALYZED,
                 is_favorited=True,
-                crawled_at=datetime.now(timezone.utc),
+                crawled_at=datetime.now(UTC),
             )
         )
         db.add(

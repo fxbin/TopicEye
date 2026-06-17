@@ -15,11 +15,11 @@ SOURCE_LIST_DEFAULT_CACHE_LABEL = "sources:list:1:20"
 class SourceListCacheParams:
     page: int
     page_size: int
-    source_type: Optional[str] = None
-    status: Optional[str] = None
-    enabled: Optional[bool] = None
-    keyword: Optional[str] = None
-    user_id: Optional[int] = None  # None = admin/global, int = user-scoped /me
+    source_type: str | None = None
+    status: str | None = None
+    enabled: bool | None = None
+    keyword: str | None = None
+    user_id: int | None = None  # None = admin/global, int = user-scoped /me
 
     @property
     def key(self) -> str:

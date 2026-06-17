@@ -21,7 +21,7 @@ from typing import Optional
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -38,10 +38,10 @@ from app.services.job_tracker import track_job
 logger = logging.getLogger(__name__)
 
 # Semaphore to limit concurrent DB write tasks — SQLite single-writer constraint.
-_sync_semaphore: Optional[asyncio.Semaphore] = None
-_sync_semaphore_limit: Optional[int] = None
-_post_sync_lock: Optional[asyncio.Lock] = None
-_post_sync_task: Optional[asyncio.Task] = None
+_sync_semaphore: asyncio.Semaphore | None = None
+_sync_semaphore_limit: int | None = None
+_post_sync_lock: asyncio.Lock | None = None
+_post_sync_task: asyncio.Task | None = None
 _post_sync_rerun_requested = False
 
 
@@ -164,7 +164,7 @@ async def sync_and_analyze() -> None:
 async def cleanup_old_content() -> None:
     """Remove pending content older than 90 days."""
     logger.info("Scheduler: cleanup_old_content started")
-    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    cutoff = datetime.now(UTC) - timedelta(days=90)
 
     async with async_session() as db:
         content_repo = ContentRepo(db)
@@ -243,7 +243,7 @@ async def _sync_single_source(source_id: int) -> None:
             await db.rollback()
 
 
-def _request_post_sync_pipeline(stats: Optional[dict] = None) -> bool:
+def _request_post_sync_pipeline(stats: dict | None = None) -> bool:
     """Request shared post-sync work after a source sync produced new content."""
     global _post_sync_task, _post_sync_rerun_requested
 
@@ -355,8 +355,8 @@ async def _run_post_sync_pipeline_once() -> None:
 
 async def _drain_pending_analysis(
     *,
-    batch_size: Optional[int] = None,
-    time_budget_seconds: Optional[int] = None,
+    batch_size: int | None = None,
+    time_budget_seconds: int | None = None,
 ) -> dict[str, int | bool | str]:
     """Analyze pending and stale in-flight content until the time budget is nearly spent.
 
@@ -396,7 +396,7 @@ async def _drain_pending_analysis(
                 analyze_batch_concurrent(pending_ids, assume_claimed=True),
                 timeout=max(1, remaining_seconds - 10),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Scheduler: auto-analysis batch timed out for ids=%s", pending_ids)
             released = await _release_inflight_analysis_claims(pending_ids)
             logger.info("Scheduler: released %d timed-out analysis claims", released)
@@ -452,7 +452,7 @@ async def _rescan_sources() -> None:
     """
     async with async_session() as db:
         # ── Self-heal: reset stale SYNCING sources ──
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3)
+        stale_cutoff = datetime.now(UTC) - timedelta(seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3)
         from sqlalchemy import update as sa_update
         from app.models.source import Source, SourceStatus
 
@@ -538,24 +538,24 @@ async def _rescan_sources() -> None:
     logger.info("Scheduler: source rescan complete — %d active jobs", len(sources))
 
 
-def _normalize_source_interval(value: Optional[int]) -> int:
+def _normalize_source_interval(value: int | None) -> int:
     """Keep source sync interval inside the product-supported lower bound."""
     return max(int(value or 60), 5)
 
 
-def _next_source_run_time(last_sync_at: Optional[datetime], interval_minutes: int) -> datetime:
+def _next_source_run_time(last_sync_at: datetime | None, interval_minutes: int) -> datetime:
     """Compute the next APScheduler run time from source sync metadata."""
     scheduler_now = datetime.now(scheduler.timezone)
     if last_sync_at is None:
         return scheduler_now + timedelta(seconds=10)
 
     if last_sync_at.tzinfo is None:
-        last_sync_utc = last_sync_at.replace(tzinfo=timezone.utc)
+        last_sync_utc = last_sync_at.replace(tzinfo=UTC)
     else:
-        last_sync_utc = last_sync_at.astimezone(timezone.utc)
+        last_sync_utc = last_sync_at.astimezone(UTC)
 
     due_utc = last_sync_utc + timedelta(minutes=interval_minutes)
-    if due_utc <= datetime.now(timezone.utc):
+    if due_utc <= datetime.now(UTC):
         return scheduler_now + timedelta(seconds=10)
     return due_utc.astimezone(scheduler.timezone)
 

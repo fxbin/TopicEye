@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 
-class ContentType(str, enum.Enum):
+class ContentType(enum.StrEnum):
     """内容类型枚举，描述该母题适合产出的内容形式。"""
 
     TOOL_REVIEW = "工具评测"  # AI工具/软件/硬件评测
@@ -37,14 +37,14 @@ class MotherTopic(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     keywords: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # keywords 示例: ["AI工具", "ChatGPT", "工作流", "效率", "Notion"]
     weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     # weight: 母题权重乘数，影响最终选题打分
     content_type: Mapped[str] = mapped_column(String(20), nullable=True)
     # content_type: ContentType 枚举值
-    target_reader: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    target_reader: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # target_reader: 目标读者描述，如"对效率提升有兴趣的创作者"
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     display_order: Mapped[int] = mapped_column(nullable=False, default=0)

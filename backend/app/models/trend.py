@@ -7,7 +7,7 @@ render trend charts without re-computing from raw content every time.
 
 from __future__ import annotations
 
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import String, Integer, Float, Date, DateTime, JSON
@@ -25,11 +25,11 @@ class TopicTrend(Base):
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Topic-level trend (nullable for keyword-only snapshots)
-    topic_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    topic_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    topic_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    topic_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # Keyword-level trend
-    keyword: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+    keyword: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     # Metrics
     content_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -38,8 +38,8 @@ class TopicTrend(Base):
     pick_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Top items summary (JSON: [{title, url, score}])
-    top_items: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
+    top_items: Mapped[str | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

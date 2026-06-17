@@ -7,16 +7,16 @@ from typing import Optional, Protocol
 
 class ModelPricingLike(Protocol):
     model_id: str
-    cost_per_1k_input: Optional[float]
-    cost_per_1k_output: Optional[float]
-    extra_params: Optional[dict]
+    cost_per_1k_input: float | None
+    cost_per_1k_output: float | None
+    extra_params: dict | None
 
 
-def is_free_model(model_id: Optional[str]) -> bool:
+def is_free_model(model_id: str | None) -> bool:
     return "deepseek-v4-flash-free" in (model_id or "").lower()
 
 
-def normalized_model_pricing(model: ModelPricingLike) -> dict[str, Optional[float]]:
+def normalized_model_pricing(model: ModelPricingLike) -> dict[str, float | None]:
     if is_free_model(model.model_id):
         return {
             "cost_per_1k_input": 0.0,
@@ -36,5 +36,5 @@ def normalized_model_pricing(model: ModelPricingLike) -> dict[str, Optional[floa
     }
 
 
-def _per_1k_to_1m(value: Optional[float]) -> Optional[float]:
+def _per_1k_to_1m(value: float | None) -> float | None:
     return round(value * 1000, 6) if value is not None else None

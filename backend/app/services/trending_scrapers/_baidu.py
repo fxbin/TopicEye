@@ -16,7 +16,7 @@ class BaiduTrending(BaseTrendingScraper):
     SOURCE = "baidu"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://top.baidu.com/api/board?platform=wise&tab=realtime"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -36,7 +36,7 @@ class BaiduTrending(BaseTrendingScraper):
             logger.warning("baidu trending: no cards")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         rank = 0
         for card in cards:
             # cards 可能嵌套: card.content[0].content 才是列表

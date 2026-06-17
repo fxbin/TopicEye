@@ -39,7 +39,7 @@ RANK_CONFIGS = [
 def _parse_book(item: dict, channel: str, rank_type: str, position: int) -> dict:
     """将原始字段映射为 QimaoBook 字段。"""
     # 处理收藏数 "143.0万" -> int
-    collect_count: Optional[int] = None
+    collect_count: int | None = None
     number_str = str(item.get("number", ""))
     if number_str and item.get("unit") == "万":
         with contextlib.suppress(ValueError):

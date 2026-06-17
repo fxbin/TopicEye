@@ -6,7 +6,7 @@ Stores both seed (manually created) and auto-discovered categories.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
@@ -20,8 +20,8 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    keywords: Mapped[Optional[str]] = mapped_column(
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    keywords: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Comma-separated keywords for fallback matching"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -32,11 +32,11 @@ class Category(Base):
         Integer, default=0, nullable=False, comment="Denormalized count for sorting"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )

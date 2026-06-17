@@ -20,7 +20,7 @@ class EastmoneyTrending(BaseTrendingScraper):
     SOURCE = "eastmoney"
     CATEGORY = "finance"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_30_1_.html"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -43,7 +43,7 @@ class EastmoneyTrending(BaseTrendingScraper):
             logger.warning("eastmoney trending: empty LivesList")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items[:30], start=1):
             title = item.get("title", "").strip()
             if not title:

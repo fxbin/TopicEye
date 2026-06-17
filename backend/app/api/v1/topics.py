@@ -29,8 +29,8 @@ router = APIRouter(prefix="/topics", tags=["topics"])
 class TopicResponse(BaseModel):
     id: int
     name: str
-    summary: Optional[str] = None
-    keywords: Optional[Any] = None
+    summary: str | None = None
+    keywords: Any | None = None
     content_count: int
     best_score: float
 

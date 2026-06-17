@@ -5,7 +5,7 @@ Repository for AppSetting — simple key/value store.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import select
@@ -21,7 +21,7 @@ class SettingRepository(BaseRepository[AppSetting]):
 
     model = AppSetting
 
-    async def get_value(self, key: str) -> Optional[str]:
+    async def get_value(self, key: str) -> str | None:
         """Return the value for *key*, or None if not found."""
         stmt = select(self.model).where(self.model.key == key)
         result = await self.db.execute(stmt)
@@ -36,7 +36,7 @@ class SettingRepository(BaseRepository[AppSetting]):
 
         if row is not None:
             row.value = value
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
             await self.db.flush()
             await self.db.refresh(row)
             return row

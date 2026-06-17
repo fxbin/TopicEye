@@ -11,9 +11,10 @@ Extends BaseRepository with content-specific queries:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
+from collections.abc import Sequence
 
 from sqlalchemy import or_, select, update, func, exists
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,30 +37,30 @@ class ScoringContentRow:
     id: int
     title: str
     url: str
-    source_id: Optional[int]
-    source_name: Optional[str]
-    category: Optional[str]
-    summary: Optional[str]
-    tags: Optional[Any]
+    source_id: int | None
+    source_name: str | None
+    category: str | None
+    summary: str | None
+    tags: Any | None
     is_favorited: bool
-    published_at: Optional[datetime]
+    published_at: datetime | None
     crawled_at: datetime
     source_weight_db: int
-    ai_summary: Optional[str]
-    recommendation: Optional[str]
-    recommended_reason: Optional[str]
-    analysis_tags: Optional[Any]
-    creator_angles: Optional[Any]
-    curation_score: Optional[float]
-    info_density: Optional[float]
-    actionability: Optional[float]
-    source_weight: Optional[float]
-    creator_score: Optional[float]
-    viral_score: Optional[float]
-    freshness_score: Optional[float]
-    quality_score: Optional[float]
-    hot_score: Optional[float]
-    risk_score: Optional[float]
+    ai_summary: str | None
+    recommendation: str | None
+    recommended_reason: str | None
+    analysis_tags: Any | None
+    creator_angles: Any | None
+    curation_score: float | None
+    info_density: float | None
+    actionability: float | None
+    source_weight: float | None
+    creator_score: float | None
+    viral_score: float | None
+    freshness_score: float | None
+    quality_score: float | None
+    hot_score: float | None
+    risk_score: float | None
 
 
 class ContentRepo(BaseRepository[ContentItem]):
@@ -71,12 +72,12 @@ class ContentRepo(BaseRepository[ContentItem]):
 
     # ── Lookup helpers ─────────────────────────────────────────────
 
-    async def get_by_url(self, url: str) -> Optional[ContentItem]:
+    async def get_by_url(self, url: str) -> ContentItem | None:
         """Find a content item by its URL."""
         result = await self.db.execute(select(self.model).where(self.model.url == url))
         return result.scalar_one_or_none()
 
-    async def get_with_analyses(self, id: int) -> Optional[ContentItem]:
+    async def get_with_analyses(self, id: int) -> ContentItem | None:
         """Fetch a content item eagerly loaded with its AI analyses."""
         result = await self.db.execute(
             select(self.model).options(selectinload(self.model.analyses)).where(self.model.id == id)
@@ -106,10 +107,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         *,
         limit: int = 20,
-        hours: Optional[int] = None,
+        hours: int | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch recent pending or stale analyzing items for analysis, newest collected first."""
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+        stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
         stmt = (
             select(self.model)
             .where(
@@ -121,7 +122,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .limit(limit)
         )
         if hours is not None:
-            stmt = stmt.where(self.model.crawled_at >= datetime.now(timezone.utc) - timedelta(hours=hours))
+            stmt = stmt.where(self.model.crawled_at >= datetime.now(UTC) - timedelta(hours=hours))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -129,7 +130,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         *,
         limit: int = 20,
-        hours: Optional[int] = None,
+        hours: int | None = None,
     ) -> list[int]:
         """Claim pending or stale analysis candidates and return claimed IDs in queue order."""
 
@@ -137,8 +138,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
 
-            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
-            claimed_at = datetime.now(timezone.utc)
+            stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+            claimed_at = datetime.now(UTC)
             stmt = (
                 select(self.model.id)
                 .where(
@@ -150,7 +151,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 .limit(limit)
             )
             if hours is not None:
-                stmt = stmt.where(self.model.crawled_at >= datetime.now(timezone.utc) - timedelta(hours=hours))
+                stmt = stmt.where(self.model.crawled_at >= datetime.now(UTC) - timedelta(hours=hours))
             if database_profile.is_postgresql:
                 stmt = stmt.with_for_update(skip_locked=True)
 
@@ -204,7 +205,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         stmt = (
             update(self.model)
             .where(self.model.id.in_(ids))
-            .values(status=status, updated_at=datetime.now(timezone.utc))
+            .values(status=status, updated_at=datetime.now(UTC))
         )
         result = await self.db.execute(stmt)
         await self.db.flush()
@@ -218,7 +219,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             update(self.model)
             .where(self.model.id.in_(ids))
             .where(self.model.status == ContentStatus.ANALYZING)
-            .values(status=ContentStatus.PENDING, updated_at=datetime.now(timezone.utc))
+            .values(status=ContentStatus.PENDING, updated_at=datetime.now(UTC))
         )
         result = await self.db.execute(stmt)
         await self.db.flush()
@@ -298,7 +299,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         """删除超过指定天数的 pending 状态内容。返回删除数量。"""
         from sqlalchemy import delete as sa_delete
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+        cutoff = datetime.now(UTC) - timedelta(days=cutoff_days)
         stmt = (
             sa_delete(self.model)
             .where(self.model.status == ContentStatus.PENDING)
@@ -314,14 +315,14 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         page: int = 1,
         page_size: int = 20,
-        filters: Optional[dict] = None,
+        filters: dict | None = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
-        exclude_ids: Optional[set] = None,
-        exclude_source_types: Optional[set[str]] = None,
-        time_cutoff: Optional[datetime] = None,
-        visible_user_id: Optional[int] = None,
-        search_query: Optional[str] = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
+        visible_user_id: int | None = None,
+        search_query: str | None = None,
     ) -> tuple[Sequence[ContentItem], int]:
         """Like list_paginated but eager-loads analyses relation.
 
@@ -402,8 +403,8 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def get_detail(
         self,
         id: int,
-        visible_user_id: Optional[int] = None,
-    ) -> Optional[ContentItem]:
+        visible_user_id: int | None = None,
+    ) -> ContentItem | None:
         """Fetch a content item eagerly loaded with metrics and analyses.
 
         When ``visible_user_id`` is provided, the row is only returned if it
@@ -447,8 +448,8 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def list_for_today_picks(
         self,
         hours: int = 48,
-        category: Optional[str] = None,
-        visible_user_id: Optional[int] = None,
+        category: str | None = None,
+        visible_user_id: int | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch items with analyses + source for today-picks scoring.
 
@@ -490,8 +491,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         *,
         window_start: datetime,
         window_end: datetime,
-        category: Optional[str] = None,
-        visible_user_id: Optional[int] = None,
+        category: str | None = None,
+        visible_user_id: int | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch analyzed items in a precise report window for daily report snapshots.
 
@@ -533,12 +534,12 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def list_for_scoring(
         self,
         *,
-        filters: Optional[dict] = None,
-        exclude_ids: Optional[set] = None,
-        exclude_source_types: Optional[set[str]] = None,
-        time_cutoff: Optional[datetime] = None,
+        filters: dict | None = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
         limit: int = 500,
-        visible_user_id: Optional[int] = None,
+        visible_user_id: int | None = None,
     ) -> tuple[Sequence[ContentItem], int]:
         """
         Fetch ANALYZED items with analyses + source for scoring pipeline.
@@ -616,9 +617,9 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def count_for_scoring(
         self,
         *,
-        exclude_ids: Optional[set] = None,
-        exclude_source_types: Optional[set[str]] = None,
-        time_cutoff: Optional[datetime] = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
     ) -> int:
         """Count items with analysis rows eligible for scoring diagnostics."""
         from app.models.analysis import AiAnalysis
@@ -640,9 +641,9 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def count_collected_for_scoring_window(
         self,
         *,
-        exclude_ids: Optional[set] = None,
-        exclude_source_types: Optional[set[str]] = None,
-        time_cutoff: Optional[datetime] = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
     ) -> int:
         """Count collected content in the same source scope as scoring diagnostics."""
         stmt = select(func.count(self.model.id))
@@ -660,11 +661,11 @@ class ContentRepo(BaseRepository[ContentItem]):
     async def list_scoring_rows(
         self,
         *,
-        exclude_ids: Optional[set] = None,
-        exclude_source_types: Optional[set[str]] = None,
-        time_cutoff: Optional[datetime] = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
         limit: int = 500,
-        visible_user_id: Optional[int] = None,
+        visible_user_id: int | None = None,
     ) -> list[ScoringContentRow]:
         """Fetch only columns needed by the scoring debug payload."""
         from app.models.analysis import AiAnalysis
@@ -735,9 +736,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         *,
         limit: int = 20,
-        status: Optional[ContentStatus] = None,
-        source_type: Optional[str] = None,
-        platform: Optional[str] = None,
+        status: ContentStatus | None = None,
+        source_type: str | None = None,
+        platform: str | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch the most recent items, optionally filtered."""
         stmt = select(self.model).order_by(self.model.created_at.desc())

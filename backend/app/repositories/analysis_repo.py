@@ -24,7 +24,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
 
     model = AiAnalysis
 
-    async def get_by_content_id(self, content_id: int) -> Optional[AiAnalysis]:
+    async def get_by_content_id(self, content_id: int) -> AiAnalysis | None:
         """Fetch the latest analysis record for a given content item."""
         stmt = (
             select(AiAnalysis)
@@ -162,10 +162,10 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
             on_retry=self.db.rollback,
         )
 
-    async def claim_enrichment_for_content(self, content_id: int) -> Optional[AiAnalysis]:
+    async def claim_enrichment_for_content(self, content_id: int) -> AiAnalysis | None:
         """Claim the latest analysis for one content item before running enrichment."""
 
-        async def _claim() -> Optional[AiAnalysis]:
+        async def _claim() -> AiAnalysis | None:
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
 
@@ -219,8 +219,8 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         *,
         page: int = 1,
         page_size: int = 20,
-        min_creator_score: Optional[float] = None,
-        min_viral_score: Optional[float] = None,
+        min_creator_score: float | None = None,
+        min_viral_score: float | None = None,
     ):
         """List analyses with optional score thresholds."""
         from sqlalchemy import func

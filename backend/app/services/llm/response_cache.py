@@ -53,8 +53,8 @@ class LLMCache:
         temperature: float,
         max_tokens: int,
         model: str | None,
-        ttl_seconds: Optional[int] = None,
-    ) -> Optional[str]:
+        ttl_seconds: int | None = None,
+    ) -> str | None:
         """Return cached raw response, or None on miss / expiry."""
         key = self._key(messages, temperature, max_tokens, model)
         entry = self._cache.get(key)
@@ -77,7 +77,7 @@ class LLMCache:
         max_tokens: int,
         model: str | None,
         raw_response: str,
-        ttl_seconds: Optional[int] = None,
+        ttl_seconds: int | None = None,
     ) -> None:
         """Store raw response under the cache key."""
         if not raw_response:

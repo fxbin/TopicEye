@@ -13,13 +13,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional
+from typing import Optional
+from collections.abc import Iterable
 
 from sqlalchemy import and_, exists, func, select, update
 from sqlalchemy.orm import aliased
 
 from app.core.database import async_session
 from app.models.notification import Notification, NotificationRead
+from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ async def push_notification(
     title: str,
     message: str,
     *,
-    target_user_ids: Optional[Iterable[int]] = None,
+    target_user_ids: Iterable[int] | None = None,
 ) -> list[Notification]:
     """推送站内通知。
 
@@ -209,7 +211,7 @@ async def cleanup_old_notifications(*, days: int = 30) -> int:
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import delete
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     async with async_session() as db:
         result = await db.execute(delete(Notification).where(Notification.created_at < cutoff))
         await db.commit()

@@ -17,7 +17,7 @@ class ZhihuTrending(BaseTrendingScraper):
     SOURCE = "zhihu"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.zhihu.com/api/v3/feed/topstory/hot-list-web?limit=50&desktop=true"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -37,7 +37,7 @@ class ZhihuTrending(BaseTrendingScraper):
             logger.warning("zhihu trending: empty data")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items, start=1):
             target = item.get("target", {})
             title = target.get("title_area", {}).get("text", "").strip()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text
@@ -11,14 +11,14 @@ from app.core.database import Base
 from app.models.enum_types import value_enum
 
 
-class IssueFeedbackSeverity(str, enum.Enum):
+class IssueFeedbackSeverity(enum.StrEnum):
     low = "low"
     medium = "medium"
     high = "high"
     critical = "critical"
 
 
-class IssueFeedbackStatus(str, enum.Enum):
+class IssueFeedbackStatus(enum.StrEnum):
     open = "open"
     triaged = "triaged"
     in_progress = "in_progress"
@@ -26,14 +26,14 @@ class IssueFeedbackStatus(str, enum.Enum):
     closed = "closed"
 
 
-class ProductUpdateKind(str, enum.Enum):
+class ProductUpdateKind(enum.StrEnum):
     roadmap = "roadmap"
     release = "release"
     fix = "fix"
     improvement = "improvement"
 
 
-class ProductUpdateStatus(str, enum.Enum):
+class ProductUpdateStatus(enum.StrEnum):
     planned = "planned"
     in_progress = "in_progress"
     shipped = "shipped"
@@ -43,7 +43,7 @@ class IssueFeedback(Base):
     __tablename__ = "issue_feedback"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     area: Mapped[str] = mapped_column(String(80), nullable=False, default="general")
@@ -53,16 +53,16 @@ class IssueFeedback(Base):
     status: Mapped[str] = mapped_column(
         value_enum(IssueFeedbackStatus), nullable=False, default=IssueFeedbackStatus.open
     )
-    resolution_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    fixed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fixed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     user = relationship("User")
@@ -88,26 +88,26 @@ class ProductUpdate(Base):
     status: Mapped[str] = mapped_column(
         value_enum(ProductUpdateStatus), nullable=False, default=ProductUpdateStatus.planned
     )
-    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     items: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    created_by_id: Mapped[Optional[int]] = mapped_column(
+    created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # 历史/兼容字段 (新代码不读)
-    title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    kind: Mapped[Optional[str]] = mapped_column(value_enum(ProductUpdateKind), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str | None] = mapped_column(value_enum(ProductUpdateKind), nullable=True)
 
     created_by = relationship("User")
 

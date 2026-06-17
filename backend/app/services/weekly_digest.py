@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import select
@@ -31,10 +31,10 @@ DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _get_week_range(reference_date: Optional[date] = None) -> tuple[str, str, str, str]:
+def _get_week_range(reference_date: date | None = None) -> tuple[str, str, str, str]:
     """Return (week_key, week_label, week_start_iso, week_end_iso) for a given date's week.
 
     Week runs Monday–Sunday (ISO week).
@@ -75,7 +75,7 @@ def _is_active_generating(digest: WeeklyDigest, now: datetime) -> bool:
 
 async def generate_weekly_digest(
     db: AsyncSession,
-    reference_date: Optional[date] = None,
+    reference_date: date | None = None,
 ) -> WeeklyDigest:
     """Generate (or regenerate) the weekly digest for the PREVIOUS week.
 

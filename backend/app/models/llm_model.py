@@ -7,7 +7,7 @@ Tables:
   - llm_call_logs: request-level token and cost logs for model calls
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import (
@@ -30,7 +30,7 @@ class LlmModel(Base):
     __tablename__ = "llm_models"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_user_id: Mapped[Optional[int]] = mapped_column(
+    owner_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
@@ -39,14 +39,14 @@ class LlmModel(Base):
         String(50), nullable=False, comment="litellm provider: openai / custom_zhipu …"
     )
     model_id: Mapped[str] = mapped_column(String(200), nullable=False, comment="litellm model string: openai/glm-5.1")
-    api_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="API Key (加密存储)")
-    api_base: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="自定义 API endpoint")
+    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="API Key (加密存储)")
+    api_base: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="自定义 API endpoint")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     routing_group: Mapped[str] = mapped_column(String(50), default="default", nullable=False, comment="运行时路由组")
-    model_family: Mapped[Optional[str]] = mapped_column(
+    model_family: Mapped[str | None] = mapped_column(
         String(50), nullable=True, comment="模型家族，如 deepseek/qwen/glm"
     )
-    channel_name: Mapped[Optional[str]] = mapped_column(
+    channel_name: Mapped[str | None] = mapped_column(
         String(100), nullable=True, comment="渠道名，如 official/opencode/openrouter"
     )
     routing_priority: Mapped[int] = mapped_column(
@@ -56,19 +56,19 @@ class LlmModel(Base):
     temperature: Mapped[float] = mapped_column(Float, default=0.3, nullable=False)
     max_tokens: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
     requests_per_minute: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cost_per_1k_input: Mapped[Optional[float]] = mapped_column(
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_per_1k_input: Mapped[float | None] = mapped_column(
         Float, nullable=True, comment="每1k input token 成本(元)"
     )
-    cost_per_1k_output: Mapped[Optional[float]] = mapped_column(
+    cost_per_1k_output: Mapped[float | None] = mapped_column(
         Float, nullable=True, comment="每1k output token 成本(元)"
     )
-    extra_params: Mapped[Optional[str]] = mapped_column(JSON, nullable=True, comment="额外参数(JSON)")
+    extra_params: Mapped[str | None] = mapped_column(JSON, nullable=True, comment="额外参数(JSON)")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), onupdate=lambda: datetime.now(timezone.utc)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (
@@ -91,20 +91,20 @@ class ModelEvaluation(Base):
     prompt_type: Mapped[str] = mapped_column(
         String(50), nullable=False, comment="测评类型: analysis/daily_report/weekly_digest/classification"
     )
-    prompt_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="使用的 prompt (可选存储)")
-    response_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="模型输出")
+    prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True, comment="使用的 prompt (可选存储)")
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True, comment="模型输出")
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="响应耗时(毫秒)")
-    tokens_input: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="输入 token 数")
-    tokens_output: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="输出 token 数")
-    quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="人工打分 1-5")
-    auto_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="自动评分")
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="人工备注")
+    tokens_input: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="输入 token 数")
+    tokens_output: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="输出 token 数")
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True, comment="人工打分 1-5")
+    auto_score: Mapped[float | None] = mapped_column(Float, nullable=True, comment="自动评分")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True, comment="人工备注")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="PENDING", comment="PENDING/RUNNING/DONE/FAILED"
     )
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (Index("ix_model_evals_run_type", "eval_run_id", "prompt_type"),)
@@ -118,14 +118,14 @@ class LlmCallLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     request_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    model_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    model_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
-    request_model: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    actual_model: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    model_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    request_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    actual_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     scene: Mapped[str] = mapped_column(String(50), nullable=False, default="general", index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DONE", index=True)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -137,12 +137,12 @@ class LlmCallLog(Base):
     cache_read_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cache_creation_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     total_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    cost_per_1m_input: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    cost_per_1m_output: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    cost_per_1m_input_cache_hit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    cost_per_1m_input_cache_create: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cost_per_1m_input: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_per_1m_output: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_per_1m_input_cache_hit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_per_1m_input_cache_create: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True
     )
 
     __table_args__ = (

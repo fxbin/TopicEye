@@ -20,14 +20,14 @@ def normalize_source_url_value(value: str) -> str:
     raise ValueError("信源 URL 必须以 http:// 或 https:// 开头")
 
 
-def normalize_optional_text(value: Optional[str]) -> Optional[str]:
+def normalize_optional_text(value: str | None) -> str | None:
     if value is None:
         return None
     text = value.strip()
     return text or None
 
 
-def normalize_api_source_config_value(value: Optional[str]) -> Optional[str]:
+def normalize_api_source_config_value(value: str | None) -> str | None:
     """Validate and normalize JSON stored in Source.keyword for API sources."""
     text = normalize_optional_text(value)
     if text is None:
@@ -80,11 +80,11 @@ class SourceCreate(BaseModel):
     name: str = Field(..., max_length=255)
     source_type: SourceType = SourceType.RSS
     url: str = Field(..., max_length=1024)
-    keyword: Optional[str] = None
-    platform: Optional[str] = None
-    category: Optional[str] = None
+    keyword: str | None = None
+    platform: str | None = None
+    category: str | None = None
     weight: int = Field(default=3, ge=1, le=5)
-    sort_order: Optional[int] = Field(default=None, ge=0)
+    sort_order: int | None = Field(default=None, ge=0)
     fetch_interval_minutes: int = Field(default=60, ge=5, le=1440)
     enabled: bool = True
 
@@ -103,27 +103,27 @@ class SourceCreate(BaseModel):
 
     @field_validator("keyword", "platform", "category")
     @classmethod
-    def normalize_optional_text_fields(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_optional_text_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
 
 
 class SourceUpdate(BaseModel):
-    name: Optional[str] = None
-    source_type: Optional[SourceType] = None
-    url: Optional[str] = None
-    keyword: Optional[str] = None
-    platform: Optional[str] = None
-    category: Optional[str] = None
-    weight: Optional[int] = Field(default=None, ge=1, le=5)
-    sort_order: Optional[int] = Field(default=None, ge=0)
-    fetch_interval_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
-    status: Optional[SourceStatus] = None
-    sync_error: Optional[str] = None
-    enabled: Optional[bool] = None
+    name: str | None = None
+    source_type: SourceType | None = None
+    url: str | None = None
+    keyword: str | None = None
+    platform: str | None = None
+    category: str | None = None
+    weight: int | None = Field(default=None, ge=1, le=5)
+    sort_order: int | None = Field(default=None, ge=0)
+    fetch_interval_minutes: int | None = Field(default=None, ge=5, le=1440)
+    status: SourceStatus | None = None
+    sync_error: str | None = None
+    enabled: bool | None = None
 
     @field_validator("name")
     @classmethod
-    def normalize_name(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_name(cls, value: str | None) -> str | None:
         if value is None:
             return None
         name = value.strip()
@@ -133,33 +133,33 @@ class SourceUpdate(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def normalize_url(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_url(cls, value: str | None) -> str | None:
         if value is None:
             return None
         return normalize_source_url_value(value)
 
     @field_validator("keyword", "platform", "category", "sync_error")
     @classmethod
-    def normalize_optional_text_fields(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_optional_text_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
 
 
 class SourceResponse(BaseModel):
     id: int
-    owner_user_id: Optional[int] = None
+    owner_user_id: int | None = None
     scope: str = "system"
     name: str
     source_type: str
     url: str
-    keyword: Optional[str] = None
-    platform: Optional[str] = None
-    category: Optional[str] = None
+    keyword: str | None = None
+    platform: str | None = None
+    category: str | None = None
     weight: int
     sort_order: int
     fetch_interval_minutes: int
     status: str
-    last_sync_at: Optional[datetime] = None
-    sync_error: Optional[str] = None
+    last_sync_at: datetime | None = None
+    sync_error: str | None = None
     enabled: bool
     created_at: datetime
     updated_at: datetime

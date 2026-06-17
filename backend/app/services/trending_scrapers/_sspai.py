@@ -16,7 +16,7 @@ class SspaiTrending(BaseTrendingScraper):
     SOURCE = "sspai"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://sspai.com/api/v1/article/index/page/get?limit=30&offset=0&type=hot_to_all"
         headers = {
             "User-Agent": (
@@ -39,7 +39,7 @@ class SspaiTrending(BaseTrendingScraper):
             logger.warning("sspai trending: empty data")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(raw_items[:30], start=1):
             title = item.get("title", "").strip()
             if not title:

@@ -8,8 +8,8 @@ from typing import Any, Optional, Protocol
 class ModelLike(Protocol):
     provider: str
     model_id: str
-    api_base: Optional[str]
-    extra_params: Optional[dict[str, Any]]
+    api_base: str | None
+    extra_params: dict[str, Any] | None
 
 
 def _extra_params(model: ModelLike) -> dict[str, Any]:
@@ -17,7 +17,7 @@ def _extra_params(model: ModelLike) -> dict[str, Any]:
     return params if isinstance(params, dict) else {}
 
 
-def _clean(value: Any) -> Optional[str]:
+def _clean(value: Any) -> str | None:
     if value is None:
         return None
     cleaned = str(value).strip()

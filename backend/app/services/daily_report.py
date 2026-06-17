@@ -5,7 +5,7 @@ Daily Report service — generate versioned daily snapshots and final editions.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone, UTC
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -78,7 +78,7 @@ def _local_today() -> date:
     return _local_now().date()
 
 
-def _as_local_naive(value: Optional[datetime]) -> Optional[datetime]:
+def _as_local_naive(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
@@ -89,12 +89,12 @@ def _as_local_naive(value: Optional[datetime]) -> Optional[datetime]:
 def _local_window_to_utc_naive(start: datetime, end: datetime) -> tuple[datetime, datetime]:
     """Convert local report-display window to storage/query window."""
     return (
-        start.replace(tzinfo=LOCAL_TZ).astimezone(timezone.utc).replace(tzinfo=None),
-        end.replace(tzinfo=LOCAL_TZ).astimezone(timezone.utc).replace(tzinfo=None),
+        start.replace(tzinfo=LOCAL_TZ).astimezone(UTC).replace(tzinfo=None),
+        end.replace(tzinfo=LOCAL_TZ).astimezone(UTC).replace(tzinfo=None),
     )
 
 
-def _day_window(target: date, cutoff_at: Optional[datetime], edition: str) -> tuple[datetime, datetime]:
+def _day_window(target: date, cutoff_at: datetime | None, edition: str) -> tuple[datetime, datetime]:
     start = datetime.combine(target, time.min)
     if edition == "final":
         return start, datetime.combine(target, time.max).replace(microsecond=0)
@@ -109,7 +109,7 @@ def _day_window(target: date, cutoff_at: Optional[datetime], edition: str) -> tu
     return start, end
 
 
-def _edition_for_now(now: Optional[datetime] = None) -> str:
+def _edition_for_now(now: datetime | None = None) -> str:
     now = _as_local_naive(now) or _local_now()
     if now.hour < 14:
         return "noon"
@@ -129,7 +129,7 @@ def _edition_label(edition: str) -> str:
     }.get(edition, edition)
 
 
-def _normalize_edition(edition: Optional[str], target: date, cutoff_at: Optional[datetime]) -> str:
+def _normalize_edition(edition: str | None, target: date, cutoff_at: datetime | None) -> str:
     if edition:
         normalized = edition.lower()
         if normalized not in VALID_EDITIONS:
@@ -154,7 +154,7 @@ async def _fetch_report_inputs(
     *,
     window_start: datetime,
     window_end: datetime,
-    visible_user_id: Optional[int] = None,
+    visible_user_id: int | None = None,
 ) -> tuple[list[dict], list[dict]]:
     repo = ContentRepo(db)
     query_start, query_end = _local_window_to_utc_naive(window_start, window_end)
@@ -234,7 +234,7 @@ def _format_items(items: list[dict], *, limit: int, selected: bool) -> str:
 async def get_latest_today_report(
     db: AsyncSession,
     *,
-    owner_user_id: Optional[int] = None,
+    owner_user_id: int | None = None,
 ) -> DailyReport:
     """Return today's newest report, generating a snapshot if none exists.
 
@@ -263,11 +263,11 @@ async def get_latest_today_report(
 async def generate_daily_report(
     db: AsyncSession,
     *,
-    target_date: Optional[date] = None,
-    edition: Optional[str] = None,
-    cutoff_at: Optional[datetime] = None,
+    target_date: date | None = None,
+    edition: str | None = None,
+    cutoff_at: datetime | None = None,
     force: bool = False,
-    owner_user_id: Optional[int] = None,
+    owner_user_id: int | None = None,
 ) -> DailyReport:
     """Generate a versioned daily report for a precise time window.
 
@@ -465,7 +465,7 @@ async def generate_previous_day_final_report(
     db: AsyncSession,
     *,
     force: bool = False,
-    owner_user_id: Optional[int] = None,
+    owner_user_id: int | None = None,
 ) -> DailyReport:
     """Generate yesterday's final full-day edition."""
     yesterday = _local_today() - timedelta(days=1)

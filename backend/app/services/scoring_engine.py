@@ -14,7 +14,7 @@ All tuning constants live in the CONFIG dict at the top for easy adjustment.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from typing import Optional
 
 
@@ -256,11 +256,11 @@ def _compute_percentile_threshold(base_scores: list[float], percentile: float) -
     return round(sorted_scores[rank - 1], 2)
 
 
-def _compute_time_decay(item: ScoringInput, now: Optional[datetime] = None) -> float:
+def _compute_time_decay(item: ScoringInput, now: datetime | None = None) -> float:
     """Exponential time decay: fresher content gets higher score."""
     cfg = CONFIG
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     # Use published_at if available, otherwise crawled_at
     t = item.published_at or item.crawled_at or now
@@ -287,7 +287,7 @@ def _compute_diversity_penalty(
     # Sort by prelim score to determine top-N
     indexed = sorted(enumerate(prelim_scores), key=lambda x: x[1], reverse=True)
 
-    source_counts: dict[Optional[int], int] = {}
+    source_counts: dict[int | None, int] = {}
     category_counts: dict[str, int] = {}
     factors = [1.0] * len(items)
 
@@ -317,7 +317,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     Returns list of (ScoreBreakdown, ScoringInput) sorted by final_score desc.
     """
     cfg = CONFIG
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Phase 1: Filter extreme-risk items
     safe_items = [it for it in items if (it.risk_score or 0) <= cfg["risk_threshold"]]
@@ -411,7 +411,7 @@ def score_low_follower_viral(
 
     High LFV = high virality/quality + low source authority (obscure creator)
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cfg = CONFIG
     results: list[tuple[ScoreBreakdown, ScoringInput]] = []
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional, Sequence, Union
+from datetime import datetime, timezone, UTC
+from typing import Optional, Union
+from collections.abc import Sequence
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,10 +19,10 @@ class FavoriteRepo:
 
     @staticmethod
     def make_target_key(
-        target_type: Union[FavoriteTargetType, str],
+        target_type: FavoriteTargetType | str,
         *,
-        target_id: Optional[int] = None,
-        target_key: Optional[str] = None,
+        target_id: int | None = None,
+        target_key: str | None = None,
     ) -> str:
         if target_key:
             return target_key
@@ -31,9 +32,9 @@ class FavoriteRepo:
 
     async def get_by_target(
         self,
-        target_type: Union[FavoriteTargetType, str],
+        target_type: FavoriteTargetType | str,
         target_key: str,
-    ) -> Optional[FavoriteItem]:
+    ) -> FavoriteItem | None:
         result = await self.db.execute(
             select(FavoriteItem).where(
                 FavoriteItem.user_id == self.user_id,
@@ -69,7 +70,7 @@ class FavoriteRepo:
             for key, value in payload.items():
                 if value is not None and hasattr(existing, key):
                     setattr(existing, key, value)
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.updated_at = datetime.now(UTC)
             await self.db.flush()
             await self.db.refresh(existing)
             await self._sync_content_flag(existing, True)
@@ -93,7 +94,7 @@ class FavoriteRepo:
             self.make_target_key(FavoriteTargetType.CONTENT, target_id=content_id),
         )
 
-    async def delete_by_target(self, target_type: Union[FavoriteTargetType, str], target_key: str) -> bool:
+    async def delete_by_target(self, target_type: FavoriteTargetType | str, target_key: str) -> bool:
         existing = await self.get_by_target(target_type, target_key)
         result = await self.db.execute(
             delete(FavoriteItem).where(
@@ -150,7 +151,7 @@ class FavoriteRepo:
         await self.db.flush()
         return int(deleted.rowcount or 0)
 
-    async def update(self, favorite_id: int, data: FavoriteUpdate) -> Optional[FavoriteItem]:
+    async def update(self, favorite_id: int, data: FavoriteUpdate) -> FavoriteItem | None:
         item = await self.get_by_id(favorite_id)
         if not item:
             return None
@@ -161,12 +162,12 @@ class FavoriteRepo:
                 setattr(item, key, value)
         if payload.get("status") and payload["status"] != original_status:
             item.position = await self.next_position_for_status(payload["status"])
-        item.updated_at = datetime.now(timezone.utc)
+        item.updated_at = datetime.now(UTC)
         await self.db.flush()
         await self.db.refresh(item)
         return item
 
-    async def get_by_id(self, favorite_id: int) -> Optional[FavoriteItem]:
+    async def get_by_id(self, favorite_id: int) -> FavoriteItem | None:
         result = await self.db.execute(
             select(FavoriteItem).where(
                 FavoriteItem.user_id == self.user_id,
@@ -180,9 +181,9 @@ class FavoriteRepo:
         *,
         page: int = 1,
         page_size: int = 20,
-        target_type: Optional[FavoriteTargetType] = None,
-        status: Optional[FavoriteStatus] = None,
-        keyword: Optional[str] = None,
+        target_type: FavoriteTargetType | None = None,
+        status: FavoriteStatus | None = None,
+        keyword: str | None = None,
     ) -> tuple[Sequence[FavoriteItem], int]:
         stmt = select(FavoriteItem).where(FavoriteItem.user_id == self.user_id)
         count_stmt = select(func.count()).select_from(FavoriteItem).where(FavoriteItem.user_id == self.user_id)
@@ -219,7 +220,7 @@ class FavoriteRepo:
         )
         return result.scalars().all(), total
 
-    async def next_position_for_status(self, status: Union[FavoriteStatus, str]) -> int:
+    async def next_position_for_status(self, status: FavoriteStatus | str) -> int:
         result = await self.db.execute(
             select(func.min(FavoriteItem.position))
             .where(FavoriteItem.status == status)
@@ -268,7 +269,7 @@ class FavoriteRepo:
         if missing_ids:
             raise LookupError(f"Favorite not found: {missing_ids[0]}")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         updated: list[FavoriteItem] = []
         for status, column_ids in columns:
             for index, item_id in enumerate(column_ids):
@@ -320,7 +321,7 @@ class FavoriteRepo:
         tail_items = list(tail_result.scalars().all())
         ordered_items = [by_id[item_id] for item_id in unique_ids] + tail_items
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for index, item in enumerate(ordered_items):
             item.status = status
             item.position = (index + 1) * 1000
@@ -333,8 +334,8 @@ class FavoriteRepo:
         self,
         target_type: FavoriteTargetType,
         *,
-        target_ids: Optional[list[int]] = None,
-        target_keys: Optional[list[str]] = None,
+        target_ids: list[int] | None = None,
+        target_keys: list[str] | None = None,
     ) -> list[dict]:
         keys = list(target_keys or [])
         keys.extend(self.make_target_key(target_type, target_id=target_id) for target_id in target_ids or [])
@@ -376,7 +377,7 @@ class FavoriteRepo:
         await self.db.execute(
             update(ContentItem)
             .where(ContentItem.id == item.target_id)
-            .values(is_favorited=is_favorited, updated_at=datetime.now(timezone.utc))
+            .values(is_favorited=is_favorited, updated_at=datetime.now(UTC))
         )
 
     async def _merge_content_snapshot(self, payload: dict) -> dict:

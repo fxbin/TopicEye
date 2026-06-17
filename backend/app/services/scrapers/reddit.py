@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 import shlex
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -43,7 +43,7 @@ _COMMENT_SEMAPHORE = asyncio.Semaphore(2)
 # ── curl-based HTTP helper ──────────────────────────────────────────
 
 
-async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
+async def _curl_get(url: str, params: dict[str, Any] | None = None) -> Any | None:
     """Run curl subprocess to fetch JSON from Reddit, bypassing TLS fingerprinting."""
     full_url = f"{url}?{urlencode(params)}" if params else url
 
@@ -96,7 +96,7 @@ async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Option
 
         return json.loads(text)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("curl timeout for %s", full_url)
         return None
     except json.JSONDecodeError as e:
@@ -114,7 +114,7 @@ class RedditScraper(BaseScraper):
     via the public ``.json`` endpoint using curl to bypass TLS fingerprinting.
     """
 
-    def __init__(self, source_url: str, source_config: Optional[dict] = None):
+    def __init__(self, source_url: str, source_config: dict | None = None):
         super().__init__(source_url, source_config or {})
         # source_url is the subreddit name (without /r/)
         self.subreddit = source_url.strip().strip("/").removeprefix("r/")
@@ -219,7 +219,7 @@ class RedditScraper(BaseScraper):
     # ── Parse ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_post(post: dict, comments: list[dict]) -> Optional[dict[str, Any]]:
+    def _parse_post(post: dict, comments: list[dict]) -> dict[str, Any] | None:
         post_id = post["id"]
         title = post.get("title", "")
         is_self = post.get("is_self", False)
@@ -231,7 +231,7 @@ class RedditScraper(BaseScraper):
         url = discussion_url if is_self else post.get("url", discussion_url)
         author = post.get("author", "unknown")
         created_utc = post.get("created_utc", 0)
-        published_at = datetime.fromtimestamp(created_utc, tz=timezone.utc)
+        published_at = datetime.fromtimestamp(created_utc, tz=UTC)
 
         # Build content body
         parts: list[str] = []

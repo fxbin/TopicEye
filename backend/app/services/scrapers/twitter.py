@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from html import unescape
 from typing import Optional, Any
 
@@ -130,7 +130,7 @@ class TwitterScraper(BaseScraper):
             return []
 
     @staticmethod
-    def _parse_item(raw: dict) -> Optional[dict[str, Any]]:
+    def _parse_item(raw: dict) -> dict[str, Any] | None:
         """Parse a single tweet from Apify/scweet output."""
         try:
             created_at_str = raw.get("created_at")
@@ -147,7 +147,7 @@ class TwitterScraper(BaseScraper):
                 published_at = _dt.strptime(created_at_str, "%a %b %d %H:%M:%S %z %Y")
 
             if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
+                published_at = published_at.replace(tzinfo=UTC)
             published_at = published_at
 
             text = raw.get("full_text") or raw.get("text") or ""

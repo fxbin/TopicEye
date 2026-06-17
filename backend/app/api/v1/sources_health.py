@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, desc, func, select
@@ -48,7 +48,7 @@ async def get_sources_health(
     async with async_session() as db:
         # per-source 内容统计（子查询避免 N+1）
         total_subq = select(ContentItem.source_id, func.count().label("cnt")).group_by(ContentItem.source_id).subquery()
-        recent_cutoff = datetime.now(timezone.utc).toordinal()  # placeholder
+        recent_cutoff = datetime.now(UTC).toordinal()  # placeholder
 
         stmt = select(
             Source,
@@ -61,7 +61,7 @@ async def get_sources_health(
         rows = (await db.execute(stmt)).all()
 
         # 最近 24h 内容数（单独查，避免复杂 JOIN）
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         from datetime import timedelta
 
         recent_cutoff_dt = now - timedelta(hours=24)
@@ -83,7 +83,7 @@ async def get_sources_health(
 
             last_sync_aware = source.last_sync_at
             last_sync_ago = (
-                int((now - last_sync_aware.replace(tzinfo=timezone.utc)).total_seconds()) if last_sync_aware else None
+                int((now - last_sync_aware.replace(tzinfo=UTC)).total_seconds()) if last_sync_aware else None
             )
 
             interval_seconds = (source.fetch_interval_minutes or 60) * 60

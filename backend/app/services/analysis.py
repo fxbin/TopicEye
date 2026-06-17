@@ -12,8 +12,9 @@ import json
 import logging
 import re
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Optional
+from datetime import datetime, timedelta, timezone, UTC
+from typing import Any, Optional
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -544,7 +545,7 @@ async def analyze_batch(
 ) -> list[AiAnalysis]:
     """Analyze multiple content items sequentially (respecting rate limits)."""
     results = []
-    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+    stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
 
     result = await db.execute(
         select(ContentItem).where(
@@ -565,7 +566,7 @@ async def analyze_batch(
 async def analyze_batch_concurrent(
     content_ids: list[int],
     *,
-    concurrency: Optional[int] = None,
+    concurrency: int | None = None,
     session_factory: Callable[[], Any] = async_session,
     assume_claimed: bool = False,
 ) -> list[AiAnalysis]:
@@ -580,7 +581,7 @@ async def analyze_batch_concurrent(
     limit = _normalize_analysis_concurrency(concurrency)
     semaphore = asyncio.Semaphore(limit)
 
-    async def _run_one(content_id: int) -> Optional[AiAnalysis]:
+    async def _run_one(content_id: int) -> AiAnalysis | None:
         async with semaphore, session_factory() as db:
             return await analyze_one_claimed(content_id, db, assume_claimed=assume_claimed)
 
@@ -593,11 +594,11 @@ async def analyze_one_claimed(
     db: AsyncSession,
     *,
     assume_claimed: bool = False,
-    analyzer: Optional[Callable[[ContentItem, AsyncSession], Awaitable[AiAnalysis]]] = None,
+    analyzer: Callable[[ContentItem, AsyncSession], Awaitable[AiAnalysis]] | None = None,
     raise_on_failure: bool = False,
-) -> Optional[AiAnalysis]:
+) -> AiAnalysis | None:
     """Claim and analyze one pending or stale analyzing item."""
-    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+    stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
     try:
         if not assume_claimed:
 
@@ -606,7 +607,7 @@ async def analyze_one_claimed(
                     update(ContentItem)
                     .where(ContentItem.id == content_id)
                     .where(_analysis_retryable_status_filter(stale_cutoff))
-                    .values(status=ContentStatus.ANALYZING, updated_at=datetime.now(timezone.utc))
+                    .values(status=ContentStatus.ANALYZING, updated_at=datetime.now(UTC))
                 )
                 await db.commit()
                 return result.rowcount > 0
@@ -643,7 +644,7 @@ async def analyze_one_claimed(
             content = await db.get(ContentItem, content_id)
             if content is not None:
                 content.status = ContentStatus.ERROR
-                content.updated_at = datetime.now(timezone.utc)
+                content.updated_at = datetime.now(UTC)
                 await db.commit()
         except Exception as status_error:
             await db.rollback()
@@ -657,7 +658,7 @@ async def analyze_one_claimed(
         return None
 
 
-def _normalize_analysis_concurrency(value: Optional[int]) -> int:
+def _normalize_analysis_concurrency(value: int | None) -> int:
     try:
         parsed = int(value if value is not None else settings.ANALYSIS_WORKER_CONCURRENCY)
     except (TypeError, ValueError):

@@ -70,7 +70,7 @@ async def list_digests(
 
 @router.post("/generate", response_model=WeeklyDigestResponse)
 async def trigger_generate(
-    week_key: Optional[str] = Query(None, description="Week key to generate (defaults to current week)"),
+    week_key: str | None = Query(None, description="Week key to generate (defaults to current week)"),
     db: AsyncSession = Depends(get_db),
 ):
     """Force regenerate a weekly digest for the given week (or current week)."""

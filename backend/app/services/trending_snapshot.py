@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 from typing import Optional, List, Dict
 
 from sqlalchemy import select, delete, and_, func
@@ -37,7 +37,7 @@ SNAPSHOT_HOURS = [8, 12, 18, 22]
 
 def _current_snapshot_hour() -> int:
     """返回当前应该存到哪个快照时间点。"""
-    now_hour = datetime.now(timezone.utc).hour
+    now_hour = datetime.now(UTC).hour
     # 找到 <= now_hour 的最大快照点
     for h in reversed(SNAPSHOT_HOURS):
         if now_hour >= h:
@@ -92,7 +92,7 @@ async def save_snapshot(db: AsyncSession, source: str) -> int:
     if record:
         record.items = items_json
         record.total_count = len(items_json)
-        record.fetched_at = datetime.now(timezone.utc)
+        record.fetched_at = datetime.now(UTC)
         logger.info("save_snapshot: updated source=%s date=%s hour=%d count=%d", source, today, hour, len(items_json))
     else:
         record = TrendingSnapshot(
@@ -102,7 +102,7 @@ async def save_snapshot(db: AsyncSession, source: str) -> int:
             category=items[0].category if items else "hot",
             items=items_json,
             total_count=len(items_json),
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
         db.add(record)
         logger.info("save_snapshot: created source=%s date=%s hour=%d count=%d", source, today, hour, len(items_json))
@@ -144,7 +144,7 @@ async def cleanup_old_snapshots(db: AsyncSession) -> int:
     return count
 
 
-async def get_snapshot_diff(db: AsyncSession, source: str) -> Optional[dict]:
+async def get_snapshot_diff(db: AsyncSession, source: str) -> dict | None:
     """
     获取今日 vs 昨日的快照对比（取各自最新时间点）。
     """
@@ -216,7 +216,7 @@ async def analyze_persistent_topics(
     min_days: int = 2,
     min_sources: int = 1,
     days_back: int = 7,
-) -> List[dict]:
+) -> list[dict]:
     """
     分析持续在榜的话题。
 
@@ -259,7 +259,7 @@ async def analyze_persistent_topics(
     total_days = len(dates)
 
     # 按标题聚合
-    topic_data: Dict[str, dict] = {}
+    topic_data: dict[str, dict] = {}
 
     for snap in snapshots:
         source_name = snap.source if isinstance(snap.source, str) else snap.source.value

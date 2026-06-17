@@ -5,7 +5,8 @@ Repository for DailyReport — daily briefing queries.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -23,9 +24,9 @@ class DailyReportRepository(BaseRepository[DailyReport]):
     async def get_by_date(
         self,
         report_date: str,
-        edition: Optional[str] = None,
-        owner_user_id: Optional[int] = None,
-    ) -> Optional[DailyReport]:
+        edition: str | None = None,
+        owner_user_id: int | None = None,
+    ) -> DailyReport | None:
         """Fetch final report for a date, or latest snapshot if final does not exist.
 
         ``owner_user_id``: ``None`` → public (NULL) reports; ``int`` → strictly
@@ -70,7 +71,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
     async def get_latest(
         self,
         limit: int = 7,
-        owner_user_id: Optional[int] = None,
+        owner_user_id: int | None = None,
     ) -> Sequence[DailyReport]:
         """Return the most recent reports, newest first.
 
@@ -88,8 +89,8 @@ class DailyReportRepository(BaseRepository[DailyReport]):
 
     async def get_dates_with_reports(
         self,
-        owner_user_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        owner_user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Return latest report version per date, newest first.
 
         ``owner_user_id``: ``None`` → public dates; ``int`` → only the user's
@@ -111,7 +112,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         result = await self.db.execute(stmt)
         rows = result.all()
         seen: set[str] = set()
-        dates: List[Dict[str, Any]] = []
+        dates: list[dict[str, Any]] = []
         for row in rows:
             if row[0] in seen:
                 continue

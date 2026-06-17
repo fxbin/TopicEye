@@ -34,19 +34,19 @@ class BookItem(BaseModel):
     url: str
     book_name: str
     author: str
-    abstract: Optional[str]
+    abstract: str | None
     category_id: str
-    category_name: Optional[str]
-    thumb_uri: Optional[str]
-    read_count: Optional[str]
-    word_number: Optional[str]
-    last_chapter_title: Optional[str]
+    category_name: str | None
+    thumb_uri: str | None
+    read_count: str | None
+    word_number: str | None
+    last_chapter_title: str | None
     current_pos: int
-    male_reading_pos: Optional[int]
-    male_new_pos: Optional[int]
-    female_reading_pos: Optional[int]
-    female_new_pos: Optional[int]
-    rank_pos_diff: Optional[int] = None  # 排名变化（正=上升，负=下降，null=新上榜）
+    male_reading_pos: int | None
+    male_new_pos: int | None
+    female_reading_pos: int | None
+    female_new_pos: int | None
+    rank_pos_diff: int | None = None  # 排名变化（正=上升，负=下降，null=新上榜）
 
     model_config = {"from_attributes": True}
 
@@ -87,7 +87,7 @@ async def list_categories(
 
 @router.get("/rankings")
 async def list_rankings(
-    type: Optional[str] = Query(None, description="male_reading/male_new/female_reading/female_new"),
+    type: str | None = Query(None, description="male_reading/male_new/female_reading/female_new"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -137,7 +137,7 @@ async def category_books(
     fanqie_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    rank_type: Optional[str] = Query(None, description="new / reading"),
+    rank_type: str | None = Query(None, description="new / reading"),
     limit: int = Query(20, le=100),
 ) -> dict:
     """

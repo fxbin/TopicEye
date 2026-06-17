@@ -24,8 +24,8 @@ from app.models.source import SourceType
 def recognize_source_type(
     url: str,
     *,
-    name: Optional[str] = None,
-) -> tuple[SourceType, str, Optional[dict]]:
+    name: str | None = None,
+) -> tuple[SourceType, str, dict | None]:
     """Infer ``SourceType`` from a feed/page URL.
 
     Args:

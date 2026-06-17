@@ -20,7 +20,7 @@ class ITHomeTrending(BaseTrendingScraper):
     SOURCE = "ithome"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.ithome.com/rss/"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -36,7 +36,7 @@ class ITHomeTrending(BaseTrendingScraper):
 
         # 按条目拆分
         items = re.split(r"<item>", xml)[1:]  # 跳过 channel header
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, block in enumerate(items[:30], start=1):
             title_m = _TITLE_PAT.search(block)
             link_m = _LINK_PAT.search(block)

@@ -127,12 +127,12 @@ def get_plan_catalog() -> dict[str, Any]:
     }
 
 
-def get_tier_by_key(plan_key: Optional[str]) -> dict[str, Any]:
+def get_tier_by_key(plan_key: str | None) -> dict[str, Any]:
     normalized = (plan_key or "free").strip().lower() or "free"
     return next((tier for tier in PLAN_TIERS if tier["key"] == normalized), PLAN_TIERS[0])
 
 
-def get_plan_catalog_for_user(plan_key: Optional[str] = None) -> dict[str, Any]:
+def get_plan_catalog_for_user(plan_key: str | None = None) -> dict[str, Any]:
     catalog = get_plan_catalog()
     current_tier = get_tier_by_key(plan_key)
     return {
@@ -142,10 +142,10 @@ def get_plan_catalog_for_user(plan_key: Optional[str] = None) -> dict[str, Any]:
     }
 
 
-def plan_allows_custom_ai(plan_key: Optional[str]) -> bool:
+def plan_allows_custom_ai(plan_key: str | None) -> bool:
     return get_tier_by_key(plan_key)["key"] in {"pro", "studio", "enterprise"}
 
 
-def plan_allows_private_source(plan_key: Optional[str]) -> bool:
+def plan_allows_private_source(plan_key: str | None) -> bool:
     """Whether the plan tier permits creating user-owned (private) sources."""
     return get_tier_by_key(plan_key)["key"] in {"pro", "studio", "enterprise"}

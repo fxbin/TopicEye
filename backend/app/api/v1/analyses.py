@@ -80,7 +80,7 @@ async def analyze_batch_endpoint(
 @router.post("/pending")
 async def analyze_all_pending(
     limit: int = Query(20, ge=1, le=100),
-    hours: Optional[int] = Query(
+    hours: int | None = Query(
         None, ge=1, le=720, description="Only analyze pending items collected within this many hours"
     ),
     sync: bool = Query(False, description="Run analysis synchronously for diagnostics"),
@@ -171,8 +171,8 @@ async def get_analysis(content_id: int, db: AsyncSession = Depends(get_db)):
 async def list_analyses(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    min_creator_score: Optional[float] = None,
-    min_viral_score: Optional[float] = None,
+    min_creator_score: float | None = None,
+    min_viral_score: float | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """List all analyses with optional score filters."""

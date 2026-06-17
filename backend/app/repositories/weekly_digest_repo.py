@@ -5,7 +5,8 @@ Repository for WeeklyDigest — weekly newsletter queries.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -20,7 +21,7 @@ class WeeklyDigestRepository(BaseRepository[WeeklyDigest]):
 
     model = WeeklyDigest
 
-    async def get_by_week_key(self, week_key: str) -> Optional[WeeklyDigest]:
+    async def get_by_week_key(self, week_key: str) -> WeeklyDigest | None:
         """Fetch a single digest by its week key (e.g. '2025-W21')."""
         stmt = select(self.model).where(self.model.week_key == week_key)
         result = await self.db.execute(stmt)
@@ -32,7 +33,7 @@ class WeeklyDigestRepository(BaseRepository[WeeklyDigest]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def get_weeks_with_digests(self) -> List[Dict[str, Optional[str]]]:
+    async def get_weeks_with_digests(self) -> list[dict[str, str | None]]:
         """Return list of {week_key, week_label, takeaway, status} for all digests, newest first."""
         stmt = select(
             self.model.week_key,

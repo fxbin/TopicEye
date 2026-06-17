@@ -16,7 +16,7 @@ class BilibiliTrending(BaseTrendingScraper):
     SOURCE = "bilibili"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://s.search.bilibili.com/main/hotword?limit=30"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -35,7 +35,7 @@ class BilibiliTrending(BaseTrendingScraper):
             logger.warning("bilibili trending: empty list")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(word_list, start=1):
             keyword = item.get("show_name", item.get("keyword", "")).strip()
             if not keyword:

@@ -51,7 +51,7 @@ async def get_my_today_report(
 @router.get("/me/by-date", response_model=DailyReportResponse)
 async def get_my_report_by_date(
     date: str = Query(..., description="Report date in YYYY-MM-DD format"),
-    edition: Optional[str] = Query(None),
+    edition: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -99,7 +99,7 @@ async def get_today_report(db: AsyncSession = Depends(get_db)):
 @router.get("/by-date", response_model=DailyReportResponse)
 async def get_report_by_date(
     date: str = Query(..., description="Report date in YYYY-MM-DD format"),
-    edition: Optional[str] = Query(None, description="Optional edition: snapshot/noon/evening/final/manual"),
+    edition: str | None = Query(None, description="Optional edition: snapshot/noon/evening/final/manual"),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch final report for a date, or latest snapshot if final does not exist."""
@@ -140,7 +140,7 @@ async def get_report_calendar(
 
     calendar_statuses = {"DONE", "ERROR", "GENERATING", "MISSING"}
 
-    def pick_calendar_report(items: list[DailyReport], current_date: date_cls) -> Tuple[Optional[DailyReport], str]:
+    def pick_calendar_report(items: list[DailyReport], current_date: date_cls) -> tuple[DailyReport | None, str]:
         if not items:
             return None, "MISSING"
 
@@ -220,9 +220,9 @@ async def trigger_generate(db: AsyncSession = Depends(get_db)):
 
 @router.post("/generate-version", response_model=DailyReportResponse)
 async def trigger_generate_version(
-    target_date: Optional[str] = Query(None, description="Target date in YYYY-MM-DD, defaults to today"),
-    edition: Optional[str] = Query(None, description="snapshot/noon/evening/final/manual"),
-    cutoff_at: Optional[str] = Query(None, description="ISO datetime cutoff, defaults to now"),
+    target_date: str | None = Query(None, description="Target date in YYYY-MM-DD, defaults to today"),
+    edition: str | None = Query(None, description="snapshot/noon/evening/final/manual"),
+    cutoff_at: str | None = Query(None, description="ISO datetime cutoff, defaults to now"),
     force: bool = Query(True, description="Regenerate even if this exact version exists"),
     db: AsyncSession = Depends(get_db),
 ):

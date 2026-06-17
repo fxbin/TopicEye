@@ -54,7 +54,7 @@ def _favorite_cache_hit_response(content: bytes, age_seconds: float) -> Response
     )
 
 
-def _parse_state_target_ids(raw_target_ids: Optional[str]) -> list[int]:
+def _parse_state_target_ids(raw_target_ids: str | None) -> list[int]:
     if not raw_target_ids:
         return []
     ids: list[int] = []
@@ -69,7 +69,7 @@ def _parse_state_target_ids(raw_target_ids: Optional[str]) -> list[int]:
     return ids
 
 
-def _parse_state_target_keys(raw_target_keys: Optional[str]) -> list[str]:
+def _parse_state_target_keys(raw_target_keys: str | None) -> list[str]:
     if not raw_target_keys:
         return []
     return [item.strip() for item in raw_target_keys.split(",") if item.strip()]
@@ -78,8 +78,8 @@ def _parse_state_target_keys(raw_target_keys: Optional[str]) -> list[str]:
 def _normalize_state_target_keys(
     target_type: FavoriteTargetType,
     *,
-    target_ids: Optional[str],
-    target_keys: Optional[str],
+    target_ids: str | None,
+    target_keys: str | None,
 ) -> list[str]:
     keys = _parse_state_target_keys(target_keys)
     keys.extend(
@@ -109,9 +109,9 @@ def _favorite_state_cache_key(user_id: int, target_type: FavoriteTargetType, tar
 async def list_favorites(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
-    target_type: Optional[FavoriteTargetType] = None,
-    status: Optional[FavoriteStatus] = None,
-    keyword: Optional[str] = None,
+    target_type: FavoriteTargetType | None = None,
+    status: FavoriteStatus | None = None,
+    keyword: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -162,8 +162,8 @@ async def create_favorite(
 @router.get("/state")
 async def favorite_state(
     target_type: FavoriteTargetType,
-    target_ids: Optional[str] = Query(None, description="Comma-separated target IDs"),
-    target_keys: Optional[str] = Query(None, description="Comma-separated target keys"),
+    target_ids: str | None = Query(None, description="Comma-separated target IDs"),
+    target_keys: str | None = Query(None, description="Comma-separated target keys"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

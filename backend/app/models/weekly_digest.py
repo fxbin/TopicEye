@@ -4,7 +4,7 @@ Weekly Digest model — AI-generated weekly curated newsletter.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import String, Text, DateTime, Integer
@@ -29,34 +29,34 @@ class WeeklyDigest(Base):
     # ── Generated content fields (all stored as JSON text) ──
 
     # Weekly overview paragraph
-    overview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    overview: Mapped[str | None] = mapped_column(Text, nullable=True)
     # One-line takeaway / headline
-    takeaway: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    takeaway: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Top keywords of the week: JSON array ["AI","产品"]
-    keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Weekly trends: JSON array of {title, desc, color, momentum}
-    trends: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    trends: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Editor's picks — top curated items:
     # JSON array of {rank, title, source, category, reason, score, platforms}
-    top_picks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    top_picks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Category breakdown: JSON object {category: {count, avg_score, top_title}}
-    category_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Platform-specific creation tips:
     # JSON object {platform: [tip1, tip2, ...]}
-    platform_tips: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    platform_tips: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Hot topic clusters:
     # JSON array of {name, count, heat, representative_title}
-    topic_clusters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    topic_clusters: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Creator action items:
     # JSON array of {title, angle, difficulty, platform}
-    action_items: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    action_items: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Stats ──
     content_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -67,7 +67,7 @@ class WeeklyDigest(Base):
     # ── Lifecycle ──
     status: Mapped[str] = mapped_column(String(20), default="PENDING")  # PENDING / GENERATING / DONE / ERROR
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )

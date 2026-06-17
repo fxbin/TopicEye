@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Dict, Literal, Optional
 
@@ -19,7 +19,7 @@ DatabaseBackend = Literal["sqlite", "postgresql", "unknown"]
 SUPPORTED_DATABASE_BACKENDS = {"sqlite", "postgresql"}
 
 
-SQLITE_DOMAIN_TABLES: Dict[str, tuple[str, ...]] = {
+SQLITE_DOMAIN_TABLES: dict[str, tuple[str, ...]] = {
     "content": (
         "sources",
         "content_items",
@@ -66,10 +66,10 @@ SQLITE_DOMAIN_TABLES: Dict[str, tuple[str, ...]] = {
 class DatabaseProfile:
     url: str
     backend: DatabaseBackend
-    async_driver: Optional[str]
+    async_driver: str | None
     sync_url: str
-    sqlite_path: Optional[str]
-    sqlite_domain_urls: Dict[str, str]
+    sqlite_path: str | None
+    sqlite_domain_urls: dict[str, str]
 
     @property
     def is_sqlite(self) -> bool:
@@ -113,7 +113,7 @@ def async_database_url(url: str) -> str:
     return _render_url(parsed)
 
 
-def sqlite_path_from_url(url: str) -> Optional[str]:
+def sqlite_path_from_url(url: str) -> str | None:
     parsed = make_url(url)
     if database_backend(url) != "sqlite":
         return None
@@ -123,7 +123,7 @@ def sqlite_path_from_url(url: str) -> Optional[str]:
     return os.path.abspath(database)
 
 
-def sqlite_domain_urls(base_url: str, domain_dir: str) -> Dict[str, str]:
+def sqlite_domain_urls(base_url: str, domain_dir: str) -> dict[str, str]:
     """Build SQLite URLs for optional domain split storage.
 
     This does not activate routing by itself.  It gives future repository-level
@@ -196,7 +196,7 @@ def database_diagnostics(profile: DatabaseProfile) -> dict:
     }
 
 
-def redact_database_secrets(message: Optional[str], profile: DatabaseProfile) -> Optional[str]:
+def redact_database_secrets(message: str | None, profile: DatabaseProfile) -> str | None:
     """Remove configured database credentials from diagnostic error text."""
     if message is None:
         return None
@@ -280,7 +280,7 @@ def _render_url(url: URL) -> str:
     return url.render_as_string(hide_password=False)
 
 
-def ensure_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def ensure_aware_utc(dt: datetime | None) -> datetime | None:
     """把从 DB 读出的 datetime 规范成 aware UTC.
 
     背景: PG 列改 TIMESTAMP WITH TIME ZONE 后读出是 aware;
@@ -293,11 +293,11 @@ def ensure_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
-def ensure_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+def ensure_naive_utc(dt: datetime | None) -> datetime | None:
     """把 datetime 转 naive UTC, 用于 SQL 查询参数.
 
     背景: SQLite aiosqlite driver 不支持 aware datetime 作为 SQL 绑定参数,
@@ -310,4 +310,4 @@ def ensure_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
         return None
     if dt.tzinfo is None:
         return dt  # 已经是 naive
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)

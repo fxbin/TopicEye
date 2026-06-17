@@ -30,7 +30,7 @@ def extract_main_content(html: str) -> str:
     return soup.get_text(separator="\n", strip=True)
 
 
-def extract_cover_url(html: str, base_url: str = "") -> Optional[str]:
+def extract_cover_url(html: str, base_url: str = "") -> str | None:
     """Try to find the og:image or first large <img> in the page."""
     soup = BeautifulSoup(html, "html.parser")
 

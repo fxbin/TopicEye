@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -27,7 +27,7 @@ router = APIRouter(
 )
 
 
-def _cache_key(days: int, job_key: Optional[str]) -> str:
+def _cache_key(days: int, job_key: str | None) -> str:
     return f"stats:jobs:{days}:{job_key or 'all'}"
 
 
@@ -43,7 +43,7 @@ def _miss_response(cache_key: str, payload: dict) -> Response:
 @router.get("")
 async def get_job_stats(
     days: int = Query(7, ge=1, le=90),
-    job_key: Optional[str] = Query(None, description="按 job_key 过滤，可选"),
+    job_key: str | None = Query(None, description="按 job_key 过滤，可选"),
 ):
     """抓取/调度任务执行统计。
 
@@ -71,9 +71,9 @@ async def get_job_stats(
     return _miss_response(cache_key, payload)
 
 
-async def _build_job_stats_payload(*, days: int, job_key: Optional[str]) -> dict:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    end = datetime.now(timezone.utc)
+async def _build_job_stats_payload(*, days: int, job_key: str | None) -> dict:
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    end = datetime.now(UTC)
 
     async with async_session() as db:
         # ── by_status ──

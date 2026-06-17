@@ -222,7 +222,7 @@ async def generate_creation_plan(
             error=plan.get("error") if not is_success else None,
         )
         return plan
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Creation plan timed out for content %s after %ss",
             content_id,

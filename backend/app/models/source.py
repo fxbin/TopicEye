@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Optional
 import enum
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.enum_types import value_enum
 
 
-class SourceType(str, enum.Enum):
+class SourceType(enum.StrEnum):
     RSS = "RSS"
     RSSHub = "RSSHub"
     REDDIT = "Reddit"
@@ -27,7 +27,7 @@ class SourceType(str, enum.Enum):
     CUSTOM = "自定义"
 
 
-class SourceStatus(str, enum.Enum):
+class SourceStatus(enum.StrEnum):
     ACTIVE = "active"
     SYNCING = "syncing"
     ERROR = "error"
@@ -38,34 +38,34 @@ class Source(Base):
     __tablename__ = "sources"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    owner_user_id: Mapped[Optional[int]] = mapped_column(
+    owner_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str] = mapped_column(value_enum(SourceType), nullable=False, default=SourceType.RSS)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
-    keyword: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    platform: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    keyword: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     weight: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(value_enum(SourceStatus), nullable=False, default=SourceStatus.ACTIVE)
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fetch_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ── Conditional request state (HTTP If-None-Match / If-Modified-Since) ──
-    etag: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    last_modified: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     __table_args__ = (
@@ -73,4 +73,4 @@ class Source(Base):
         Index("ix_sources_owner_enabled", "owner_user_id", "enabled"),
     )
 
-    contents: Mapped[list["ContentItem"]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    contents: Mapped[list[ContentItem]] = relationship(back_populates="source", cascade="all, delete-orphan")

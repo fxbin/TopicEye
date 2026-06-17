@@ -15,13 +15,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-class CircuitState(str, Enum):
+class CircuitState(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
@@ -47,7 +47,7 @@ class CircuitBreaker:
 
         self._state = CircuitState.CLOSED
         self._failure_count = 0
-        self._last_failure_time: Optional[float] = None
+        self._last_failure_time: float | None = None
         self._lock = asyncio.Lock()
 
     @property
@@ -119,7 +119,7 @@ class CircuitBreaker:
 
 
 # 全局单例（单进程足够；多进程需换 Redis 实现）
-_default_breaker: Optional[CircuitBreaker] = None
+_default_breaker: CircuitBreaker | None = None
 
 
 def get_llm_circuit_breaker() -> CircuitBreaker:

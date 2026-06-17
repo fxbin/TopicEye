@@ -18,12 +18,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ── 类型别名 ──────────────────────────────────────────────────────
-TrendingEntry = Dict[str, Any]
+TrendingEntry = dict[str, Any]
 # 必须包含: title, rank, hot_value
 # 可选包含: url, hot_value_raw, trend, cover_url, extra
 
 # ── Registry ──────────────────────────────────────────────────────
-_TRENDING_REGISTRY: Dict[str, type] = {}
+_TRENDING_REGISTRY: dict[str, type] = {}
 
 
 def register_trending(source: str):
@@ -36,11 +36,11 @@ def register_trending(source: str):
     return _cls
 
 
-def get_trending_cls(source: str) -> Optional[type]:
+def get_trending_cls(source: str) -> type | None:
     return _TRENDING_REGISTRY.get(source)
 
 
-def get_all_trending_sources() -> List[str]:
+def get_all_trending_sources() -> list[str]:
     return list(_TRENDING_REGISTRY.keys())
 
 
@@ -53,7 +53,7 @@ class BaseTrendingScraper(ABC):
     CATEGORY: str = ""  # TrendingCategory value
 
     @abstractmethod
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         """
         抓取榜单，返回条目列表。
         每个条目:

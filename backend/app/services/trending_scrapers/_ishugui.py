@@ -74,12 +74,12 @@ class IshuguiTrending(BaseTrendingScraper):
     }
 
     # ── Entry points ───────────────────────────────────────────────
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         build_id = await self._discover_build_id(client)
         logger.info("ishugui trending: using build_id=%s", build_id)
 
-        results: List[TrendingEntry] = []
-        seen: Set[str] = set()
+        results: list[TrendingEntry] = []
+        seen: set[str] = set()
 
         # 1) 首页 banner (作为 "首页 banner" shelf)
         banner_entries = await self._fetch_index_banner(client, build_id, seen)
@@ -113,8 +113,8 @@ class IshuguiTrending(BaseTrendingScraper):
         self,
         client: httpx.AsyncClient,
         build_id: str,
-        seen: Set[str],
-    ) -> List[TrendingEntry]:
+        seen: set[str],
+    ) -> list[TrendingEntry]:
         url = f"{self.BASE_DATA}/{build_id}/index.json"
         try:
             resp = await client.get(url, headers=self.HEADERS, timeout=20)
@@ -125,7 +125,7 @@ class IshuguiTrending(BaseTrendingScraper):
             return []
 
         page_props = payload.get("pageProps") or {}
-        entries: List[TrendingEntry] = []
+        entries: list[TrendingEntry] = []
         global_rank = 0
 
         # bannerList: 头部轮播, 字段比 book 字段少
@@ -162,11 +162,11 @@ class IshuguiTrending(BaseTrendingScraper):
         types_path: str,
         rank_name: str,
         gender: str,
-        seen: Set[str],
+        seen: set[str],
         max_pages: int = 10,  # 单榜单最多 10 页 (= 100 本), 防御性上限
-    ) -> List[TrendingEntry]:
+    ) -> list[TrendingEntry]:
         """抓取单个 rank 全量 (分页). 失败/0 records 立即停."""
-        entries: List[TrendingEntry] = []
+        entries: list[TrendingEntry] = []
         rank_position = 0
         gender_label = "男频" if gender == "male" else "女频"
 
@@ -231,7 +231,7 @@ class IshuguiTrending(BaseTrendingScraper):
         rank: int,
         gender_label: str,
         types_path: str,
-    ) -> Optional[TrendingEntry]:
+    ) -> TrendingEntry | None:
         book_id = str(info.get("bookId") or "").strip()
         if not book_id:
             return None

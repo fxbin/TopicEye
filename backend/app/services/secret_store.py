@@ -26,7 +26,7 @@ def _fernet() -> Fernet:
     return Fernet(key)
 
 
-def encrypt_secret(value: Optional[str]) -> Optional[str]:
+def encrypt_secret(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = value.strip()
@@ -36,7 +36,7 @@ def encrypt_secret(value: Optional[str]) -> Optional[str]:
     return f"{SECRET_PREFIX}{token}"
 
 
-def decrypt_secret(value: Optional[str]) -> Optional[str]:
+def decrypt_secret(value: str | None) -> str | None:
     if value is None:
         return None
     stored = value.strip()
@@ -51,5 +51,5 @@ def decrypt_secret(value: Optional[str]) -> Optional[str]:
         raise ValueError("用户集成凭据无法解密，请检查 INTEGRATION_SECRET_KEY 配置") from exc
 
 
-def is_encrypted_secret(value: Optional[str]) -> bool:
+def is_encrypted_secret(value: str | None) -> bool:
     return bool(value and value.strip().startswith(SECRET_PREFIX))

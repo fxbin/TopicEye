@@ -17,7 +17,7 @@ class ToutiaoTrending(BaseTrendingScraper):
     SOURCE = "toutiao"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -37,7 +37,7 @@ class ToutiaoTrending(BaseTrendingScraper):
             logger.warning("toutiao trending: empty data")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items[:50], start=1):
             title = item.get("Title", "").strip()
             if not title:

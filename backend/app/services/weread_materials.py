@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 import re
 from typing import Any, Dict, Optional, Union
 from urllib.parse import quote
@@ -36,7 +36,7 @@ def _entry_url(entry: dict[str, Any]) -> str:
     return value or WEREAD_SOURCE_URL
 
 
-def redact_weread_sync_error(message: str, api_key: Optional[str]) -> str:
+def redact_weread_sync_error(message: str, api_key: str | None) -> str:
     redacted = str(message)
     stripped_key = (api_key or "").strip()
     secrets = {stripped_key, quote(stripped_key, safe="")} if stripped_key else set()
@@ -103,7 +103,7 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
                 "summary": note[:1000],
                 "raw_content": note or title,
                 "cover_url": raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
-                "published_at": datetime.now(timezone.utc),
+                "published_at": datetime.now(UTC),
             }
         )
     return entries
@@ -157,9 +157,9 @@ async def sync_weread_materials(
     db: AsyncSession,
     integration: UserIntegration,
     *,
-    api_key: Optional[str] = None,
+    api_key: str | None = None,
     limit: int = 50,
-) -> Dict[str, Union[int, str]]:
+) -> dict[str, int | str]:
     if integration.provider != WEREAD_PROVIDER:
         raise ValueError("微信读书 API Key 未配置")
     from app.services.integration_service import integration_api_key
@@ -170,7 +170,7 @@ async def sync_weread_materials(
 
     source = await ensure_weread_source(db)
     fetched = new = duplicates = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         entries = await fetch_weread_materials(resolved_api_key, limit=limit)
         fetched = len(entries)

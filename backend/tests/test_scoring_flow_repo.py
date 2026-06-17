@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import pytest
 from sqlalchemy import select
@@ -20,7 +20,7 @@ async def test_scoring_flow_candidates_use_analysis_presence_not_status():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_factory() as db:
         db.add(
             Source(
@@ -97,7 +97,7 @@ async def test_scoring_flow_diagnostics_include_requested_custom_window():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     invalidate_scoring_flow_cache()
     async with session_factory() as db:
         db.add(
@@ -161,7 +161,7 @@ async def test_content_analyses_relationship_orders_latest_last():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_factory() as db:
         db.add(
             ContentItem(
@@ -202,7 +202,7 @@ async def test_content_analyses_relationship_orders_latest_last():
 
 
 def test_content_serialization_uses_explicit_latest_analysis_ordering():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = ContentItem(
         id=1,
         title="乱序分析内容",
@@ -231,7 +231,7 @@ async def test_report_window_uses_latest_analysis_for_risk_gate():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_factory() as db:
         db.add(
             Source(
@@ -304,7 +304,7 @@ async def test_report_window_uses_unified_risk_threshold():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_factory() as db:
         db.add(
             Source(
@@ -382,7 +382,7 @@ async def test_today_picks_fallback_uses_unified_risk_threshold():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_factory() as db:
         db.add(
             Source(

@@ -8,7 +8,8 @@ Subclasses only need to set the model class and optional filter mappings.
 from __future__ import annotations
 
 import logging
-from typing import Any, Generic, Optional, Sequence, Type, TypeVar
+from typing import Any, Generic, Optional, Type, TypeVar
+from collections.abc import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 ModelType = TypeVar("ModelType")
 
 
-class BaseRepository(Generic[ModelType]):
+class BaseRepository[ModelType]:
     """
     Base repository with common CRUD operations.
 
@@ -32,14 +33,14 @@ class BaseRepository(Generic[ModelType]):
             filter_fields = {"source_type", "platform", "status", "category"}
     """
 
-    model: Type[ModelType]
+    model: type[ModelType]
 
     def __init__(self, db: AsyncSession):
         self.db = db
 
     # ── Read ────────────────────────────────────────────────────────
 
-    async def get_by_id(self, id: int) -> Optional[ModelType]:
+    async def get_by_id(self, id: int) -> ModelType | None:
         """Fetch a single record by primary key. Returns None if not found."""
         result = await self.db.execute(select(self.model).where(self.model.id == id))
         return result.scalar_one_or_none()
@@ -52,7 +53,7 @@ class BaseRepository(Generic[ModelType]):
             raise NotFoundError(resource=name, resource_id=id)
         return obj
 
-    async def get_one(self, *filters) -> Optional[ModelType]:
+    async def get_one(self, *filters) -> ModelType | None:
         """Fetch a single record matching filters."""
         stmt = select(self.model)
         for f in filters:
@@ -66,7 +67,7 @@ class BaseRepository(Generic[ModelType]):
         self,
         page: int = 1,
         page_size: int = 20,
-        filters: Optional[dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
         sort_by: str = "id",
         sort_order: str = "desc",
     ) -> tuple[Sequence[ModelType], int]:

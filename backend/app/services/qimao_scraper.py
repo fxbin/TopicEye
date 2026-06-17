@@ -63,7 +63,7 @@ RANK_CONFIGS = [
 ]
 
 
-def _extract_nuxt_iife(html: str) -> Optional[str]:
+def _extract_nuxt_iife(html: str) -> str | None:
     """从 HTML 中提取 window.__NUXT__=(function(...){...})(...) 完整片段.
 
     返回不带 `window.__NUXT__=` 前缀的纯 IIFE 表达式, 供 JS 引擎执行.
@@ -83,7 +83,7 @@ def _extract_nuxt_iife(html: str) -> Optional[str]:
     return raw
 
 
-def _parse_list_data_from_html(html: str) -> Optional[list[dict]]:
+def _parse_list_data_from_html(html: str) -> list[dict] | None:
     """执行 NUXT IIFE 拿到 listData (单个页面).
 
     用 JSON.stringify 桥接: JS 端把 listData 序列化成字符串, Python 端 json.loads.
@@ -115,7 +115,7 @@ def _parse_list_data_from_html(html: str) -> Optional[list[dict]]:
         return None
 
 
-async def _fetch_html(client: httpx.AsyncClient, url: str) -> Optional[str]:
+async def _fetch_html(client: httpx.AsyncClient, url: str) -> str | None:
     """带 3 次重试的 GET HTML."""
     for i in range(3):
         try:
@@ -128,7 +128,7 @@ async def _fetch_html(client: httpx.AsyncClient, url: str) -> Optional[str]:
     return None
 
 
-async def fetch_list_data(channel: str, rank_type: str) -> Optional[list[dict]]:
+async def fetch_list_data(channel: str, rank_type: str) -> list[dict] | None:
     """抓单个榜单: httpx GET + py_mini_racer 解析."""
     url = f"{BASE_URL}/{channel}/{rank_type}/"
     proxy = {"all://": PROXY_URL} if PROXY_URL else None

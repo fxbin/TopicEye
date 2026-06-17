@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -40,8 +40,8 @@ class PodcastScraper(BaseScraper):
     def __init__(self, source_url: str, source_config=None):
         super().__init__(source_url, source_config)
         # source_config may carry a pre-resolved feedUrl (e.g. from recognizer)
-        self.rss_url: Optional[str] = source_config.get("resolved_rss_url") if source_config else None
-        self.itunes_id: Optional[str] = source_config.get("itunes_id") if source_config else None
+        self.rss_url: str | None = source_config.get("resolved_rss_url") if source_config else None
+        self.itunes_id: str | None = source_config.get("itunes_id") if source_config else None
 
     async def _resolve_rss_url(self, client: httpx.AsyncClient) -> str:
         """Map a podcast landing URL to its underlying RSS feed URL."""
@@ -90,7 +90,7 @@ class PodcastScraper(BaseScraper):
         return self.url
 
     @staticmethod
-    async def _extract_rss_from_html(client: httpx.AsyncClient, url: str) -> Optional[str]:
+    async def _extract_rss_from_html(client: httpx.AsyncClient, url: str) -> str | None:
         """Best-effort: fetch ``url`` as HTML and look for an RSS <link>."""
         try:
             resp = await client.get(url, follow_redirects=True)
@@ -125,7 +125,7 @@ class PodcastScraper(BaseScraper):
 
         for entry in feed.entries:
             published = entry.get("published_parsed") or entry.get("updated_parsed")
-            published_at = datetime(*published[:6]) if published else datetime.now(timezone.utc)
+            published_at = datetime(*published[:6]) if published else datetime.now(UTC)
             # Podcast cover art: itunes:image or enclosure
             cover_url = ""
             if "itunes_image" in entry:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -13,6 +13,7 @@ from app.api.v1 import auth as auth_api
 from app.api.v1 import product_feedback as product_feedback_api
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
+from datetime import UTC
 
 
 @pytest_asyncio.fixture
@@ -36,7 +37,7 @@ async def product_feedback_client() -> AsyncGenerator[tuple[httpx.AsyncClient, s
             ProductUpdate(
                 version="v0.2.1",
                 status="shipped",
-                shipped_at=datetime.now(timezone.utc),
+                shipped_at=datetime.now(UTC),
                 items=[
                     {"title": "匿名问题反馈", "description": "未登录用户也可以提交产品问题", "kind": "improvement"},
                 ],

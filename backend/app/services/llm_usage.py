@@ -22,7 +22,7 @@ class TokenUsage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
-    actual_model: Optional[str] = None
+    actual_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,10 +33,10 @@ class CostBreakdown:
     cache_read_cost: float
     cache_creation_cost: float
     total_cost: float
-    cost_per_1m_input: Optional[float]
-    cost_per_1m_output: Optional[float]
-    cost_per_1m_input_cache_hit: Optional[float]
-    cost_per_1m_input_cache_create: Optional[float]
+    cost_per_1m_input: float | None
+    cost_per_1m_output: float | None
+    cost_per_1m_input_cache_hit: float | None
+    cost_per_1m_input_cache_create: float | None
 
 
 def _get_value(obj: Any, *names: str) -> Any:
@@ -57,7 +57,7 @@ def _to_int(value: Any) -> int:
         return 0
 
 
-def _to_float(value: Any) -> Optional[float]:
+def _to_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -136,7 +136,7 @@ def extract_usage(response: Any) -> TokenUsage:
     )
 
 
-def pricing_from_model(model: Optional[LlmModel]) -> dict[str, Optional[float]]:
+def pricing_from_model(model: LlmModel | None) -> dict[str, float | None]:
     from app.services.llm.model_pricing import normalized_model_pricing
 
     if model is None:
@@ -158,17 +158,17 @@ def pricing_from_model(model: Optional[LlmModel]) -> dict[str, Optional[float]]:
     }
 
 
-def _input_tokens_include_cache(provider: Optional[str], request_model: Optional[str]) -> bool:
+def _input_tokens_include_cache(provider: str | None, request_model: str | None) -> bool:
     marker = f"{provider or ''}/{request_model or ''}".lower()
     return not ("anthropic" in marker or "claude" in marker)
 
 
 def calculate_cost(
     usage: TokenUsage,
-    pricing: dict[str, Optional[float]],
+    pricing: dict[str, float | None],
     *,
-    provider: Optional[str] = None,
-    request_model: Optional[str] = None,
+    provider: str | None = None,
+    request_model: str | None = None,
 ) -> CostBreakdown:
     cost_per_1m_input = pricing.get("input") or 0.0
     cost_per_1m_output = pricing.get("output") or 0.0
@@ -203,14 +203,14 @@ def calculate_cost(
 async def record_llm_call(
     db: AsyncSession,
     *,
-    model: Optional[LlmModel],
-    request_model: Optional[str],
+    model: LlmModel | None,
+    request_model: str | None,
     scene: str,
     status: str,
     duration_ms: int = 0,
-    usage: Optional[TokenUsage] = None,
-    error_message: Optional[str] = None,
-    request_id: Optional[str] = None,
+    usage: TokenUsage | None = None,
+    error_message: str | None = None,
+    request_id: str | None = None,
 ) -> LlmCallLog:
     usage = usage or TokenUsage()
     resolved_request_id = request_id or f"llm_{uuid.uuid4().hex}"
@@ -271,14 +271,14 @@ async def record_llm_call(
 
 async def record_llm_call_in_new_session(
     *,
-    model: Optional[LlmModel],
-    request_model: Optional[str],
+    model: LlmModel | None,
+    request_model: str | None,
     scene: str,
     status: str,
     duration_ms: int = 0,
-    usage: Optional[TokenUsage] = None,
-    error_message: Optional[str] = None,
-    request_id: Optional[str] = None,
+    usage: TokenUsage | None = None,
+    error_message: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     from app.core.database import async_session
     from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked

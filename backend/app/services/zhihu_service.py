@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 import httpx
 from sqlalchemy import delete, select
@@ -169,7 +169,7 @@ def parse_album_item(item: dict) -> dict:
     }
 
 
-async def _fetch_html(url: str) -> Optional[str]:
+async def _fetch_html(url: str) -> str | None:
     """下载单个页面 HTML。强制 IPv4 (跟 _fetch_api 同根因)."""
     transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
     try:
@@ -191,7 +191,7 @@ async def _fetch_html(url: str) -> Optional[str]:
     return None
 
 
-async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: Optional[str] = None) -> list:
+async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: str | None = None) -> list:
     """调用知乎榜单 API。返回 album item 列表。
 
     容器内 IPv6 走不通 (happy eyeballs 失败), 强制 IPv4.
@@ -331,7 +331,7 @@ async def _fetch_and_save_albums(
     sort_type: str,
     category1: str,
     category2: str,
-    prev_positions: Optional[dict[str, int]] = None,
+    prev_positions: dict[str, int] | None = None,
 ) -> int:
     """将 album item 列表写入数据库。返回条数。
 
@@ -353,7 +353,7 @@ async def _fetch_and_save_albums(
                 rec["rank_pos_diff"] = prev_pos - pos
             else:
                 rec["rank_pos_diff"] = None
-            rec["updated_at"] = datetime.now(timezone.utc)
+            rec["updated_at"] = datetime.now(UTC)
 
             await db.execute(_upsert_zhihu_album_statement(rec))
         await db.commit()

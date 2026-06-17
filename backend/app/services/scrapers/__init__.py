@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # ── Registry ──────────────────────────────────────────────────────────
 
-_SCRAPER_REGISTRY: Dict[str, type] = {}
+_SCRAPER_REGISTRY: dict[str, type] = {}
 
 
 def register_scraper(source_type: str):
@@ -31,7 +31,7 @@ def register_scraper(source_type: str):
     return _cls
 
 
-def get_scraper_cls(source_type: str) -> Optional[type]:
+def get_scraper_cls(source_type: str) -> type | None:
     """Look up the scraper class for a source type.
 
     Tries exact match first, then case-insensitive fallback.
@@ -58,7 +58,7 @@ class BaseScraper(ABC):
     entry dicts ready for the ingestion pipeline.
     """
 
-    def __init__(self, source_url: str, source_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, source_url: str, source_config: dict[str, Any] | None = None):
         self.url = source_url
         self.config = source_config or {}
 

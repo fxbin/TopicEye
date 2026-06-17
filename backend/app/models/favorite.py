@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
@@ -12,7 +12,7 @@ from app.models.enum_types import value_enum
 from app.models.user import User
 
 
-class FavoriteTargetType(str, enum.Enum):
+class FavoriteTargetType(enum.StrEnum):
     CONTENT = "content"
     BOOK = "book"
     SOURCE = "source"
@@ -21,7 +21,7 @@ class FavoriteTargetType(str, enum.Enum):
     TOPIC_GROUP = "topic_group"
 
 
-class FavoriteStatus(str, enum.Enum):
+class FavoriteStatus(enum.StrEnum):
     INBOX = "inbox"
     RESEARCHING = "researching"
     DRAFTING = "drafting"
@@ -36,26 +36,26 @@ class FavoriteItem(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     target_type: Mapped[str] = mapped_column(value_enum(FavoriteTargetType), nullable=False)
-    target_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_key: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    cover_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    source_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    collection_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    collection_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tags: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(value_enum(FavoriteStatus), nullable=False, default=FavoriteStatus.INBOX)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     user: Mapped[User] = relationship()

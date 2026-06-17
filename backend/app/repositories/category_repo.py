@@ -5,7 +5,8 @@ Category repository — CRUD + seed data helpers.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence
+from typing import Optional
+from collections.abc import Sequence
 
 from sqlalchemy import select, update
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class CategoryRepository(BaseRepository[Category]):
     model = Category
 
-    async def get_by_name(self, name: str) -> Optional[Category]:
+    async def get_by_name(self, name: str) -> Category | None:
         """Find a category by exact name (case-insensitive)."""
         stmt = select(Category).where(Category.name == name)
         result = await self.db.execute(stmt)
@@ -39,8 +40,8 @@ class CategoryRepository(BaseRepository[Category]):
     async def get_or_create(
         self,
         name: str,
-        description: Optional[str] = None,
-        keywords: Optional[str] = None,
+        description: str | None = None,
+        keywords: str | None = None,
         is_auto_created: bool = True,
     ) -> Category:
         """Get existing category or auto-create a new one.

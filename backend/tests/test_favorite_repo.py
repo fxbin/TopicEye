@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -27,7 +27,7 @@ async def test_content_favorite_upsert_builds_snapshot_and_dedupes():
                 source_type="RSS",
                 category="AI",
                 status=ContentStatus.ANALYZED,
-                crawled_at=datetime.now(timezone.utc),
+                crawled_at=datetime.now(UTC),
             )
         )
         await db.flush()
@@ -67,7 +67,7 @@ async def test_deleting_content_favorite_syncs_legacy_content_flag():
                 category="AI",
                 status=ContentStatus.ANALYZED,
                 is_favorited=True,
-                crawled_at=datetime.now(timezone.utc),
+                crawled_at=datetime.now(UTC),
             )
         )
         await db.flush()
@@ -102,7 +102,7 @@ async def test_bulk_deleting_content_favorites_syncs_legacy_content_flags():
                     category="AI",
                     status=ContentStatus.ANALYZED,
                     is_favorited=True,
-                    crawled_at=datetime.now(timezone.utc),
+                    crawled_at=datetime.now(UTC),
                 ),
                 ContentItem(
                     id=4,
@@ -113,7 +113,7 @@ async def test_bulk_deleting_content_favorites_syncs_legacy_content_flags():
                     category="AI",
                     status=ContentStatus.ANALYZED,
                     is_favorited=True,
-                    crawled_at=datetime.now(timezone.utc),
+                    crawled_at=datetime.now(UTC),
                 ),
             ]
         )

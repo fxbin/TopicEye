@@ -9,7 +9,7 @@ from typing import Any, Optional
 _CACHE: dict[str, tuple[float, bytes]] = {}
 
 
-def get_cached_json(cache_key: str, *, ttl_seconds: float) -> Optional[tuple[bytes, float]]:
+def get_cached_json(cache_key: str, *, ttl_seconds: float) -> tuple[bytes, float] | None:
     cached = _CACHE.get(cache_key)
     if not cached:
         return None
@@ -27,7 +27,7 @@ def set_cached_json(cache_key: str, payload: Any) -> bytes:
     return content
 
 
-def invalidate_json_cache(prefix: Optional[str] = None) -> None:
+def invalidate_json_cache(prefix: str | None = None) -> None:
     if prefix is None:
         _CACHE.clear()
         return

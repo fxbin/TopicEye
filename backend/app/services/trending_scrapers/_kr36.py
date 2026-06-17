@@ -16,7 +16,7 @@ class Kr36Trending(BaseTrendingScraper):
     SOURCE = "36kr"
     CATEGORY = "tech"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://gateway.36kr.com/api/mis/nav/home/nav/rank/hot"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -36,7 +36,7 @@ class Kr36Trending(BaseTrendingScraper):
             logger.warning("36kr trending: empty list")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(items[:30], start=1):
             title = item.get("widgetContent", {}).get("title", "").strip()
             if not title:

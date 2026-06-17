@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from datetime import datetime, timezone, UTC
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -339,7 +339,7 @@ async def test_weread_sync_rejects_active_user_lease(monkeypatch):
         )
         integration = await get_user_integration(db, user_id=user.id, provider=WEREAD_PROVIDER)
         assert integration is not None
-        integration.last_sync_at = datetime.now(timezone.utc)
+        integration.last_sync_at = datetime.now(UTC)
         integration.last_sync_status = "syncing"
         integration.last_sync_error = None
         await db.flush()

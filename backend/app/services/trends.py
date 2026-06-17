@@ -27,7 +27,7 @@ from app.services.scoring_engine import ScoringInput, score_items
 logger = logging.getLogger(__name__)
 
 
-async def snapshot_daily_trends(db: AsyncSession, target_date: Optional[date] = None) -> dict:
+async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = None) -> dict:
     """
     Compute and persist daily trend snapshots for topics and keywords.
 

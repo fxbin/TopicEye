@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -140,7 +140,7 @@ async def test_generate_daily_report_retries_sqlite_claim_lock(monkeypatch):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    now = datetime(2026, 5, 27, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 27, 12, 0, 0, tzinfo=UTC)
     calls = {"begin": 0}
     monkeypatch.setattr(daily_report, "_local_now", lambda: now)
 

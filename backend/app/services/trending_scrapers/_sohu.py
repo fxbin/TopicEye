@@ -28,7 +28,7 @@ class SohuTrending(BaseTrendingScraper):
     SOURCE = "sohu"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         # 尝试多个接口，按优先级
         fetchers = [
             self._fetch_statistics_hot_news,
@@ -49,7 +49,7 @@ class SohuTrending(BaseTrendingScraper):
         return []
 
     # ── URL1: statistics-hot-news ──────────────────────────────────
-    async def _fetch_statistics_hot_news(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def _fetch_statistics_hot_news(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://v2.sohu.com/landing-page/statistics-hot-news"
         resp = await client.get(url, headers=_HEADERS, timeout=15)
         resp.raise_for_status()
@@ -63,7 +63,7 @@ class SohuTrending(BaseTrendingScraper):
         return self._parse_items(items)
 
     # ── URL2: hot-news API ─────────────────────────────────────────
-    async def _fetch_hot_news_api(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def _fetch_hot_news_api(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.sohu.com/api/v2/news/hot-news?pageSize=30"
         resp = await client.get(url, headers=_HEADERS, timeout=15)
         resp.raise_for_status()
@@ -86,7 +86,7 @@ class SohuTrending(BaseTrendingScraper):
         return self._parse_items(items)
 
     # ── URL3: 解析首页 HTML ────────────────────────────────────────
-    async def _fetch_homepage(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def _fetch_homepage(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.sohu.com/"
         headers = {**_HEADERS, "Accept": "text/html,application/xhtml+xml"}
         resp = await client.get(url, headers=headers, timeout=15)
@@ -120,8 +120,8 @@ class SohuTrending(BaseTrendingScraper):
         return self._parse_items(items) if not isinstance(items[0], dict) else items if items else []
 
     # ── 通用解析 ───────────────────────────────────────────────────
-    def _parse_items(self, items: list) -> List[TrendingEntry]:
-        results: List[TrendingEntry] = []
+    def _parse_items(self, items: list) -> list[TrendingEntry]:
+        results: list[TrendingEntry] = []
         for rank, item in enumerate(items, start=1):
             if not isinstance(item, dict):
                 continue

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import pytest
 
@@ -88,7 +88,7 @@ def test_stats_queries_use_latest_analysis_only(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute(
         "INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL)",
@@ -195,7 +195,7 @@ def test_dashboard_stats_uses_unified_scorer_for_curated_counts(monkeypatch):
             )
         """)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL)", [now])
     conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, NULL)", [now])
@@ -285,7 +285,7 @@ def test_stats_queries_exclude_ignored_content(monkeypatch):
             )
         """)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL, 10)", [now])
     conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', '商业', ?, NULL, 20)", [now])
@@ -401,7 +401,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, 5)")
     conn.execute(
         """
@@ -516,7 +516,7 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, 3)")
     for content_id, title in ((1, "反馈提升样本"), (2, "无反馈样本")):
         conn.execute(
@@ -626,7 +626,7 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, 3)")
     for content_id, risk_score in ((1, 80), (2, 83)):
         conn.execute(
@@ -730,7 +730,7 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, 3)")
     for content_id, title in ((1, "已忽略精选"), (2, "保留精选")):
         conn.execute(
@@ -816,7 +816,7 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (10, 4)")
     conn.execute(
         "INSERT INTO oltp_db.content_items VALUES (1, 10, '反馈后的最新分析', 'AI', '测试信源', 'rss', ?)",
@@ -895,7 +895,7 @@ def test_daily_report_content_query_uses_latest_analysis_only(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute(
         "INSERT INTO oltp_db.content_items VALUES (1, '多次分析样本', 'https://example.com/1', 'AI', '测试信源', ?)",
         [now],
@@ -983,7 +983,7 @@ def test_digest_content_queries_exclude_ignored_content(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for content_id, title in ((1, "已忽略素材"), (2, "保留素材")):
         conn.execute(
             "INSERT INTO oltp_db.content_items VALUES (?, NULL, ?, ?, 'AI', '测试信源', 'rss', ?)",
@@ -1064,7 +1064,7 @@ def test_daily_stats_uses_latest_analysis_and_unified_curated_count(monkeypatch)
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL, 10)", [now])
     conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, NULL, 20)", [now])
@@ -1151,7 +1151,7 @@ def test_daily_stats_uses_unified_risk_threshold(monkeypatch):
     """)
     create_ignored_items_table(conn)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     for content_id, risk_score in ((1, 80), (2, 83)):
         conn.execute(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 import json
 from typing import Optional
 
@@ -17,9 +17,9 @@ TODAY_PICKS_THRESHOLD = 55
 async def build_today_picks(
     db: AsyncSession,
     *,
-    category: Optional[str] = None,
+    category: str | None = None,
     hours: int = 48,
-    limit: Optional[int] = None,
+    limit: int | None = None,
 ) -> dict:
     """Return today-picks payload through the fixed DuckDB analytical layer."""
     _ = db
@@ -125,7 +125,7 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "source_weight": row.get("analysis_source_weight") or row.get("source_weight") or 0,
         "enrichment_status": row.get("enrichment_status") or "pending",
         "enrichment": enrichment,
-        "created_at": row.get("analysis_created_at") or row.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "created_at": row.get("analysis_created_at") or row.get("created_at") or datetime.now(UTC).isoformat(),
         "adjusted_curation_score": score_breakdown["final_score"],
         "score_breakdown": score_breakdown,
     }
@@ -178,7 +178,7 @@ def _dedupe_and_pack(
     topic_map: dict,
     *,
     duplicates_hidden: int = 0,
-    limit: Optional[int] = None,
+    limit: int | None = None,
 ) -> dict:
     deduped = items
     total = len(deduped)

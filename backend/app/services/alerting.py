@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 import httpx
@@ -58,7 +58,7 @@ async def send_alert(
 
     _LAST_SENT[alert_key] = now
 
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     emoji = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(severity, "⚠️")
     text = f"{emoji} [{severity.upper()}] {title}\n{message}\n\n_{ts}_"
 
@@ -104,6 +104,6 @@ async def alert_source_failures(failed_sources: list[dict]) -> None:
     await send_alert(
         title="信源抓取失败告警",
         message=message,
-        alert_key=f"source_failures:{datetime.now(timezone.utc).strftime('%Y-%m-%d-%H')}",
+        alert_key=f"source_failures:{datetime.now(UTC).strftime('%Y-%m-%d-%H')}",
         severity="warning",
     )

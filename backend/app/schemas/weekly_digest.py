@@ -14,22 +14,22 @@ class WeeklyDigestResponse(BaseModel):
     week_label: str
     week_start: str
     week_end: str
-    overview: Optional[str] = None
-    takeaway: Optional[str] = None
-    keywords: Optional[Any] = None  # parsed JSON array
-    trends: Optional[Any] = None  # parsed JSON array
-    top_picks: Optional[Any] = None  # parsed JSON array
-    category_summary: Optional[Any] = None  # parsed JSON object
-    platform_tips: Optional[Any] = None  # parsed JSON object
-    topic_clusters: Optional[Any] = None  # parsed JSON array
-    action_items: Optional[Any] = None  # parsed JSON array
+    overview: str | None = None
+    takeaway: str | None = None
+    keywords: Any | None = None  # parsed JSON array
+    trends: Any | None = None  # parsed JSON array
+    top_picks: Any | None = None  # parsed JSON array
+    category_summary: Any | None = None  # parsed JSON object
+    platform_tips: Any | None = None  # parsed JSON object
+    topic_clusters: Any | None = None  # parsed JSON array
+    action_items: Any | None = None  # parsed JSON array
     content_count: int = 0
     analyzed_count: int = 0
     source_count: int = 0
     category_count: int = 0
     status: str = "PENDING"
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -44,7 +44,7 @@ class WeeklyDigestWeekSummary(BaseModel):
 
     week_key: str
     week_label: str
-    takeaway: Optional[str] = None
+    takeaway: str | None = None
     status: str = "PENDING"
 
 

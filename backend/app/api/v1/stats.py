@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from typing import Optional
+from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -36,12 +37,12 @@ STATS_CACHE_KEYS = {
 }
 
 
-def _stats_cache_key(name: str, *, days: Optional[int] = None) -> str:
+def _stats_cache_key(name: str, *, days: int | None = None) -> str:
     template = STATS_CACHE_KEYS[name]
     return template.format(days=days) if days is not None else template
 
 
-def _cached_response(cache_key: str) -> Optional[Response]:
+def _cached_response(cache_key: str) -> Response | None:
     cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if not cached:
         return None

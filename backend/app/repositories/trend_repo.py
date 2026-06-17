@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import delete, select
 

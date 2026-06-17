@@ -42,10 +42,10 @@ def _storage_sort_type(sort_type: str, category_id: str) -> str:
 
 
 def _resolve_album_scope(
-    category: Optional[str],
-    subcategory: Optional[str],
+    category: str | None,
+    subcategory: str | None,
     sort_type: str,
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     if category == "故事":
         if subcategory:
             cat_id = STORY_SUBCAT_IDS.get(subcategory)
@@ -56,7 +56,7 @@ def _resolve_album_scope(
     return sort_type, subcategory
 
 
-def _apply_album_filters(query, sort_type: str, category: Optional[str], subcategories: tuple[str, ...]):
+def _apply_album_filters(query, sort_type: str, category: str | None, subcategories: tuple[str, ...]):
     query = query.where(ZhihuAlbum.sort_type == sort_type)
     if category:
         query = query.where(ZhihuAlbum.category1_name == category)
@@ -69,8 +69,8 @@ def _apply_album_filters(query, sort_type: str, category: Optional[str], subcate
 
 @router.get("/albums")
 async def list_albums(
-    category: Optional[str] = Query(None, description="一级分类名"),
-    subcategory: Optional[str] = Query(None, description="二级分类名（如 爱情、科幻）"),
+    category: str | None = Query(None, description="一级分类名"),
+    subcategory: str | None = Query(None, description="二级分类名（如 爱情、科幻）"),
     sort_type: str = Query("hottest", description="排序类型"),
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -143,7 +143,7 @@ async def list_albums(
 
 @router.get("/categories")
 async def list_categories(
-    parent_id: Optional[str] = Query(None, description="父分类 ID，null 表示一级分类"),
+    parent_id: str | None = Query(None, description="父分类 ID，null 表示一级分类"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

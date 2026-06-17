@@ -76,12 +76,12 @@ class RSSHubScraper(BaseScraper):
         max_retries: int — retries per instance on transient failure (default 1)
     """
 
-    def __init__(self, source_url: str, source_config: Optional[dict] = None):
+    def __init__(self, source_url: str, source_config: dict | None = None):
         super().__init__(source_url, source_config or {})
         self.route = source_url.strip().lstrip("/")
         self.timeout = self.config.get("timeout", 15.0)
         self.max_retries = self.config.get("max_retries", 1)
-        self._override_instances: Optional[list[str]] = self.config.get("instances")
+        self._override_instances: list[str] | None = self.config.get("instances")
 
     async def fetch(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
         """

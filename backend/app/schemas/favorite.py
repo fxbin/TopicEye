@@ -17,20 +17,20 @@ def normalize_optional_text(value):
 
 class FavoriteCreate(BaseModel):
     target_type: FavoriteTargetType
-    target_id: Optional[int] = None
-    target_key: Optional[str] = Field(default=None, max_length=255)
-    title: Optional[str] = Field(default=None, max_length=500)
-    url: Optional[str] = Field(default=None, max_length=1024)
-    cover_url: Optional[str] = Field(default=None, max_length=1024)
-    source_name: Optional[str] = Field(default=None, max_length=255)
-    collection_id: Optional[int] = None
-    tags: Optional[Any] = None
-    note: Optional[str] = None
+    target_id: int | None = None
+    target_key: str | None = Field(default=None, max_length=255)
+    title: str | None = Field(default=None, max_length=500)
+    url: str | None = Field(default=None, max_length=1024)
+    cover_url: str | None = Field(default=None, max_length=1024)
+    source_name: str | None = Field(default=None, max_length=255)
+    collection_id: int | None = None
+    tags: Any | None = None
+    note: str | None = None
     status: FavoriteStatus = FavoriteStatus.INBOX
-    snapshot: Optional[Any] = None
+    snapshot: Any | None = None
 
     @model_validator(mode="after")
-    def validate_target_identity(self) -> "FavoriteCreate":
+    def validate_target_identity(self) -> FavoriteCreate:
         if self.target_id is None and not self.target_key:
             raise ValueError("target_id or target_key is required")
         return self
@@ -42,11 +42,11 @@ class FavoriteCreate(BaseModel):
 
 
 class FavoriteUpdate(BaseModel):
-    collection_id: Optional[int] = None
-    tags: Optional[Any] = None
-    note: Optional[str] = None
-    status: Optional[FavoriteStatus] = None
-    snapshot: Optional[dict[str, Any]] = None
+    collection_id: int | None = None
+    tags: Any | None = None
+    note: str | None = None
+    status: FavoriteStatus | None = None
+    snapshot: dict[str, Any] | None = None
 
     @field_validator("note", mode="before")
     @classmethod
@@ -82,7 +82,7 @@ class FavoriteBoardReorderRequest(BaseModel):
     columns: list[FavoriteReorderColumn] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
-    def validate_unique_columns(self) -> "FavoriteBoardReorderRequest":
+    def validate_unique_columns(self) -> FavoriteBoardReorderRequest:
         statuses = [column.status for column in self.columns]
         if len(statuses) != len(set(statuses)):
             raise ValueError("columns must not contain duplicate statuses")
@@ -120,18 +120,18 @@ class FavoriteResponse(BaseModel):
     id: int
     user_id: int
     target_type: str
-    target_id: Optional[int] = None
+    target_id: int | None = None
     target_key: str
     title: str
-    url: Optional[str] = None
-    cover_url: Optional[str] = None
-    source_name: Optional[str] = None
-    collection_id: Optional[int] = None
-    tags: Optional[Any] = None
-    note: Optional[str] = None
+    url: str | None = None
+    cover_url: str | None = None
+    source_name: str | None = None
+    collection_id: int | None = None
+    tags: Any | None = None
+    note: str | None = None
     status: str
     position: int
-    snapshot: Optional[Any] = None
+    snapshot: Any | None = None
     created_at: datetime
     updated_at: datetime
 

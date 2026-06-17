@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import pytest
 from sqlalchemy import select
@@ -137,7 +137,7 @@ async def test_claim_job_run_uses_database_lease(monkeypatch):
         result = await db.execute(select(ScheduledJob).where(ScheduledJob.job_key == "db_lease"))
         job = result.scalar_one()
         assert job.last_status == "RUNNING"
-        job.last_run_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        job.last_run_at = datetime.now(UTC) - timedelta(seconds=120)
         await db.commit()
 
     stale_claim = await job_tracker._claim_job_run("db_lease", "数据库租约", "", 30)

@@ -279,8 +279,8 @@ def extract_tags(text: str, max_tags: int = 5) -> list[str]:
 async def classify_async(
     title: str,
     summary: str,
-    db: Optional[AsyncSession],
-    category_names: Optional[list[str]] = None,
+    db: AsyncSession | None,
+    category_names: list[str] | None = None,
     auto_create_new_category: bool = True,
 ) -> dict[str, Any]:
     """
@@ -307,7 +307,7 @@ async def classify_async(
 
     # Get current category list for the prompt. Ingestion can pass a per-source
     # snapshot to avoid one DB query per new item.
-    cat_repo: Optional[CategoryRepository] = None
+    cat_repo: CategoryRepository | None = None
     if category_names is None:
         if db is None:
             category_names = CATEGORIES.copy()

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class FeedbackCreate(BaseModel):
     content_id: int
     feedback_type: str
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class FeedbackResponse(BaseModel):
@@ -16,7 +16,7 @@ class FeedbackResponse(BaseModel):
     content_id: int
     feedback_type: str
     score_delta: float
-    comment: Optional[str]
+    comment: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

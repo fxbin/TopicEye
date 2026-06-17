@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Optional, Sequence
+from typing import Optional
+from collections.abc import Sequence
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ignored import IgnoredItem
@@ -25,7 +26,7 @@ class IgnoredRepo:
         await self.db.flush()
         return result.rowcount > 0
 
-    async def get_by_content_id(self, content_id: int) -> Optional[IgnoredItem]:
+    async def get_by_content_id(self, content_id: int) -> IgnoredItem | None:
         result = await self.db.execute(select(IgnoredItem).where(IgnoredItem.content_id == content_id))
         return result.scalar_one_or_none()
 

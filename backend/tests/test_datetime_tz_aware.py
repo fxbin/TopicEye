@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 import pytest
 from sqlalchemy import DateTime, inspect
@@ -42,7 +42,7 @@ def test_ensure_aware_utc_naive_assumed_utc():
     aware = ensure_aware_utc(naive)
     assert aware is not None
     assert aware.tzinfo is not None
-    assert aware.utcoffset() == timezone.utc.utcoffset(datetime.now(timezone.utc))
+    assert aware.utcoffset() == UTC.utcoffset(datetime.now(UTC))
     # 值不变
     assert aware.replace(tzinfo=None) == naive
 
@@ -85,7 +85,7 @@ async def test_sqlite_aware_datetime_write_does_not_raise():
             source_type="rss",
             enabled=True,
             status="active",
-            last_sync_at=datetime.now(timezone.utc),
+            last_sync_at=datetime.now(UTC),
         )
         session.add(src)
         await session.commit()

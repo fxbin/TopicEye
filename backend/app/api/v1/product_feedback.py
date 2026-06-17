@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -97,7 +97,7 @@ async def create_issue_feedback(
 
 @router.get("/issues/mine", response_model=IssueFeedbackListResponse)
 async def list_my_issue_feedback(
-    status: Optional[IssueFeedbackStatus] = Query(None),
+    status: IssueFeedbackStatus | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -127,9 +127,9 @@ async def list_my_issue_feedback(
 
 @router.get("/issues", response_model=IssueFeedbackListResponse)
 async def list_all_issue_feedback(
-    status: Optional[IssueFeedbackStatus] = Query(None),
-    severity: Optional[str] = Query(None),
-    area: Optional[str] = Query(None),
+    status: IssueFeedbackStatus | None = Query(None),
+    severity: str | None = Query(None),
+    area: str | None = Query(None),
     limit: int = Query(100, ge=1, le=300),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -188,10 +188,10 @@ async def update_issue_feedback(
     if data.status is not None:
         issue.status = data.status
         if data.status == IssueFeedbackStatus.fixed:
-            issue.fixed_at = issue.fixed_at or datetime.now(timezone.utc)
+            issue.fixed_at = issue.fixed_at or datetime.now(UTC)
         else:
             issue.fixed_at = None
-    issue.updated_at = datetime.now(timezone.utc)
+    issue.updated_at = datetime.now(UTC)
 
     await db.flush()
     await db.refresh(issue)
@@ -205,8 +205,8 @@ async def update_issue_feedback(
 
 @router.get("/updates", response_model=ProductUpdateListResponse)
 async def list_product_updates(
-    kind: Optional[ProductUpdateKind] = Query(None),
-    status: Optional[ProductUpdateStatus] = Query(None),
+    kind: ProductUpdateKind | None = Query(None),
+    status: ProductUpdateStatus | None = Query(None),
     limit: int = Query(100, ge=1, le=300),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -252,7 +252,7 @@ async def create_product_update(
 ):
     shipped_at = data.shipped_at
     if data.status == ProductUpdateStatus.shipped and shipped_at is None:
-        shipped_at = datetime.now(timezone.utc)
+        shipped_at = datetime.now(UTC)
 
     item = ProductUpdate(
         version=data.version,
@@ -291,10 +291,10 @@ async def update_product_update(
     if "shipped_at" in changes:
         item.shipped_at = changes["shipped_at"]
     if data.status == ProductUpdateStatus.shipped and item.shipped_at is None:
-        item.shipped_at = datetime.now(timezone.utc)
+        item.shipped_at = datetime.now(UTC)
     if data.status is not None and data.status != ProductUpdateStatus.shipped and "shipped_at" not in changes:
         item.shipped_at = None
-    item.updated_at = datetime.now(timezone.utc)
+    item.updated_at = datetime.now(UTC)
 
     await db.flush()
     await db.refresh(item)

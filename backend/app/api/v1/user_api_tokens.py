@@ -37,7 +37,7 @@ router = APIRouter(
 
 class CreateApiTokenRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="可读名字，如 'CI 脚本'")
-    expires_at: Optional[datetime] = Field(None, description="可选过期时间，ISO 格式")
+    expires_at: datetime | None = Field(None, description="可选过期时间，ISO 格式")
 
 
 def _token_to_dict(t) -> dict:

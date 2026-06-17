@@ -27,11 +27,11 @@ class Settings(BaseSettings):
     AUTO_CREATE_TABLES_ON_STARTUP: bool = True
     STARTUP_SEED_ENABLED: bool = True
     ADMIN_SEED_ENABLED: bool = False
-    ADMIN_EMAIL: Optional[str] = None
-    ADMIN_PASSWORD: Optional[str] = None
-    ADMIN_DISPLAY_NAME: Optional[str] = None
+    ADMIN_EMAIL: str | None = None
+    ADMIN_PASSWORD: str | None = None
+    ADMIN_DISPLAY_NAME: str | None = None
     APP_SECRET_KEY: str = DEFAULT_LOCAL_SECRET_KEY
-    INTEGRATION_SECRET_KEY: Optional[str] = None
+    INTEGRATION_SECRET_KEY: str | None = None
 
     # CORS — comma-separated origins. Defaults cover the local dev frontend
     # (Next.js serves on 3000); set CORS_ORIGINS for any deployed frontend.
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520
     POST_SYNC_MIN_REMAINING_SECONDS: int = 90
     CREATION_PLAN_TIMEOUT_SECONDS: int = 45
-    WEREAD_SKILL_API_URL: Optional[str] = None
+    WEREAD_SKILL_API_URL: str | None = None
 
     # ── Agent config ──
     AGENT_MAX_STEPS: int = 10

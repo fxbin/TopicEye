@@ -4,7 +4,7 @@ App-level settings API — RSSHub instance management.
 
 from __future__ import annotations
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -95,14 +95,14 @@ async def update_rsshub_instances(
 
     if existing:
         existing.value = raw_value
-        existing.updated_at = datetime.now(timezone.utc)
+        existing.updated_at = datetime.now(UTC)
     else:
         db.add(
             AppSetting(
                 key="rsshub_instances",
                 value=raw_value,
                 description="RSSHub 实例列表，支持多实例降级",
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
         )
 

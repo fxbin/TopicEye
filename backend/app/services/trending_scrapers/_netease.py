@@ -16,7 +16,7 @@ class NeteaseTrending(BaseTrendingScraper):
     SOURCE = "netease"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://m.163.com/nc/article/headline/T1348647853363/0-40.html"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -37,7 +37,7 @@ class NeteaseTrending(BaseTrendingScraper):
             logger.warning("netease trending: no articles found")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for rank, item in enumerate(articles, start=1):
             if not isinstance(item, dict):
                 continue

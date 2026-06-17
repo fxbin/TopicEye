@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Dict, Union
 
 import httpx
@@ -26,7 +26,7 @@ from app.services.zhihu_url import normalize_zhihu_url
 logger = logging.getLogger(__name__)
 
 
-async def sync_trending_source(source_name: str, db: AsyncSession) -> Dict[str, Union[int, str]]:
+async def sync_trending_source(source_name: str, db: AsyncSession) -> dict[str, int | str]:
     """同步单个趋势源。返回 {"fetched": N}"""
     scraper_cls = get_trending_cls(source_name)
     if scraper_cls is None:
@@ -34,7 +34,7 @@ async def sync_trending_source(source_name: str, db: AsyncSession) -> Dict[str, 
         return {"fetched": 0}
 
     scraper = scraper_cls()
-    batch_id = f"{source_name}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    batch_id = f"{source_name}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
     try:
         proxy_url = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
@@ -65,7 +65,7 @@ async def sync_trending_source(source_name: str, db: AsyncSession) -> Dict[str, 
                 trend=entry.get("trend"),
                 cover_url=entry.get("cover_url"),
                 extra=entry.get("extra"),
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
                 batch_id=batch_id,
             )
             db.add(item)
@@ -81,7 +81,7 @@ async def sync_trending_source(source_name: str, db: AsyncSession) -> Dict[str, 
         return {"fetched": 0, "error": str(exc)[:200]}
 
 
-async def sync_all_trending(db: AsyncSession) -> Dict[str, Dict[str, int]]:
+async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
     """同步所有趋势源。
 
     SQLite has a single writer lock. Commit after each source so network fetches

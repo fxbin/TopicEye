@@ -33,7 +33,7 @@ def test_json_cache_hit_expire_and_prefix_invalidate():
 
     content = set_cached_json("perf:a", {"created_at": datetime(2026, 1, 2, 3, 4, 5), "value": "中文"})
     assert b"2026-01-02T03:04:05" in content
-    assert "中文".encode("utf-8") in content
+    assert "中文".encode() in content
 
     cached = get_cached_json("perf:a", ttl_seconds=10)
     assert cached is not None

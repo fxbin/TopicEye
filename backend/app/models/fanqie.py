@@ -38,14 +38,14 @@ class FanqieBook(Base):
     book_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)  # "7320218217488600126"
     book_name: Mapped[str] = mapped_column(String(500), nullable=False)
     author: Mapped[str] = mapped_column(String(200))
-    abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     category_id: Mapped[str] = mapped_column(String(20), nullable=False)  # fanqie_id like "1141"
     category_name: Mapped[str] = mapped_column(String(100), nullable=True)
-    thumb_uri: Mapped[Optional[str]] = mapped_column(String(1000))
-    read_count: Mapped[Optional[str]] = mapped_column(String(50))  # "417817"
-    word_number: Mapped[Optional[str]] = mapped_column(String(50))  # "2626537"
-    last_chapter_title: Mapped[Optional[str]] = mapped_column(String(500))
-    last_chapter_update_time: Mapped[Optional[int]] = mapped_column(Integer)
+    thumb_uri: Mapped[str | None] = mapped_column(String(1000))
+    read_count: Mapped[str | None] = mapped_column(String(50))  # "417817"
+    word_number: Mapped[str | None] = mapped_column(String(50))  # "2626537"
+    last_chapter_title: Mapped[str | None] = mapped_column(String(500))
+    last_chapter_update_time: Mapped[int | None] = mapped_column(Integer)
     current_pos: Mapped[int] = mapped_column(Integer, default=0)  # 榜单排名
     rank_type: Mapped[str] = mapped_column(
         String(30), nullable=False
@@ -53,11 +53,11 @@ class FanqieBook(Base):
     crawled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
 
     # 四个榜单各一个 pos
-    male_reading_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    male_new_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    female_reading_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    female_new_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    rank_pos_diff: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 排名变化（正=上升，负=下降）
+    male_reading_pos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    male_new_pos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    female_reading_pos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    female_new_pos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rank_pos_diff: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 排名变化（正=上升，负=下降）
 
     __table_args__ = (
         Index("ix_fanqie_book_ranktype", "rank_type"),
@@ -77,8 +77,8 @@ class FanqieRankSnapshot(Base):
     rank_type: Mapped[str] = mapped_column(String(30), nullable=False)  # male_reading / male_new / ...
     category_id: Mapped[str] = mapped_column(String(20), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)  # 当日排名
-    read_count: Mapped[Optional[str]] = mapped_column(String(50))
-    word_number: Mapped[Optional[str]] = mapped_column(String(50))
+    read_count: Mapped[str | None] = mapped_column(String(50))
+    word_number: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
 
     __table_args__ = (

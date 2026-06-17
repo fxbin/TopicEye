@@ -16,7 +16,7 @@ class TiebaTrending(BaseTrendingScraper):
     SOURCE = "tieba"
     CATEGORY = "hot"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://tieba.baidu.com/hottopic/browse/topiclist"
         headers = {
             "User-Agent": (
@@ -41,7 +41,7 @@ class TiebaTrending(BaseTrendingScraper):
             logger.warning("tieba trending: no bang list")
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         for idx, item in enumerate(bang_list, start=1):
             if not isinstance(item, dict):
                 continue

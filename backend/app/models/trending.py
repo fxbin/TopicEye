@@ -12,7 +12,7 @@ TrendingSnapshot — 趋势雷达历史快照。
 from __future__ import annotations
 
 import enum
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, UTC
 from typing import Optional, List
 
 from sqlalchemy import String, Integer, DateTime, Date, JSON
@@ -21,7 +21,7 @@ from app.core.database import Base
 from app.models.enum_types import value_enum
 
 
-class TrendingSource(str, enum.Enum):
+class TrendingSource(enum.StrEnum):
     WEIBO = "weibo"
     BAIDU = "baidu"
     DOUYIN = "douyin"
@@ -50,7 +50,7 @@ class TrendingSource(str, enum.Enum):
     ISHUGUI = "ishugui"
 
 
-class TrendingCategory(str, enum.Enum):
+class TrendingCategory(enum.StrEnum):
     HOT = "hot"
     TECH = "tech"
     FINANCE = "finance"
@@ -70,11 +70,11 @@ class TrendingItem(Base):
     url: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
     hot_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hot_value_raw: Mapped[str] = mapped_column(String(100), nullable=False, default="")
-    trend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # up/down/new/stable
-    cover_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    trend: Mapped[str | None] = mapped_column(String(20), nullable=True)  # up/down/new/stable
+    cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     batch_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
 
@@ -96,5 +96,5 @@ class TrendingSnapshot(Base):
     items: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

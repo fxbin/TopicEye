@@ -22,7 +22,7 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from types import SimpleNamespace
 from typing import Optional
 
@@ -98,7 +98,7 @@ def _missing_explicit_api_key(model: LlmModel) -> bool:
     return bool(model.api_base) and not bool(model.api_key)
 
 
-def _normalize_evaluation_concurrency(value: Optional[int] = None) -> int:
+def _normalize_evaluation_concurrency(value: int | None = None) -> int:
     try:
         parsed = int(value if value is not None else settings.LLM_WORKER_CONCURRENCY)
     except (TypeError, ValueError):
@@ -145,7 +145,7 @@ def _completion_kwargs(
     return kwargs
 
 
-def _sample_payload(sample_content: Optional[str]) -> dict:
+def _sample_payload(sample_content: str | None) -> dict:
     if not sample_content:
         return {
             "title": "OpenAI 发布 GPT-5: 多模态能力大幅提升",
@@ -197,28 +197,28 @@ def _auto_score_response(content: str) -> float:
 
 
 class ModelCreateRequest(BaseModel):
-    preset_key: Optional[str] = None
-    name: Optional[str] = Field(None, description="显示名称")
-    provider: Optional[str] = Field(None, description="litellm provider")
-    model_id: Optional[str] = Field(None, description="litellm model string")
-    api_key: Optional[str] = None
-    api_base: Optional[str] = None
+    preset_key: str | None = None
+    name: str | None = Field(None, description="显示名称")
+    provider: str | None = Field(None, description="litellm provider")
+    model_id: str | None = Field(None, description="litellm model string")
+    api_key: str | None = None
+    api_base: str | None = None
     enabled: bool = True
     routing_group: str = "default"
-    model_family: Optional[str] = None
-    channel_name: Optional[str] = None
+    model_family: str | None = None
+    channel_name: str | None = None
     routing_priority: int = Field(100, ge=1, le=1000)
     cooldown_seconds: int = Field(300, ge=0, le=3600)
     temperature: float = Field(0.3, ge=0, le=2)
     max_tokens: int = Field(2000, ge=256, le=16000)
     requests_per_minute: int = Field(30, ge=1, le=120)
-    description: Optional[str] = None
-    cost_per_1k_input: Optional[float] = None
-    cost_per_1k_output: Optional[float] = None
-    cost_per_1m_input: Optional[float] = None
-    cost_per_1m_input_cache_hit: Optional[float] = None
-    cost_per_1m_output: Optional[float] = None
-    extra_params: Optional[dict] = None
+    description: str | None = None
+    cost_per_1k_input: float | None = None
+    cost_per_1k_output: float | None = None
+    cost_per_1m_input: float | None = None
+    cost_per_1m_input_cache_hit: float | None = None
+    cost_per_1m_output: float | None = None
+    extra_params: dict | None = None
 
     @field_validator("preset_key", "api_key", "api_base", "model_family", "channel_name", mode="before")
     @classmethod
@@ -232,27 +232,27 @@ class ModelCreateRequest(BaseModel):
 
 
 class ModelUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    provider: Optional[str] = None
-    model_id: Optional[str] = None
-    api_key: Optional[str] = None
-    api_base: Optional[str] = None
-    enabled: Optional[bool] = None
-    routing_group: Optional[str] = None
-    model_family: Optional[str] = None
-    channel_name: Optional[str] = None
-    routing_priority: Optional[int] = Field(None, ge=1, le=1000)
-    cooldown_seconds: Optional[int] = Field(None, ge=0, le=3600)
-    temperature: Optional[float] = Field(None, ge=0, le=2)
-    max_tokens: Optional[int] = Field(None, ge=256, le=16000)
-    requests_per_minute: Optional[int] = Field(None, ge=1, le=120)
-    description: Optional[str] = None
-    cost_per_1k_input: Optional[float] = None
-    cost_per_1k_output: Optional[float] = None
-    cost_per_1m_input: Optional[float] = None
-    cost_per_1m_input_cache_hit: Optional[float] = None
-    cost_per_1m_output: Optional[float] = None
-    extra_params: Optional[dict] = None
+    name: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    api_key: str | None = None
+    api_base: str | None = None
+    enabled: bool | None = None
+    routing_group: str | None = None
+    model_family: str | None = None
+    channel_name: str | None = None
+    routing_priority: int | None = Field(None, ge=1, le=1000)
+    cooldown_seconds: int | None = Field(None, ge=0, le=3600)
+    temperature: float | None = Field(None, ge=0, le=2)
+    max_tokens: int | None = Field(None, ge=256, le=16000)
+    requests_per_minute: int | None = Field(None, ge=1, le=120)
+    description: str | None = None
+    cost_per_1k_input: float | None = None
+    cost_per_1k_output: float | None = None
+    cost_per_1m_input: float | None = None
+    cost_per_1m_input_cache_hit: float | None = None
+    cost_per_1m_output: float | None = None
+    extra_params: dict | None = None
 
     @field_validator("api_key", "api_base", "model_family", "channel_name", mode="before")
     @classmethod
@@ -274,13 +274,13 @@ class EvalRunRequest(BaseModel):
     prompt_type: str = Field(
         "analysis", description="测评类型: analysis/daily_report/weekly_digest/classification/custom"
     )
-    custom_prompt: Optional[str] = Field(None, description="自定义 prompt (prompt_type=custom 时必填)")
-    sample_content: Optional[str] = Field(None, description="用于测评的内容样例(JSON)")
+    custom_prompt: str | None = Field(None, description="自定义 prompt (prompt_type=custom 时必填)")
+    sample_content: str | None = Field(None, description="用于测评的内容样例(JSON)")
 
 
 class ScoreRequest(BaseModel):
     quality_score: float = Field(..., ge=1, le=5, description="人工打分 1-5")
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 async def _retry_write(db: AsyncSession, operation):
@@ -300,15 +300,15 @@ async def _retry_write_and_invalidate_models(db: AsyncSession, operation):
     return result
 
 
-def _per_1k_to_1m(value: Optional[float]) -> Optional[float]:
+def _per_1k_to_1m(value: float | None) -> float | None:
     return round(value * 1000, 6) if value is not None else None
 
 
-def _per_1m_to_1k(value: Optional[float]) -> Optional[float]:
+def _per_1m_to_1k(value: float | None) -> float | None:
     return round(value / 1000, 9) if value is not None else None
 
 
-def _pricing_extra_params(extra_params: Optional[dict], cache_hit_price: Optional[float]) -> Optional[dict]:
+def _pricing_extra_params(extra_params: dict | None, cache_hit_price: float | None) -> dict | None:
     params = dict(extra_params or {})
     if cache_hit_price is None:
         params.pop("cost_per_1m_input_cache_hit", None)
@@ -319,13 +319,13 @@ def _pricing_extra_params(extra_params: Optional[dict], cache_hit_price: Optiona
     return params or None
 
 
-def _model_cost_input(req: ModelCreateRequest | ModelUpdateRequest) -> Optional[float]:
+def _model_cost_input(req: ModelCreateRequest | ModelUpdateRequest) -> float | None:
     if req.cost_per_1m_input is not None:
         return _per_1m_to_1k(req.cost_per_1m_input)
     return req.cost_per_1k_input
 
 
-def _model_cost_output(req: ModelCreateRequest | ModelUpdateRequest) -> Optional[float]:
+def _model_cost_output(req: ModelCreateRequest | ModelUpdateRequest) -> float | None:
     if req.cost_per_1m_output is not None:
         return _per_1m_to_1k(req.cost_per_1m_output)
     return req.cost_per_1k_output
@@ -581,7 +581,7 @@ async def get_usage_summary(
     _admin: User = Depends(get_current_admin_user),
 ):
     """Summarize token usage and estimated cost from request-level LLM call logs."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     result = await db.execute(
         select(LlmCallLog, LlmModel)
         .join(LlmModel, LlmCallLog.model_id == LlmModel.id, isouter=True)
@@ -886,7 +886,7 @@ async def _run_one_evaluation(
     eval_id: int,
     prompt_type: str,
     prompt_text: str,
-    write_lock: Optional[asyncio.Lock] = None,
+    write_lock: asyncio.Lock | None = None,
 ) -> None:
     from litellm import completion
 
@@ -1012,7 +1012,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
     prompt_text = prompt_template.format(title=sample["title"], content=sample["content"])
 
     # Create eval run
-    eval_run_id = f"eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+    eval_run_id = f"eval_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
     evaluations = []
 

@@ -27,7 +27,7 @@ _STOPWORDS = set(
 )
 
 # 信源显示名
-_SOURCE_LABELS: Dict[str, str] = {
+_SOURCE_LABELS: dict[str, str] = {
     "weibo": "微博",
     "baidu": "百度",
     "douyin": "抖音",
@@ -41,7 +41,7 @@ _SOURCE_LABELS: Dict[str, str] = {
 }
 
 
-def _extract_keywords(title: str, topk: int = 8) -> List[str]:
+def _extract_keywords(title: str, topk: int = 8) -> list[str]:
     """提取标题关键词（用 TF-IDF）"""
     words = jieba.analyse.extract_tags(title, topK=topk, withWeight=False)
     # 过滤停用词和单字
@@ -69,7 +69,7 @@ def _title_similarity(kw_a: set, kw_b: set) -> float:
     return j + bonus
 
 
-def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def cluster_trending_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     对 trending_items 做跨平台聚类。
 
@@ -89,7 +89,7 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return []
 
     # 1. 提取关键词
-    item_kw: Dict[int, set] = {}
+    item_kw: dict[int, set] = {}
     for item in items:
         kws = _extract_keywords(item["title"])
         item_kw[item["id"]] = set(kws)
@@ -98,7 +98,7 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     # 2. 贪心聚类
     SIM_THRESHOLD = 0.25  # 相似度阈值
     used = set()
-    clusters: List[List[Dict]] = []
+    clusters: list[list[dict]] = []
 
     # 按热度排序，优先处理高热度
     sorted_items = sorted(items, key=lambda x: x.get("hot_value", 0), reverse=True)
@@ -126,7 +126,7 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         clusters.append(cluster)
 
     # 3. 组装结果
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for cluster in clusters:
         # 只返回跨平台或多条目的（单条目也保留，方便前端展示）
         sources_set = set(it["source"] for it in cluster)
@@ -136,7 +136,7 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         rep_title = min(cluster, key=lambda x: len(x["title"]))["title"]
 
         # 合并关键词
-        all_kw: Dict[str, int] = defaultdict(int)
+        all_kw: dict[str, int] = defaultdict(int)
         for it in cluster:
             for kw in it.get("_keywords", []):
                 all_kw[kw] += 1
@@ -146,7 +146,7 @@ def cluster_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         avg_rank = sum(it.get("rank", 0) for it in cluster) / len(cluster)
 
         # 每个平台取排名最高的那条
-        by_source: Dict[str, Dict] = {}
+        by_source: dict[str, dict] = {}
         for it in cluster:
             s = it["source"]
             if s not in by_source or it["rank"] < by_source[s]["rank"]:

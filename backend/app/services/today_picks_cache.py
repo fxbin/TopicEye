@@ -14,8 +14,8 @@ TODAY_PICKS_DEFAULT_CACHE_LABEL = "contents:today-picks:48"
 @dataclass(frozen=True)
 class TodayPicksCacheParams:
     hours: int = 48
-    category: Optional[str] = None
-    limit: Optional[int] = None
+    category: str | None = None
+    limit: int | None = None
 
     @property
     def key(self) -> str:

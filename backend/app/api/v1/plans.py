@@ -12,7 +12,7 @@ from app.core.database import async_session
 router = APIRouter(prefix="/plans", tags=["plans"])
 
 
-def _optional_bearer_token(authorization: Optional[str]) -> Optional[str]:
+def _optional_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
     scheme, _, token = authorization.partition(" ")
@@ -22,7 +22,7 @@ def _optional_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 
 @router.get("", response_model=PlanCatalogResponse)
-async def list_plans(authorization: Optional[str] = Header(default=None)):
+async def list_plans(authorization: str | None = Header(default=None)):
     """Return product-plan boundaries for free and paid feature areas."""
     plan_key = "free"
     token = _optional_bearer_token(authorization)

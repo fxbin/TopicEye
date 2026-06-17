@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Optional
 import enum
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from sqlalchemy import Integer, Float, Text, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.enum_types import value_enum
 
 
-class FeedbackType(str, enum.Enum):
+class FeedbackType(enum.StrEnum):
     like = "like"
     dislike = "dislike"
     skip = "skip"
@@ -36,9 +36,9 @@ class UserFeedback(Base):
     content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
     feedback_type: Mapped[str] = mapped_column(value_enum(FeedbackType), nullable=False)
     score_delta: Mapped[float] = mapped_column(Float, nullable=False)
-    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     user = relationship("User")

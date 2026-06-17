@@ -16,7 +16,7 @@ _ZHIHU_HOSTS = {
 }
 
 
-def _id_after(parts: list[str], names: set[str]) -> Optional[str]:
+def _id_after(parts: list[str], names: set[str]) -> str | None:
     for idx, part in enumerate(parts):
         if part in names and idx + 1 < len(parts):
             candidate = parts[idx + 1].strip()
@@ -25,7 +25,7 @@ def _id_after(parts: list[str], names: set[str]) -> Optional[str]:
     return None
 
 
-def normalize_zhihu_url(url: Optional[str]) -> str:
+def normalize_zhihu_url(url: str | None) -> str:
     """Convert Zhihu API resource URLs into browser-friendly web URLs."""
     if not url:
         return ""

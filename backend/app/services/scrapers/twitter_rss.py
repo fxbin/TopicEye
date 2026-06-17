@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from html import unescape
 from typing import Any, Optional
 
@@ -75,7 +75,7 @@ class TwitterRSSScraper(BaseScraper):
     Supports optional API key authentication via source_config or env var.
     """
 
-    def __init__(self, source_url: str, source_config: Optional[dict] = None):
+    def __init__(self, source_url: str, source_config: dict | None = None):
         super().__init__(source_url, source_config or {})
         self.api_key = self.config.get("api_key") or os.environ.get("XGO_API_KEY", "")
         self.fetch_limit = min(self.config.get("fetch_limit", 50), 100)
@@ -138,7 +138,7 @@ class TwitterRSSScraper(BaseScraper):
 
     # ── Parse ───────────────────────────────────────────────────────
 
-    def _parse_entry(self, entry: dict) -> Optional[dict[str, Any]]:
+    def _parse_entry(self, entry: dict) -> dict[str, Any] | None:
         """Parse a single RSS entry from xgo.ing into a normalised dict."""
         title = entry.get("title", "").strip()
         link = entry.get("link", "").strip()
@@ -180,12 +180,12 @@ class TwitterRSSScraper(BaseScraper):
         published_at = None
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             with contextlib.suppress(Exception):
-                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published_at = datetime(*entry.published_parsed[:6], tzinfo=UTC)
         if published_at is None and hasattr(entry, "updated_parsed") and entry.updated_parsed:
             with contextlib.suppress(Exception):
-                published_at = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
+                published_at = datetime(*entry.updated_parsed[:6], tzinfo=UTC)
         if published_at is None:
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
 
         # Tags
         tags = []

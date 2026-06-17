@@ -19,6 +19,7 @@ from app.core.database import Base
 from app.models.notification import Notification
 from app.services import notification_service
 from app.services.auth_service import create_user
+from datetime import UTC
 
 
 @pytest.mark.asyncio
@@ -146,7 +147,7 @@ async def test_per_user_visibility_and_read_isolation(monkeypatch):
             )
             db.add(old)
             await db.flush()
-            old.created_at = datetime.now(timezone.utc) - timedelta(days=60)
+            old.created_at = datetime.now(UTC) - timedelta(days=60)
             await db.commit()
             old_id = old.id
 

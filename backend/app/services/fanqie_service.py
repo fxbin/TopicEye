@@ -40,7 +40,7 @@ HEADERS = {
 }
 
 
-async def fetch_json(url: str, params: dict, timeout: int = 30) -> Optional[dict]:
+async def fetch_json(url: str, params: dict, timeout: int = 30) -> dict | None:
     """发送 GET 请求并返回 JSON。"""
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:

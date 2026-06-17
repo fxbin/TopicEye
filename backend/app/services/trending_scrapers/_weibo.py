@@ -32,7 +32,7 @@ class WeiboTrending(BaseTrendingScraper):
     # 需要有效的微博 SUB cookie（从浏览器获取）
     _COOKIE = "SUB=_2AkMWIuNSf8NxqwJRmP8dy2rhaoV2ygrEieKgfhKJJRMxHRl-yT9jqk86tRB6PaLNvQZR6zYUcYVT1zSjoSreQHidcUq7"
 
-    async def fetch(self, client: httpx.AsyncClient) -> List[TrendingEntry]:
+    async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://s.weibo.com/top/summary?cate=realtimehot"
         headers = {
             "User-Agent": (
@@ -51,7 +51,7 @@ class WeiboTrending(BaseTrendingScraper):
             logger.warning("weibo trending fetch failed: %s", e)
             return []
 
-        results: List[TrendingEntry] = []
+        results: list[TrendingEntry] = []
         seen = set()
         for match in _PAT.finditer(html):
             query_encoded, rank_str, title, hot_str = match.groups()

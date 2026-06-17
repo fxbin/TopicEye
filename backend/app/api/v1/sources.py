@@ -46,7 +46,7 @@ def _invalidate_source_cache() -> None:
     invalidate_source_read_caches()
 
 
-def _normalize_source_status(payload: dict, current: Optional[Source] = None) -> dict:
+def _normalize_source_status(payload: dict, current: Source | None = None) -> dict:
     if payload.get("status") == SourceStatus.SYNCING:
         raise HTTPException(status_code=422, detail="syncing 是系统内部状态，不能手动设置")
 
@@ -67,7 +67,7 @@ def _normalize_source_status(payload: dict, current: Optional[Source] = None) ->
     return payload
 
 
-def _normalize_api_source_config(payload: dict, current: Optional[Source] = None) -> dict:
+def _normalize_api_source_config(payload: dict, current: Source | None = None) -> dict:
     source_type = payload.get("source_type")
     if source_type is None and current is not None:
         source_type = current.source_type
@@ -104,7 +104,7 @@ class SourceBatchImportItem(BaseModel):
     url: str
     source_type: str
     category: str
-    platform: Optional[str] = None
+    platform: str | None = None
     duplicate: bool = False
 
 
@@ -127,7 +127,7 @@ def _guess_source_type(url: str) -> SourceType:
     return SourceType.WEBSITE
 
 
-def _guess_platform(url: str) -> Optional[str]:
+def _guess_platform(url: str) -> str | None:
     lower = url.lower()
     if "github.com" in lower:
         return "GitHub"
@@ -144,7 +144,7 @@ def _guess_platform(url: str) -> Optional[str]:
     return None
 
 
-def _as_source_item(raw: Any, default_category: str) -> Optional[dict]:
+def _as_source_item(raw: Any, default_category: str) -> dict | None:
     if not isinstance(raw, dict):
         return None
     url = (
@@ -314,10 +314,10 @@ async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
 async def list_sources(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    source_type: Optional[str] = None,
-    status: Optional[str] = None,
-    enabled: Optional[bool] = None,
-    keyword: Optional[str] = None,
+    source_type: str | None = None,
+    status: str | None = None,
+    enabled: bool | None = None,
+    keyword: str | None = None,
 ):
     cache_params = SourceListCacheParams(
         page=page,
@@ -388,10 +388,10 @@ async def list_sources(
 async def list_my_sources(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    source_type: Optional[str] = None,
-    status: Optional[str] = None,
-    enabled: Optional[bool] = None,
-    keyword: Optional[str] = None,
+    source_type: str | None = None,
+    status: str | None = None,
+    enabled: bool | None = None,
+    keyword: str | None = None,
     current_user: User = Depends(get_current_user),
 ):
     cache_params = SourceListCacheParams(

@@ -17,7 +17,7 @@ class AppException(Exception):
         self,
         message: str = "An unexpected error occurred",
         status_code: int = 500,
-        detail: Optional[dict[str, Any]] = None,
+        detail: dict[str, Any] | None = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -54,7 +54,7 @@ class AlreadyExistsError(AppException):
 class ValidationError(AppException):
     """Input validation failure."""
 
-    def __init__(self, message: str = "Validation error", detail: Optional[dict] = None):
+    def __init__(self, message: str = "Validation error", detail: dict | None = None):
         super().__init__(message=message, status_code=422, detail=detail)
 
 
@@ -79,7 +79,7 @@ class LLMApiError(ExternalServiceError):
 class RateLimitExceeded(AppException):
     """Rate limit exceeded — client should back off."""
 
-    def __init__(self, retry_after: Optional[int] = None):
+    def __init__(self, retry_after: int | None = None):
         detail = {}
         if retry_after:
             detail["retry_after"] = retry_after
@@ -104,7 +104,7 @@ class PipelineError(AppException):
 class AnalysisError(PipelineError):
     """AI analysis failure."""
 
-    def __init__(self, message: str = "", content_id: Optional[int] = None):
+    def __init__(self, message: str = "", content_id: int | None = None):
         detail = {}
         if content_id:
             detail["content_id"] = content_id

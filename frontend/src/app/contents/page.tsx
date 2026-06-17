@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
@@ -48,6 +48,42 @@ function Spinner() {
 }
 
 // ─── Page Component ───
+
+function exportContentsAsCSV(items: ContentItem[]): void {
+  // CSV 安全转义：双引号包裹 + 内部双引号转义
+  const esc = (v: any) => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const headers = ['ID', '标题', '来源', '分类', '标签', '作者', '发布时间', '状态', 'URL'];
+  const rows = items.map((it) => [
+    it.id,
+    it.title || '',
+    it.source_name || it.source_id || '',
+    it.category || '',
+    Array.isArray(it.tags) ? it.tags.join('; ') : (it.tags || ''),
+    it.author || '',
+    it.published_at || it.crawled_at || '',
+    it.status || '',
+    it.url || '',
+  ]);
+  // 加 BOM 让 Excel 正确识别 UTF-8
+  const BOM = '\\uFEFF';
+  const csv = BOM + [headers, ...rows]
+    .map((r) => r.map(esc).join(','))
+    .join('\\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0, 10);
+  a.download = `contents-${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export default function ContentsPage() {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -163,6 +199,19 @@ export default function ContentsPage() {
       )}
 
       {/* Table */}
+      {!loading && items.length > 0 && (
+        <div className="mb-2 flex justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => exportContentsAsCSV(items)}
+            className="!px-2.5 !py-1 text-[12px]"
+          >
+            <Download size={12} />
+            导出本页 CSV（{items.length} 条）
+          </Button>
+        </div>
+      )}
       {!loading && (
         <Panel className="overflow-hidden">
           {/* Table Header */}

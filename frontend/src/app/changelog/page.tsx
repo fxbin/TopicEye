@@ -359,6 +359,7 @@ export default function ChangelogPage() {
   const [error, setError] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
+  const [versionQuery, setVersionQuery] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -373,9 +374,9 @@ export default function ChangelogPage() {
     }
   }, []);
 
-  const filteredUpdates = statusFilter === 'all'
-    ? updates
-    : updates.filter((u) => u.status === statusFilter);
+  const filteredUpdates = updates
+    .filter((u) => statusFilter === 'all' || u.status === statusFilter)
+    .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
 
   useEffect(() => {
     void loadData();
@@ -429,9 +430,16 @@ export default function ChangelogPage() {
           </div>
         )}
 
-        {/* Status filter tabs */}
+        {/* Status filter tabs + version search */}
         {updates.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={versionQuery}
+              onChange={(e) => setVersionQuery(e.target.value)}
+              placeholder="按版本号搜索（如 v0.2、v1.0）"
+              className="flex-1 min-w-[200px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
+            />
             {([
               { value: 'all', label: '全部', count: updates.length },
               { value: 'shipped', label: '已发布', count: updates.filter((u) => u.status === 'shipped').length },
@@ -466,7 +474,11 @@ export default function ChangelogPage() {
           <Panel className="p-8 text-center">
             <ShieldCheck className="mx-auto mb-3 h-10 w-10 text-gray-300" />
             <p className="text-[14px] text-gray-500">
-              {statusFilter === 'all' ? '暂无更新记录' : `暂无「${statusFilter}」状态的发版记录`}
+              {versionQuery.trim()
+                ? `没有匹配「${versionQuery}」的发版记录`
+                : statusFilter === 'all'
+                  ? '暂无更新记录'
+                  : `暂无「${statusFilter}」状态的发版记录`}
             </p>
           </Panel>
         ) : (

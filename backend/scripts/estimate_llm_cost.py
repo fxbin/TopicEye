@@ -97,7 +97,7 @@ async def test():
         max_tokens=1500,
     )
     u = resp.usage
-    print(f"=== Real Analysis Token Usage ===")
+    print("=== Real Analysis Token Usage ===")
     print(f"prompt_tokens: {u.prompt_tokens}")
     print(f"completion_tokens: {u.completion_tokens}")
     print(f"total_tokens: {u.total_tokens}")
@@ -112,13 +112,13 @@ async def test():
     # Output: 2 元/M
     input_miss = (u.prompt_tokens or 0) * 1 / 1_000_000
     output = (u.completion_tokens or 0) * 2 / 1_000_000
-    print(f"\n=== Cost Per Analysis Call ===")
+    print("\n=== Cost Per Analysis Call ===")
     print(f"Input cost: {input_miss:.6f} 元")
     print(f"Output cost: {output:.6f} 元")
     print(f"Total: {input_miss + output:.6f} 元")
 
     # Project monthly cost
-    print(f"\n=== Monthly Projection ===")
+    print("\n=== Monthly Projection ===")
     for daily_items in [50, 100, 200]:
         cost = (input_miss + output) * daily_items * 30
         print(f"  {daily_items}条/天 × 30天 = {daily_items * 30}次/月 → {cost:.2f} 元/月")

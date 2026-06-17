@@ -379,7 +379,7 @@ async def classify_async(
                     cat_repo = CategoryRepository(db)
                 await cat_repo.get_or_create(
                     name=category,
-                    description=f"LLM自动发现的分类",
+                    description="LLM自动发现的分类",
                     is_auto_created=True,
                 )
             except Exception as e:

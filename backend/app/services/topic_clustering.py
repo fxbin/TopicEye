@@ -132,7 +132,7 @@ async def _name_clusters(
             {
                 "role": "user",
                 "content": (
-                    f"以下是同一话题的多篇内容标题：\n"
+                    "以下是同一话题的多篇内容标题：\n"
                     + "\n".join(f"- {t}" for t in titles)
                     + f"\n\n关键标签：{', '.join(top_tags)}\n\n"
                     "请为这个话题生成：\n"

@@ -776,9 +776,32 @@ export default function SourcesPage() {
 
   // ─── Toggle source enabled (soft pause / resume) ───
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+
+  // Status-filtered sourceMap（client-side 过滤；后端不分页所以全量返回）
+  const filteredSourceMap = useMemo(() => {
+    if (statusFilter === 'all') return sourceMap;
+    const filteredTiers = Object.fromEntries(
+      Object.entries(sourceMap.tiers).map(([tier, items]) => {
+        const matched = items.filter((s) => {
+          if (statusFilter === 'active') return s.status === 'active' && s.enabled;
+          if (statusFilter === 'syncing') return s.status === 'syncing';
+          if (statusFilter === 'error') return s.status === 'error' || (s.enabled && s.sync_error);
+          if (statusFilter === 'disabled') return !s.enabled || s.status === 'disabled';
+          return true;
+        });
+        return [tier, matched];
+      })
+    );
+    return {
+      ...sourceMap,
+      tiers: filteredTiers as Record<SourceTierKey, BackendSource[]>,
+    };
+  }, [sourceMap, statusFilter]);
   // 批量选择：多选 + 批量启用/暂停
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
+  // 状态筛选（按 source.status + enabled 状态过滤）
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'syncing' | 'error' | 'disabled'>('all');
   const handleSelectSource = (source: BackendSource, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -1191,9 +1214,41 @@ export default function SourcesPage() {
         </div>
       )}
 
+      {/* Status filter tabs — applies to all source list views */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-gray-500">状态筛选：</span>
+        {([
+          { value: 'all', label: '全部', count: sourceMap.tiers ? Object.values(sourceMap.tiers).reduce((s, arr) => s + arr.length, 0) : 0 },
+          { value: 'active', label: '正常', count: sourceMap.tiers ? Object.values(sourceMap.tiers).reduce((s, arr) => s + arr.filter((x) => x.status === 'active' && x.enabled).length, 0) : 0 },
+          { value: 'syncing', label: '同步中', count: sourceMap.tiers ? Object.values(sourceMap.tiers).reduce((s, arr) => s + arr.filter((x) => x.status === 'syncing').length, 0) : 0 },
+          { value: 'error', label: '错误', count: sourceMap.tiers ? Object.values(sourceMap.tiers).reduce((s, arr) => s + arr.filter((x) => x.status === 'error' || (x.enabled && x.sync_error)).length, 0) : 0 },
+          { value: 'disabled', label: '已暂停', count: sourceMap.tiers ? Object.values(sourceMap.tiers).reduce((s, arr) => s + arr.filter((x) => !x.enabled || x.status === 'disabled').length, 0) : 0 },
+        ] as const).map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setStatusFilter(tab.value as typeof statusFilter)}
+            className={cx(
+              'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
+              statusFilter === tab.value
+                ? 'border-orange bg-orange text-white'
+                : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+            )}
+          >
+            {tab.label}
+            <span className={cx(
+              'rounded-full px-1.5 text-[10px]',
+              statusFilter === tab.value ? 'bg-white/20' : 'bg-gray-100',
+            )}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {viewMode === 'map' && (
         <SourceMapView
-          sourceMap={sourceMap}
+          sourceMap={filteredSourceMap}
           syncingIds={syncingIds}
           favoriteTargets={new Set([...favoriteTargets, ...sourceFavoriteKeys])}
           favoriteTargetPendingKeys={favoriteTargetPendingKeys}

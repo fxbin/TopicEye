@@ -54,6 +54,19 @@ export default function CreationPlanDisplay({ plan, platform }: CreationPlanDisp
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Toolbar: 平台标签 + 导出 Markdown */}
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] text-gray-500">平台：{platform || '未知'}</span>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => exportPlanAsMarkdown(plan as Record<string, any>, platform)}
+          className="!px-2 !py-1 text-[12px]"
+        >
+          <Download size={12} />
+          导出 Markdown
+        </Button>
+      </div>
       {/* Copy button */}
       <div className="flex justify-end">
         <Button

@@ -91,12 +91,13 @@ export const NAV_SPACES: NavSpace[] = [
     items: [
       { id: 'sources', label: '信源管理', href: '/sources', icon: RadioTower, access: 'admin', countKey: 'sources' },
       { id: 'model-eval', label: 'AI 引擎', href: '/model-eval', icon: BrainCircuit, access: 'admin' },
+      { id: 'changelog-mgmt', label: '发版记录', href: '/admin/updates', icon: Rocket, access: 'admin' },
     ],
   },
 ];
 
 const EXTRA_USER_ONLY_PATHS = ['/profile'];
-const EXTRA_ADMIN_ONLY_PATHS = ['/contents', '/mother-topics/config'];
+const EXTRA_ADMIN_ONLY_PATHS = ['/contents', '/mother-topics/config', '/admin/updates'];
 
 function uniquePaths(paths: string[]): string[] {
   return Array.from(new Set(paths));

@@ -96,6 +96,11 @@ async def prometheus_metrics():
 
     gauge("topiceye_slow_queries_total", get_slow_count(), "SQL queries exceeding slow query threshold (cumulative)")
 
+    # ── LLM pre-filter low-signal counter (cumulative since startup) ──
+    from app.services.llm_pre_filter import get_skip_count
+
+    gauge("topiceye_low_signal_total", get_skip_count(), "Content items skipped from LLM queue by rule-based pre-filter (cumulative)")
+
     return Response(
         content="\n".join(lines) + "\n",
         media_type="text/plain; version=0.0.4; charset=utf-8",

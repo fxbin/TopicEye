@@ -44,6 +44,10 @@ class ContentItem(Base):
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     status: Mapped[str] = mapped_column(value_enum(ContentStatus), nullable=False, default=ContentStatus.PENDING)
     is_favorited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # LLM 规则过滤层（参照 content-signal-radar 的 lowSignalPenalty 设计）
+    # skip_analysis=True 时不进 LLM 队列（不入 claim_pending），但仍入库保留
+    skip_analysis: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    skip_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # Topic clustering fields
     topic_id: Mapped[int | None] = mapped_column(

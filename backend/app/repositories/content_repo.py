@@ -147,6 +147,8 @@ class ContentRepo(BaseRepository[ContentItem]):
                     | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
                     | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
                 )
+                # LLM 规则过滤：skip_analysis=True 的内容（低信号/自吹/过短）不入队
+                .where(self.model.skip_analysis.is_(False))
                 .order_by(self.model.crawled_at.desc(), self.model.created_at.desc())
                 .limit(limit)
             )

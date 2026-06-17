@@ -28,6 +28,7 @@ from app.core.database import database_profile
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceType, SourceStatus
 from app.services.classifier import classify, extract_tags, classify_async
+from app.services.llm_pre_filter import apply_pre_filter
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.dedup import build_hash
 from app.services.scraper_http import build_scraper_client_kwargs
@@ -221,6 +222,9 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             )
             new_items.append(item)
             metrics_records.append(_build_metrics_record(entry))
+            # LLM 规则过滤层（参照 content-signal-radar lowSignalPenalty）：
+            # 命中硬低信号/自吹/过短 → 标 skip_analysis=True（不入 LLM 队列）
+            apply_pre_filter(item)
             if category:
                 category_counts[category] = category_counts.get(category, 0) + 1
             new_count += 1

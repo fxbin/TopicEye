@@ -319,7 +319,7 @@ function MovementList({ title, items, tone }: { title: string; items: WebnovelMo
   );
 }
 
-function WebnovelWeeklyPanel({ report, loading, onRefresh }: { report: WebnovelWeeklyReport | null; loading: boolean; onRefresh: () => void }) {
+function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysChange }: { report: WebnovelWeeklyReport | null; loading: boolean; onRefresh: () => void; days: number; onDaysChange: (d: number) => void }) {
   const maxDaily = Math.max(...(report?.daily_counts.map((item) => item.count) || [1]), 1);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
@@ -329,6 +329,25 @@ function WebnovelWeeklyPanel({ report, loading, onRefresh }: { report: WebnovelW
         <EmptyState title="暂无网文周报" desc="同步网文榜单后再刷新周报。" />
       ) : (
         <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          {/* 时间窗切换：'按 X 天上升最快' */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-gray-500">时间窗：</span>
+            {[3, 7, 14, 30].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => onDaysChange(d)}
+                className={cx(
+                  'rounded-sm border px-2.5 py-0.5 text-[12px] transition',
+                  days === d
+                    ? 'border-orange bg-orange text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                )}
+              >
+                {d} 天
+              </button>
+            ))}
+          </div>
           <Panel className="overflow-hidden p-0">
             <div className="border-b border-gray-100 bg-white px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -760,11 +779,12 @@ export default function FanqiePage() {
       .map(([key, count]) => ({ key, count }));
   }, [heiyanBooks, heiyanShelfFilter]);
 
-  const fetchWeeklyReport = useCallback(async () => {
+  const [weeklyDays, setWeeklyDays] = useState(7);
+  const fetchWeeklyReport = useCallback(async (days: number = 7) => {
     setWeeklyLoading(true);
     setError(null);
     try {
-      setWeeklyReport(await webnovelReportsApi.weekly(7));
+      setWeeklyReport(await webnovelReportsApi.weekly(days));
     } catch (err) {
       setError(err instanceof Error ? err.message : '网文周报加载失败');
     } finally {
@@ -1106,7 +1126,16 @@ export default function FanqiePage() {
       </div>
 
       {viewMode === 'weekly' ? (
-        <WebnovelWeeklyPanel report={weeklyReport} loading={weeklyLoading} onRefresh={fetchWeeklyReport} />
+        <WebnovelWeeklyPanel
+          report={weeklyReport}
+          loading={weeklyLoading}
+          onRefresh={fetchWeeklyReport}
+          days={weeklyDays}
+          onDaysChange={(d) => {
+            setWeeklyDays(d);
+            void fetchWeeklyReport(d);
+          }}
+        />
       ) : (
       <div className="fanqie-layout grid min-h-0 flex-1 gap-4 p-[18px]">
         <aside className="fanqie-filter-panel flex min-h-0 flex-col gap-3 pr-0.5">

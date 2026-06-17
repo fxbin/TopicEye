@@ -223,7 +223,6 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         min_viral_score: float | None = None,
     ):
         """List analyses with optional score thresholds."""
-        from sqlalchemy import func
 
         filters = {}
         if min_creator_score is not None:

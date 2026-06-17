@@ -38,7 +38,7 @@ def _register_listeners(engine: Engine) -> None:
     """Attach before/after cursor execute listeners to one engine."""
     if getattr(engine, "_slow_query_attached", False):
         return  # idempotent
-    setattr(engine, "_slow_query_attached", True)
+    engine._slow_query_attached = True
 
     @event.listens_for(engine, "before_cursor_execute")
     def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):

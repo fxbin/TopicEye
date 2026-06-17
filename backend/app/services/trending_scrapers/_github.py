@@ -8,6 +8,7 @@ from typing import List
 
 import httpx
 from . import BaseTrendingScraper, register_trending, TrendingEntry
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +80,8 @@ class GitHubTrending(BaseTrendingScraper):
             m_stars = _STARS_A.search(block)
             if m_stars:
                 hot_raw = m_stars.group(1).strip()
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     hot_val = int(hot_raw.replace(",", ""))
-                except (ValueError, TypeError):
-                    pass
 
             title = desc if desc else repo_name
 

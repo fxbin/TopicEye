@@ -42,10 +42,7 @@ USER_AGENT = (
 
 async def _curl_get(url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
     """Run curl subprocess to fetch JSON from Zhihu, bypassing TLS fingerprinting."""
-    if params:
-        full_url = f"{url}?{urlencode(params)}"
-    else:
-        full_url = url
+    full_url = f"{url}?{urlencode(params)}" if params else url
 
     cmd = [
         "curl",

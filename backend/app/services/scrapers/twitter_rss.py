@@ -26,6 +26,7 @@ import feedparser
 import httpx
 
 from . import BaseScraper, register_scraper
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -178,15 +179,11 @@ class TwitterRSSScraper(BaseScraper):
         # 注意: content.published_at 列是 TIMESTAMP WITHOUT TIME ZONE (naive).
         published_at = None
         if hasattr(entry, "published_parsed") and entry.published_parsed:
-            try:
+            with contextlib.suppress(Exception):
                 published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-            except Exception:
-                pass
         if published_at is None and hasattr(entry, "updated_parsed") and entry.updated_parsed:
-            try:
+            with contextlib.suppress(Exception):
                 published_at = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
-            except Exception:
-                pass
         if published_at is None:
             published_at = datetime.now(timezone.utc)
 

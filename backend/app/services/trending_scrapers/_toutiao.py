@@ -7,6 +7,7 @@ from typing import List
 
 import httpx
 from . import BaseTrendingScraper, register_trending, TrendingEntry
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,8 @@ class ToutiaoTrending(BaseTrendingScraper):
                 continue
             hot_val = 0
             hot_raw = item.get("HotValue", "0")
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 hot_val = int(str(hot_raw).replace(",", "").replace("_", ""))
-            except (ValueError, TypeError):
-                pass
 
             url_val = item.get("Url", "")
             results.append(

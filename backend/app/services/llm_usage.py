@@ -160,9 +160,7 @@ def pricing_from_model(model: Optional[LlmModel]) -> dict[str, Optional[float]]:
 
 def _input_tokens_include_cache(provider: Optional[str], request_model: Optional[str]) -> bool:
     marker = f"{provider or ''}/{request_model or ''}".lower()
-    if "anthropic" in marker or "claude" in marker:
-        return False
-    return True
+    return not ("anthropic" in marker or "claude" in marker)
 
 
 def calculate_cost(

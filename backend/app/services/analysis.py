@@ -581,9 +581,8 @@ async def analyze_batch_concurrent(
     semaphore = asyncio.Semaphore(limit)
 
     async def _run_one(content_id: int) -> Optional[AiAnalysis]:
-        async with semaphore:
-            async with session_factory() as db:
-                return await analyze_one_claimed(content_id, db, assume_claimed=assume_claimed)
+        async with semaphore, session_factory() as db:
+            return await analyze_one_claimed(content_id, db, assume_claimed=assume_claimed)
 
     analyses = await asyncio.gather(*(_run_one(content_id) for content_id in content_ids))
     return [item for item in analyses if item is not None]

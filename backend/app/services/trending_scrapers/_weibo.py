@@ -11,6 +11,7 @@ from typing import List
 
 import httpx
 from . import BaseTrendingScraper, register_trending, TrendingEntry
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +67,8 @@ class WeiboTrending(BaseTrendingScraper):
 
             hot_val = 0
             if hot_str:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     hot_val = int(hot_str.replace(",", ""))
-                except (ValueError, TypeError):
-                    pass
 
             decoded_query = query_encoded
             results.append(

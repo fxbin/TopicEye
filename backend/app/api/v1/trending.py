@@ -33,6 +33,7 @@ from app.services.trending_cache import (
 )
 from app.services.trending_pipeline import sync_all_trending, sync_trending_source
 from app.services.zhihu_url import normalize_zhihu_url
+import contextlib
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trending", tags=["trending"])
@@ -140,10 +141,8 @@ async def build_trending_list_payload(
         # Convert string source names to TrendingSource enums (silently skip unknowns)
         exclude_enums = []
         for s in exclude_sources:
-            try:
+            with contextlib.suppress(ValueError):
                 exclude_enums.append(TrendingSource(s))
-            except ValueError:
-                pass
         if exclude_enums:
             stmt = stmt.where(TrendingItem.source.notin_(exclude_enums))
 

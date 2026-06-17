@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -264,10 +264,8 @@ async def lifespan(app: FastAPI):
     # Shutdown: stop scheduler, close connections, dispose engine
     if _cache_warmup_task and not _cache_warmup_task.done():
         _cache_warmup_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await _cache_warmup_task
-        except asyncio.CancelledError:
-            pass
     shutdown_scheduler()
 
     # Close DuckDB analytics connection

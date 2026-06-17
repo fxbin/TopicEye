@@ -58,10 +58,7 @@ class DoubanTrending(BaseTrendingScraper):
             subtitle = item.get("card_subtitle", "")
             hot_raw = ""
             if read_count:
-                if read_count >= 10000:
-                    hot_raw = f"{read_count / 10000:.1f}万"
-                else:
-                    hot_raw = str(read_count)
+                hot_raw = f"{read_count / 10000:.1f}万" if read_count >= 10000 else str(read_count)
 
             results.append(
                 {

@@ -17,6 +17,7 @@ from app.core.database import async_session
 from app.models.qimao import QimaoBook
 from app.services.qimao_scraper import fetch_list_data, fetch_all_ranks
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,8 @@ def _parse_book(item: dict, channel: str, rank_type: str, position: int) -> dict
     collect_count: Optional[int] = None
     number_str = str(item.get("number", ""))
     if number_str and item.get("unit") == "万":
-        try:
+        with contextlib.suppress(ValueError):
             collect_count = int(float(number_str) * 10000)
-        except ValueError:
-            pass
 
     return {
         "book_id": str(item.get("book_id", "")),

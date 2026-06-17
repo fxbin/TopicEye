@@ -215,9 +215,8 @@ async def enrich_batch(
     factory = session_factory or _session_factory_from_session(db)
 
     async def _run_one(cid: int) -> dict[str, Any]:
-        async with semaphore:
-            async with factory() as item_db:
-                return await _enrich_one_claimed(cid, item_db)
+        async with semaphore, factory() as item_db:
+            return await _enrich_one_claimed(cid, item_db)
 
     return await asyncio.gather(*(_run_one(cid) for cid in content_ids))
 

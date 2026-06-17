@@ -221,27 +221,26 @@ async def _sync_single_source(source_id: int) -> None:
     do not stampede SQLite with heavy post-sync writes.
     """
     sem = _get_semaphore()
-    async with sem:
-        async with async_session() as db:
-            from app.repositories.source_repo import SourceRepository
+    async with sem, async_session() as db:
+        from app.repositories.source_repo import SourceRepository
 
-            source_repo = SourceRepository(db)
-            source = await source_repo.claim_sync(
-                source_id,
-                lease_seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS),
-            )
+        source_repo = SourceRepository(db)
+        source = await source_repo.claim_sync(
+            source_id,
+            lease_seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS),
+        )
+        await db.commit()
+        if not source or not source.enabled:
+            logger.debug("Source id=%d skipped (not found, disabled, or sync lease active)", source_id)
+            return
+        try:
+            stats = await ingest_from_source(source, db)
             await db.commit()
-            if not source or not source.enabled:
-                logger.debug("Source id=%d skipped (not found, disabled, or sync lease active)", source_id)
-                return
-            try:
-                stats = await ingest_from_source(source, db)
-                await db.commit()
-                logger.info("Scheduler: source '%s' synced — %s", source.name, stats)
-                _request_post_sync_pipeline(stats)
-            except Exception:
-                logger.exception("Scheduler: failed to sync source id=%d", source_id)
-                await db.rollback()
+            logger.info("Scheduler: source '%s' synced — %s", source.name, stats)
+            _request_post_sync_pipeline(stats)
+        except Exception:
+            logger.exception("Scheduler: failed to sync source id=%d", source_id)
+            await db.rollback()
 
 
 def _request_post_sync_pipeline(stats: Optional[dict] = None) -> bool:

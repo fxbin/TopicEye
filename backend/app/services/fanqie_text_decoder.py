@@ -11,6 +11,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,8 @@ def _load_mapping() -> dict[int, str]:
         raw: dict[str, str] = json.loads(mapping_path.read_text(encoding="utf-8"))
         _char_mapping = {}
         for k, v in raw.items():
-            try:
+            with contextlib.suppress(ValueError):
                 _char_mapping[int(k)] = v
-            except ValueError:
-                pass
         logger.info("已加载番茄小说字符映射表，共 %d 个字符", len(_char_mapping))
     except Exception as e:
         logger.error("加载番茄小说字符映射表失败: %s", e)

@@ -74,6 +74,8 @@ export default function AdminUpdatesPage() {
   const { currentUser, authLoading } = useAppContext();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ProductUpdateItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
+  const [versionQuery, setVersionQuery] = useState('');
   const [editing, setEditing] = useState<ProductUpdateItem | null>(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
@@ -278,16 +280,76 @@ export default function AdminUpdatesPage() {
             <p className="text-[14px] text-gray-500">还没有发版记录，点右上角「新建发版」开始。</p>
           </Panel>
         ) : (
-          <div className="space-y-2.5">
-            {items.map((item) => (
-              <UpdateAdminRow
-                key={item.id}
-                item={item}
-                onEdit={() => openEdit(item)}
-                onDelete={() => void handleDelete(item)}
+          <>
+            {/* Filter row: status tabs + version search */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={versionQuery}
+                onChange={(e) => setVersionQuery(e.target.value)}
+                placeholder="按版本号搜索"
+                className="flex-1 min-w-[180px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
               />
-            ))}
-          </div>
+              {([
+                { value: 'all', label: '全部', count: items.length },
+                { value: 'shipped', label: '已发布', count: items.filter((i) => i.status === 'shipped').length },
+                { value: 'in_progress', label: '进行中', count: items.filter((i) => i.status === 'in_progress').length },
+                { value: 'planned', label: '已规划', count: items.filter((i) => i.status === 'planned').length },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.value as 'all' | ProductUpdateStatus)}
+                  className={cx(
+                    'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
+                    statusFilter === tab.value
+                      ? 'border-orange bg-orange text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                  )}
+                >
+                  {tab.label}
+                  <span className={cx(
+                    'rounded-full px-1.5 text-[10px]',
+                    statusFilter === tab.value ? 'bg-white/20' : 'bg-gray-100',
+                  )}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Filtered list */}
+            {(() => {
+              const filtered = items
+                .filter((u) => statusFilter === 'all' || u.status === statusFilter)
+                .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
+              if (filtered.length === 0) {
+                return (
+                  <Panel className="p-6 text-center">
+                    <p className="text-[13px] text-gray-500">
+                      {versionQuery.trim()
+                        ? `没有匹配「${versionQuery}」的发版记录`
+                        : statusFilter === 'all'
+                          ? '没有发版记录'
+                          : `没有「${statusFilter}」状态的发版记录`}
+                    </p>
+                  </Panel>
+                );
+              }
+              return (
+                <div className="space-y-2.5">
+                  {filtered.map((item) => (
+                    <UpdateAdminRow
+                      key={item.id}
+                      item={item}
+                      onEdit={() => openEdit(item)}
+                      onDelete={() => void handleDelete(item)}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </>
         )}
       </div>
 

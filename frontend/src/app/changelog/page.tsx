@@ -448,10 +448,22 @@ export default function ChangelogPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button type="button" onClick={() => setShowFeedback(true)}>
-              <Flag size={14} />
-              反馈
-            </Button>
+            {currentUser ? (
+              <Button type="button" onClick={() => setShowFeedback(true)}>
+                <Flag size={14} />
+                反馈
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => window.location.href = '/login'}
+                title="请先登录后提交反馈"
+              >
+                <Flag size={14} />
+                登录后反馈
+              </Button>
+            )}
             <Button type="button" variant="secondary" onClick={() => void loadData()}>
               <RefreshCw size={14} />
               刷新

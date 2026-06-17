@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ChevronDown,
   CircleDot,
   Flag,
   Loader2,
@@ -118,9 +119,22 @@ function UpdateItemCard({ entry, itemUpdatedAt }: { entry: ProductUpdateItem['it
 
 function UpdateCard({ item }: { item: ProductUpdateItem }) {
   const isShipped = item.status === 'shipped';
+  // shipped 默认展开（用户最关心的历史变更），其他状态默认折叠
+  const [expanded, setExpanded] = useState(isShipped);
+
+  // 折叠状态摘要：按 kind 统计
+  const kindCounts = item.items.reduce<Record<string, number>>((acc, it) => {
+    acc[it.kind] = (acc[it.kind] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <Panel className="p-4.5 sm:p-5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 text-left"
+      >
         <div className="flex items-center gap-2">
           <div
             className={cx(
@@ -141,16 +155,37 @@ function UpdateCard({ item }: { item: ProductUpdateItem }) {
             </p>
           </div>
         </div>
-      </div>
-      <div className="space-y-2">
-        {item.items.length === 0 ? (
-          <p className="py-3 text-center text-[13px] text-gray-500">该版本暂无更新项</p>
-        ) : (
-          item.items.map((entry, idx) => (
-            <UpdateItemCard key={`${item.id}-${idx}`} entry={entry} itemUpdatedAt={item.updated_at} />
-          ))
-        )}
-      </div>
+        <div className="flex items-center gap-2 text-[12px] text-gray-500">
+          {!expanded && item.items.length > 0 && (
+            <span className="hidden gap-1 sm:flex">
+              {Object.entries(kindCounts).map(([k, n]) => (
+                <Badge key={k} tone={UPDATE_KIND_TONES[k as ProductUpdateKind]}>
+                  {UPDATE_KIND_LABELS[k as ProductUpdateKind]} {n}
+                </Badge>
+              ))}
+            </span>
+          )}
+          <span>{item.items.length} 项</span>
+          <ChevronDown
+            size={16}
+            className={cx(
+              'transition-transform',
+              expanded && 'rotate-180',
+            )}
+          />
+        </div>
+      </button>
+      {expanded && (
+        <div className="space-y-2">
+          {item.items.length === 0 ? (
+            <p className="py-3 text-center text-[13px] text-gray-500">该版本暂无更新项</p>
+          ) : (
+            item.items.map((entry, idx) => (
+              <UpdateItemCard key={`${item.id}-${idx}`} entry={entry} itemUpdatedAt={item.updated_at} />
+            ))
+          )}
+        </div>
+      )}
     </Panel>
   );
 }

@@ -47,6 +47,35 @@ _SCORING_BATCH_SIZE = 500
 _TREND_SOURCE_TYPES = {"DouyinHot"}
 
 
+class _LowLatencyBusyTimeout:
+    """临时调低 SQLite busy_timeout（批量写时快速返回 503），退出时还原。
+
+    上下文管理器避免重复样板：三个 favorite 端点共用同一套逻辑。
+    非 SQLite 后端为 no-op。
+    """
+
+    def __init__(self, db: AsyncSession):
+        self._db = db
+        self._active = False
+
+    async def __aenter__(self) -> "_LowLatencyBusyTimeout":
+        if database_profile.is_sqlite:
+            try:
+                await self._db.execute(text(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_BATCH_MS}"))
+                self._active = True
+            except Exception:
+                await self._db.rollback()
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        if self._active:
+            try:
+                await self._db.execute(text(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_MS}"))
+            except Exception:
+                await self._db.rollback()
+            self._active = False
+
+
 def _is_admin(user: User | None) -> bool:
     return bool(user and user.role == "admin")
 
@@ -500,23 +529,14 @@ async def toggle_favorite(
         await db.flush()
         return favorite_id
 
-    restore_busy_timeout = False
     try:
-        if database_profile.is_sqlite:
-            await db.execute(text("PRAGMA busy_timeout=500"))
-            restore_busy_timeout = True
-        favorite_id = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
+        async with _LowLatencyBusyTimeout(db):
+            favorite_id = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
             raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
         raise
-    finally:
-        if restore_busy_timeout:
-            try:
-                await db.execute(text("PRAGMA busy_timeout=30000"))
-            except Exception:
-                await db.rollback()
     return {"is_favorited": next_value, "favorite_id": favorite_id}
 
 
@@ -539,23 +559,14 @@ async def ignore_content(
         await db.flush()
         return ignored_item
 
-    restore_busy_timeout = False
     try:
-        if database_profile.is_sqlite:
-            await db.execute(text("PRAGMA busy_timeout=500"))
-            restore_busy_timeout = True
-        ignored = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
+        async with _LowLatencyBusyTimeout(db):
+            ignored = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
             raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
         raise
-    finally:
-        if restore_busy_timeout:
-            try:
-                await db.execute(text("PRAGMA busy_timeout=30000"))
-            except Exception:
-                await db.rollback()
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
 
@@ -572,22 +583,13 @@ async def unignore_content(
     async def _write():
         return await IgnoredRepo(db).unignore(content_id)
 
-    restore_busy_timeout = False
     try:
-        if database_profile.is_sqlite:
-            await db.execute(text("PRAGMA busy_timeout=500"))
-            restore_busy_timeout = True
-        removed = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
+        async with _LowLatencyBusyTimeout(db):
+            removed = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
             raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
         raise
-    finally:
-        if restore_busy_timeout:
-            try:
-                await db.execute(text("PRAGMA busy_timeout=30000"))
-            except Exception:
-                await db.rollback()
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": False, "removed": removed}

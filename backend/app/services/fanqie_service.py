@@ -265,7 +265,8 @@ async def full_sync() -> dict:
             message=f"同步 {len(categories)} 个分类，耗时 {elapsed:.0f}s",
         )
     except Exception:
-        pass  # 通知推送失败不影响主流程
+        # 通知推送失败不影响主流程，但记录告警便于排查
+        logger.warning("fanqie_sync success notification failed", exc_info=True)
 
     return {
         "categories": len(categories),

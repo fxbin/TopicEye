@@ -28,7 +28,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      # 绑 loopback：生产用 Nginx/Caddy 反代，避免 uvicorn 直接暴露公网
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     # 不 bind mount 源码（代码在镜像里）；只挂 data volume
     volumes:
       - backend-data:/app/data
@@ -61,7 +62,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-topiceye}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-topiceye}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # 绑 loopback：只让 backend 容器内访问，避免 PG 暴露公网被爆破
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -81,7 +83,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      # 绑 loopback：生产用 Nginx/Caddy 反代到 80/443
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     # 不 bind mount 源码；只隔离 node_modules
     volumes:
       - frontend-node-modules:/app/node_modules

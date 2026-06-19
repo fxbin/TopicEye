@@ -124,7 +124,7 @@ async def sync_qimao_ranks() -> dict:
             f"5种榜单×男女双频，共 {total_books} 本，耗时 {elapsed:.0f}s",
         )
     except Exception:
-        pass
+        logger.warning("qimao_sync success notification failed", exc_info=True)
 
     return {"books": total_books, "elapsed_seconds": elapsed, "errors": errors}
 

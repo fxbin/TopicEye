@@ -274,7 +274,7 @@ async def lifespan(app: FastAPI):
 
         close_analytics()
     except Exception:
-        pass
+        logger.warning("DuckDB analytics shutdown failed", exc_info=True)
 
     await engine.dispose()
     logger.info("Application shutdown complete")

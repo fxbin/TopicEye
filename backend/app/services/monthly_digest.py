@@ -191,7 +191,7 @@ async def generate_monthly_digest(
 
             await push_notification("success", "monthly_digest", "AI月刊生成完成", f"{month_label} 已生成")
         except Exception:
-            pass
+            logger.warning("monthly_digest success notification failed", exc_info=True)
     except Exception as exc:
         digest.status = "ERROR"
         digest.overview = f"生成失败: {str(exc)[:200]}"
@@ -202,6 +202,6 @@ async def generate_monthly_digest(
 
             await push_notification("error", "monthly_digest", "AI月刊生成失败", str(exc)[:200])
         except Exception:
-            pass
+            logger.warning("monthly_digest failure notification failed", exc_info=True)
 
     return digest

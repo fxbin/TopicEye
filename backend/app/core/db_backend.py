@@ -7,6 +7,7 @@ service layer.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone, UTC
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Dict, Literal, Optional
 
 from sqlalchemy.engine import URL, make_url
+
+logger = logging.getLogger(__name__)
 
 DatabaseBackend = Literal["sqlite", "postgresql", "unknown"]
 SUPPORTED_DATABASE_BACKENDS = {"sqlite", "postgresql"}
@@ -218,7 +221,11 @@ def redact_database_secrets(message: str | None, profile: DatabaseProfile) -> st
         safe_url = parsed.render_as_string(hide_password=True)
         redacted = redacted.replace(unsafe_url, safe_url)
     except Exception:
-        pass
+        # 兜底：URL 渲染失败时，按 scheme 做最保守的截断，避免带密码的明文 URL 泄漏到日志
+        logger.warning("database URL redaction fallback engaged", exc_info=True)
+        if "://" in redacted:
+            scheme, _, rest = redacted.partition("://")
+            redacted = f"{scheme}://***@{rest.split('@', 1)[-1]}" if "@" in rest else f"{scheme}://***"
 
     return redacted
 

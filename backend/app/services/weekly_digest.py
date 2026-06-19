@@ -225,7 +225,7 @@ async def generate_weekly_digest(
 
             await push_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
         except Exception:
-            pass
+            logger.warning("weekly_digest success notification failed", exc_info=True)
     except Exception as e:
         digest.status = "ERROR"
         digest.overview = f"生成失败: {str(e)[:200]}"
@@ -237,6 +237,6 @@ async def generate_weekly_digest(
 
             await push_notification("error", "weekly_digest", "AI周刊生成失败", str(e)[:200])
         except Exception:
-            pass
+            logger.warning("weekly_digest failure notification failed", exc_info=True)
 
     return digest

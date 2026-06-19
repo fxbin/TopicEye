@@ -5,6 +5,7 @@ Daily Report service — generate versioned daily snapshots and final editions.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, time, timedelta, timezone, UTC
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -23,6 +24,8 @@ from app.services.digest_fallback import build_digest_fallback
 from app.services.scoring_engine import score_items
 from app.services.scoring_inputs import build_scoring_inputs
 from app.services.zhihu_url import normalize_zhihu_url
+
+logger = logging.getLogger(__name__)
 
 
 WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
@@ -445,7 +448,7 @@ async def generate_daily_report(
                 f"{report_date} {_edition_label(normalized_edition)}，共 {report.topic_count} 个选题",
             )
         except Exception:
-            pass
+            logger.warning("daily_report success notification failed", exc_info=True)
     except Exception as exc:
         report.status = "ERROR"
         report.overview = f"生成失败: {str(exc)[:200]}"
@@ -456,7 +459,7 @@ async def generate_daily_report(
 
             await push_notification("error", "daily_report", "日报生成失败", str(exc)[:200])
         except Exception:
-            pass
+            logger.warning("daily_report failure notification failed", exc_info=True)
 
     return report
 

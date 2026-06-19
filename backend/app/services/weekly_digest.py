@@ -6,8 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, date, timedelta, timezone, UTC
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -16,15 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.weekly_digest import WeeklyDigest
-from app.services.digest_fallback import build_digest_fallback
-from app.services.llm import call_llm_json
-from app.services.llm.prompts.weekly_digest import WEEKLY_DIGEST_PROMPT
 from app.services.digest_context import (
     build_category_stats,
     build_category_text,
     build_items_text,
     fetch_analyzed_content,
 )
+from app.services.digest_fallback import build_digest_fallback
+from app.services.llm import call_llm_json
+from app.services.llm.prompts.weekly_digest import WEEKLY_DIGEST_PROMPT
 
 logger = logging.getLogger(__name__)
 DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)

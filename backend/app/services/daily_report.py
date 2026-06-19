@@ -6,8 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, time, timedelta, timezone, UTC
-from typing import Optional
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -19,8 +18,8 @@ from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locke
 from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.services.content_serialization import latest_analysis_from_item
-from app.services.llm import call_llm_json
 from app.services.digest_fallback import build_digest_fallback
+from app.services.llm import call_llm_json
 from app.services.scoring_engine import score_items
 from app.services.scoring_inputs import build_scoring_inputs
 from app.services.zhihu_url import normalize_zhihu_url
@@ -376,7 +375,6 @@ async def generate_daily_report(
 
     curated_text = _format_items(curated_items, limit=50, selected=True)
     background_text = _format_items(background_items, limit=80, selected=False)
-    title_url_map = {item["title"]: normalize_zhihu_url(item.get("url", "")) for item in curated_items}
 
     prompt = REPORT_PROMPT.format(
         date=report_date,

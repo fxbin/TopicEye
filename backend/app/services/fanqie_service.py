@@ -5,18 +5,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import asyncio
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
 
 import httpx
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
-from app.models.fanqie import FanqieCategory, FanqieBook, FanqieRankSnapshot
+from app.models.fanqie import FanqieBook, FanqieCategory, FanqieRankSnapshot
 from app.services.fanqie_text_decoder import clean_books
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
 

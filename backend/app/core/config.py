@@ -1,7 +1,4 @@
-from typing import Optional
-
 from pydantic_settings import BaseSettings
-
 
 DEFAULT_LOCAL_SECRET_KEY = "topiceye-local-dev-secret-change-me"
 

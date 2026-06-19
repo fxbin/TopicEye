@@ -6,18 +6,16 @@ httpx + py_mini_racer 提取 window.__NUXT__ 数据 (替代原 Playwright 方案
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime
-from typing import Optional, Literal
 
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 
 from app.core.database import async_session
 from app.models.qimao import QimaoBook
-from app.services.qimao_scraper import fetch_list_data, fetch_all_ranks
+from app.services.qimao_scraper import fetch_all_ranks
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
-import contextlib
 
 logger = logging.getLogger(__name__)
 

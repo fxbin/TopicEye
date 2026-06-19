@@ -93,7 +93,9 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-  # ── Lint: ruff (Python 质量门，不阻塞 commit 由 CI 兜底) ──
+  # ── Lint: ruff（针对本次改动的 Python 文件做阻断式检查）──
+  # 渐进式门禁：只检查 PR 中变更的文件，避免一次性清理 700+ 历史告警。
+  # 历史 lint 问题在单独的清理分支处理。main 的 push 用 HEAD^ 做基线。
   backend-lint:
     runs-on: ubuntu-latest
     defaults:
@@ -101,13 +103,35 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整历史来计算 diff 基线
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install ruff
         run: pip install ruff==0.6.9
-      - name: Ruff check
-        # 渐进式：先用 --statistics 看问题分布；完全清理后改回 error 门禁
-        run: ruff check --statistics . | tail -30
-      - name: Ruff format check
-        run: ruff format --check . | tail -20
+      - name: Compute changed Python files
+        id: diff
+        working-directory: .
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE=$(git rev-parse HEAD^)
+          fi
+          # backend/ 下变更的 .py 文件（相对于基线，且当前仍存在）
+          FILES=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'backend/*.py' \
+                  | sed 's|^backend/||' | grep '\.py$' || true)
+          {
+            echo "files<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Changed Python files:"
+          echo "$FILES"
+      - name: Ruff check (changed files)
+        if: steps.diff.outputs.files != ''
+        run: ruff check ${{ steps.diff.outputs.files }}
+      - name: Ruff format check (changed files)
+        if: steps.diff.outputs.files != ''
+        run: ruff format --check ${{ steps.diff.outputs.files }}

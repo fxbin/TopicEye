@@ -1,9 +1,9 @@
 """Content API endpoints — delegates all DB work to repositories."""
 
 from __future__ import annotations
+
 import json
-from typing import Optional, Set
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -12,17 +12,17 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user, get_optional_current_user
-from app.core.database import async_session, database_profile, get_db
 from app.core.config import settings
-from app.core.sqlite_retry import retry_sqlite_locked, is_sqlite_locked
+from app.core.database import async_session, database_profile, get_db
+from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
 from app.models.content import ContentItem
 from app.models.favorite import FavoriteTargetType
 from app.models.user import User
+from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.content_repo import ContentRepo
 from app.repositories.favorite_repo import FavoriteRepo
-from app.repositories.analysis_repo import AnalysisRepository
-from app.schemas.content import ContentResponse, ContentListResponse
 from app.schemas.analysis import AiAnalysisResponse
+from app.schemas.content import ContentListResponse, ContentResponse
 from app.services.content_list_cache import (
     ContentListCacheParams,
     get_cached_content_list,
@@ -58,7 +58,7 @@ class _LowLatencyBusyTimeout:
         self._db = db
         self._active = False
 
-    async def __aenter__(self) -> "_LowLatencyBusyTimeout":
+    async def __aenter__(self) -> _LowLatencyBusyTimeout:
         if database_profile.is_sqlite:
             try:
                 await self._db.execute(text(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_BATCH_MS}"))
@@ -175,8 +175,9 @@ async def list_contents(
     admin_view: bool = Query(False, description="Return management fields; admin only"),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    from app.repositories.ignored_repo import IgnoredRepo
     from datetime import timedelta
+
+    from app.repositories.ignored_repo import IgnoredRepo
 
     _require_admin_view(admin_view, current_user)
     include_raw_content = _is_admin(current_user)
@@ -444,7 +445,7 @@ async def get_enrichment(
         claimed_analysis.enrichment_status = "error"
         await db.commit()
         invalidate_content_read_caches()
-        raise HTTPException(500, f"Enrichment failed: {e}")
+        raise HTTPException(500, f"Enrichment failed: {e}") from e
 
 
 @router.post("/enrich-batch")
@@ -535,7 +536,7 @@ async def toggle_favorite(
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
+            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
         raise
     return {"is_favorited": next_value, "favorite_id": favorite_id}
 
@@ -565,7 +566,7 @@ async def ignore_content(
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
+            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
         raise
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
@@ -589,7 +590,7 @@ async def unignore_content(
     except OperationalError as exc:
         await db.rollback()
         if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
+            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
         raise
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": False, "removed": removed}

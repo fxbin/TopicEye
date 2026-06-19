@@ -39,14 +39,14 @@ logger = logging.getLogger(__name__)
 _cache_warmup_task: asyncio.Task | None = None
 
 # ── Structured logging (JSON for production aggregation) ──
-from app.core.logging_config import configure_logging
+from app.core.logging_config import configure_logging  # noqa: E402  — 在 basicConfig 之后
 
 _log_format = getattr(settings, "LOG_FORMAT", "text")
 configure_logging(log_format=_log_format)
 
 # ── Request-scoped ID (contextvar, safe for asyncio) ──
-import contextvars
-import uuid as _uuid
+import contextvars  # noqa: E402  — 在 configure_logging 之后
+import uuid as _uuid  # noqa: E402  — 同上
 
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
@@ -300,7 +300,7 @@ app.add_middleware(
 app.add_middleware(ProcessTimeHeaderMiddleware)
 
 # Rate limiting（内存滑动窗口，按 IP + 路径前缀分桶）
-from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware  # noqa: E402  — 路由挂载后装中间件
 
 app.add_middleware(RateLimitMiddleware)
 

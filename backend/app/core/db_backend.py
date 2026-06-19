@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Literal, Optional
+from typing import Literal
 
 from sqlalchemy.engine import URL, make_url
 

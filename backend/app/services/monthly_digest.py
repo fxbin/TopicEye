@@ -7,8 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone, UTC
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -17,13 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.monthly_digest import MonthlyDigest
-from app.services.digest_fallback import build_digest_fallback
 from app.services.digest_context import (
     build_category_stats,
     build_category_text,
     build_items_text,
     fetch_analyzed_content_with_expanded_window,
 )
+from app.services.digest_fallback import build_digest_fallback
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.monthly_digest import MONTHLY_DIGEST_PROMPT
 

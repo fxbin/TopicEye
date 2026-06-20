@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
 import json
-from typing import Optional
+import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.duckdb_service import query_today_picks, query_topics
 from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_items
+
+logger = logging.getLogger(__name__)
 
 TODAY_PICKS_THRESHOLD = 55
 
@@ -21,27 +23,44 @@ async def build_today_picks(
     hours: int = 48,
     limit: int | None = None,
 ) -> dict:
-    """Return today-picks payload through the fixed DuckDB analytical layer."""
-    _ = db
-    rows = query_today_picks(
-        hours=hours,
-        category=category,
-        limit=limit,
-        # DuckDB supplies candidates; the unified scorer below is the only final gate.
-        curation_threshold=0,
-    )
-    scored_rows = _score_rows(rows)
-    if not scored_rows:
-        return _empty_payload()
+    """Return today-picks payload through the fixed DuckDB analytical layer.
 
-    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in scored_rows]
-    topic_map = {topic["id"]: topic for topic in query_topics()}
-    return _dedupe_and_pack(
-        response_items,
-        topic_map,
-        duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
-        limit=limit,
-    )
+    DuckDB 是当前唯一数据源（OLTP 关系 schema 在 ATTACH 上读取）。
+    若 DuckDB 不可用（扩展缺失、ATTACH 失败、host 无法解析等），这里
+    捕获异常、记录带 stack trace 的 WARNING、并回退到空 payload，
+    避免把异常抛到 HTTP 层（用户看到 503 体验差）。
+    缓存层会存这次空结果，避免后续请求反复重试 DuckDB。
+    """
+    _ = db
+    try:
+        rows = query_today_picks(
+            hours=hours,
+            category=category,
+            limit=limit,
+            # DuckDB supplies candidates; the unified scorer below is the only final gate.
+            curation_threshold=0,
+        )
+        scored_rows = _score_rows(rows)
+        if not scored_rows:
+            return _empty_payload()
+
+        response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in scored_rows]
+        topic_map = {topic["id"]: topic for topic in query_topics()}
+        return _dedupe_and_pack(
+            response_items,
+            topic_map,
+            duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
+            limit=limit,
+        )
+    except Exception as exc:
+        # DuckDB 不可用：记带 stack trace 的 warning 便于排查（之前会静默吞
+        # 异常，运维看不到），UI 看到的就是"今日无数据"而不是错误码。
+        logger.warning(
+            "today_picks DuckDB analytical layer unavailable, returning empty payload: %s",
+            exc,
+            exc_info=True,
+        )
+        return _empty_payload()
 
 
 def _empty_payload() -> dict:

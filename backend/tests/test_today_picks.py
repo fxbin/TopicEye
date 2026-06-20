@@ -1,9 +1,9 @@
 import json
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 from fastapi import FastAPI
-import httpx
 
 from app.api.v1 import contents as contents_api
 from app.repositories.content_repo import ContentRepo
@@ -306,4 +306,37 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
 
     assert failed.status_code == 503
     assert json.loads(failed.text)["detail"] == "DuckDB analytical layer unavailable"
+    invalidate_json_cache()
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkeypatch, caplog):
+    """DuckDB 抛错（host 解析失败、ATTACH 失败等）时，build_today_picks 不应
+    向上抛异常，而应回退到空 payload 并记录带 stack trace 的 WARNING，让
+    UI 看到"今日无数据"而不是 503/错误页，且运维能 grep 日志定位。
+    """
+    import logging
+
+    def fail_query(**_kwargs):
+        raise OSError("Unable to connect to Postgres at host=postgres: nodename nor servname provided")
+
+    monkeypatch.setattr(today_picks, "query_today_picks", fail_query)
+    # 防御性 patch：若 query_topics 误调成功路径也会被这里兜住
+    monkeypatch.setattr(today_picks, "query_topics", fail_query)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.today_picks"):
+        payload = await today_picks.build_today_picks(FailingSession(), hours=48, limit=20)
+
+    assert payload == {
+        "items": [],
+        "total": 0,
+        "duplicates_hidden": 0,
+        "topics": [],
+        "page": 1,
+        "page_size": 0,
+    }
+    # 至少一条 WARNING 带 exc_info（即 stack trace 写进了日志）
+    fallback_logs = [r for r in caplog.records if "today_picks" in r.message and "unavailable" in r.message]
+    assert fallback_logs, "expected a fallback warning log"
+    assert all(r.exc_info is not None for r in fallback_logs), "fallback log must include exc_info"
     invalidate_json_cache()

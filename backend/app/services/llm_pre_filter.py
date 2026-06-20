@@ -14,6 +14,7 @@ LLM 之前的规则过滤层（参照 content-signal-radar 设计）。
 
 后续可加 needsReview（半 LLM 化）作为 PromptContext 传给 LLM。
 """
+
 from __future__ import annotations
 
 import logging
@@ -122,11 +123,20 @@ def apply_pre_filter(content: ContentItem) -> bool:
     """
     global _skip_count
     skip, reason = should_skip_analysis(content)
+    # 关键:不 skip 时也要显式写 False。新建 ContentItem 对象的 instance
+    # attribute 默认是 None,如果 INSERT 时 SQLAlchemy 把 None 发到 NOT NULL 列,
+    # PG 会拒收(NotNullViolationError: null value in column "skip_analysis")。
+    # 显式写 False 让 INSERT 携带明确值,绕过 instance 未刷新的歧义。
     if skip:
         content.skip_analysis = True
         content.skip_reason = reason
         _skip_count += 1
         logger.debug(
-            "LLM pre-filter: skipping content id=%d (%s)", content.id, reason,
+            "LLM pre-filter: skipping content id=%d (%s)",
+            content.id,
+            reason,
         )
+    else:
+        content.skip_analysis = False
+        content.skip_reason = None
     return skip

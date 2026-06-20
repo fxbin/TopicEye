@@ -223,18 +223,31 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Default source seed skipped by config")
 
-    # Initialize DuckDB analytical layer (in-memory + ATTACH SQLite)
+    # Initialize DuckDB analytical layer (in-memory + ATTACH SQLite/Postgres)
+    # 关键:analytics.available 是同步 @property,内部要执行 INSTALL/LOAD 扩展 +
+    # ATTACH + 跨引擎 SELECT。这些都是 C 同步调用,直接在 event loop 上跑会冻死
+    # uvicorn lifespan,导致 scheduler 永远不起。
+    # 修复:asyncio.to_thread 推 worker thread + asyncio.wait_for 30s 超时。
+    # 即使 DuckDB 真的挂了,30s 后也会放弃,scheduler 仍能起来,_rescan_sources
+    # 10 分钟一次的自愈也能跑。today_picks 在 DuckDB 不可用时走 commit 1a69db9
+    # 加的 OLTP fallback 兜底。
     try:
         from app.services.duckdb_service import get_analytics
 
         analytics = get_analytics()
-        if analytics.available:
+        available = await asyncio.wait_for(
+            asyncio.to_thread(lambda: analytics.available),
+            timeout=30.0,
+        )
+        if available:
             logger.info(
                 "DuckDB analytical layer initialized (ATTACH %s READ_ONLY)",
                 database_profile.backend,
             )
         else:
             logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
+    except TimeoutError:
+        logger.warning("DuckDB init timed out (30s) — falling back to SQLAlchemy queries")
     except Exception as e:
         logger.warning("DuckDB init skipped: %s — falling back to SQLAlchemy queries", e)
 

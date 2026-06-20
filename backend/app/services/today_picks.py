@@ -16,7 +16,6 @@ from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_item
 
 logger = logging.getLogger(__name__)
 
-TODAY_PICKS_THRESHOLD = 55
 # OLTP fallback 拉取上限：避免一次拉到几万条无分析记录
 _OLTP_FALLBACK_CANDIDATE_LIMIT = 200
 # 与 SCORING_CONFIG["risk_threshold"] 对齐；这里硬编码避免循环 import
@@ -207,11 +206,12 @@ def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
     ]
     row_map = {item.content_id: row for item, row in input_rows}
     scored = score_items([item for item, _row in input_rows])
-    return [
-        (breakdown, row_map[item.content_id])
-        for breakdown, item in scored
-        if breakdown.selected and breakdown.final_score >= TODAY_PICKS_THRESHOLD
-    ]
+    # breakdown.selected 已包含所有 gate（curation threshold / min base score /
+    # quality_factor / risk_factor）。score_items 内部按 CONFIG["curation_mode"]
+    # 决定用固定阈值还是百分位阈值；percentile 模式下实际阈值可能是 18
+    # （P70 of all final_scores），再用硬编码 55 兜底会把 percentile 选出来的
+    # 全部过滤掉。直接用 breakdown.selected 即可。
+    return [(breakdown, row_map[item.content_id]) for breakdown, item in scored if breakdown.selected]
 
 
 def _row_to_scoring_input(row: dict) -> ScoringInput:

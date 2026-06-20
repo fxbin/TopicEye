@@ -438,3 +438,80 @@ async def test_build_today_picks_duckdb_failure_falls_back_to_oltp(monkeypatch):
     assert item_out["source_name"] == "测试信源"
     assert item_out["analysis"]["curation_score"] == 88.0
     assert item_out["analysis"]["creator_score"] == 86.0
+
+
+def test_score_rows_does_not_double_filter_with_today_picks_threshold():
+    """回归:percentile 模式下被 score_items 选中的项不应再被硬阈值 55 误过滤。
+
+    场景:3 天前抓的数据,time_decay_floor 0.3 导致 final_score 偏低(~20)。
+    score_items 在 percentile 模式下(默认 P70)选 P70 及以上的项,实际阈值 ~18;
+    之前 _score_rows 又加了 `final_score >= 55` 兜底,把 percentile 选出的 394 条
+    全部过滤掉,today_picks 永远空。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.services.scoring_engine import ScoringInput, score_items
+
+    now = datetime.now(UTC)
+    crawled_at = (now - timedelta(days=3)).isoformat()
+    inputs = []
+    for i in range(100):
+        inputs.append(
+            ScoringInput(
+                content_id=i,
+                title=f"样本 {i}",
+                category="AI",
+                source_id=1,
+                source_name="test",
+                published_at=crawled_at,
+                crawled_at=crawled_at,
+                curation_score=80.0,
+                info_density=80.0,
+                actionability=80.0,
+                source_weight=72.0,
+                creator_score=80.0,
+                viral_score=70.0,
+                risk_score=10.0,
+                quality_score=80.0,
+                hot_score=60.0,
+                freshness_score=80.0,
+                source_weight_db=3,
+                feedback_score=0,
+            )
+        )
+    scored = score_items(inputs)
+    selected_in_engine = [bd for bd, _ in scored if bd.selected]
+    assert len(selected_in_engine) > 0, "score_items 应在 percentile 模式选中一些项"
+
+    # 关键:_score_rows 出来的结果数应该和 score_items 的 selected 数一致,
+    # 不应该再被一个硬阈值 55 二次过滤
+    rows = [
+        {
+            "id": i,
+            "title": f"样本 {i}",
+            "category": "AI",
+            "source_id": 1,
+            "source_name": "test",
+            "source_type": "RSS",
+            "published_at": crawled_at,
+            "crawled_at": crawled_at,
+            "curation_score": 80.0,
+            "info_density": 80.0,
+            "actionability": 80.0,
+            "analysis_source_weight": 72.0,
+            "creator_score": 80.0,
+            "viral_score": 70.0,
+            "risk_score": 10.0,
+            "quality_score": 80.0,
+            "hot_score": 60.0,
+            "freshness_score": 80.0,
+            "source_weight_db": 3,
+            "feedback_score": 0,
+            "duplicate_of": None,
+        }
+        for i in range(100)
+    ]
+    out = today_picks._score_rows(rows)
+    assert len(out) == len(
+        selected_in_engine
+    ), f"_score_rows ({len(out)}) 不应再过滤掉 score_items 选中的 {len(selected_in_engine)} 条"

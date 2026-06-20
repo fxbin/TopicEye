@@ -17,22 +17,21 @@ Job tracking:
 
 from __future__ import annotations
 
-from typing import Optional
-
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.repositories.source_repo import SourceRepository
 from app.repositories.content_repo import ContentRepo
-from app.services.content_pipeline import ingest_from_source
+from app.repositories.source_repo import SourceRepository
 from app.services.analysis import analyze_batch_concurrent
+from app.services.content_pipeline import ingest_from_source
 from app.services.job_tracker import track_job
 
 logger = logging.getLogger(__name__)
@@ -449,11 +448,18 @@ async def _rescan_sources() -> None:
     Also self-heals sources stuck in SYNCING past their lease — this happens
     when a sync job was killed (SIGTERM / crash) after claim_sync committed
     status=SYNCING but before ingest completed.
+
+    Self-heal 流程:
+    1. UPDATE DB 把 stale SYNCING 重置为 ACTIVE(脱离死锁状态)
+    2. scheduler.add_job(..., next_run_time=now) 立即重跑这些 source
+       (避免只 reset 不重试,导致数据持续真空)
     """
+    healed_source_ids: list[int] = []
     async with async_session() as db:
         # ── Self-heal: reset stale SYNCING sources ──
         stale_cutoff = datetime.now(UTC) - timedelta(seconds=int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3)
         from sqlalchemy import update as sa_update
+
         from app.models.source import Source, SourceStatus
 
         heal_result = await db.execute(
@@ -463,13 +469,15 @@ async def _rescan_sources() -> None:
                 Source.last_sync_at < stale_cutoff,
             )
             .values(status=SourceStatus.ACTIVE, sync_error="auto-reset from stale SYNCING")
+            .returning(Source.id)
         )
-        healed = heal_result.rowcount
-        if healed:
+        healed_source_ids = [row[0] for row in heal_result.fetchall()]
+        if healed_source_ids:
             await db.commit()
             logger.warning(
-                "Scheduler: self-healed %d source(s) stuck in SYNCING (>3x lease)",
-                healed,
+                "Scheduler: self-healed %d source(s) stuck in SYNCING (>3x lease): ids=%s",
+                len(healed_source_ids),
+                healed_source_ids,
             )
 
         # ── Alert: sources with status=ERROR (连续失败) ──
@@ -501,6 +509,33 @@ async def _rescan_sources() -> None:
         if job_id.startswith(source_job_prefix) and job_id not in db_source_ids:
             scheduler.remove_job(job_id)
             logger.info("Scheduler: removed job %s (source disabled)", job_id)
+
+    # ── Self-heal retry: 立即重跑刚被 heal 的 source,避免数据持续真空 ──
+    # 用 next_run_time=now 让 add_job 不走"下次 interval"等待,
+    # 直接进入队列。run_date 已弃用,DateTrigger 替代。
+    if healed_source_ids:
+        for source_id in healed_source_ids:
+            job_id = f"{source_job_prefix}{source_id}"
+            # 防重复:如果同 id 的 job 已存在(且没在跑),先 remove 再 add
+            if scheduler.get_job(job_id):
+                scheduler.remove_job(job_id)
+            try:
+                scheduler.add_job(
+                    _sync_single_source,
+                    trigger=DateTrigger(run_date=datetime.now(UTC)),
+                    args=[source_id],
+                    id=job_id,
+                    name=f"Heal-retry source {source_id}",
+                    replace_existing=False,
+                    misfire_grace_time=30,
+                )
+                logger.info("Scheduler: scheduled immediate heal-retry for source %d", source_id)
+            except Exception as e:
+                logger.warning(
+                    "Scheduler: failed to schedule heal-retry for source %d: %s",
+                    source_id,
+                    e,
+                )
 
     for source in sources:
         job_id = f"{source_job_prefix}{source.id}"
@@ -687,10 +722,11 @@ async def _generate_daily_report_final() -> None:
 async def _list_pro_users_with_private_sources() -> list[int]:
     """Return user ids that (a) are Pro/Studio/Enterprise and (b) have at
     least one enabled private source."""
-    from sqlalchemy import select, exists, and_
+    from sqlalchemy import and_, exists, select
+
     from app.core.database import async_session
-    from app.models.user import User
     from app.models.source import Source
+    from app.models.user import User
 
     async with async_session() as db:
         stmt = (
@@ -719,15 +755,14 @@ async def _generate_user_daily_reports() -> None:
     LLM gateway. Each user is isolated in its own try/except so one
     failure does not block the rest.
     """
-    from app.core.database import async_session
     from datetime import date as _date_cls
+
+    from app.core.database import async_session
     from app.services.daily_report import (
         _day_window,
         _edition_for_now,
         generate_daily_report,
     )
-    from app.models.daily_report import DailyReport
-    from sqlalchemy import select
 
     user_ids = await _list_pro_users_with_private_sources()
     if not user_ids:

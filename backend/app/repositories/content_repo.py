@@ -11,16 +11,17 @@ Extends BaseRepository with content-specific queries:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone, UTC
-from dataclasses import dataclass
-from typing import Any, Optional
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any
 
-from sqlalchemy import or_, select, update, func, exists
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import database_profile
+from app.core.db_backend import now_naive_utc
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.content import ContentItem, ContentStatus
 from app.repositories.analysis_queries import latest_analysis_id_subquery
@@ -110,7 +111,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         hours: int | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch recent pending or stale analyzing items for analysis, newest collected first."""
-        stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+        stale_cutoff = now_naive_utc() - timedelta(minutes=ANALYSIS_STALE_MINUTES)
         stmt = (
             select(self.model)
             .where(
@@ -122,7 +123,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .limit(limit)
         )
         if hours is not None:
-            stmt = stmt.where(self.model.crawled_at >= datetime.now(UTC) - timedelta(hours=hours))
+            stmt = stmt.where(self.model.crawled_at >= now_naive_utc() - timedelta(hours=hours))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -138,8 +139,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
 
-            stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
-            claimed_at = datetime.now(UTC)
+            stale_cutoff = now_naive_utc() - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+            claimed_at = now_naive_utc()
             stmt = (
                 select(self.model.id)
                 .where(
@@ -153,7 +154,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 .limit(limit)
             )
             if hours is not None:
-                stmt = stmt.where(self.model.crawled_at >= datetime.now(UTC) - timedelta(hours=hours))
+                stmt = stmt.where(self.model.crawled_at >= now_naive_utc() - timedelta(hours=hours))
             if database_profile.is_postgresql:
                 stmt = stmt.with_for_update(skip_locked=True)
 
@@ -204,11 +205,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         Bulk-update status for multiple items.
         Returns the number of rows matched.
         """
-        stmt = (
-            update(self.model)
-            .where(self.model.id.in_(ids))
-            .values(status=status, updated_at=datetime.now(UTC))
-        )
+        stmt = update(self.model).where(self.model.id.in_(ids)).values(status=status, updated_at=now_naive_utc())
         result = await self.db.execute(stmt)
         await self.db.flush()
         return result.rowcount
@@ -221,7 +218,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             update(self.model)
             .where(self.model.id.in_(ids))
             .where(self.model.status == ContentStatus.ANALYZING)
-            .values(status=ContentStatus.PENDING, updated_at=datetime.now(UTC))
+            .values(status=ContentStatus.PENDING, updated_at=now_naive_utc())
         )
         result = await self.db.execute(stmt)
         await self.db.flush()
@@ -301,7 +298,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         """删除超过指定天数的 pending 状态内容。返回删除数量。"""
         from sqlalchemy import delete as sa_delete
 
-        cutoff = datetime.now(UTC) - timedelta(days=cutoff_days)
+        cutoff = now_naive_utc() - timedelta(days=cutoff_days)
         stmt = (
             sa_delete(self.model)
             .where(self.model.status == ContentStatus.PENDING)
@@ -459,9 +456,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         (``owner_user_id IS NULL``) or content owned by that user. ``None``
         means no visibility filter (batch/internal callers).
         """
+        from datetime import datetime as dt, timedelta
+
         from app.models.analysis import AiAnalysis
         from app.services.scoring_engine import CONFIG as SCORING_CONFIG
-        from datetime import datetime as dt, timedelta
 
         cutoff = dt.utcnow() - timedelta(hours=hours)
         risk_threshold = float(SCORING_CONFIG["risk_threshold"])
@@ -550,6 +548,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         matching filters (for correct pagination total).
         """
         from sqlalchemy import func, select
+
         from app.models.analysis import AiAnalysis
 
         latest_analysis_id = self._latest_analysis_id_subquery(AiAnalysis)

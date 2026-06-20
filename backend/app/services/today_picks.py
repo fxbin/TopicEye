@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.models.content import ContentItem
 from app.services.duckdb_service import query_today_picks, query_topics
 from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_items
 
 logger = logging.getLogger(__name__)
 
 TODAY_PICKS_THRESHOLD = 55
+# OLTP fallback 拉取上限：避免一次拉到几万条无分析记录
+_OLTP_FALLBACK_CANDIDATE_LIMIT = 200
+# 与 SCORING_CONFIG["risk_threshold"] 对齐；这里硬编码避免循环 import
+_OLTP_FALLBACK_RISK_THRESHOLD = 50.0
 
 
 async def build_today_picks(
@@ -23,15 +30,18 @@ async def build_today_picks(
     hours: int = 48,
     limit: int | None = None,
 ) -> dict:
-    """Return today-picks payload through the fixed DuckDB analytical layer.
+    """Return today-picks payload through DuckDB, with OLTP fallback.
 
-    DuckDB 是当前唯一数据源（OLTP 关系 schema 在 ATTACH 上读取）。
-    若 DuckDB 不可用（扩展缺失、ATTACH 失败、host 无法解析等），这里
-    捕获异常、记录带 stack trace 的 WARNING、并回退到空 payload，
-    避免把异常抛到 HTTP 层（用户看到 503 体验差）。
-    缓存层会存这次空结果，避免后续请求反复重试 DuckDB。
+    首选 DuckDB（OLTP schema 通过 ATTACH 直接读，含 feedback_score 聚合、
+    source_weight 加成、ignored 过滤）。
+
+    若 DuckDB 不可用（扩展缺失、ATTACH 失败、host 无法解析等），降级到
+    ``_build_today_picks_via_oltp``：走 SQLAlchemy 拉 ContentItem + analyses，
+    输出与 DuckDB 路径**完全一致**的 row dict 结构，便于 scoring / payload
+    构造代码复用。降级路径会少几个 DuckDB-only 字段（feedback_score=0、
+    duplicate_of=None、source_weight 加成关闭），得分会偏低但**有数据**。
     """
-    _ = db
+    duckdb_exc: Exception | None = None
     try:
         rows = query_today_picks(
             hours=hours,
@@ -40,27 +50,144 @@ async def build_today_picks(
             # DuckDB supplies candidates; the unified scorer below is the only final gate.
             curation_threshold=0,
         )
-        scored_rows = _score_rows(rows)
-        if not scored_rows:
-            return _empty_payload()
-
-        response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in scored_rows]
-        topic_map = {topic["id"]: topic for topic in query_topics()}
-        return _dedupe_and_pack(
-            response_items,
-            topic_map,
-            duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
-            limit=limit,
-        )
     except Exception as exc:
-        # DuckDB 不可用：记带 stack trace 的 warning 便于排查（之前会静默吞
-        # 异常，运维看不到），UI 看到的就是"今日无数据"而不是错误码。
+        duckdb_exc = exc
         logger.warning(
-            "today_picks DuckDB analytical layer unavailable, returning empty payload: %s",
+            "today_picks DuckDB analytical layer unavailable, falling back to OLTP query: %s",
             exc,
             exc_info=True,
         )
+        try:
+            rows = await _build_today_picks_via_oltp(db, hours=hours, category=category, limit=limit)
+        except Exception as oltp_exc:
+            # OLTP 路径也挂了：记双错误，回退到空 payload（避免 5xx）
+            logger.error(
+                "today_picks OLTP fallback also failed: %s (original DuckDB error: %s)",
+                oltp_exc,
+                duckdb_exc,
+                exc_info=True,
+            )
+            return _empty_payload()
+
+    scored_rows = _score_rows(rows)
+    if not scored_rows:
         return _empty_payload()
+
+    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in scored_rows]
+    try:
+        topic_map = {topic["id"]: topic for topic in query_topics()}
+    except Exception as exc:
+        # topics 拉取失败：不阻塞主结果，只是不带话题关联
+        logger.warning("today_picks query_topics failed, continuing without topics: %s", exc, exc_info=True)
+        topic_map = {}
+
+    return _dedupe_and_pack(
+        response_items,
+        topic_map,
+        duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
+        limit=limit,
+    )
+
+
+async def _build_today_picks_via_oltp(
+    db: AsyncSession,
+    *,
+    hours: int,
+    category: str | None,
+    limit: int | None,
+) -> list[dict]:
+    """OLTP fallback：直接走 SQLAlchemy 拉 ContentItem + analyses，
+    输出与 ``query_today_picks`` 一致的 row dict，便于 scoring 复用。
+
+    简化点（vs DuckDB 路径）:
+    - 无 ignored 过滤（数据量小时影响不大）
+    - 无 feedback_score 聚合（=0）
+    - 无 source_weight 加成（adjusted_curation_score = curation_score 原值）
+    - 一次拉 _OLTP_FALLBACK_CANDIDATE_LIMIT 条，由统一 scorer 决定最终入选
+    """
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    fetch_limit = min(limit * 5, _OLTP_FALLBACK_CANDIDATE_LIMIT) if limit else _OLTP_FALLBACK_CANDIDATE_LIMIT
+
+    stmt = (
+        select(ContentItem)
+        .options(
+            selectinload(ContentItem.analyses),
+            selectinload(ContentItem.source),
+        )
+        .where(ContentItem.crawled_at >= cutoff)
+        .order_by(ContentItem.crawled_at.desc())
+        .limit(fetch_limit)
+    )
+    if category:
+        stmt = stmt.where(ContentItem.category == category)
+
+    result = await db.execute(stmt)
+    items = result.scalars().unique().all()
+
+    rows: list[dict] = []
+    for item in items:
+        if not item.analyses:
+            continue
+        # analyses 关系已按 (created_at, id) 排序（model 端配置）
+        latest = item.analyses[-1]
+        if latest.curation_score is None:
+            continue
+        if latest.risk_score is not None and latest.risk_score > _OLTP_FALLBACK_RISK_THRESHOLD:
+            continue
+
+        source = item.source
+        source_weight_db = source.weight if source else 3
+
+        rows.append(
+            {
+                "id": item.id,
+                "title": item.title or "",
+                "url": item.url or "",
+                "source_id": item.source_id,
+                "source_name": source.name if source else None,
+                "source_type": str(item.source_type) if item.source_type else None,
+                "platform": None,
+                "author": None,
+                "published_at": item.published_at.isoformat() if item.published_at else None,
+                "crawled_at": item.crawled_at.isoformat() if item.crawled_at else None,
+                "content_hash": item.content_hash,
+                "summary": item.summary,
+                "raw_content": item.raw_content,
+                "cover_url": item.cover_url,
+                "category": item.category,
+                "tags": item.tags,
+                "language": item.language,
+                "status": str(item.status) if item.status else "analyzed",
+                "is_favorited": bool(item.is_favorited),
+                "topic_id": item.topic_id,
+                "duplicate_of": None,  # OLTP 不跑 dedup join
+                "similarity_score": None,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                "analysis_id": latest.id,
+                "analysis_created_at": latest.created_at.isoformat(),
+                "quality_score": latest.quality_score or 0,
+                "hot_score": latest.hot_score or 0,
+                "freshness_score": latest.freshness_score or 0,
+                "creator_score": latest.creator_score or 0,
+                "viral_score": latest.viral_score or 0,
+                "risk_score": latest.risk_score or 0,
+                "curation_score": latest.curation_score or 0,
+                "info_density": latest.info_density or 0,
+                "actionability": latest.actionability or 0,
+                "recommended_reason": latest.recommended_reason,
+                "recommendation": latest.recommendation,
+                "ai_summary": latest.summary,
+                "ai_tags": latest.tags,
+                "enrichment_status": latest.enrichment_status,
+                "enrichment": latest.enrichment,
+                "analysis_source_weight": None,  # OLTP 不存这个字段
+                "source_weight_db": source_weight_db,
+                "feedback_score": 0,  # OLTP 不做 user_feedback 聚合
+                "adjusted_curation_score": latest.curation_score or 0,  # 无加成
+            }
+        )
+    return rows
 
 
 def _empty_payload() -> dict:

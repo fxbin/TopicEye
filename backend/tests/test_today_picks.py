@@ -340,3 +340,101 @@ async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkey
     assert fallback_logs, "expected a fallback warning log"
     assert all(r.exc_info is not None for r in fallback_logs), "fallback log must include exc_info"
     invalidate_json_cache()
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_duckdb_failure_falls_back_to_oltp(monkeypatch):
+    """DuckDB 失败时，build_today_picks 应走 OLTP fallback 返回真实数据。
+
+    核心价值：本地开发 host=postgres 解析不到、ATTACH 失败时，UI 仍能看到
+    选题，不只是空 payload。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import Base
+    from app.models.analysis import AiAnalysis
+    from app.models.content import ContentItem, ContentStatus
+    from app.models.source import Source, SourceStatus, SourceType
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    now = datetime.now(UTC)
+    crawled_at = now - timedelta(hours=2)
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        source = Source(
+            name="测试信源",
+            source_type=SourceType.RSS,
+            url="https://example.com/feed",
+            weight=5,
+            status=SourceStatus.ACTIVE,
+        )
+        db.add(source)
+        await db.flush()
+
+        # 高分样本：应入选（curation_score 88、creator_score 86，最终 final > 55）
+        db.add(
+            ContentItem(
+                title="高质量样本",
+                url="https://example.com/pick-1",
+                source_id=source.id,
+                source_type=SourceType.RSS,
+                crawled_at=crawled_at,
+                published_at=crawled_at,
+                category="AI",
+                status=ContentStatus.ANALYZED,
+                created_at=crawled_at,
+                updated_at=crawled_at,
+            )
+        )
+        await db.flush()
+        # 重新查一遍拿到 id
+        from sqlalchemy import select
+
+        item = (await db.execute(select(ContentItem).order_by(ContentItem.id.desc()))).scalars().first()
+        db.add(
+            AiAnalysis(
+                content_id=item.id,
+                quality_score=80.0,
+                hot_score=75.0,
+                freshness_score=90.0,
+                creator_score=86.0,
+                viral_score=70.0,
+                risk_score=15.0,
+                curation_score=88.0,
+                info_density=82.0,
+                actionability=78.0,
+                summary="AI 摘要",
+                tags=["AI"],
+                recommended_reason="值得写",
+                recommendation="可作为创作者选题",
+                source_weight=72.0,
+                created_at=now,
+            )
+        )
+        await db.commit()
+
+    # DuckDB 路径强制失败
+    def fail_query(**_kwargs):
+        raise OSError("Unable to connect to Postgres at host=postgres")
+
+    monkeypatch.setattr(today_picks, "query_today_picks", fail_query)
+    monkeypatch.setattr(today_picks, "query_topics", fail_query)
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        payload = await today_picks.build_today_picks(db, hours=48, limit=20)
+
+    await engine.dispose()
+    invalidate_json_cache()
+
+    # OLTP fallback 应返回真实数据，不再是空
+    assert payload["total"] >= 1, f"OLTP fallback returned empty; payload={payload}"
+    assert payload["page_size"] >= 1
+    item_out = payload["items"][0]
+    assert item_out["title"] == "高质量样本"
+    assert item_out["source_name"] == "测试信源"
+    assert item_out["analysis"]["curation_score"] == 88.0
+    assert item_out["analysis"]["creator_score"] == 86.0

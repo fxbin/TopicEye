@@ -23,7 +23,6 @@ from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
@@ -516,25 +515,25 @@ async def _rescan_sources() -> None:
     if healed_source_ids:
         for source_id in healed_source_ids:
             job_id = f"{source_job_prefix}{source_id}"
-            # 防重复:如果同 id 的 job 已存在(且没在跑),先 remove 再 add
-            if scheduler.get_job(job_id):
-                scheduler.remove_job(job_id)
-            try:
-                scheduler.add_job(
-                    _sync_single_source,
-                    trigger=DateTrigger(run_date=datetime.now(UTC)),
-                    args=[source_id],
-                    id=job_id,
-                    name=f"Heal-retry source {source_id}",
-                    replace_existing=False,
-                    misfire_grace_time=30,
-                )
-                logger.info("Scheduler: scheduled immediate heal-retry for source %d", source_id)
-            except Exception as e:
-                logger.warning(
-                    "Scheduler: failed to schedule heal-retry for source %d: %s",
+            existing = scheduler.get_job(job_id)
+            if existing:
+                # 复用既存 IntervalTrigger job,只把 next_run_time 改 now。
+                # 不要 add 新 DateTrigger job — 下方 rescan 主循环 (line 547)
+                # 会扫 job.trigger.interval,DateTrigger 没有 interval 属性会 AttributeError。
+                try:
+                    scheduler.modify_job(job_id, next_run_time=datetime.now(UTC))
+                    logger.info("Scheduler: heal-retry rescheduled source %d (now)", source_id)
+                except Exception as e:
+                    logger.warning(
+                        "Scheduler: failed to reschedule heal-retry for source %d: %s",
+                        source_id,
+                        e,
+                    )
+            else:
+                # 没有既存 job(冷启动场景),下方 rescan 主循环会 add_job 加上
+                logger.info(
+                    "Scheduler: source %d healed, will be added by main rescan loop",
                     source_id,
-                    e,
                 )
 
     for source in sources:

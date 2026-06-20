@@ -112,6 +112,45 @@ def should_retry_stats_warmup(errors: list[str]) -> bool:
     return any(error.startswith("stats:") for error in errors)
 
 
+# DuckDB init 的同步 C 调用超时上限。analytics.available 在某些环境下
+# (如 ATTACH 时另一个进程持写锁、扩展下载被 GFW 阻断)会永久阻塞,
+# 推 worker thread + 超时兜底保证 lifespan 不会卡死。
+_DUCKDB_INIT_TIMEOUT_SECONDS = 30.0
+
+
+async def _init_duckdb_layer() -> bool:
+    """Initialize DuckDB analytical layer with hard timeout.
+
+    Returns:
+        True if DuckDB ATTACH succeeded; False on timeout/error (degraded
+        mode — scheduler / today_picks OLTP fallback still work).
+
+    The actual ``analytics.available`` is a sync @property that runs C
+    bindings (INSTALL extension, ATTACH, cross-engine SELECT). Putting it
+    directly in the asyncio event loop freezes uvicorn lifespan forever.
+    Pushing it to a worker thread + wait_for(N) keeps the event loop
+    alive even when DuckDB is wedged.
+    """
+    from app.services.duckdb_service import get_analytics
+
+    analytics = get_analytics()
+    try:
+        available = await asyncio.wait_for(
+            asyncio.to_thread(lambda: analytics.available),
+            timeout=_DUCKDB_INIT_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "DuckDB init timed out (%.0fs) — falling back to SQLAlchemy queries",
+            _DUCKDB_INIT_TIMEOUT_SECONDS,
+        )
+        return False
+    except Exception as e:  # noqa: BLE001
+        logger.warning("DuckDB init skipped: %s — falling back to SQLAlchemy queries", e)
+        return False
+    return bool(available)
+
+
 def ensure_runtime_secret_safety() -> None:
     """Fail fast when production would encrypt user secrets with the public dev key."""
     secret_material = (settings.INTEGRATION_SECRET_KEY or settings.APP_SECRET_KEY or "").strip()
@@ -231,25 +270,14 @@ async def lifespan(app: FastAPI):
     # 即使 DuckDB 真的挂了,30s 后也会放弃,scheduler 仍能起来,_rescan_sources
     # 10 分钟一次的自愈也能跑。today_picks 在 DuckDB 不可用时走 commit 1a69db9
     # 加的 OLTP fallback 兜底。
-    try:
-        from app.services.duckdb_service import get_analytics
-
-        analytics = get_analytics()
-        available = await asyncio.wait_for(
-            asyncio.to_thread(lambda: analytics.available),
-            timeout=30.0,
+    available = await _init_duckdb_layer()
+    if available:
+        logger.info(
+            "DuckDB analytical layer initialized (ATTACH %s READ_ONLY)",
+            database_profile.backend,
         )
-        if available:
-            logger.info(
-                "DuckDB analytical layer initialized (ATTACH %s READ_ONLY)",
-                database_profile.backend,
-            )
-        else:
-            logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
-    except asyncio.TimeoutError:
-        logger.warning("DuckDB init timed out (30s) — falling back to SQLAlchemy queries")
-    except Exception as e:
-        logger.warning("DuckDB init skipped: %s — falling back to SQLAlchemy queries", e)
+    else:
+        logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
 
     # Start the periodic scheduler
     if settings.SCHEDULER_ENABLED:

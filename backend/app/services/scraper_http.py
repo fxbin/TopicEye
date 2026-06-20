@@ -20,7 +20,6 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-
 # 浏览器-like UA 提升与公开 RSS/Atom 服务的兼容性（部分服务拒绝 default
 # Python-httpx UA，返回 403/406）
 _DEFAULT_USER_AGENT = "TopicEye/1.0 (+https://topiceye.example.com) Python-httpx"
@@ -52,7 +51,10 @@ def build_scraper_client_kwargs(
         304 and skip body transfer.
     """
     client_kwargs: dict[str, Any] = {
-        "timeout": 30,
+        # 单次 fetch 超时。原硬编码 30s 偏长,Wired 等慢站会拖到 sync 整体
+        # 120s 超时,堵塞 worker。改为可配(默认 15s),给慢站快速 fail 路径。
+        # 真正慢但内容重要的 source 可在 DB source 表的 settings 里覆写。
+        "timeout": float(os.environ.get("RSS_SCRAPER_TIMEOUT_SECONDS", "15")),
         "follow_redirects": True,
         "trust_env": False,
         "headers": {

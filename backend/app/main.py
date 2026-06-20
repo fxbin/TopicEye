@@ -56,16 +56,21 @@ def get_request_id() -> str:
     return _request_id_ctx.get()
 
 
-class RequestIdFilter(logging.Filter):
-    """Inject request_id into every LogRecord for structured logging."""
+# We inject ``request_id`` via a LogRecord factory rather than a Filter on
+# the root logger. Filters attached to a parent logger only run for records
+# the parent itself emits — records from child loggers (``app.core.migrations``,
+# ``alembic.*``, etc.) bubble up to the root *handler* without going through
+# the root logger's filter chain, so ``%(request_id)s`` in the text formatter
+# would raise ``KeyError: 'request_id'`` for every such record. A factory
+# runs for *every* LogRecord, regardless of which logger created it, so the
+# attribute is always present.
+def _request_id_log_record_factory(*args, **kwargs):
+    record = logging.LogRecord(*args, **kwargs)
+    record.request_id = _request_id_ctx.get()
+    return record
 
-    def filter(self, record):
-        record.request_id = _request_id_ctx.get()
-        return True
 
-
-# Apply filter globally so all loggers get request_id
-logging.getLogger().addFilter(RequestIdFilter())
+logging.setLogRecordFactory(_request_id_log_record_factory)
 
 
 class ProcessTimeHeaderMiddleware:

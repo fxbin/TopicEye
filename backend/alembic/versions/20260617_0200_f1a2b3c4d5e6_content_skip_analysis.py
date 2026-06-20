@@ -23,12 +23,16 @@ depends_on = None
 
 def upgrade() -> None:
     with op.batch_alter_table("content_items", schema=None) as batch_op:
+        # PostgreSQL is strict about boolean defaults: literal `0` is an int and
+        # fails with "column ... is of type boolean but default expression is of
+        # type integer". `false` is the portable boolean literal across SQLite
+        # and PostgreSQL.
         batch_op.add_column(
             sa.Column(
                 "skip_analysis",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 comment="True 时不进 LLM 队列（参照 content-signal-radar lowSignalPenalty）",
             )
         )

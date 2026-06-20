@@ -246,7 +246,7 @@ async def lifespan(app: FastAPI):
             )
         else:
             logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning("DuckDB init timed out (30s) — falling back to SQLAlchemy queries")
     except Exception as e:
         logger.warning("DuckDB init skipped: %s — falling back to SQLAlchemy queries", e)

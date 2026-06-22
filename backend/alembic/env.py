@@ -22,38 +22,44 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from app.core.config import settings  # noqa: E402
-from app.core.database import Base  # noqa: E402
-from app.core.db_backend import create_database_profile  # noqa: E402
-
 # Register every ORM table onto Base.metadata (must match app/main.py imports
 # so autogenerate sees the full schema and create_all parity holds).
 import app.models  # noqa: F401, E402  — triggers models/__init__.py
-import app.models.daily_report  # noqa: F401, E402
+import app.models.analysis_job  # noqa: F401, E402
 import app.models.category  # noqa: F401, E402
-import app.models.feedback  # noqa: F401, E402
-import app.models.weekly_digest  # noqa: F401, E402
-import app.models.monthly_digest  # noqa: F401, E402
-import app.models.trending  # noqa: F401, E402
-import app.models.mother_topic  # noqa: F401, E402
+import app.models.daily_report  # noqa: F401, E402
 import app.models.fanqie  # noqa: F401, E402
-import app.models.notification  # noqa: F401, E402
-import app.models.qimao  # noqa: F401, E402
-import app.models.zhihu  # noqa: F401, E402
-import app.models.scheduled_job  # noqa: F401, E402
-import app.models.llm_model  # noqa: F401, E402
 import app.models.favorite  # noqa: F401, E402
+import app.models.feedback  # noqa: F401, E402
+import app.models.llm_model  # noqa: F401, E402
+import app.models.monthly_digest  # noqa: F401, E402
+import app.models.mother_topic  # noqa: F401, E402
+import app.models.notification  # noqa: F401, E402
+import app.models.product_feedback  # noqa: F401, E402
+import app.models.qimao  # noqa: F401, E402
+import app.models.scheduled_job  # noqa: F401, E402
+import app.models.trending  # noqa: F401, E402
 import app.models.user  # noqa: F401, E402
 import app.models.user_integration  # noqa: F401, E402
-import app.models.product_feedback  # noqa: F401, E402
-import app.models.analysis_job  # noqa: F401, E402
+import app.models.weekly_digest  # noqa: F401, E402
+import app.models.zhihu  # noqa: F401, E402
+from app.core.config import settings  # noqa: E402
+from app.core.database import Base  # noqa: E402
+from app.core.db_backend import create_database_profile  # noqa: E402
 
 # this is the Alembic Config object
 config = context.config
 
 # Interpret the config file for Python logging.
+# 关键:disable_existing_loggers=False。
+# 默认 True 会把所有不在 alembic.ini [loggers] 里的 logger 标 disabled
+# (包括 app.services.* 全部)。Alembic 在 lifespan startup / 测试 / CLI
+# 调用 env.py 时,会让后续整个进程的 app logger 全 mute,导致:
+# - pytest caplog.text 永远空(test_source_api / test_today_picks 失败)
+# - 生产环境跑迁移后日志突然消失
+# 改成 False 是 logging 最佳实践,不影响 alembic 自己的 logger 输出。
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Derive a sync URL from the configured DATABASE_URL. Alembic runs synchronously.
 _profile = create_database_profile(

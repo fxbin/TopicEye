@@ -56,8 +56,15 @@ _TEST_FILE_SQLITE_PATH = _test_db_path
 # app/models/__init__.py 只 import 了部分 model,所以这里必须显式 import
 # 全部,跟 main.py 保持一致。
 # noqa: F401 — 我们只需要 import side effect 注册到 Base.metadata。
+from collections.abc import AsyncGenerator
+
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 import app.models.analysis_job  # noqa: F401
+import app.models.app_setting  # noqa: F401
 import app.models.category  # noqa: F401
+import app.models.creation  # noqa: F401
 import app.models.daily_report  # noqa: F401
 import app.models.fanqie  # noqa: F401
 import app.models.favorite  # noqa: F401
@@ -71,14 +78,6 @@ import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
 import app.models.zhihu  # noqa: F401
-import app.models.app_setting  # noqa: F401
-import app.models.creation  # noqa: F401
-
-from collections.abc import AsyncGenerator
-
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from app.core.database import Base
 
 
@@ -150,4 +149,80 @@ async def clean_tables():
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
     await engine.dispose()
+    yield
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_llm_provider_state():
+    """每个测试前重置 LLM provider 模块级 state + logging 配置。
+
+    LLM state:见下方注释。
+    logging:某些测试(或导入的 app.main lifespan)会调 configure_logging,
+    把 root logger 的 handler 改了,导致后续测试的 caplog.text 是空。
+    autouse 在每个测试前重置 root logger 的 propagate=True,并把 handler
+    恢复到 logging 默认状态(只有 caplog 自己的 handler 在最终被 pytest
+    加上),保证 caplog 能抓到日志。
+    """
+    # ── 1. logging 重置 ──
+    import logging
+
+    root = logging.getLogger()
+    # propagate 必须是 True,caplog handler 才能从子 logger 收到事件
+    root.propagate = True
+    # 清掉之前测试 configure_logging 加的非 pytest handler
+    # (留 caplog 在 fixture setup 时挂的 handler,但 setup 还没跑,这里是空)
+    for h in list(root.handlers):
+        # pytest 的 caplog handler 类名包含 "_CapturingHandler",保留
+        if "CapturingHandler" not in type(h).__name__ and "LogCapture" not in type(h).__name__:
+            root.removeHandler(h)
+    """每个测试前重置 LLM provider 模块级 state。
+
+    test_llm_provider_routing 系列测试 monkeypatch.setattr(provider,
+    '_call_with_retry', fake_call) 替换模块级 async 函数,且会调
+    provider._failover.on_failure(...) 直接改 _failover 内部 dict。
+    这些不是 monkeypatch 管理的 state,teardown 不会自动恢复,
+    会污染下一个测试(导致 _model_cache / _failover 跨测试残留)。
+
+    autouse 在每个测试前:
+    1. await invalidate_model_cache() 清 _model_cache / _failover / rate_limiters
+    2. del _call_with_retry(防 monkeypatch 没 revert,虽然实际它会)
+    """
+    try:
+        from app.services.llm.provider import invalidate_model_cache
+
+        await invalidate_model_cache()
+        # 清 LLM response cache —— 这是 test_llm_provider_routing 跨测试污染的
+        # 真正根因。call_llm_with_metadata 先查 response cache,测试 1/2 写的
+        # cached response 会被测试 3 读到(命中相同 messages + temperature)。
+        # invalidate_model_cache 不管 response cache,要单独清。
+        from app.services.llm.response_cache import get_llm_cache
+
+        get_llm_cache().clear()
+    except Exception:
+        pass
+
+    # 显式删 _call_with_retry 等动态属性,防 monkeypatch 残留。
+    # 注意:_call_with_retry 是模块级 async def,delattr 后 call_llm 内部
+    # 直接 NameError。但 monkeypatch.setattr 在测试 setup 时会重建它。
+    # 如果 delattr 时它本来就是原始函数,测试不 patch 它,call_llm 调用
+    # 走原始路径,需要保留。所以只删 __module__ 不是 provider 的(=fake)。
+    try:
+        from app.services.llm import provider as provider_module
+
+        for attr_name in ("_call_with_retry", "_call_with_metadata", "_call_completion"):
+            current = getattr(provider_module, attr_name, None)
+            if current is None:
+                continue
+            cur_mod = getattr(current, "__module__", None)
+            if cur_mod != "app.services.llm.provider":
+                # fake_call 残留,删掉。下次测试如果 monkeypatch 会重建;
+                # 不 monkeypatch 的话,原 __init__ 时就已经定义了(模块顶层
+                # async def),不会走到这里。
+                try:
+                    delattr(provider_module, attr_name)
+                except AttributeError:
+                    pass
+    except Exception:
+        pass
+
     yield

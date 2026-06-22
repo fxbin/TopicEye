@@ -15,10 +15,8 @@ import asyncio
 import functools
 import logging
 import time
-import traceback
-from datetime import datetime, timezone, UTC
-from typing import Optional
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -93,7 +91,14 @@ async def _claim_job_run(job_key: str, name: str, description: str, timeout: int
 
                 lease_seconds = max(int(timeout), 1)
                 stale_cutoff = now.timestamp() - lease_seconds
-                last_run_ts = job.last_run_at.timestamp() if job.last_run_at else 0
+                # 时区 bug 修复:SQLite 读回 DateTime(timezone=True) 是 naive,
+                # .timestamp() 按**本地时区**解释(UTC+8 多减 8 小时),
+                # 导致 lease 永远被判定 stale、租约形同虚设。补 UTC 让两端对齐。
+                # PG asyncpg 读回是 aware UTC,.replace(tzinfo=UTC) 是 no-op。
+                last_run_at = job.last_run_at
+                if last_run_at is not None and last_run_at.tzinfo is None:
+                    last_run_at = last_run_at.replace(tzinfo=UTC)
+                last_run_ts = last_run_at.timestamp() if last_run_at else 0
                 if job.last_status == "RUNNING" and last_run_ts > stale_cutoff:
                     return False
 
@@ -268,7 +273,7 @@ def track_job(job_key: str, name: str = "", timeout: int = 300, description: str
 
 async def get_recent_logs(job_key: str = "", limit: int = 50) -> list[dict]:
     """Get recent execution logs, optionally filtered by job_key."""
-    from sqlalchemy import select, desc
+    from sqlalchemy import desc, select
 
     async with async_session() as db:
         q = select(JobExecutionLog).order_by(desc(JobExecutionLog.started_at)).limit(limit)

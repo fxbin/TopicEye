@@ -8,16 +8,13 @@ import pytest_asyncio
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.v1 import notifications as notifications_api
-from app.api.v1 import settings as settings_api
-from app.api.v1.auth import get_current_admin_user, get_current_user
-from app.core.database import database_profile
-from app.core.database import Base
-from app.core.db_backend import create_database_profile
 from app import main as app_main
+from app.api.v1 import notifications as notifications_api, settings as settings_api
+from app.api.v1.auth import get_current_admin_user, get_current_user
+from app.core.database import Base, database_profile
+from app.core.db_backend import create_database_profile
 from app.models.app_setting import DEFAULT_RSSHUB_INSTANCES
-from app.services import notification_service
-from app.services import duckdb_service
+from app.services import duckdb_service, notification_service
 
 
 @pytest_asyncio.fixture
@@ -32,8 +29,13 @@ async def settings_notifications_client(monkeypatch) -> AsyncGenerator[httpx.Asy
     app = FastAPI()
     app.include_router(settings_api.router)
     app.include_router(notifications_api.router)
-    app.dependency_overrides[get_current_admin_user] = lambda: object()
-    app.dependency_overrides[get_current_user] = lambda: object()
+    # /notifications 端点会读 current_user.id,裸 object() 没这属性,会 AttributeError。
+    # 用 SimpleNamespace 提供最小 stub(id / is_active / is_superuser 等)。
+    from types import SimpleNamespace
+
+    _user_stub = SimpleNamespace(id=1, is_active=True, is_superuser=True, role="admin")
+    app.dependency_overrides[get_current_admin_user] = lambda: _user_stub
+    app.dependency_overrides[get_current_user] = lambda: _user_stub
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with session_factory() as session:
@@ -222,12 +224,18 @@ async def test_health_redacts_duckdb_database_secret_on_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_notification_api_lifecycle(settings_notifications_client: httpx.AsyncClient):
-    created = await notification_service.push_notification(
+    created_list = await notification_service.push_notification(
         type="info",
         category="system",
         title="测试通知",
         message="通知内容",
+        # 定向推送给 user_id=1(对应 fixture 里的 _user_stub.id=1)。
+        # 不传 target_user_ids 走 broadcast,broadcast 不能被个人删除,
+        # delete_notification 返回 False。
+        target_user_ids=[1],
     )
+    # push_notification 返回 list[Notification](per-user 批量),取第一条
+    created = created_list[0]
 
     unread = await settings_notifications_client.get("/notifications/unread-count")
     assert unread.status_code == 200

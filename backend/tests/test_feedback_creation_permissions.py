@@ -8,9 +8,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import creation as creation_api
-from app.api.v1 import feedback as feedback_api
+from app.api.v1 import auth as auth_api, creation as creation_api, feedback as feedback_api
 from app.core.database import Base
 from app.models.content import ContentItem, ContentStatus
 from app.services.auth_service import create_session, create_user
@@ -58,16 +56,22 @@ async def test_feedback_and_creation_mutation_apis_require_login(monkeypatch):
                 await session.rollback()
                 raise
 
+    # creation.py 不用 Depends(get_db) 而是内联 async_session(),
+    # 因此没有 module-level get_db 可被 override。只 override 真正存在的。
     for dependency in {
         auth_api.get_db,
         feedback_api.get_db,
-        creation_api.get_db,
     }:
         app.dependency_overrides[dependency] = override_get_db
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        platforms = await client.get("/creation/platforms")
+        # /creation/platforms 在 creation router 下,整 router 挂了
+        # Depends(get_current_user),所以也要带 token 才能访问
+        platforms = await client.get(
+            "/creation/platforms",
+            headers={"Authorization": f"Bearer {token}"},
+        )
         assert platforms.status_code == 200
 
         anonymous_feedback = await client.post(

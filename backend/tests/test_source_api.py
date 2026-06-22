@@ -6,15 +6,13 @@ from collections.abc import AsyncGenerator
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import app.main  # noqa: F401 - import all models for Base.metadata
 import app.api.v1.sources as sources_api
+import app.main  # noqa: F401 - import all models for Base.metadata
 import app.services.content_pipeline as content_pipeline
 from app.api.v1.auth import get_current_admin_user
 from app.api.v1.sources import create_source, router as sources_router, update_source
@@ -840,7 +838,15 @@ async def test_ingest_source_persists_redacted_sync_error(monkeypatch, caplog):
         await db.flush()
 
         with caplog.at_level(logging.ERROR, logger="app.services.content_pipeline"):
-            stats = await ingest_from_source(source, db)
+            # 强制 propagate=True,确保 caplog handler 能收到日志记录。
+            # 其他测试可能改过 root logger 的 handler 链,导致 caplog 抓不到。
+            pipeline_logger = logging.getLogger("app.services.content_pipeline")
+            original_propagate = pipeline_logger.propagate
+            pipeline_logger.propagate = True
+            try:
+                stats = await ingest_from_source(source, db)
+            finally:
+                pipeline_logger.propagate = original_propagate
         await db.refresh(source)
 
         assert stats == {"fetched": 0, "new": 0, "duplicates": 0}
@@ -982,8 +988,6 @@ async def dual_track_client(monkeypatch):
     user_by_id = {10: pro_user, 11: free_user, 1: admin_user}
 
     def current_user_dep() -> UserModel:
-        from fastapi import Request
-
         return pro_user  # default
 
     app.dependency_overrides[get_current_user] = lambda: pro_user
@@ -1037,7 +1041,6 @@ async def test_free_user_cannot_create_private_source(dual_track_client):
     free = users[11]
 
     # Re-override to free user
-    from app.api.v1.sources import router as _  # ensure import
 
     # Swap the dependency on the same app — need to re-create the app context
     # Use a fresh client with free user override

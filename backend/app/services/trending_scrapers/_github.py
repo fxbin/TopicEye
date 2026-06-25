@@ -12,6 +12,19 @@ import contextlib
 
 logger = logging.getLogger(__name__)
 
+# trending_items.title 是 varchar(500)。GitHub 仓库描述无长度上限，
+# 偶发 >500 字符会撑爆列、让整批 INSERT 回滚。截到 480 留余量，
+# 完整 description 仍保留在 extra.description，不丢信息。
+TITLE_MAX = 480
+
+
+def _truncate_title(text: str) -> str:
+    """截断 title 到 TITLE_MAX，超长加省略号（中英文都安全）。"""
+    if len(text) <= TITLE_MAX:
+        return text
+    return text[: TITLE_MAX - 1] + "…"
+
+
 # ── 正则 ──────────────────────────────────────────────────────────
 # 每个 trending 仓库是一个 <article class="Box-row">...</article>
 _ARTICLE = re.compile(r'<article[^>]*class="Box-row"[^>]*>(.*?)</article>', re.DOTALL)
@@ -83,7 +96,7 @@ class GitHubTrending(BaseTrendingScraper):
                 with contextlib.suppress(ValueError, TypeError):
                     hot_val = int(hot_raw.replace(",", ""))
 
-            title = desc if desc else repo_name
+            title = _truncate_title(desc if desc else repo_name)
 
             results.append(
                 {

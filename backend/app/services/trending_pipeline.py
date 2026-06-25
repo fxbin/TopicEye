@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone, UTC
@@ -18,6 +19,8 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.database import async_session
 from app.models.trending import TrendingItem
 from app.services.trending_cache import invalidate_trending_cache
 from app.services.trending_scrapers import get_trending_cls, get_all_trending_sources
@@ -82,15 +85,52 @@ async def sync_trending_source(source_name: str, db: AsyncSession) -> dict[str, 
 
 
 async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
-    """同步所有趋势源。
+    """并发同步所有趋势源。
 
-    SQLite has a single writer lock. Commit after each source so network fetches
-    and the next source do not keep earlier writes open and block lightweight
-    user actions such as favoriting content.
+    每个源开独立 session（AsyncSession 不可并发共享），gather 保证单源
+    失败/超时不影响其他源。瓶颈在网络 I/O 而非 DB 写：串行模式下 8 个
+    国内信源 ConnectError 各卡 ~3s 累加 20s+，会把整个任务拖过 120s job
+    超时；并发后这些同时失败，总耗时≈最慢单源。
+
+    db 参数保留以兼容现有调用点（scheduler.py / api），但并发抓取不再
+    复用它——每个源各自 async with async_session()。db 仍由调用方关闭。
     """
-    results = {}
-    for source_name in get_all_trending_sources():
-        result = await sync_trending_source(source_name, db)
-        await db.commit()
-        results[source_name] = result
+    sources = get_all_trending_sources()
+    concurrency = _normalize_trending_concurrency()
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def sync_one(name: str) -> dict[str, int | str]:
+        async with semaphore:
+            # 独立 session：避免共享 AsyncSession 并发损坏内部状态
+            async with async_session() as src_db:
+                try:
+                    result = await sync_trending_source(name, src_db)
+                    await src_db.commit()
+                    return result
+                except Exception:
+                    await src_db.rollback()
+                    raise
+
+    raw_results = await asyncio.gather(
+        *(sync_one(name) for name in sources), return_exceptions=True
+    )
+
+    results: dict[str, dict[str, int | str]] = {}
+    for name, item in zip(sources, raw_results):
+        if isinstance(item, BaseException):
+            logger.exception(
+                "Unexpected error syncing trending source '%s'", name, exc_info=item
+            )
+            results[name] = {"fetched": 0, "error": f"{type(item).__name__}: {item}"}
+        else:
+            results[name] = item
     return results
+
+
+def _normalize_trending_concurrency() -> int:
+    """读取并发度配置，clamp 到 [1, 20]。"""
+    try:
+        parsed = int(settings.TRENDING_SYNC_CONCURRENCY)
+    except (TypeError, ValueError):
+        parsed = 8
+    return max(1, min(parsed, 20))

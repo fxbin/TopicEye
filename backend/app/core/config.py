@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     READ_CACHE_TTL_SECONDS: float = 60.0
     SOURCE_SYNC_TIMEOUT_SECONDS: int = 120
     SOURCE_SYNC_WORKER_CONCURRENCY: int = 3
+    # 趋势雷达全量同步并发度。串行模式下 8 个国内信源 ConnectError 累加
+    # 20s+ 撑爆 120s job 超时;并发后这些同时失败,总耗时≈最慢单源。
+    TRENDING_SYNC_CONCURRENCY: int = 8
     # 单次 RSS fetch 的 httpx 超时(秒)。默认 15s 比原 30s 更激进,
     # 慢站(Wired 等)会快速 fail 释放 worker,不让其拖到 sync 整体超时(120s)。
     # 调大可以更宽容但风险是 sync 任务被堵住影响其他 source。

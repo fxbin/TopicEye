@@ -48,6 +48,8 @@ class TrendingSource(enum.StrEnum):
     # 网文平台榜单（黑岩/点众，公开 API）
     HEIYAN = "heiyan"
     ISHUGUI = "ishugui"
+    # 中文播客榜（xyzrank，公开 API）
+    XYZRANK = "xyzrank"
 
 
 class TrendingCategory(enum.StrEnum):
@@ -57,6 +59,7 @@ class TrendingCategory(enum.StrEnum):
     ENTERTAINMENT = "entertainment"
     COMMUNITY = "community"
     WEBNOVEL = "webnovel"
+    PODCAST = "podcast"
 
 
 class TrendingItem(Base):

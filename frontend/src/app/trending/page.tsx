@@ -39,6 +39,7 @@ const CATEGORIES = [
   { value: 'tech', label: '科技' },
   { value: 'finance', label: '财经' },
   { value: 'webnovel', label: '网文' },
+  { value: 'podcast', label: '播客' },
 ] as const;
 
 const SOURCE_BRAND: Record<string, { label: string; color: string; bg: string }> = {
@@ -64,6 +65,7 @@ const SOURCE_BRAND: Record<string, { label: string; color: string; bg: string }>
   kr36:        { label: '36氪',     color: '#0080FF', bg: '#ECF3FF' },
   heiyan:      { label: '黑岩',     color: '#A855F7', bg: '#F5F0FF' },
   ishugui:     { label: '点众',     color: '#0EA5E9', bg: '#EBF8FF' },
+  xyzrank:     { label: '播客榜',   color: '#9333EA', bg: '#F5F0FF' },
 };
 
 function sourceBrand(source: string) {
@@ -79,6 +81,7 @@ const CATEGORY_COLORS: Record<string, { bgClass: string; textClass: string; bord
   tech: { bgClass: 'bg-teal-light', textClass: 'text-teal', borderClass: 'border-teal-border' },
   finance: { bgClass: 'bg-amber-light', textClass: 'text-amber', borderClass: 'border-amber-border' },
   webnovel: { bgClass: 'bg-purple-light', textClass: 'text-purple', borderClass: 'border-purple-border' },
+  podcast: { bgClass: 'bg-purple-light', textClass: 'text-purple', borderClass: 'border-purple-border' },
 };
 
 /** 是否为网文类目 (走 bookId/cover/author/tags 字段而非纯 hot_value) */

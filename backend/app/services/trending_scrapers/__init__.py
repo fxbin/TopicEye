@@ -90,6 +90,8 @@ from . import (  # noqa: E402, F401
     # 网文平台榜单（公开 API，无需登录）
     _heiyan,
     _ishugui,
+    # 中文播客榜（公开 API）
+    _xyzrank,
     # 以下接口暂不可用，保留代码待修复
     # _tieba,
     # _netease,

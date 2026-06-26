@@ -32,9 +32,31 @@ from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
 
+# Per-source 锁：防止手动单刷 (/sync/{source}) 和定时全量 (sync_all_trending)
+# 对同一 source 并发 delete-then-insert 导致丢数据。不同 source 不互斥，
+# 不影响 sync_all_trending 的并发度。仿 job_tracker._job_locks 模式。
+_source_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_source_lock(source_name: str) -> asyncio.Lock:
+    lock = _source_locks.get(source_name)
+    if lock is None:
+        lock = asyncio.Lock()
+        _source_locks[source_name] = lock
+    return lock
+
 
 async def sync_trending_source(source_name: str, db: AsyncSession) -> dict[str, int | str]:
-    """同步单个趋势源。返回 {"fetched": N}"""
+    """同步单个趋势源。返回 {"fetched": N}
+
+    整个抓取+入库过程持有 per-source 锁，避免手动单刷与定时全量对同一
+    source 并发 delete-then-insert 导致数据丢失。
+    """
+    async with _get_source_lock(source_name):
+        return await _sync_trending_source_locked(source_name, db)
+
+
+async def _sync_trending_source_locked(source_name: str, db: AsyncSession) -> dict[str, int | str]:
     scraper_cls = get_trending_cls(source_name)
     if scraper_cls is None:
         logger.warning("No trending scraper for '%s'", source_name)

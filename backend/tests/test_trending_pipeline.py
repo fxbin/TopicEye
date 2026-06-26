@@ -153,3 +153,47 @@ def test_normalize_trending_concurrency_clamps(monkeypatch):
     # 非法值回退默认
     monkeypatch.setattr(pipeline.settings, "TRENDING_SYNC_CONCURRENCY", "not-a-number")
     assert _normalize_trending_concurrency() == 8
+
+
+@pytest.mark.asyncio
+async def test_same_source_sync_is_serialized_by_lock(db, test_session_factory, monkeypatch):
+    """per-source 锁: 同一 source 的两次并发 sync 会被串行化, 不同 source 不互斥。
+
+    场景: 手动单刷 /sync/weibo 与定时全量里的 weibo 并发。
+    """
+    import asyncio as _asyncio
+    from app.services import trending_pipeline as tp
+
+    monkeypatch.setattr(tp, "async_session", test_session_factory)
+    monkeypatch.setattr(tp, "_normalize_trending_concurrency", lambda: 8)
+
+    # 用一个会记录并发数的假 scraper
+    in_flight = 0
+    max_concurrent = 0
+
+    class _CountingScraper:
+        CATEGORY = "hot"
+        SOURCE = "weibo"
+
+        def __call__(self):
+            return self
+
+        async def fetch(self, client):
+            nonlocal in_flight, max_concurrent
+            in_flight += 1
+            max_concurrent = max(max_concurrent, in_flight)
+            await _asyncio.sleep(0.15)  # 模拟抓取耗时
+            in_flight -= 1
+            return [{"title": "x", "rank": 1, "hot_value": 1}]
+
+    monkeypatch.setattr(tp, "get_trending_cls", lambda name: _CountingScraper())
+    monkeypatch.setattr(tp, "get_syncable_trending_sources", lambda: ["weibo"])
+
+    # 并发触发同一 source 的两次 sync
+    await _asyncio.gather(
+        tp.sync_trending_source("weibo", db),
+        tp.sync_trending_source("weibo", db),
+    )
+
+    # 锁生效: 两次 fetch 不会重叠, max_concurrent 应为 1
+    assert max_concurrent == 1, f"expected serialized (max_concurrent=1), got {max_concurrent}"

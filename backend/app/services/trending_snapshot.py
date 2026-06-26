@@ -23,7 +23,7 @@ from sqlalchemy import select, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.trending import TrendingItem, TrendingSnapshot, TrendingSource
-from app.services.trending_scrapers import get_all_trending_sources
+from app.services.trending_scrapers import get_all_trending_sources, SYNC_EXCLUDED_SOURCES
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
@@ -263,6 +263,11 @@ async def analyze_persistent_topics(
 
     for snap in snapshots:
         source_name = snap.source if isinstance(snap.source, str) else snap.source.value
+        # 网文书库源 (heiyan/ishugui) 已退出定时同步，快照数据可能陈旧，
+        # 且书名语义上不属于「热点话题」，排除出持续热度聚合（避免误判在榜）。
+        # 它们的快照仍保留，供 webnovel_report 周报排名变化使用。
+        if source_name in SYNC_EXCLUDED_SOURCES:
+            continue
         for item in snap.items:
             title = item["title"].strip()
             if not title:

@@ -497,6 +497,7 @@ function TrendingPage() {
     persistentCount: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [minResonance, setMinResonance] = useState(2);
 
@@ -505,6 +506,7 @@ function TrendingPage() {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       // 黑岩/点众是网文平台，不属于"普通热榜"——它们在网文雷达页面 (/novel) 看
       const itemList = await trendingApi.list({
@@ -515,7 +517,7 @@ function TrendingPage() {
       });
       setItems(itemList);
     } catch (e) {
-      console.error('Failed to fetch trending:', e);
+      setError(e instanceof Error ? e.message : '趋势数据加载失败');
     } finally {
       setLoading(false);
     }
@@ -523,6 +525,7 @@ function TrendingPage() {
 
   const fetchClusters = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await trendingApi.crossPlatform({ min_resonance: minResonance, limit: 50 });
       setClusters(data.clusters || []);
@@ -530,7 +533,7 @@ function TrendingPage() {
         setStats(prev => ({ ...prev, resonanceCount: data.total ?? data.clusters?.length ?? 0 }));
       }
     } catch (e) {
-      console.error('Failed to fetch cross-platform:', e);
+      setError(e instanceof Error ? e.message : '共振数据加载失败');
     } finally {
       setLoading(false);
     }
@@ -538,12 +541,13 @@ function TrendingPage() {
 
   const fetchPersistent = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await trendingApi.persistent({ min_days: 2, min_sources: 1, days_back: 7 });
       setPersistentTopics(data.topics || []);
       setStats(prev => ({ ...prev, persistentCount: data.total ?? data.topics?.length ?? 0 }));
     } catch (e) {
-      console.error('Failed to fetch persistent:', e);
+      setError(e instanceof Error ? e.message : '持续热度数据加载失败');
     } finally {
       setLoading(false);
     }
@@ -664,7 +668,20 @@ function TrendingPage() {
         <main className="min-w-0">
           {loading && <EmptyState>加载中...</EmptyState>}
 
-          {!loading && tab === 'resonance' && (
+          {!loading && error && (
+            <EmptyState>
+              <span className="text-red">⚠ {error}</span>
+              <button
+                type="button"
+                onClick={() => { setError(null); (tab === 'list' ? fetchList : tab === 'resonance' ? fetchClusters : fetchPersistent)(); }}
+                className="mt-2 rounded-xs border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50"
+              >
+                重试
+              </button>
+            </EmptyState>
+          )}
+
+          {!loading && !error && tab === 'resonance' && (
             clusters.length === 0 ? (
               <EmptyState>暂无共振数据，切换「1平台+」试试</EmptyState>
             ) : (
@@ -676,7 +693,7 @@ function TrendingPage() {
             )
           )}
 
-          {!loading && tab === 'persistent' && (
+          {!loading && !error && tab === 'persistent' && (
             <div className="flex flex-col gap-3">
               <Panel className="flex items-center gap-2.5 border-teal-border bg-teal-light px-4 py-3">
                 <Gauge size={16} className="text-teal" strokeWidth={2.3} />
@@ -768,11 +785,11 @@ function TrendingPage() {
             </div>
           )}
 
-          {!loading && tab === 'list' && items.length === 0 && (
+          {!loading && !error && tab === 'list' && items.length === 0 && (
             <EmptyState>暂无趋势数据，点击右上角「刷新全量」同步</EmptyState>
           )}
 
-          {!loading && tab === 'list' && items.length > 0 && (
+          {!loading && !error && tab === 'list' && items.length > 0 && (
             <div className="grid content-start gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(360px,1fr))] max-md:grid-cols-1">
               {Object.entries(groupedItems).map(([source, srcItems]) => {
                 const brand = sourceBrand(source);

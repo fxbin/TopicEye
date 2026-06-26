@@ -6,7 +6,7 @@ import logging
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class Kr36Trending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": f"https://36kr.com/p/{item.get('id', '')}",
                     "hot_value": hot_val,

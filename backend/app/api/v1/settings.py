@@ -4,6 +4,7 @@ App-level settings API — RSSHub instance management.
 
 from __future__ import annotations
 import json
+import logging
 from datetime import datetime, timezone, UTC
 from urllib.parse import urlsplit, urlunsplit
 
@@ -18,6 +19,8 @@ from app.core.db_backend import database_diagnostics, redact_database_secrets
 from app.models.app_setting import AppSetting
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(get_current_admin_user)])
+
+logger = logging.getLogger(__name__)
 
 
 class RSSHubInstanceItem(BaseModel):
@@ -57,8 +60,12 @@ async def get_rsshub_instances(db: AsyncSession = Depends(get_db)):
         try:
             raw = json.loads(row.value)
             instances = [RSSHubInstanceItem(**item) for item in raw]
-        except (json.JSONDecodeError, Exception):
+        except json.JSONDecodeError:
+            # 存储的 JSON 损坏：当作未配置，但不吞掉 DB/未知异常
             instances = []
+        except Exception:
+            logger.exception("Failed to parse rsshub_instances setting")
+            raise
     else:
         instances = []
 

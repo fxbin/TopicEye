@@ -8,7 +8,7 @@ import re
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class EastmoneyTrending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": url_w.replace("http://", "https://"),
                     "hot_value": comment_num,

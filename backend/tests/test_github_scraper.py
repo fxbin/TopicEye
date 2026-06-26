@@ -9,7 +9,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.services.trending_scrapers._github import GitHubTrending, TITLE_MAX, _truncate_title
+from app.services.trending_scrapers._github import GitHubTrending
+from app.services.trending_scrapers import TITLE_MAX, truncate_title
 
 
 # ── Fake client ─────────────────────────────────────────────────
@@ -100,14 +101,14 @@ async def test_fetch_network_error_returns_empty():
     assert entries == []
 
 
-def test_truncate_title_helper():
-    """_truncate_title 边界: 阈值内原样, 超阈截断 + 省略号。"""
-    assert _truncate_title("short") == "short"
-    assert len(_truncate_title("x" * (TITLE_MAX - 1))) == TITLE_MAX - 1  # 未超
-    out = _truncate_title("x" * (TITLE_MAX + 50))
+def testtruncate_title_helper():
+    """truncate_title 边界: 阈值内原样, 超阈截断 + 省略号。"""
+    assert truncate_title("short") == "short"
+    assert len(truncate_title("x" * (TITLE_MAX - 1))) == TITLE_MAX - 1  # 未超
+    out = truncate_title("x" * (TITLE_MAX + 50))
     assert len(out) == TITLE_MAX
     assert out.endswith("…")
     # 中文也安全 (按字符数)
-    out_cn = _truncate_title("中" * 600)
+    out_cn = truncate_title("中" * 600)
     assert len(out_cn) == TITLE_MAX
     assert out_cn.endswith("…")

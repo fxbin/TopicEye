@@ -6,7 +6,7 @@ import logging
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class ZhihuTrending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": link,
                     "hot_value": hot_val,

@@ -6,7 +6,7 @@ import logging
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class V2EXTrending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": url,
                     "hot_value": replies,

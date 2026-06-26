@@ -6,7 +6,7 @@ import logging
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class SspaiTrending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": f"https://sspai.com/post/{article_id}",
                     "hot_value": hot_value,

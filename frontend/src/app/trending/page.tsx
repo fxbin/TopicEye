@@ -40,6 +40,8 @@ const CATEGORIES = [
   { value: 'finance', label: '财经' },
   { value: 'webnovel', label: '网文' },
   { value: 'podcast', label: '播客' },
+  { value: 'community', label: '社区' },
+  { value: 'entertainment', label: '娱乐' },
 ] as const;
 
 const SOURCE_BRAND: Record<string, { label: string; color: string; bg: string }> = {
@@ -82,6 +84,8 @@ const CATEGORY_COLORS: Record<string, { bgClass: string; textClass: string; bord
   finance: { bgClass: 'bg-amber-light', textClass: 'text-amber', borderClass: 'border-amber-border' },
   webnovel: { bgClass: 'bg-purple-light', textClass: 'text-purple', borderClass: 'border-purple-border' },
   podcast: { bgClass: 'bg-purple-light', textClass: 'text-purple', borderClass: 'border-purple-border' },
+  community: { bgClass: 'bg-teal-light', textClass: 'text-teal', borderClass: 'border-teal-border' },
+  entertainment: { bgClass: 'bg-amber-light', textClass: 'text-amber', borderClass: 'border-amber-border' },
 };
 
 /** 是否为网文类目 (走 bookId/cover/author/tags 字段而非纯 hot_value) */

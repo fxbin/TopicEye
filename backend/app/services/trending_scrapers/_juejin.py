@@ -6,7 +6,7 @@ import logging
 from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class JuejinTrending(BaseTrendingScraper):
 
             results.append(
                 {
-                    "title": title,
+                    "title": truncate_title(title),
                     "rank": idx,
                     "url": f"https://juejin.cn/post/{article_id}",
                     "hot_value": hot_index or (digg * 100 + view + comment * 50),

@@ -22,6 +22,18 @@ TrendingEntry = dict[str, Any]
 # 必须包含: title, rank, hot_value
 # 可选包含: url, hot_value_raw, trend, cover_url, extra
 
+# trending_items.title 是 varchar(500)。各 scraper 抓取的外部 title 无长度
+# 上限，在 PostgreSQL 上会触发 StringDataRightTruncation 整批回滚（SQLite
+# 不强制 VARCHAR 长度故不会报错）。统一截断到 480 + 省略号。
+TITLE_MAX = 480
+
+
+def truncate_title(text: str) -> str:
+    """截断 title 到 TITLE_MAX，超长加省略号（中英文都安全）。"""
+    if len(text) <= TITLE_MAX:
+        return text
+    return text[: TITLE_MAX - 1] + "…"
+
 # ── Registry ──────────────────────────────────────────────────────
 _TRENDING_REGISTRY: dict[str, type] = {}
 

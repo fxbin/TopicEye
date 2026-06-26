@@ -19,10 +19,10 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from litellm import completion
+from litellm import completion, RateLimitError
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -444,7 +444,7 @@ async def _call_llm_single(
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=1, min=2, max=8),
-    retry=retry_if_exception_type((Exception,)),
+    retry=retry_if_not_exception_type((RateLimitError,)),
     reraise=True,
 )
 async def _call_with_retry(
@@ -458,7 +458,11 @@ async def _call_with_retry(
     model_config: Any = None,
     scene: str = "general",
 ) -> str:
-    """Call LLM with a short retry on failure (not rate limit)."""
+    """Call LLM with a short retry on failure (not rate limit).
+
+    RateLimitError 不重试：重试只会加重上游限流、烧配额。
+    限流错误直接抛出，由 call_llm_with_metadata 的 failover 循环切换到下一个候选模型。
+    """
     return await _call_llm_single(
         messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
     )

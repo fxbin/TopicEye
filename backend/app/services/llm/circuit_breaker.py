@@ -49,6 +49,7 @@ class CircuitBreaker:
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._lock = asyncio.Lock()
+        self._probe_in_flight = False  # HALF_OPEN 时只允许一个探测请求
 
     @property
     def state(self) -> CircuitState:
@@ -61,13 +62,20 @@ class CircuitBreaker:
                 # 检查 cooldown 是否已过
                 if self._last_failure_time and (time.monotonic() - self._last_failure_time >= self.cooldown_seconds):
                     self._state = CircuitState.HALF_OPEN
+                    self._probe_in_flight = True
                     logger.info(
                         "CircuitBreaker[%s]: OPEN → HALF_OPEN (cooldown elapsed, probing)",
                         self.name,
                     )
                     return True
                 return False
-            # CLOSED 或 HALF_OPEN 都允许请求
+            if self._state == CircuitState.HALF_OPEN:
+                # HALF_OPEN 只放行单个探测，其余请求拒绝、走 fallback
+                if self._probe_in_flight:
+                    return False
+                self._probe_in_flight = True
+                return True
+            # CLOSED 允许所有请求
             return True
 
     async def record_success(self) -> None:
@@ -80,11 +88,13 @@ class CircuitBreaker:
                 )
             self._state = CircuitState.CLOSED
             self._failure_count = 0
+            self._probe_in_flight = False
 
     async def record_failure(self) -> None:
         async with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.monotonic()
+            self._probe_in_flight = False
 
             if self._state == CircuitState.HALF_OPEN:
                 # 试探失败，重新 OPEN

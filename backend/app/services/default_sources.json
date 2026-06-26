@@ -178,5 +178,41 @@
     "platform": "Farnam Street",
     "weight": 3,
     "fetch_interval_minutes": 240
+  },
+  {
+    "name": "arXiv cs.AI",
+    "source_type": "RSS",
+    "url": "https://export.arxiv.org/rss/cs.AI",
+    "category": "AI/论文",
+    "platform": "arXiv",
+    "weight": 4,
+    "fetch_interval_minutes": 240
+  },
+  {
+    "name": "arXiv cs.LG",
+    "source_type": "RSS",
+    "url": "https://export.arxiv.org/rss/cs.LG",
+    "category": "AI/论文",
+    "platform": "arXiv",
+    "weight": 4,
+    "fetch_interval_minutes": 240
+  },
+  {
+    "name": "arXiv cs.CL",
+    "source_type": "RSS",
+    "url": "https://export.arxiv.org/rss/cs.CL",
+    "category": "AI/论文",
+    "platform": "arXiv",
+    "weight": 4,
+    "fetch_interval_minutes": 240
+  },
+  {
+    "name": "arXiv cs.HC",
+    "source_type": "RSS",
+    "url": "https://export.arxiv.org/rss/cs.HC",
+    "category": "设计/论文",
+    "platform": "arXiv",
+    "weight": 3,
+    "fetch_interval_minutes": 240
   }
 ]

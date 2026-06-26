@@ -44,6 +44,21 @@ def get_all_trending_sources() -> list[str]:
     return list(_TRENDING_REGISTRY.keys())
 
 
+# 定时全量同步 (sync_all_trending) 排除的信源。
+# 这两个网文源 (heiyan/ishugui) 是「书库全量爬取」而非轻量榜单：
+# - 抓取重 (ishugui 12 榜×分页, 单源 ~70s; heiyan 多 shelf, ~3s)
+# - hot_value 是按排名算出来的 (1000-rank), 非真实热度
+# 放进 sync_all 会拖慢定时同步、挤占趋势雷达的「轻量实时热度」语义。
+# 它们的数据由小说页 (/novel) 通过 POST /trending/sync/{source} 手动刷新。
+# 手动单刷走 get_trending_cls, 不经此列表, 故不受影响。
+SYNC_EXCLUDED_SOURCES: frozenset[str] = frozenset({"heiyan", "ishugui"})
+
+
+def get_syncable_trending_sources() -> list[str]:
+    """定时全量同步用的信源列表（排除网文书库类重源）。"""
+    return [s for s in _TRENDING_REGISTRY if s not in SYNC_EXCLUDED_SOURCES]
+
+
 # ── Base class ────────────────────────────────────────────────────
 class BaseTrendingScraper(ABC):
     """榜单 scraper 基类。"""

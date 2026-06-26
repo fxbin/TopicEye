@@ -995,6 +995,20 @@ export default function FanqiePage() {
       }
       return;
     }
+    if (platform === 'heiyan' || platform === 'ishugui') {
+      // 网文榜已从趋势雷达定时同步下线（重源拖慢全局），
+      // 小说页通过 trendingApi.sync 手动单源刷新
+      platform === 'heiyan' ? setHeiyanLoading(true) : setIshuguiLoading(true);
+      try {
+        await trendingApi.sync(platform);
+        platform === 'heiyan' ? await fetchHeiyanData() : await fetchIshuguiData();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `${platformMeta.label}同步失败`);
+      } finally {
+        platform === 'heiyan' ? setHeiyanLoading(false) : setIshuguiLoading(false);
+      }
+      return;
+    }
     setZhihuSyncing(true);
     try {
       await zhihuApi.sync();
@@ -1059,7 +1073,7 @@ export default function FanqiePage() {
     }
   };
 
-  const syncBusy = syncing || qimaoSyncing || zhihuSyncing;
+  const syncBusy = syncing || qimaoSyncing || zhihuSyncing || heiyanLoading || ishuguiLoading;
   const canSyncRankings = currentUser?.role === 'admin';
 
   return (

@@ -23,7 +23,11 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.models.trending import TrendingItem
 from app.services.trending_cache import invalidate_trending_cache
-from app.services.trending_scrapers import get_trending_cls, get_all_trending_sources
+from app.services.trending_scrapers import (
+    get_trending_cls,
+    get_all_trending_sources,
+    get_syncable_trending_sources,
+)
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
@@ -95,7 +99,7 @@ async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
     db 参数保留以兼容现有调用点（scheduler.py / api），但并发抓取不再
     复用它——每个源各自 async with async_session()。db 仍由调用方关闭。
     """
-    sources = get_all_trending_sources()
+    sources = get_syncable_trending_sources()
     concurrency = _normalize_trending_concurrency()
     semaphore = asyncio.Semaphore(concurrency)
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -721,8 +721,12 @@ export default function FanqiePage() {
   // heiyan / ishugui: 数据来源是 trending scrapers, 用 trendingApi.list 拉
   const [heiyanBooks, setHeiyanBooks] = useState<TrendingItem[]>([]);
   const [heiyanLoading, setHeiyanLoading] = useState(false);
+  const [heiyanSyncing, setHeiyanSyncing] = useState(false);
   const [ishuguiBooks, setIshuguiBooks] = useState<TrendingItem[]>([]);
   const [ishuguiLoading, setIshuguiLoading] = useState(false);
+  const [ishuguiSyncing, setIshuguiSyncing] = useState(false);
+  // 同步重入保护: 避免 React state 异步刷新窗口内的快速双击触发并发 sync
+  const syncInFlightRef = useRef(false);
 
   // 点众过滤: 男频/女频 × 6 榜单
   const [ishuguiGender, setIshuguiGender] = useState<'male' | 'female'>('male');
@@ -971,6 +975,17 @@ export default function FanqiePage() {
           : `故事 · ${ZHIHU_SORT_LABELS[zhihuSort].label}${zhihuSubcat ? ` · ${zhihuSubcat}` : ''}`;
 
   const handleSync = async () => {
+    // 重入保护: ref 同步生效，绕过 React state 异步刷新窗口
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    try {
+      await doSync();
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  };
+
+  const doSync = async () => {
     if (platform === 'fanqie') {
       setSyncing(true);
       try {
@@ -998,14 +1013,16 @@ export default function FanqiePage() {
     if (platform === 'heiyan' || platform === 'ishugui') {
       // 网文榜已从趋势雷达定时同步下线（重源拖慢全局），
       // 小说页通过 trendingApi.sync 手动单源刷新
-      platform === 'heiyan' ? setHeiyanLoading(true) : setIshuguiLoading(true);
+      const setSyncing = platform === 'heiyan' ? setHeiyanSyncing : setIshuguiSyncing;
+      const refetch = platform === 'heiyan' ? fetchHeiyanData : fetchIshuguiData;
+      setSyncing(true);
       try {
         await trendingApi.sync(platform);
-        platform === 'heiyan' ? await fetchHeiyanData() : await fetchIshuguiData();
+        await refetch();
       } catch (err) {
         setError(err instanceof Error ? err.message : `${platformMeta.label}同步失败`);
       } finally {
-        platform === 'heiyan' ? setHeiyanLoading(false) : setIshuguiLoading(false);
+        setSyncing(false);
       }
       return;
     }
@@ -1073,7 +1090,7 @@ export default function FanqiePage() {
     }
   };
 
-  const syncBusy = syncing || qimaoSyncing || zhihuSyncing || heiyanLoading || ishuguiLoading;
+  const syncBusy = syncing || qimaoSyncing || zhihuSyncing || heiyanSyncing || ishuguiSyncing;
   const canSyncRankings = currentUser?.role === 'admin';
 
   return (

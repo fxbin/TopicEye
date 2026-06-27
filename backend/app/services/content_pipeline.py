@@ -157,6 +157,15 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             return {"fetched": 0, "new": 0, "duplicates": 0}
 
         # ── Step 3: Dedup via content_hash ───────────────────────────
+        # 先规范化超长字段：截断到列上限，避免 PostgreSQL varchar 溢出整批回滚。
+        # arXiv 论文 author 经常几十人（700+ 字符），远超 author varchar(255)。
+        _FIELD_MAX = {"title": 480, "author": 250}
+        for entry in entries:
+            for field, max_len in _FIELD_MAX.items():
+                val = entry.get(field, "")
+                if isinstance(val, str) and len(val) > max_len:
+                    entry[field] = val[: max_len - 1] + "…"
+
         for entry in entries:
             text_for_hash = entry.get("title", "") + entry.get("url", "")
             entry["_content_hash"] = build_hash(text_for_hash)

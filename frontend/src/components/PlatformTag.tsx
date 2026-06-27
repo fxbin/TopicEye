@@ -28,4 +28,5 @@ const PLATFORM_COLOR_MAP: Record<string, { bg: string; color: string }> = {
   视频号: { bg: '#ECFDF5', color: '#059669' },
   知乎: { bg: '#EFF6FF', color: '#2563EB' },
   抖音: { bg: '#F5F3FF', color: '#7C3AED' },
+  arXiv: { bg: '#FEF3C7', color: '#B45309' },
 };

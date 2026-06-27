@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Ban,
+  BookOpen,
   Check,
   ChevronDown,
   Clock3,
@@ -763,6 +764,7 @@ function EditorialItem({
                 <ScoreBadge label="爆文" score={item.analysis.viral_score} tone="neutral" />
                 <ScoreBadge label="质量" score={item.analysis.quality_score} tone="neutral" />
                 <RecommendBadge level={explainRecommendation(item.analysis).level} />
+                <DeepReadBadge enrichment={item.analysis.enrichment} />
               </React.Fragment>
             )}
             {itemTags.length > 0
@@ -897,6 +899,25 @@ function CurationScoreBadge({ score }: { score: number | null | undefined }) {
   return (
     <span className={cx('rounded px-2 py-0.5 font-mono text-[11px] font-bold', toneClass)}>
       {rounded}
+    </span>
+  );
+}
+
+// ── Deep Read Badge (arXiv 论文精读标记) ──
+
+function DeepReadBadge({ enrichment }: { enrichment?: Record<string, unknown> | null }) {
+  // enrichment 由论文 prompt 产出: { worth_deep_read, deep_read_score, deep_read_reason }
+  if (!enrichment) return null;
+  const worth = enrichment.worth_deep_read as boolean | undefined;
+  const reason = enrichment.deep_read_reason as string | undefined;
+  if (!worth) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded bg-purple-light px-1.5 py-0.5 text-[10px] font-bold text-purple"
+      title={reason || 'AI 判定值得精读'}
+    >
+      <BookOpen size={11} strokeWidth={2.2} />
+      精读
     </span>
   );
 }

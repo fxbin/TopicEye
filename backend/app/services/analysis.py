@@ -31,6 +31,8 @@ from app.services.llm.prompts.analysis import (
     ANALYSIS_PROMPT,
     SYSTEM_PROMPT_EN,
     ANALYSIS_PROMPT_EN,
+    PAPER_SYSTEM_PROMPT,
+    PAPER_ANALYSIS_PROMPT,
 )
 from app.services.content_read_cache import invalidate_content_read_caches
 
@@ -284,7 +286,7 @@ async def _run_lite_prescreen(
     return _normalize_prescreen_result(result), metadata
 
 
-def _local_analysis_result(content: ContentItem, *, lang: str) -> dict[str, Any]:
+def _local_analysis_result(content: ContentItem, *, lang: str, is_arxiv: bool = False) -> dict[str, Any]:
     """Build a deterministic baseline analysis when the LLM response is empty."""
     text = f"{content.title}\n{content.summary or ''}\n{content.raw_content or ''}".strip()
     source = f"{content.source_name or ''} {content.source_type or ''} {content.platform or ''}".lower()
@@ -318,7 +320,11 @@ def _local_analysis_result(content: ContentItem, *, lang: str) -> dict[str, Any]
     if len(summary) > 180:
         summary = summary[:180].rstrip() + "..."
 
-    if lang == "en":
+    if is_arxiv:
+        # 论文 LLM 兜底：用标题生成中文占位概述，避免英文原文直接展示
+        summary = f"《{title}》是 arXiv 上的学术论文。LLM 暂不可用，建议查看原文获取详细方法与结论。"
+        recommendation = f"这篇论文来自 arXiv，涉及前沿研究。LLM 限流未能生成详细中文解读，可先收藏待精读。"
+    elif lang == "en":
         recommendation = f"这条内容来自 {content.source_name or '外部信源'}，适合作为跨市场趋势素材先观察，再结合中文语境提炼选题角度。"
     else:
         recommendation = f"这条内容来自 {content.source_name or '外部信源'}，具备基础选题信号，建议先作为素材进入观察池，再补充数据和角度判断。"
@@ -379,9 +385,17 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     title = content.title
     truncated = content_text[:3000] if content_text else "无正文内容"
 
-    # Select language-appropriate prompt
+    # Select content-appropriate prompt.
+    # 优先级：arXiv 论文 > 英文内容 > 中文内容
+    platform_lower = (content.platform or "").lower()
+    is_arxiv = "arxiv" in platform_lower or "arxiv" in (content.source_name or "").lower()
     lang = _detect_lang(title, content_text or "")
-    if lang == "en":
+
+    if is_arxiv:
+        system_prompt = PAPER_SYSTEM_PROMPT
+        analysis_prompt = PAPER_ANALYSIS_PROMPT
+        logger.info("Detected arXiv paper, using paper prompts for content id=%d", content.id)
+    elif lang == "en":
         system_prompt = SYSTEM_PROMPT_EN
         analysis_prompt = ANALYSIS_PROMPT_EN
         logger.info("Detected English content, using EN prompts for content id=%d", content.id)
@@ -403,7 +417,9 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     prescreen_confidence = None
     result: dict[str, Any] | None = None
 
-    if _cascade_enabled():
+    if _cascade_enabled() and not is_arxiv:
+        # 论文跳过 prescreen：结构化概述 + 精读判定需要完整论文 prompt，
+        # prescreen 的 lite 简化结果无法产出 deep_read 字段。
         analysis_mode = "cascade"
         prescreen_model = _cascade_lite_routing_group()
         try:
@@ -446,7 +462,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
                     "LLM circuit breaker open for content id=%d, using local fallback",
                     content.id,
                 )
-                result = _local_analysis_result(content, lang=lang)
+                result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
                 fallback_used = True
             else:
                 raise
@@ -456,7 +472,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
                 content.id,
                 str(result)[:200],
             )
-            result = _local_analysis_result(content, lang=lang)
+            result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
             fallback_used = True
     result = _normalize_analysis_result(result)
 
@@ -508,6 +524,9 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
         info_density=curation.get("info_density", 50),
         actionability=curation.get("actionability", 50),
         source_weight=curation.get("source_weight", 50),
+        # arXiv 论文的精读判定存入 enrichment（deep_read 由论文 prompt 产出）
+        enrichment_status="completed" if (is_arxiv and result.get("deep_read")) else "pending",
+        enrichment=result.get("deep_read") if is_arxiv else None,
         analysis_mode=analysis_mode,
         prescreen_model=prescreen_model,
         final_model=final_model,

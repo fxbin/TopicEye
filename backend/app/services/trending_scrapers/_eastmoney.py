@@ -22,20 +22,18 @@ class EastmoneyTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_30_1_.html"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://finance.eastmoney.com/",
-        }
+        headers = self._build_headers(Referer="https://finance.eastmoney.com/")
+        text = await self._fetch_text(client, url, headers=headers)
+        if text is None:
+            return []
         try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            m = _PAT.search(resp.text.strip())
+            m = _PAT.search(text.strip())
             if not m:
                 logger.warning("eastmoney: regex match failed")
                 return []
             data = json.loads(m.group(1))
         except Exception as e:
-            logger.warning("eastmoney trending fetch failed: %s", e)
+            logger.warning("eastmoney trending parse failed: %s", e)
             return []
 
         items = data.get("LivesList", [])

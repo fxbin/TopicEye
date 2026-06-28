@@ -18,16 +18,9 @@ class BilibiliTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://s.search.bilibili.com/main/hotword?limit=30"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Referer": "https://www.bilibili.com",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("bilibili trending fetch failed: %s", e)
+        headers = self._build_headers(Referer="https://www.bilibili.com")
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         word_list = data.get("list", [])

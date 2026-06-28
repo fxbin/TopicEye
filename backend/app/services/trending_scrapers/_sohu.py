@@ -8,16 +8,12 @@ import re
 from typing import Any, List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, BROWSER_UA
 
 logger = logging.getLogger(__name__)
 
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": BROWSER_UA,
     "Referer": "https://www.sohu.com/",
     "Accept": "application/json, text/plain, */*",
 }

@@ -18,20 +18,10 @@ class XueqiuTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://xueqiu.com/statuses/hot/listV2.json?since_id=-1&max_id=0&size=30"
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("xueqiu trending fetch failed: %s", e)
+        headers = self._build_headers()
+        headers["X-Requested-With"] = "XMLHttpRequest"
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         items = data.get("items", [])

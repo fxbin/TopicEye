@@ -34,21 +34,13 @@ class WeiboTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://s.weibo.com/top/summary?cate=realtimehot"
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://s.weibo.com/",
-            "Cookie": self._COOKIE,
-            "Accept": "text/html,application/xhtml+xml",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            html = resp.text
-        except Exception as e:
-            logger.warning("weibo trending fetch failed: %s", e)
+        headers = self._build_headers(
+            Referer="https://s.weibo.com/",
+            Cookie=self._COOKIE,
+            Accept="text/html,application/xhtml+xml",
+        )
+        html = await self._fetch_text(client, url, headers=headers)
+        if html is None:
             return []
 
         results: list[TrendingEntry] = []

@@ -17,14 +17,13 @@ from __future__ import annotations
 import logging
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+from . import BaseTrendingScraper, register_trending, TrendingEntry, BROWSER_UA
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://xyzrank.com/api/episodes"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "User-Agent": BROWSER_UA,
     "Referer": "https://xyzrank.com/",
     "Accept": "application/json, text/plain, */*",
 }

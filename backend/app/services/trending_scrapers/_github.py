@@ -46,12 +46,8 @@ class GitHubTrending(BaseTrendingScraper):
             "User-Agent": self._UA,
             "Accept": "text/html,application/xhtml+xml",
         }
-        try:
-            resp = await client.get(url, headers=headers, follow_redirects=True)
-            resp.raise_for_status()
-            html = resp.text
-        except Exception as e:
-            logger.warning("github trending fetch failed: %s", e)
+        html = await self._fetch_text(client, url, headers=headers)
+        if html is None:
             return []
 
         results: list[TrendingEntry] = []

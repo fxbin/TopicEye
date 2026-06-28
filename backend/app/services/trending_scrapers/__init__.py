@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -72,12 +72,64 @@ def get_syncable_trending_sources() -> list[str]:
 
 
 # ── Base class ────────────────────────────────────────────────────
+# 多数榜单站点会拒绝 default Python-httpx UA（返回 403/406），故各 scraper
+# 统一伪装成桌面 Chrome。集中维护，避免 16+ 处硬编码漂移。
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
 class BaseTrendingScraper(ABC):
     """榜单 scraper 基类。"""
 
     # 子类必须设置
     SOURCE: str = ""
     CATEGORY: str = ""  # TrendingCategory value
+
+    def _build_headers(self, **extra: str) -> dict[str, str]:
+        """构造请求头。默认带 BROWSER_UA，子类只补充 Referer/Accept/Cookie 等。
+
+        示例::
+
+            headers = self._build_headers(Referer="https://.../", Accept="application/json")
+        """
+        return {"User-Agent": BROWSER_UA, **extra}
+
+    async def _fetch_json(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> Any | None:
+        """GET 并解析 JSON。失败时记 warning 日志并返回 None（统一 fetch 样板）。
+
+        子类拿到 None 即可 ``return []``，无需再写 try/except/raise_for_status。
+        """
+        try:
+            resp = await client.get(url, headers=headers or {})
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.warning("%s trending fetch failed: %s", self.SOURCE or type(self).__name__, e)
+            return None
+
+    async def _fetch_text(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> str | None:
+        """GET 并返回响应文本（HTML/XML）。失败时记 warning 日志并返回 None。"""
+        try:
+            resp = await client.get(url, headers=headers or {})
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:
+            logger.warning("%s trending fetch failed: %s", self.SOURCE or type(self).__name__, e)
+            return None
 
     @abstractmethod
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:

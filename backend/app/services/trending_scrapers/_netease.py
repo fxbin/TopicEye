@@ -18,17 +18,12 @@ class NeteaseTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://m.163.com/nc/article/headline/T1348647853363/0-40.html"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Referer": "https://m.163.com/",
-            "Accept": "application/json",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("netease trending fetch failed: %s", e)
+        headers = self._build_headers(
+            Referer="https://m.163.com/",
+            Accept="application/json",
+        )
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         # 响应结构: { "T1348647853363": [ ...articles ] }

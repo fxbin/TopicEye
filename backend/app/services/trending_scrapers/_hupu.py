@@ -20,18 +20,11 @@ class HupuTrending(BaseTrendingScraper):
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         # 虎扑步行街热帖 API
         url = "https://bbs.hupu.com/all-games"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Referer": "https://bbs.hupu.com/",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-        except Exception as e:
-            logger.warning("hupu trending fetch failed: %s", e)
+        headers = self._build_headers(Referer="https://bbs.hupu.com/")
+        html = await self._fetch_text(client, url, headers=headers)
+        if html is None:
             return []
 
-        html = resp.text
         # 解析热帖列表
         # 匹配: <a href="/xxx.html" ...>标题</a>
         pattern = re.compile(

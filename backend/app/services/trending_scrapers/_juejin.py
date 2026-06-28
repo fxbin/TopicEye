@@ -25,11 +25,8 @@ class JuejinTrending(BaseTrendingScraper):
             "cursor": "0",
             "limit": 30,
         }
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://juejin.cn/",
-            "Content-Type": "application/json",
-        }
+        headers = self._build_headers(Referer="https://juejin.cn/")
+        headers["Content-Type"] = "application/json"
         try:
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()

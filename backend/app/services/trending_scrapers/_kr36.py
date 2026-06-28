@@ -18,17 +18,12 @@ class Kr36Trending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://gateway.36kr.com/api/mis/nav/home/nav/rank/hot"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Referer": "https://36kr.com/hot-list/catalog",
-            "Accept": "application/json",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("36kr trending fetch failed: %s", e)
+        headers = self._build_headers(
+            Referer="https://36kr.com/hot-list/catalog",
+            Accept="application/json",
+        )
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         items = data.get("data", {}).get("hotRankList", [])

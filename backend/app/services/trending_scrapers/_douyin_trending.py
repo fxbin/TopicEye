@@ -21,16 +21,6 @@ HOT_LIST_URL = (
     "&cpu=Intel&device_memory=8&platform=PC&downlink=10&effective_type=4g&round_trip_time=50"
 )
 
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://so-landing.douyin.com/landings/hotlist",
-    "Accept-Language": "zh-CN,zh;q=0.9",
-    "Accept": "application/json, text/plain, */*",
-}
-
 
 def _parse_hot_value(raw: Any) -> int:
     if not raw:
@@ -49,12 +39,13 @@ class DouyinTrending(BaseTrendingScraper):
     CATEGORY = "hot"
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
-        try:
-            resp = await client.get(HOT_LIST_URL, headers=_HEADERS)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("douyin trending fetch failed: %s", e)
+        headers = self._build_headers(
+            Referer="https://so-landing.douyin.com/landings/hotlist",
+            Accept="application/json, text/plain, */*",
+        )
+        headers["Accept-Language"] = "zh-CN,zh;q=0.9"
+        data = await self._fetch_json(client, HOT_LIST_URL, headers=headers)
+        if data is None:
             return []
 
         word_list = data.get("data", {}).get("word_list", [])

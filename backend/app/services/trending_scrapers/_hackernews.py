@@ -17,16 +17,12 @@ class HackerNewsTrending(BaseTrendingScraper):
     CATEGORY = "tech"
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
-        try:
-            # 获取 top stories IDs
-            resp = await client.get(
-                "https://hacker-news.firebaseio.com/v0/topstories.json",
-            )
-            resp.raise_for_status()
-            ids = resp.json()[:30]
-        except Exception as e:
-            logger.warning("hackernews trending fetch failed: %s", e)
+        ids_data = await self._fetch_json(
+            client, "https://hacker-news.firebaseio.com/v0/topstories.json"
+        )
+        if ids_data is None:
             return []
+        ids = ids_data[:30]
 
         results: list[TrendingEntry] = []
         for idx, item_id in enumerate(ids, start=1):

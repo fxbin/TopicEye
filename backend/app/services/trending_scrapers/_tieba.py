@@ -18,21 +18,12 @@ class TiebaTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://tieba.baidu.com/hottopic/browse/topiclist"
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://tieba.baidu.com/hottopic/browse/topiclist",
-            "Accept": "application/json",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("tieba trending fetch failed: %s", e)
+        headers = self._build_headers(
+            Referer="https://tieba.baidu.com/hottopic/browse/topiclist",
+            Accept="application/json",
+        )
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         # 预期 JSON 结构: {data: {bang: [{topic_name, topic_url, discuss_num}]}}

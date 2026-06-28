@@ -18,6 +18,7 @@ class DoubanTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://m.douban.com/rexxar/api/v2/search/hots?ck="
+        # 豆瓣移动端 API 需要移动端 UA，不用桌面 BROWSER_UA
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
@@ -26,12 +27,8 @@ class DoubanTrending(BaseTrendingScraper):
             ),
             "Referer": "https://m.douban.com/",
         }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("douban trending fetch failed: %s", e)
+        data = await self._fetch_json(client, url, headers=headers)
+        if data is None:
             return []
 
         # 解析热搜话题

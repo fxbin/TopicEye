@@ -17,14 +17,8 @@ class V2EXTrending(BaseTrendingScraper):
     CATEGORY = "tech"
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
-        try:
-            resp = await client.get(
-                "https://www.v2ex.com/api/topics/hot.json",
-            )
-            resp.raise_for_status()
-            items = resp.json()
-        except Exception as e:
-            logger.warning("v2ex trending fetch failed: %s", e)
+        items = await self._fetch_json(client, "https://www.v2ex.com/api/topics/hot.json")
+        if items is None:
             return []
 
         results: list[TrendingEntry] = []

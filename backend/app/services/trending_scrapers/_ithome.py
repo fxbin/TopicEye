@@ -22,16 +22,9 @@ class ITHomeTrending(BaseTrendingScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
         url = "https://www.ithome.com/rss/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://www.ithome.com/",
-        }
-        try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            xml = resp.text
-        except Exception as e:
-            logger.warning("ithome trending fetch failed: %s", e)
+        headers = self._build_headers(Referer="https://www.ithome.com/")
+        xml = await self._fetch_text(client, url, headers=headers)
+        if xml is None:
             return []
 
         # 按条目拆分

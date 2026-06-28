@@ -44,6 +44,61 @@ import type {
   JobStatsRecentFailure,
   JobStatsResponse,
 } from '@/types/stats';
+import type {
+  ContentCategoryItem,
+  ScoringFlowStage,
+  ScoringFlowSample,
+  ScoringFlowDiagnostics,
+  ScoringFlowConfig,
+  ScoringFlowResponse,
+  TopicGroupResponse,
+} from '@/types/contents';
+import type { TrendPoint, TrendKeywordItem } from '@/types/trends';
+import type {
+  IssueFeedbackSeverity,
+  IssueFeedbackStatus,
+  ProductUpdateKind,
+  ProductUpdateStatus,
+  IssueFeedbackItem,
+  IssueFeedbackListResponse,
+  ProductUpdateEntry,
+  ProductUpdateItem,
+  ProductUpdateListResponse,
+} from '@/types/product-feedback';
+import type {
+  TrendingItem,
+  TrendingSource,
+  TrendingAngleRecommendation,
+  PersistentTopic,
+  CrossPlatformSourceItem,
+  CrossPlatformCluster,
+  MotherTopic,
+  MotherTopicMutation,
+  ContentScoringResult,
+} from '@/types/trending';
+import type {
+  FanqieCategory,
+  FanqieBook,
+  WebnovelMovementItem,
+  WebnovelCategoryItem,
+  WebnovelWeeklyReport,
+  QimaoBook,
+  ZhihuAlbum,
+  ZhihuCategory,
+} from '@/types/webnovel';
+import type {
+  LlmModelItem,
+  LlmModelPresetItem,
+  LlmModelPresetCatalog,
+  MyLlmModelsResponse,
+  LlmModelCreatePayload,
+  EvalRun,
+  EvalResult,
+  ModelUsageBucket,
+  ModelUsageByModel,
+  ModelUsageByPrompt,
+  ModelUsageSummary,
+} from '@/types/models';
 
 export type { ContentItem, CreateSourceRequest, UpdateSourceRequest };
 export type FeedbackType = 'like' | 'dislike' | 'skip' | 'not_relevant' | 'outdated' | 'great_pick';
@@ -60,6 +115,52 @@ export type {
   JobStatsByJobKey,
   JobStatsRecentFailure,
   JobStatsResponse,
+  ContentCategoryItem,
+  ScoringFlowStage,
+  ScoringFlowSample,
+  ScoringFlowDiagnostics,
+  ScoringFlowConfig,
+  ScoringFlowResponse,
+  TopicGroupResponse,
+  TrendPoint,
+  TrendKeywordItem,
+  IssueFeedbackSeverity,
+  IssueFeedbackStatus,
+  ProductUpdateKind,
+  ProductUpdateStatus,
+  IssueFeedbackItem,
+  IssueFeedbackListResponse,
+  ProductUpdateEntry,
+  ProductUpdateItem,
+  ProductUpdateListResponse,
+  TrendingItem,
+  TrendingSource,
+  TrendingAngleRecommendation,
+  PersistentTopic,
+  CrossPlatformSourceItem,
+  CrossPlatformCluster,
+  MotherTopic,
+  MotherTopicMutation,
+  ContentScoringResult,
+  FanqieCategory,
+  FanqieBook,
+  WebnovelMovementItem,
+  WebnovelCategoryItem,
+  WebnovelWeeklyReport,
+  QimaoBook,
+  ZhihuAlbum,
+  ZhihuCategory,
+  LlmModelItem,
+  LlmModelPresetItem,
+  LlmModelPresetCatalog,
+  MyLlmModelsResponse,
+  LlmModelCreatePayload,
+  EvalRun,
+  EvalResult,
+  ModelUsageBucket,
+  ModelUsageByModel,
+  ModelUsageByPrompt,
+  ModelUsageSummary,
 };
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
@@ -512,15 +613,6 @@ export const contentsApi = {
   },
 };
 
-export interface ContentCategoryItem {
-  id: number;
-  name: string;
-  description?: string | null;
-  keywords: string[];
-  is_auto_created: boolean;
-  content_count: number;
-}
-
 export const contentCategoriesApi = {
   list(): Promise<{ categories: ContentCategoryItem[] }> {
     return request('/categories');
@@ -638,96 +730,7 @@ export const favoritesApi = {
   },
 };
 
-export interface ScoringFlowStage {
-  key: string;
-  label: string;
-  count: number;
-  retention: number;
-}
-
-export interface ScoringFlowSample {
-  id: number;
-  title: string;
-  url: string;
-  source_name: string | null;
-  category: string;
-  summary?: string | null;
-  recommendation?: string | null;
-  tags?: string[];
-  creator_angles?: string[];
-  is_favorited?: boolean;
-  selected: boolean;
-  final_score: number;
-  threshold_used: number;
-  base_score: number;
-  source_bonus: number;
-  quality_factor: number;
-  risk_factor: number;
-  time_decay: number;
-  diversity_factor: number;
-  feedback_score: number;
-  dimension_scores: Record<string, number>;
-}
-
-export interface ScoringFlowDiagnostics {
-  analyzed_total: number;
-  window_total: number;
-  collected_window_total?: number;
-  pending_analysis_total?: number;
-  window_options: Array<{ hours: number; count: number }>;
-  collected_window_options?: Array<{ hours: number; count: number }>;
-  recommended_hours?: number | null;
-  loaded_count: number;
-  scoring_input_count: number;
-  scored_count: number;
-  ignored_count: number;
-  candidate_limit: number;
-  sample_limit: number;
-  empty_reason: string;
-  generated_at: string;
-}
-
-export interface ScoringFlowConfig {
-  curation_mode: string;
-  curation_percentile?: number;
-  curation_threshold: number;
-  min_selected_base_score: number;
-  quality_gate_min: number;
-  quality_gate_strong: number;
-  quality_gate_floor: number;
-  risk_threshold: number;
-  risk_soft_start: number;
-  risk_soft_floor: number;
-  time_decay_lambda: number;
-  time_decay_floor: number;
-  diversity_top_n: number;
-  same_source_grace: number;
-  same_category_grace: number;
-}
-
-export interface ScoringFlowResponse {
-  total: number;
-  scored: number;
-  hours: number;
-  diagnostics?: ScoringFlowDiagnostics;
-  scoring_config?: ScoringFlowConfig;
-  stages: ScoringFlowStage[];
-  samples: ScoringFlowSample[];
-  category_mix: Array<{ label: string; count: number }>;
-  source_mix: Array<{ label: string; count: number }>;
-}
-
 // ─── Topics API ───
-
-// Backend returns {items: TopicGroupResponse[], total: number}
-interface TopicGroupResponse {
-  id: number;
-  name: string;
-  summary: string | null;
-  keywords: string[] | null;
-  content_count: number;
-  best_score: number;
-}
 
 export const topicsApi = {
   /** 获取选题分组列表 */
@@ -1024,22 +1027,6 @@ export const statsJobsApi = {
 
 // ─── Trends API ───
 
-export interface TrendPoint {
-  date: string;
-  topic_id: number;
-  topic_name: string;
-  content_count: number;
-  avg_score: number;
-  max_score: number;
-  pick_count: number;
-  top_items: { title: string; url: string; score: number }[] | null;
-}
-
-export interface TrendKeywordItem {
-  keyword: string;
-  count: number;
-}
-
 export const trendsApi = {
   /** Topic trend curves for the last N days */
   topics(days = 7): Promise<{ days: number; trends: TrendPoint[] }> {
@@ -1077,58 +1064,6 @@ export const feedbackApi = {
 };
 
 // ─── Product Feedback / Updates API ───
-
-export type IssueFeedbackSeverity = 'low' | 'medium' | 'high' | 'critical';
-export type IssueFeedbackStatus = 'open' | 'triaged' | 'in_progress' | 'fixed' | 'closed';
-export type ProductUpdateKind = 'roadmap' | 'release' | 'fix' | 'improvement';
-export type ProductUpdateStatus = 'planned' | 'in_progress' | 'shipped';
-
-export interface IssueFeedbackItem {
-  id: number;
-  user_id: number | null;
-  title: string;
-  description: string;
-  area: string;
-  severity: IssueFeedbackSeverity;
-  status: IssueFeedbackStatus;
-  resolution_note?: string | null;
-  fixed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  reporter_email?: string | null;
-  reporter_name?: string | null;
-}
-
-export interface IssueFeedbackListResponse {
-  items: IssueFeedbackItem[];
-  total: number;
-  open_count: number;
-  fixed_count: number;
-}
-
-export interface ProductUpdateEntry {
-  title: string;
-  description: string;
-  kind: ProductUpdateKind;
-}
-
-export interface ProductUpdateItem {
-  /** 1 个版本 = 1 记录; items[] 装该版本的全部更新 */
-  id: number;
-  version: string;
-  status: ProductUpdateStatus;
-  target_date?: string | null;
-  shipped_at?: string | null;
-  items: ProductUpdateEntry[];
-  created_by_id?: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ProductUpdateListResponse {
-  items: ProductUpdateItem[];
-  total: number;
-}
 
 export const productFeedbackApi = {
   createIssue(data: {
@@ -1292,36 +1227,6 @@ export const monthlyDigestApi = {
 
 // ─── Trending Radar (趋势雷达) API ───
 
-export interface TrendingItem {
-  id: number;
-  source: string;
-  category: string;
-  rank: number;
-  title: string;
-  url: string;
-  hot_value: number;
-  hot_value_raw: string;
-  trend: string | null;
-  cover_url: string | null;
-  extra: Record<string, unknown> | null;
-  fetched_at: string;
-  batch_id: string;
-}
-
-export interface TrendingSource {
-  source: string;
-  category: string;
-  display_name: string;
-  count: number;
-  last_synced: string | null;
-}
-
-export interface TrendingAngleRecommendation {
-  common_angles: string[];
-  contrast_angles: { angle: string; reasoning: string }[];
-  angle_note: string;
-}
-
 export const trendingApi = {
   /** 获取趋势数据 */
   list(params?: {
@@ -1394,86 +1299,7 @@ export const trendingApi = {
 
 // ─── Cross-Platform Clustering ───
 
-export interface PersistentTopic {
-  title: string;
-  days_on_list: number;
-  total_days: number;
-  snapshot_count: number;
-  sources: string[];
-  source_count: number;
-  avg_rank: number;
-  best_rank: number;
-  hot_value_max: number;
-  rank_trend: number[];
-  first_seen: string;
-  last_seen: string;
-}
-
-export interface CrossPlatformSourceItem {
-  source: string;
-  source_label: string;
-  title: string;
-  rank: number;
-  hot_value: number;
-  hot_value_raw: string;
-  url: string;
-  trend: string | null;
-}
-
-export interface CrossPlatformCluster {
-  topic: string;
-  keywords: string[];
-  resonance: number;
-  item_count: number;
-  sources: string[];
-  source_labels: string[];
-  source_items: CrossPlatformSourceItem[];
-  total_hot: number;
-  avg_rank: number;
-}
-
 // ─── Mother Topics API ──────────────────────────────────────────────
-
-export interface MotherTopic {
-  id: number;
-  name: string;
-  description: string | null;
-  keywords: string[];
-  weight: number;
-  content_type: string | null;
-  target_reader: string | null;
-  is_active: boolean;
-  display_order: number;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export type MotherTopicMutation = Partial<
-  Pick<
-    MotherTopic,
-    | 'name'
-    | 'description'
-    | 'keywords'
-    | 'weight'
-    | 'content_type'
-    | 'target_reader'
-    | 'is_active'
-    | 'display_order'
-  >
->;
-
-export interface ContentScoringResult {
-  title: string;
-  topic_scores: Array<{
-    name: string;
-    keyword_score: number;
-    weight: number;
-    freshness: number;
-    final: number;
-  }>;
-  top_topic: string | null;
-  final_score: number;
-}
 
 export const motherTopicsApi = {
   /** 列出所有母题 */
@@ -1553,27 +1379,6 @@ export const motherTopicsApi = {
 
 /* ── 番茄小说 ── */
 
-export interface FanqieCategory {
-  fanqie_id: string;
-  name: string;
-  group: 'male' | 'female';
-}
-
-export interface FanqieBook {
-  book_id: string;
-  url: string;
-  book_name: string;
-  author: string;
-  abstract: string;
-  thumb_uri: string;
-  read_count: string;
-  word_number: string;
-  last_chapter_title: string;
-  position: number;
-  rank_type: string;
-  rank_pos_diff?: number | null;
-}
-
 export const fanqieApi = {
   /** 获取全部分类 */
   categories(): Promise<FanqieCategory[]> {
@@ -1608,53 +1413,6 @@ export const fanqieApi = {
   },
 };
 
-export interface WebnovelMovementItem {
-  platform: 'fanqie' | 'qimao' | 'zhihu' | 'heiyan' | 'ishugui';
-  platform_label: string;
-  title: string;
-  author: string;
-  category: string;
-  rank_type: string;
-  position: number;
-  change: number;
-  url: string | null;
-}
-
-export interface WebnovelCategoryItem {
-  category: string;
-  count: number;
-}
-
-export interface WebnovelWeeklyReport {
-  period: {
-    start: string;
-    end: string;
-    days: number;
-    label: string;
-  };
-  generated_at: string;
-  summary: {
-    total_items: number;
-    snapshot_days: number;
-    rising_count: number;
-    falling_count: number;
-    read_count_delta: number;
-  };
-  platforms: Array<{
-    platform: 'fanqie' | 'qimao' | 'zhihu' | 'heiyan' | 'ishugui';
-    label: string;
-    item_count: number;
-    rising_count: number;
-    falling_count: number;
-    history_days: number;
-  }>;
-  daily_counts: Array<{ date: string; count: number }>;
-  top_risers: WebnovelMovementItem[];
-  top_fallers: WebnovelMovementItem[];
-  category_mix: Record<string, WebnovelCategoryItem[]>;
-  notes: string[];
-}
-
 export const webnovelReportsApi = {
   weekly(days = 7): Promise<WebnovelWeeklyReport> {
     return request(`/webnovel/reports/weekly?days=${days}`);
@@ -1664,26 +1422,6 @@ export const webnovelReportsApi = {
 // ─── 知乎盐选 API ──────────────────────────────────...
 
 // ─── 七猫小说 API ────────────────────────────────────────────────────────────
-
-export interface QimaoBook {
-  book_id: string;
-  url: string;
-  title: string;
-  author: string;
-  abstract: string;
-  category1_name: string;
-  category2_name: string;
-  thumb_uri: string;
-  words_num: string;
-  collect_count: number;
-  latest_chapter_title: string;
-  update_time: string;
-  is_over: number;
-  is_continue_top: number;
-  index_change: number;
-  position: number;
-  rank_type?: string;
-}
 
 export const qimaoApi = {
   list(channel: string, rankType: string, limit = 20, offset = 0): Promise<{
@@ -1699,38 +1437,6 @@ export const qimaoApi = {
 };
 
 // ─── 知乎盐选 API ────────────────────────────────────────────────────────────
-
-export interface ZhihuAlbum {
-  business_id: string;
-  title: string;
-  author: string;
-  author_desc: string | null;
-  abstract: string | null;
-  thumb_url: string | null;
-  chapter_text: string | null;
-  price_yuan: string;
-  price: number;
-  is_exclusive: boolean;
-  is_svip: boolean;
-  online_time_text: string | null;
-  tag: string | null;
-  category1_name: string;
-  category2_name: string | null;
-  position: number;
-  rank_pos_diff: number | null;
-  url: string;
-  sort_type: string;
-}
-
-export interface ZhihuCategory {
-  zhihu_id: string;
-  name: string;
-  name_en: string | null;
-  level: number;
-  parent_id: string | null;
-  sort: number;
-  artwork: string | null;
-}
 
 export const zhihuApi = {
   list(sortType = 'hottest', category?: string, subcategory?: string, limit = 20, offset = 0): Promise<{
@@ -1752,148 +1458,6 @@ export const zhihuApi = {
 };
 
 // ─── LLM Models API ───
-
-export interface LlmModelItem {
-  id: number;
-  owner_user_id?: number | null;
-  scope?: string;
-  name: string;
-  provider: string;
-  model_id: string;
-  resolved_model: string;
-  api_base: string | null;
-  api_key_set: boolean;
-  enabled: boolean;
-  routing_group: string;
-  model_family: string | null;
-  channel_name: string | null;
-  routing_priority: number;
-  cooldown_seconds: number;
-  temperature: number;
-  max_tokens: number;
-  requests_per_minute: number;
-  description: string | null;
-  cost_per_1k_input: number | null;
-  cost_per_1k_output: number | null;
-  cost_per_1m_input: number | null;
-  cost_per_1m_input_cache_hit: number | null;
-  cost_per_1m_output: number | null;
-  extra_params: Record<string, unknown> | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface LlmModelPresetItem {
-  key: string;
-  label: string;
-  provider: string;
-  model_id: string;
-  model_id_placeholder?: string | null;
-  api_base?: string | null;
-  api_base_placeholder?: string | null;
-  model_family?: string | null;
-  channel_name?: string | null;
-  description: string;
-  recommended_for: string[];
-  requires: string[];
-  help: string;
-  defaults: Record<string, unknown>;
-}
-
-export interface LlmModelPresetCatalog {
-  defaults: Record<string, unknown>;
-  parameter_help?: Record<string, {
-    label: string;
-    default: unknown;
-    range?: number[];
-    unit?: string;
-    recommended?: string;
-    plain: string;
-    beginner?: string;
-    when_to_change?: string[];
-  }>;
-  presets: LlmModelPresetItem[];
-  help: Record<string, string>;
-}
-
-export interface MyLlmModelsResponse {
-  models: LlmModelItem[];
-  total: number;
-  custom_ai_allowed: boolean;
-}
-
-export type LlmModelCreatePayload = Partial<LlmModelItem> & {
-  api_key?: string;
-  preset_key?: string;
-  cost_per_1m_input?: number | null;
-  cost_per_1m_input_cache_hit?: number | null;
-  cost_per_1m_output?: number | null;
-};
-
-export interface EvalRun {
-  eval_run_id: string;
-  prompt_type: string;
-  model_count: number;
-  created_at: string | null;
-  done_count: number;
-  fail_count: number;
-}
-
-export interface EvalResult {
-  id: number;
-  model_id: number;
-  model_name: string;
-  status: string;
-  response_text: string | null;
-  duration_ms: number;
-  tokens_input: number | null;
-  tokens_output: number | null;
-  quality_score: number | null;
-  auto_score: number | null;
-  notes: string | null;
-  error_message: string | null;
-  created_at: string | null;
-}
-
-export interface ModelUsageBucket {
-  calls: number;
-  success_calls: number;
-  failed_calls: number;
-  tokens_input: number;
-  tokens_output: number;
-  cache_read_tokens: number;
-  cache_creation_tokens: number;
-  billable_input_tokens: number;
-  estimated_cost: number;
-}
-
-export interface ModelUsageByModel extends ModelUsageBucket {
-  model_id: number;
-  model_name: string;
-  provider: string | null;
-  avg_duration_ms: number;
-  cost_per_1k_input: number | null;
-  cost_per_1k_output: number | null;
-  cost_per_1m_input?: number | null;
-  cost_per_1m_input_cache_hit?: number | null;
-  cost_per_1m_output?: number | null;
-}
-
-export interface ModelUsageByPrompt extends ModelUsageBucket {
-  prompt_type: string;
-}
-
-export interface ModelUsageSummary {
-  days: number;
-  since: string;
-  total: ModelUsageBucket & {
-    tokens_total: number;
-    avg_duration_ms: number;
-    success_rate: number;
-  };
-  by_model: ModelUsageByModel[];
-  by_prompt: ModelUsageByPrompt[];
-}
 
 export const modelsApi = {
   list(): Promise<{ models: LlmModelItem[]; total: number }> {

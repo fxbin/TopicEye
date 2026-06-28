@@ -48,7 +48,7 @@ HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9",
 }
 
-# channel + rank_type 配置 (与 qimao_service.RANK_CONFIGS 保持一致)
+# channel + rank_type 配置（七猫榜单的唯一来源，qimao_service 不再保留副本）
 RANK_CONFIGS = [
     ("boy", "hot"),
     ("boy", "new"),

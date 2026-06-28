@@ -19,20 +19,6 @@ from app.services.stats_cache import invalidate_novel_platform_stats_cache
 
 logger = logging.getLogger(__name__)
 
-# 榜单配置: (channel, rank_type)
-RANK_CONFIGS = [
-    ("boy", "hot"),
-    ("boy", "new"),
-    ("boy", "over"),
-    ("boy", "collect"),
-    ("boy", "update"),
-    ("girl", "hot"),
-    ("girl", "new"),
-    ("girl", "over"),
-    ("girl", "collect"),
-    ("girl", "update"),
-]
-
 
 def _parse_book(item: dict, channel: str, rank_type: str, position: int) -> dict:
     """将原始字段映射为 QimaoBook 字段。"""

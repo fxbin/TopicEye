@@ -108,3 +108,56 @@ def test_feedback_signal_is_clamped_before_scoring_adjustment():
     assert by_id[3].dimension_scores["feedback_adjustment"] == expected_adjustment
     assert by_id[3].base_score == by_id[2].base_score
     assert by_id[3].base_score > by_id[1].base_score
+
+
+# ── P1 修复回归: falsy-zero + quality_factor 去重 ──────────────────
+
+from app.services.scoring_engine import _dim, _compute_quality_factor, _compute_base_score
+
+
+def test_dim_none_uses_default():
+    assert _dim(None) == 50.0
+    assert _dim(None, default=0.0) == 0.0
+
+
+def test_dim_zero_preserved():
+    """核心修复: 0 是合法低分, 不应被当成缺失（修复前 `0 or 50` → 50）。"""
+    assert _dim(0) == 0.0
+    assert _dim(0.0) == 0.0
+
+
+def test_dim_invalid_returns_default():
+    assert _dim("not-a-number") == 50.0
+    assert _dim(float("nan")) == 50.0
+
+
+def test_zero_info_density_scores_lower_than_missing():
+    """info_density=0 (该淘汰) 的 base 应低于 None(中性 50)。"""
+    item_zero = _item(1, info_density=0, curation_score=0)  # 走 fallback 路径
+    item_missing = _item(2, info_density=None, curation_score=None)
+    base_zero, _ = _compute_base_score(item_zero)
+    base_missing, _ = _compute_base_score(item_missing)
+    assert base_zero < base_missing
+
+
+def test_quality_factor_uses_quality_score_not_dims():
+    """quality_factor 只用 quality_score, 高质量分→factor=1.0 即使 info_density 低。"""
+    item = _item(1, info_density=20, quality_score=85)
+    factor, _ = _compute_quality_factor(item)
+    assert factor == 1.0
+
+
+def test_quality_factor_low_quality_penalized():
+    """quality_score 低触发惩罚, 不受 info_density 高低影响。"""
+    item = _item(1, info_density=80, quality_score=30)
+    factor, _ = _compute_quality_factor(item)
+    assert factor < 0.7
+
+
+def test_time_decay_bad_timestamp_does_not_crash():
+    """格式错误的 timestamp 不应让评分崩溃。"""
+    from app.services.scoring_engine import _compute_time_decay
+    item = _item(1, published_at="not-a-date")
+    decay = _compute_time_decay(item)
+    assert 0.0 < decay <= 1.0
+

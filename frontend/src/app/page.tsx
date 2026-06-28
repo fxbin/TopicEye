@@ -906,10 +906,13 @@ function CurationScoreBadge({ score }: { score: number | null | undefined }) {
 // ── Deep Read Badge (arXiv 论文精读标记) ──
 
 function DeepReadBadge({ enrichment }: { enrichment?: Record<string, unknown> | null }) {
-  // enrichment 由论文 prompt 产出: { worth_deep_read, deep_read_score, deep_read_reason }
+  // enrichment.deep_read 由论文 prompt 产出: { worth_deep_read, deep_read_score, deep_read_reason }
+  // 嵌套在 enrichment 里与其他 schema (background_knowledge 等) 兼容
   if (!enrichment) return null;
-  const worth = enrichment.worth_deep_read as boolean | undefined;
-  const reason = enrichment.deep_read_reason as string | undefined;
+  const deepRead = enrichment.deep_read as Record<string, unknown> | undefined;
+  if (!deepRead) return null;
+  const worth = deepRead.worth_deep_read as boolean | undefined;
+  const reason = deepRead.deep_read_reason as string | undefined;
   if (!worth) return null;
   return (
     <span

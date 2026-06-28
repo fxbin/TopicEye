@@ -142,6 +142,21 @@ def _clamp(value: float | int | None, lower: float, upper: float, default: float
     return max(lower, min(upper, parsed))
 
 
+def _dim(value: float | int | None, default: float = 50.0) -> float:
+    """读取评分维度值：仅 None 用默认值，保留合法的 0 分。
+
+    `value or default` 会把 0 误判为缺失（0 是 falsy），导致该被淘汰的
+    低质内容（LLM 合法打 0 分）被升级成中性 50。这里显式判 None。
+    """
+    if value is None:
+        return default
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return f if not (math.isnan(f) or math.isinf(f)) else default
+
+
 def _compute_base_score(item: ScoringInput) -> tuple[float, dict]:
     """Compute weighted 6-dimension base score."""
     cfg = CONFIG
@@ -151,12 +166,12 @@ def _compute_base_score(item: ScoringInput) -> tuple[float, dict]:
     cs = item.curation_score or 0
 
     dimensions = {
-        "info_density": (item.info_density or 50) * cfg["w_info_density"],
-        "actionability": (item.actionability or 50) * cfg["w_actionability"],
-        "creator_value": (item.creator_score or 50) * cfg["w_creator_value"],
-        "viral_potential": (item.viral_score or 50) * cfg["w_viral_potential"],
-        "source_authority": (item.source_weight or 50) * cfg["w_source_authority"],
-        "freshness": (item.freshness_score or 50) * cfg["w_freshness"],
+        "info_density": _dim(item.info_density) * cfg["w_info_density"],
+        "actionability": _dim(item.actionability) * cfg["w_actionability"],
+        "creator_value": _dim(item.creator_score) * cfg["w_creator_value"],
+        "viral_potential": _dim(item.viral_score) * cfg["w_viral_potential"],
+        "source_authority": _dim(item.source_weight) * cfg["w_source_authority"],
+        "freshness": _dim(item.freshness_score) * cfg["w_freshness"],
     }
 
     dim_sum = sum(dimensions.values())
@@ -201,14 +216,20 @@ def _compute_source_bonus(item: ScoringInput) -> float:
 
 
 def _compute_quality_factor(item: ScoringInput) -> tuple[float, dict]:
-    """Reward content that has enough substance before popularity signals are considered."""
+    """Reward content that has enough substance before popularity signals are considered.
+
+    composite 只用 quality_score（LLM 给的整体质量分），不重复 base 已计入的
+    info_density/actionability/creator——避免这四个维度被双重放大（base 加法 +
+    门控乘法）。quality_score 本身就是 substance 代理，独立于 base 的 6 维。
+    quality_score 缺失时回落到 info_density（次选 substance 信号）。
+    """
     cfg = CONFIG
-    composite = (
-        (item.info_density or 50) * 0.30
-        + (item.actionability or 50) * 0.25
-        + (item.quality_score or 50) * 0.20
-        + (item.creator_score or 50) * 0.25
-    )
+    qs = _dim(item.quality_score, default=None)
+    # quality_score 缺失时回落到 info_density 作 substance 代理
+    if qs is None:
+        composite = _dim(item.info_density)
+    else:
+        composite = qs
 
     if composite >= cfg["quality_gate_strong"]:
         factor = 1.0
@@ -263,13 +284,30 @@ def _compute_time_decay(item: ScoringInput, now: datetime | None = None) -> floa
         now = datetime.now(UTC)
 
     # Use published_at if available, otherwise crawled_at
-    t = item.published_at or item.crawled_at or now
+    t = item.published_at
+    if t is None:
+        t = item.crawled_at
+    if t is None:
+        t = now
     if isinstance(t, str):
-        t = datetime.fromisoformat(t.replace("Z", ""))
+        try:
+            t = datetime.fromisoformat(t.replace("Z", ""))
+        except ValueError:
+            # 格式错误的 timestamp 不应让整个评分批次崩溃；回落到 crawled_at/now
+            t = item.crawled_at
+            if t is None:
+                t = now
+            elif isinstance(t, str):
+                try:
+                    t = datetime.fromisoformat(t.replace("Z", ""))
+                except ValueError:
+                    t = now
     # DB (SQLite) 读出可能是 naive, 统一 aware UTC 再跟 now 比
     from app.core.db_backend import ensure_aware_utc
 
-    t = ensure_aware_utc(t) or now
+    t = ensure_aware_utc(t)
+    if t is None:
+        t = now
 
     hours = max(0, (now - t).total_seconds() / 3600)
     decay = math.exp(-cfg["time_decay_lambda"] * hours)
@@ -419,11 +457,11 @@ def score_low_follower_viral(
     safe_items = [it for it in items if (it.risk_score or 0) <= cfg["risk_threshold"]]
 
     for item in safe_items:
-        vs = item.viral_score or 0
-        cs = item.creator_score or 0
-        qs = item.quality_score or 0
-        fs = item.freshness_score or 0
-        sw = item.source_weight or 50  # analysis source_weight (0-100)
+        vs = _dim(item.viral_score, 0.0)
+        cs = _dim(item.creator_score, 0.0)
+        qs = _dim(item.quality_score, 0.0)
+        fs = _dim(item.freshness_score, 0.0)
+        sw = _dim(item.source_weight, 50.0)  # analysis source_weight (0-100)
 
         # Weighted content score
         content_score = vs * 0.45 + cs * 0.30 + qs * 0.25

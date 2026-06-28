@@ -22,7 +22,7 @@ from typing import Any
 from litellm import completion, RateLimitError
 from tenacity import (
     retry,
-    retry_if_not_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -401,6 +401,10 @@ async def _call_llm_single(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        # litellm 默认 num_retries=2 会内部重试, 与我们的 tenacity + failover 叠加
+        # 导致限流时单条内容烧 8N 次配额。重试策略由 _call_with_retry 统一管理,
+        # 这里显式关闭 litellm 内部重试。除非 extra_params 明确覆盖。
+        "num_retries": 0,
     }
     kwargs.update(_litellm_extra_kwargs(model_config))
     if api_key:
@@ -441,10 +445,21 @@ async def _call_llm_single(
         raise
 
 
+def _should_retry(exc: BaseException) -> bool:
+    """tenacity 谓词: 限流错误(含字符串匹配的非 OpenAI 原生 429)不重试。
+
+    RateLimitError 类型 + 字符串检测(429/rate limit/额度)双保险,
+    覆盖 DeepSeek/GLM/智谱等通过 openai-compat 抛通用 APIError 的场景。
+    """
+    if isinstance(exc, RateLimitError):
+        return False
+    return not _is_rate_limit_error(exc)
+
+
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=1, min=2, max=8),
-    retry=retry_if_not_exception_type((RateLimitError,)),
+    retry=retry_if_exception(_should_retry),
     reraise=True,
 )
 async def _call_with_retry(
@@ -460,7 +475,7 @@ async def _call_with_retry(
 ) -> str:
     """Call LLM with a short retry on failure (not rate limit).
 
-    RateLimitError 不重试：重试只会加重上游限流、烧配额。
+    限流错误(类型 + 字符串双检测)不重试：重试只会加重上游限流、烧配额。
     限流错误直接抛出，由 call_llm_with_metadata 的 failover 循环切换到下一个候选模型。
     """
     return await _call_llm_single(
@@ -544,6 +559,7 @@ async def _call_llm_with_metadata_inner(
         api_base = candidate["api_base"]
         key = _model_key(model_config)
         if _failover.should_skip(key):
+            candidate["_failover_key"] = key  # 重探时重新检查冷却用
             skipped.append(candidate)
             continue
 
@@ -578,6 +594,10 @@ async def _call_llm_with_metadata_inner(
     if skipped:
         logger.info("All active LLM candidates failed or were cooling down; probing skipped candidates")
         for candidate in skipped:
+            # 重新检查冷却：刚被 active 循环失败的模型可能仍在冷却期，不应立即重探
+            fkey = candidate.get("_failover_key")
+            if fkey and _failover.should_skip(fkey):
+                continue
             model_config = candidate["model_config"]
             request_model = candidate["request_model"]
             api_base = candidate["api_base"]

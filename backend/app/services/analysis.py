@@ -87,10 +87,58 @@ def _detect_lang(title: str, content: str) -> str:
 
 
 def _valid_analysis_result(result: Any) -> bool:
-    """Return whether the model result contains the minimum analysis contract."""
-    return (
-        isinstance(result, dict) and isinstance(result.get("scores"), dict) and isinstance(result.get("curation"), dict)
+    """Return whether the model result contains the minimum analysis contract.
+
+    收紧校验：不仅要求 scores/curation 是 dict，还要求 scores 含至少一个
+    有效数值、summary 非空。否则 LLM 返回空壳（如 {"scores":{},"summary":""}）
+    会被当成有效分析，垃圾数据静默入库污染精选评分。
+    """
+    if not isinstance(result, dict):
+        return False
+    scores = result.get("scores")
+    curation = result.get("curation")
+    if not isinstance(scores, dict) or not isinstance(curation, dict):
+        return False
+    # scores 至少含一个 0-100 的有效数值
+    has_valid_score = any(
+        isinstance(v, (int, float)) and 0 <= v <= 100 for v in scores.values()
     )
+    if not has_valid_score:
+        return False
+    # summary 非空（LLM 必须给出实际摘要）
+    summary = result.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return False
+    return True
+
+
+def _normalize_deep_read(raw: Any) -> dict[str, Any] | None:
+    """归一化论文精读判定：调和 worth_deep_read 与 deep_read_score 的矛盾。
+
+    prompt 约定 deep_read_score≥70 → worth_deep_read=true。若 LLM 输出矛盾
+    (如 score=85 但 worth=false)，以 score 为准重新派生 worth。
+    同时处理 worth_deep_read 为字符串 "false" 的 bool 解析 bug。
+    """
+    if not isinstance(raw, dict):
+        return None
+    # deep_read_score 数值化 + clamp
+    try:
+        score = max(0, min(100, float(raw.get("deep_read_score", 0))))
+    except (TypeError, ValueError):
+        score = 0.0
+    # worth_deep_read 显式 bool 解析（bool("false") 是 True 的陷阱）
+    raw_worth = raw.get("worth_deep_read", False)
+    if isinstance(raw_worth, bool):
+        worth = raw_worth
+    else:
+        worth = str(raw_worth).strip().lower() in ("true", "1", "yes")
+    # 调和矛盾：以 score≥70 为准（prompt 约定）
+    worth = worth or score >= 70
+    return {
+        "worth_deep_read": worth,
+        "deep_read_score": round(score, 1),
+        "deep_read_reason": str(raw.get("deep_read_reason") or "")[:200],
+    }
 
 
 def _clamp_score(value: Any, default: float = 50) -> float:
@@ -502,6 +550,9 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             )
 
     # Build analysis record
+    # arXiv 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
+    # 归一化：调和 worth_deep_read(deep_read_score≥70) 矛盾 + 字符串 bool 解析
+    _deep_read = _normalize_deep_read(result.get("deep_read")) if is_arxiv else None
     analysis = AiAnalysis(
         content_id=content.id,
         quality_score=scores.get("quality_score", 0),
@@ -524,9 +575,8 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
         info_density=curation.get("info_density", 50),
         actionability=curation.get("actionability", 50),
         source_weight=curation.get("source_weight", 50),
-        # arXiv 论文的精读判定存入 enrichment（deep_read 由论文 prompt 产出）
-        enrichment_status="completed" if (is_arxiv and result.get("deep_read")) else "pending",
-        enrichment=result.get("deep_read") if is_arxiv else None,
+        enrichment_status="completed" if _deep_read else "pending",
+        enrichment={"deep_read": _deep_read} if _deep_read else None,
         analysis_mode=analysis_mode,
         prescreen_model=prescreen_model,
         final_model=final_model,

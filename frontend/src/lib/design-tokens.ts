@@ -81,9 +81,8 @@ export const LEVEL_CONFIG: Record<string, { bg: string; color: string; border: s
 export const CATEGORIES = ['全部', 'AI', '职场', '商业', '教育', '自媒体', '科技', '生活', '产品'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-/** 推荐等级列表 */
-export const RECOMMEND_LEVELS = ['强烈建议写', '值得观察', '适合深挖', '适合蹭热点', '不建议追', '信号不足'] as const;
-export type RecommendLevel = (typeof RECOMMEND_LEVELS)[number];
+// 注：RecommendLevel 类型的唯一来源是 @/types，此处不再保留副本。
+// LEVEL_CONFIG 的 key 用 as RecommendLevel[] 访问即可。
 
 /** 平台颜色映射 */
 export const PLATFORM_COLOR_MAP: Record<string, { bg: string; color: string }> = {
@@ -92,6 +91,7 @@ export const PLATFORM_COLOR_MAP: Record<string, { bg: string; color: string }> =
   '视频号': { bg: '#ECFDF5', color: '#059669' },
   '知乎':   { bg: '#EFF6FF', color: '#2563EB' },
   '抖音':   { bg: '#F5F3FF', color: '#7C3AED' },
+  'arXiv':  { bg: '#FEF3C7', color: '#B45309' },
 };
 
 /** 信源类型颜色映射 */

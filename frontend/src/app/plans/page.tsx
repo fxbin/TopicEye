@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Gem, LockKeyhole, RefreshCw, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Check, Gem, LockKeyhole, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { plansApi } from '@/lib/api';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Panel, cx } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import type { PlanCatalogResponse, PlanTier } from '@/types';
 
 const LIMIT_LABELS: Record<string, string> = {
@@ -25,26 +27,17 @@ function formatLimit(value: unknown): string {
 
 export default function PlansPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [catalog, setCatalog] = useState<PlanCatalogResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchPlans = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setCatalog(await plansApi.list());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '权益规划加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (authLoading) return;
-    void fetchPlans();
-  }, [authLoading, currentUser?.plan, fetchPlans]);
+  const { data: catalog, loading, error, refetch } = useFetch<PlanCatalogResponse>(
+    async () => {
+      try {
+        return await plansApi.list();
+      } catch (err) {
+        throw new Error(err instanceof Error ? err.message : '权益规划加载失败');
+      }
+    },
+    [currentUser?.plan],
+    { enabled: !authLoading },
+  );
 
   const recommended = useMemo(() => catalog?.tiers.find((tier) => tier.recommended), [catalog]);
   const currentTier = useMemo(
@@ -92,17 +85,13 @@ export default function PlansPage() {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-sm border border-red-light bg-red-light px-4 py-3 text-[13px] text-red">
-          <span>{error}</span>
-          <Button type="button" variant="danger" onClick={() => void fetchPlans()}>
-            <RefreshCw size={13} />
-            重试
-          </Button>
+        <div className="mb-4">
+          <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
         </div>
       )}
 
       {loading ? (
-        <div className="p-20 text-center text-sm text-gray-400">加载中...</div>
+        <LoadingState label="加载中…" minHeight="200px" />
       ) : catalog && (
         <>
           <div className="mb-5 grid gap-3 lg:grid-cols-2">

@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Settings } from 'lucide-react';
 import { motherTopicsApi, type MotherTopic } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 
 /* ── helpers ── */
 
@@ -219,31 +221,23 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export default function MotherTopicsConfigPage() {
   const router = useRouter();
-  const [topics, setTopics] = useState<MotherTopic[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const loadTopics = useCallback(() => {
-    setLoading(true);
-    motherTopicsApi.list(false).then(ts => {
-      setTopics(ts.sort((a, b) => a.display_order - b.display_order));
-      setLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => { loadTopics(); }, [loadTopics]);
+  const { data: topics, loading, error, refetch } = useFetch<MotherTopic[]>(
+    async () => {
+      const ts = await motherTopicsApi.list(false);
+      return ts.sort((a, b) => a.display_order - b.display_order);
+    },
+    [],
+  );
 
   const handleSave = async (id: number, updated: Partial<MotherTopic>) => {
     await motherTopicsApi.update(id, updated);
-    await loadTopics();
+    await refetch();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('确认停用此母题？停用后相关推荐将不再出现。')) return;
     await motherTopicsApi.delete(id);
-    await loadTopics();
+    await refetch();
   };
 
   return (
@@ -278,12 +272,18 @@ export default function MotherTopicsConfigPage() {
         <b>阈值:</b> 80+ 今日主选题 / 65-79 值得储备 / 50-64 观察池 / &lt;50 过滤
       </Panel>
 
+      {error && (
+        <div className="mb-4">
+          <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
+        </div>
+      )}
+
       {/* Topics */}
       {loading ? (
-        <div className="py-10 text-center text-gray-400">加载中...</div>
+        <LoadingState label="加载中…" minHeight="160px" />
       ) : (
         <div>
-          {topics.map(topic => (
+          {(topics || []).map(topic => (
             <TopicCard
               key={topic.id}
               topic={topic}

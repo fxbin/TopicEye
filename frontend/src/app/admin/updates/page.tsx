@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle2,
   CircleDot,
@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import {
   productFeedbackApi,
   type ProductUpdateItem,
@@ -72,39 +74,26 @@ function fromDateInput(s: string): string | null {
 
 export default function AdminUpdatesPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<ProductUpdateItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
   const [versionQuery, setVersionQuery] = useState('');
   const [editing, setEditing] = useState<ProductUpdateItem | null>(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const resp = await productFeedbackApi.listUpdates({ limit: 100 });
-      setItems(resp.items);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  const { data: items, loading, error: fetchError, refetch } = useFetch<ProductUpdateItem[]>(
+    () => productFeedbackApi.listUpdates({ limit: 100 }).then(r => r.items),
+    [],
+    { enabled: !authLoading },
+  );
 
   const openCreate = () => {
     setDraft(EMPTY_DRAFT);
     setEditing(null);
     setShowCreate(true);
-    setError(null);
+    setFormError(null);
     setNotice(null);
   };
 
@@ -118,7 +107,7 @@ export default function AdminUpdatesPage() {
       items: item.items.map((it) => ({ kind: it.kind, description: it.description })),
     });
     setShowCreate(true);
-    setError(null);
+    setFormError(null);
     setNotice(null);
   };
 
@@ -144,19 +133,19 @@ export default function AdminUpdatesPage() {
 
   const handleSave = async () => {
     if (!draft.version.trim()) {
-      setError('请填写版本号');
+      setFormError('请填写版本号');
       return;
     }
     if (draft.items.length === 0) {
-      setError('至少添加一个更新项');
+      setFormError('至少添加一个更新项');
       return;
     }
     if (draft.items.some((it) => !it.description.trim())) {
-      setError('所有更新项必须有描述');
+      setFormError('所有更新项必须有描述');
       return;
     }
     setSaving(true);
-    setError(null);
+    setFormError(null);
     try {
       const payload = {
         version: draft.version.trim(),
@@ -177,10 +166,10 @@ export default function AdminUpdatesPage() {
         await productFeedbackApi.createUpdate(payload);
         setNotice(`已创建 v${payload.version}`);
       }
-      await loadData();
+      await refetch();
       closeDialog();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setFormError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -200,9 +189,9 @@ export default function AdminUpdatesPage() {
         throw new Error(`删除失败: HTTP ${res.status}`);
       }
       setNotice(`已删除 v${item.version}`);
-      await loadData();
+      await refetch();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setFormError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -228,9 +217,9 @@ export default function AdminUpdatesPage() {
     );
   }
 
-  const shippedCount = items.filter((it) => it.status === 'shipped').length;
-  const inProgressCount = items.filter((it) => it.status === 'in_progress').length;
-  const plannedCount = items.filter((it) => it.status === 'planned').length;
+  const shippedCount = (items || []).filter((it) => it.status === 'shipped').length;
+  const inProgressCount = (items || []).filter((it) => it.status === 'in_progress').length;
+  const plannedCount = (items || []).filter((it) => it.status === 'planned').length;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
@@ -250,7 +239,7 @@ export default function AdminUpdatesPage() {
               <Plus size={14} />
               新建发版
             </Button>
-            <Button type="button" variant="secondary" onClick={() => void loadData()}>
+            <Button type="button" variant="secondary" onClick={() => void refetch()}>
               <RefreshCw size={14} />
               刷新
             </Button>
@@ -258,24 +247,29 @@ export default function AdminUpdatesPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="总发版" value={items.length} tone="neutral" />
+          <StatTile label="总发版" value={(items || []).length} tone="neutral" />
           <StatTile label="已发布" value={shippedCount} tone="teal" />
           <StatTile label="进行中" value={inProgressCount} tone="primary" />
           <StatTile label="已规划" value={plannedCount} tone="amber" />
         </div>
 
-        {error && (
-          <div className="rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-            {error}
+        {fetchError && (
+          <div className="mb-4">
+            <ErrorState error={fetchError} onRetry={() => void refetch()} panel={false} />
           </div>
         )}
-        {notice && !error && (
+        {formError && (
+          <div className="mb-4 rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
+            {formError}
+          </div>
+        )}
+        {notice && !fetchError && !formError && (
           <div className="rounded-sm border border-teal-border bg-teal-light/30 px-4 py-2.5 text-[13px] text-teal">
             {notice}
           </div>
         )}
 
-        {items.length === 0 ? (
+        {(items || []).length === 0 ? (
           <Panel className="p-8 text-center">
             <p className="text-[14px] text-gray-500">还没有发版记录，点右上角「新建发版」开始。</p>
           </Panel>
@@ -291,10 +285,10 @@ export default function AdminUpdatesPage() {
                 className="flex-1 min-w-[180px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
               />
               {([
-                { value: 'all', label: '全部', count: items.length },
-                { value: 'shipped', label: '已发布', count: items.filter((i) => i.status === 'shipped').length },
-                { value: 'in_progress', label: '进行中', count: items.filter((i) => i.status === 'in_progress').length },
-                { value: 'planned', label: '已规划', count: items.filter((i) => i.status === 'planned').length },
+                { value: 'all', label: '全部', count: (items || []).length },
+                { value: 'shipped', label: '已发布', count: (items || []).filter((i) => i.status === 'shipped').length },
+                { value: 'in_progress', label: '进行中', count: (items || []).filter((i) => i.status === 'in_progress').length },
+                { value: 'planned', label: '已规划', count: (items || []).filter((i) => i.status === 'planned').length },
               ] as const).map((tab) => (
                 <button
                   key={tab.value}
@@ -320,7 +314,7 @@ export default function AdminUpdatesPage() {
 
             {/* Filtered list */}
             {(() => {
-              const filtered = items
+              const filtered = (items || [])
                 .filter((u) => statusFilter === 'all' || u.status === statusFilter)
                 .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
               if (filtered.length === 0) {
@@ -358,7 +352,7 @@ export default function AdminUpdatesPage() {
           draft={draft}
           editing={editing}
           saving={saving}
-          error={error}
+          error={formError}
           onChange={setDraft}
           onAddItem={addItem}
           onRemoveItem={removeItem}

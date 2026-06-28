@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { ErrorState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import {
   productFeedbackApi,
   type IssueFeedbackItem,
@@ -378,33 +380,22 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
 
 export default function ChangelogPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [loading, setLoading] = useState(true);
-  const [updates, setUpdates] = useState<ProductUpdateItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
   const [versionQuery, setVersionQuery] = useState('');
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data: updates, loading, error, refetch } = useFetch<ProductUpdateItem[]>(
+    async () => {
       const resp = await productFeedbackApi.listUpdates({ limit: 50 });
-      setUpdates(resp.items);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return resp.items;
+    },
+    [],
+    { enabled: !authLoading },
+  );
 
-  const filteredUpdates = updates
+  const filteredUpdates = (updates || [])
     .filter((u) => statusFilter === 'all' || u.status === statusFilter)
     .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
 
   if (authLoading || loading) {
     return (
@@ -417,8 +408,8 @@ export default function ChangelogPage() {
     );
   }
 
-  const shippedCount = updates.filter((u) => u.status === 'shipped').length;
-  const inProgressCount = updates.filter((u) => u.status === 'in_progress').length;
+  const shippedCount = (updates || []).filter((u) => u.status === 'shipped').length;
+  const inProgressCount = (updates || []).filter((u) => u.status === 'in_progress').length;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
@@ -453,7 +444,7 @@ export default function ChangelogPage() {
                 登录后反馈
               </Button>
             )}
-            <Button type="button" variant="secondary" onClick={() => void loadData()}>
+            <Button type="button" variant="secondary" onClick={() => void refetch()}>
               <RefreshCw size={14} />
               刷新
             </Button>
@@ -461,13 +452,13 @@ export default function ChangelogPage() {
         </div>
 
         {error && (
-          <div className="rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-            {error}
+          <div className="mb-4">
+            <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
           </div>
         )}
 
         {/* Status filter tabs + version search */}
-        {updates.length > 0 && (
+        {(updates || []).length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="text"
@@ -477,10 +468,10 @@ export default function ChangelogPage() {
               className="flex-1 min-w-[200px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
             />
             {([
-              { value: 'all', label: '全部', count: updates.length },
-              { value: 'shipped', label: '已发布', count: updates.filter((u) => u.status === 'shipped').length },
-              { value: 'in_progress', label: '进行中', count: updates.filter((u) => u.status === 'in_progress').length },
-              { value: 'planned', label: '已规划', count: updates.filter((u) => u.status === 'planned').length },
+              { value: 'all', label: '全部', count: (updates || []).length },
+              { value: 'shipped', label: '已发布', count: (updates || []).filter((u) => u.status === 'shipped').length },
+              { value: 'in_progress', label: '进行中', count: (updates || []).filter((u) => u.status === 'in_progress').length },
+              { value: 'planned', label: '已规划', count: (updates || []).filter((u) => u.status === 'planned').length },
             ] as const).map((tab) => (
               <button
                 key={tab.value}
@@ -536,7 +527,7 @@ export default function ChangelogPage() {
       {showFeedback && (
         <FeedbackPanel
           onClose={() => setShowFeedback(false)}
-          onSubmitted={() => void loadData()}
+          onSubmitted={() => void refetch()}
         />
       )}
     </div>

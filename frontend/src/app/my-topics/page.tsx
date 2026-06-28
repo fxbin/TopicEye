@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowRight,
   BookmarkCheck,
   Compass,
   ExternalLink,
   Filter,
-  Loader2,
   Pin,
   RefreshCw,
   Settings2,
@@ -17,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Metric, Panel, Toolbar, cx } from '@/components/ui';
+import { LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import { motherTopicsApi, contentsApi, type MotherTopic, type ContentItem } from '@/lib/api';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 
@@ -237,53 +238,43 @@ function ContentCard({
   );
 }
 
+type TopicsPayload = { topics: MotherTopic[]; scored: ScoredContent[] };
+
 export default function MyTopicsPage() {
-  const [topics, setTopics] = useState<MotherTopic[]>([]);
-  const [allScored, setAllScored] = useState<ScoredContent[]>([]);
   const [selectedTopic, setSelectedTopic] = useState('');
-  const [loading, setLoading] = useState(true);
   const [filterMinScore, setFilterMinScore] = useState(45);
   const { toggleFavorite } = useAppContext();
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const { data, loading, refetch } = useFetch<TopicsPayload>(async () => {
+    const [topicList, contentPage] = await Promise.all([
+      motherTopicsApi.list(true),
+      contentsApi.list({ page: 1, page_size: 200, include_trend_sources: false }),
+    ]);
+
+    let scored: ScoredContent[];
     try {
-      const [topicList, contentPage] = await Promise.all([
-        motherTopicsApi.list(true),
-        contentsApi.list({ page: 1, page_size: 200, include_trend_sources: false }),
-      ]);
-      setTopics(topicList);
-
-      let scored: ScoredContent[];
-      try {
-        const { results } = await motherTopicsApi.scoreBatch(
-          (contentPage.items || []).map((content) => ({
-            title: content.title,
-            summary: content.summary || '',
-            hot_value: 0,
-          }))
-        );
-        const resultMap = new Map(results.map((result) => [result.title, result]));
-        scored = (contentPage.items || []).map((content) => ({
-          content,
-          scoring: resultMap.get(content.title) ?? null,
-        }));
-      } catch {
-        scored = (contentPage.items || []).map((content) => ({ content, scoring: null }));
-      }
-
-      scored.sort((a, b) => (b.scoring?.final_score || 0) - (a.scoring?.final_score || 0));
-      setAllScored(scored);
-    } catch (error) {
-      console.error('Failed to load mother topics:', error);
-    } finally {
-      setLoading(false);
+      const { results } = await motherTopicsApi.scoreBatch(
+        (contentPage.items || []).map((content) => ({
+          title: content.title,
+          summary: content.summary || '',
+          hot_value: 0,
+        }))
+      );
+      const resultMap = new Map(results.map((result) => [result.title, result]));
+      scored = (contentPage.items || []).map((content) => ({
+        content,
+        scoring: resultMap.get(content.title) ?? null,
+      }));
+    } catch {
+      scored = (contentPage.items || []).map((content) => ({ content, scoring: null }));
     }
+
+    scored.sort((a, b) => (b.scoring?.final_score || 0) - (a.scoring?.final_score || 0));
+    return { topics: topicList, scored };
   }, []);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  const topics = data?.topics ?? [];
+  const allScored = data?.scored ?? [];
 
   const matchedItems = useMemo(() => (
     allScored.filter((item) => (item.scoring?.final_score || 0) > 0)
@@ -430,17 +421,13 @@ export default function MyTopicsPage() {
                 当前显示 {filtered.length} 条，按母题最终得分降序排列
               </div>
             </div>
-            <Button type="button" onClick={() => void loadData()} disabled={loading} variant="secondary">
+            <Button type="button" onClick={() => void refetch()} disabled={loading} variant="secondary">
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> 重新打分
             </Button>
           </Panel>
 
           {loading ? (
-            <Panel className="grid min-h-[260px] place-items-center text-[13px] text-gray-400">
-              <span className="inline-flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin" /> 正在按母题打分...
-              </span>
-            </Panel>
+            <LoadingState label="正在按母题打分…" minHeight="260px" />
           ) : filtered.length === 0 ? (
             <Panel className="grid min-h-[260px] place-items-center p-9 text-center">
               <div>

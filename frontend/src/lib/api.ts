@@ -31,9 +31,36 @@ import type {
   NotificationListResponse,
 } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
+import type {
+  RSSHubInstance,
+  StatsOverview,
+  StatsSourceItem,
+  StatsCategoryItem,
+  StatsTrendItem,
+  StatsNovelPlatform,
+  StatsDashboard,
+  JobStatsByStatus,
+  JobStatsByJobKey,
+  JobStatsRecentFailure,
+  JobStatsResponse,
+} from '@/types/stats';
 
 export type { ContentItem, CreateSourceRequest, UpdateSourceRequest };
 export type FeedbackType = 'like' | 'dislike' | 'skip' | 'not_relevant' | 'outdated' | 'great_pick';
+// 统计类型 re-export 保持向后兼容（外部通过 @/lib/api 导入）
+export type {
+  RSSHubInstance,
+  StatsOverview,
+  StatsSourceItem,
+  StatsCategoryItem,
+  StatsTrendItem,
+  StatsNovelPlatform,
+  StatsDashboard,
+  JobStatsByStatus,
+  JobStatsByJobKey,
+  JobStatsRecentFailure,
+  JobStatsResponse,
+};
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 const AUTH_TOKEN_STORAGE_KEY = 'topiceye_auth_token';
@@ -935,13 +962,6 @@ export const viralApi = {
 
 // ─── Settings API ───
 
-export interface RSSHubInstance {
-  url: string;
-  enabled: boolean;
-  priority: number;
-  note: string;
-}
-
 export const settingsApi = {
   /** 获取 RSSHub 实例列表 */
   getRSSHubInstances(): Promise<{ instances: RSSHubInstance[]; default_instances: string[] }> {
@@ -958,52 +978,6 @@ export const settingsApi = {
 };
 
 // ─── Stats / Dashboard API ───
-
-export interface StatsOverview {
-  total: number;
-  analyzed: number;
-  curated: number;
-  today_new: number;
-}
-
-export interface StatsSourceItem {
-  source_name: string;
-  source_type: string;
-  content_count: number;
-  curated_count: number;
-  curation_rate: number;
-}
-
-export interface StatsCategoryItem {
-  category: string;
-  content_count: number;
-  avg_score: number;
-}
-
-export interface StatsTrendItem {
-  date: string;
-  content_count: number;
-  curated_count: number;
-  analyzed_count: number;
-}
-
-export interface StatsNovelPlatform {
-  name: string;
-  table: string;
-  count: number;
-  last_sync: string | null;
-}
-
-export interface StatsDashboard {
-  overview: StatsOverview;
-  sources: StatsSourceItem[];
-  categories: StatsCategoryItem[];
-  trend: StatsTrendItem[];
-  platforms: StatsNovelPlatform[];
-  kpi: { total_crawled: number; total_curated: number; avg_curation: number; active_sources: number };
-  source_breakdown: Array<{ source_name: string; source_type: string; content_count: number; curated_count: number; avg_score: number }>;
-  daily_trend: Array<{ date: string; content_count: number; curated_count: number; avg_curation: number }>;
-}
 
 export const statsApi = {
   /** 内容总览 */
@@ -1038,49 +1012,6 @@ export const statsApi = {
 };
 
 // ─── Job execution stats (job_execution_logs 聚合) ───
-
-export interface JobStatsByStatus {
-  status: string;
-  count: number;
-}
-
-export interface JobStatsByJobKey {
-  job_key: string;
-  runs: number;
-  success_count: number;
-  success_rate: number;
-  avg_duration_ms: number;
-  last_status: string | null;
-  last_run_at: string | null;
-  last_duration_ms: number | null;
-  last_error: string | null;
-}
-
-export interface JobStatsRecentFailure {
-  job_key: string;
-  status: string;
-  started_at: string | null;
-  duration_ms: number | null;
-  error_message: string | null;
-}
-
-export interface JobStatsResponse {
-  period: { days: number; start: string; end: string };
-  totals: {
-    total_runs: number;
-    success_count: number;
-    failed_count: number;
-    timeout_count: number;
-    skipped_count: number;
-    running_count: number;
-    success_rate: number;
-    avg_duration_ms: number;
-    max_duration_ms: number;
-  };
-  by_status: JobStatsByStatus[];
-  by_job_key: JobStatsByJobKey[];
-  recent_failures: JobStatsRecentFailure[];
-}
 
 export const statsJobsApi = {
   get(days = 7, jobKey?: string): Promise<JobStatsResponse> {

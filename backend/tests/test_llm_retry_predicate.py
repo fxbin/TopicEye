@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from litellm import RateLimitError
 
-from app.services.llm.provider import _call_with_retry, _should_retry
+from app.services.llm._call_engine import _call_with_retry, _should_retry
 
 
 @pytest.mark.asyncio
@@ -28,7 +28,7 @@ async def test_rate_limit_error_not_retried(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.llm.provider._call_llm_single", fake_single_call
+        "app.services.llm._call_engine._call_llm_single", fake_single_call
     )
 
     with pytest.raises(RateLimitError):
@@ -58,7 +58,7 @@ async def test_string_429_error_not_retried(monkeypatch):
         raise RuntimeError("Error code: 429 - {'error': {'message': '请求过于频繁'}}")
 
     monkeypatch.setattr(
-        "app.services.llm.provider._call_llm_single", fake_single_call
+        "app.services.llm._call_engine._call_llm_single", fake_single_call
     )
 
     with pytest.raises(RuntimeError):
@@ -101,7 +101,7 @@ async def test_transient_error_is_retried(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(
-        "app.services.llm.provider._call_llm_single", fake_single_call
+        "app.services.llm._call_engine._call_llm_single", fake_single_call
     )
 
     result = await _call_with_retry(

@@ -4,6 +4,8 @@ import asyncio
 import pytest
 
 from app.services.llm import provider
+from app.services.llm import _call_engine
+from app.services.llm import _rate_limit
 
 
 def _model(model_id: int, name: str, priority: int) -> SimpleNamespace:
@@ -198,14 +200,16 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
     async def fake_record_llm_call_in_new_session(**kwargs):
         return None
 
-    monkeypatch.setattr(provider.settings, "LLM_WORKER_CONCURRENCY", 2)
-    monkeypatch.setattr(provider.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(provider, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
+    monkeypatch.setattr(_rate_limit.settings, "LLM_WORKER_CONCURRENCY", 2)
+    monkeypatch.setattr(_call_engine.asyncio, "to_thread", fake_to_thread)
+    # _call_llm_single 内部延迟 import record_llm_call_in_new_session，patch 其来源模块
+    import app.services.llm_usage as llm_usage_mod
+    monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
         await asyncio.gather(
             *[
-                provider._call_llm_single(
+                _call_engine._call_llm_single(
                     [{"role": "user", "content": f"hello {index}"}],
                     "openai/test",
                     "test-key",
@@ -235,7 +239,7 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
     model_config = _model(99, "limited", 10)
     model_config.requests_per_minute = 1
 
-    class FastRateLimiter(provider.RateLimiter):
+    class FastRateLimiter(_rate_limit.RateLimiter):
         def __init__(self, max_requests: int = 60, window_seconds: int = 60):
             super().__init__(max_requests=max_requests, window_seconds=0.03)
 
@@ -261,15 +265,16 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
     async def fake_record_llm_call_in_new_session(**kwargs):
         return None
 
-    monkeypatch.setattr(provider, "RateLimiter", FastRateLimiter)
-    monkeypatch.setattr(provider.settings, "LLM_WORKER_CONCURRENCY", 5)
-    monkeypatch.setattr(provider.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(provider, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
+    monkeypatch.setattr(_rate_limit, "RateLimiter", FastRateLimiter)
+    monkeypatch.setattr(_rate_limit.settings, "LLM_WORKER_CONCURRENCY", 5)
+    monkeypatch.setattr(_call_engine.asyncio, "to_thread", fake_to_thread)
+    import app.services.llm_usage as llm_usage_mod
+    monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
         await asyncio.gather(
             *[
-                provider._call_llm_single(
+                _call_engine._call_llm_single(
                     [{"role": "user", "content": f"hello {index}"}],
                     "openai/limited",
                     "test-key",

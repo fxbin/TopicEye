@@ -214,10 +214,10 @@ async def reset_llm_provider_state():
             if current is None:
                 continue
             cur_mod = getattr(current, "__module__", None)
-            if cur_mod != "app.services.llm.provider":
-                # fake_call 残留,删掉。下次测试如果 monkeypatch 会重建;
-                # 不 monkeypatch 的话,原 __init__ 时就已经定义了(模块顶层
-                # async def),不会走到这里。
+            # 拆分后 _call_with_retry 等的 __module__ 是 app.services.llm._call_engine
+            # 等子模块（合法实现），只有 __module__ 不属于 app.services.llm 的才是
+            # monkeypatch 注入的 fake_call 残留，需要删掉。
+            if not (cur_mod or "").startswith("app.services.llm"):
                 try:
                     delattr(provider_module, attr_name)
                 except AttributeError:

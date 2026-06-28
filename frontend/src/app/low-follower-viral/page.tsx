@@ -22,6 +22,7 @@ import { useAppContext } from '@/components/ClientLayout';
 import CategoryChip from '@/components/CategoryChip';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { EmptyState } from '@/components/StateView';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 import type { ContentAnalysis, ContentItem } from '@/types';
 
@@ -141,7 +142,7 @@ export default function LowFollowerViralPage() {
               <div className="text-sm">扫描突破样本...</div>
             </Panel>
           ) : items.length === 0 ? (
-            <EmptyState />
+            <EmptyState icon={Inbox} title="暂无低粉爆文数据" desc="可以放宽时间窗口或分类范围。" />
           ) : (
             <div className="flex flex-col gap-2.5">
               {items.map((item, index) => (
@@ -482,16 +483,6 @@ function PageButton({
     >
       {children}
     </Button>
-  );
-}
-
-function EmptyState() {
-  return (
-    <Panel className="p-20 text-center text-gray-400">
-      <Inbox size={32} className="mx-auto mb-2.5 opacity-50" />
-      <div className="text-[15px] font-black text-gray-700">暂无低粉爆文数据</div>
-      <div className="mt-1.5 text-xs">可以放宽时间窗口或分类范围。</div>
-    </Panel>
   );
 }
 

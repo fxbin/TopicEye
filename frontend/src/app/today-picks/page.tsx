@@ -17,7 +17,6 @@ import {
   PenLine,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Star,
   Target,
 } from 'lucide-react';
@@ -26,6 +25,7 @@ import { contentsApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { EmptyState, LoadingState } from '@/components/StateView';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 import { getRecommendLevelLabel, getTagColor, timeAgo } from '@/lib/utils';
 import { getRecommendationReason } from '@/lib/recommendation';
@@ -267,7 +267,7 @@ function TodayPicksPage() {
           )}
 
           {loading ? (
-            <EmptyState icon={Sparkles} title="精选加载中" desc="正在读取算法筛选结果..." />
+            <LoadingState label="正在读取算法筛选结果…" />
           ) : filteredItems.length === 0 ? (
             <EmptyState
               icon={FileText}
@@ -881,35 +881,6 @@ function SectionHeading({ title, count }: { title: string; count: number }) {
       <h2 className="text-sm font-black text-gray-800">{title}</h2>
       <span className="font-mono text-[11px] text-gray-400">{count}</span>
     </div>
-  );
-}
-
-function EmptyState({
-  icon: Icon,
-  title,
-  desc,
-  actions,
-}: {
-  icon: typeof FileText;
-  title: string;
-  desc: string;
-  actions?: Array<{ label: string; onClick: () => void; variant?: 'primary' | 'secondary' }>;
-}) {
-  return (
-    <Panel className="px-6 py-16 text-center text-gray-400">
-      <Icon size={34} className="mx-auto mb-3.5 opacity-45" />
-      <div className="text-[15px] font-black text-gray-700">{title}</div>
-      <div className="mt-1.5 text-xs">{desc}</div>
-      {actions && actions.length > 0 && (
-        <div className="mt-3.5 flex flex-wrap justify-center gap-2">
-          {actions.map((action) => (
-            <Button key={action.label} type="button" variant={action.variant || 'primary'} onClick={action.onClick}>
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
-    </Panel>
   );
 }
 

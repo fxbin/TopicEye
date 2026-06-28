@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button, Panel, cx } from '@/components/ui';
+import { EmptyState, LoadingState } from '@/components/StateView';
 import { useAppContext } from '@/components/ClientLayout';
 import {
   favoritesApi,
@@ -241,31 +242,6 @@ function MetricPill({ children, color = '#6B7280', bg = '#F3F4F6' }: { children:
   );
 }
 
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2.5 p-9 text-gray-400">
-      <RefreshCw size={16} className="fanqie-spin" />
-      <span className="text-[13px]">{label}</span>
-    </div>
-  );
-}
-
-function EmptyState({
-  title = '暂无榜单数据',
-  desc = '可以先同步当前平台，或切换榜单筛选。',
-}: {
-  title?: string;
-  desc?: string;
-}) {
-  return (
-    <div className="p-12 text-center text-gray-400">
-      <BookOpen size={28} strokeWidth={1.8} className="mx-auto" />
-      <div className="mt-2.5 text-sm font-bold text-gray-500">{title}</div>
-      <div className="mt-1 text-xs">{desc}</div>
-    </div>
-  );
-}
-
 function formatDate(value: string): string {
   const [, month, day] = value.split('-');
   return `${Number(month)}.${Number(day)}`;
@@ -326,7 +302,7 @@ function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysChange }:
       {loading ? (
         <LoadingState label="正在生成网文周报" />
       ) : !report ? (
-        <EmptyState title="暂无网文周报" desc="同步网文榜单后再刷新周报。" />
+        <EmptyState icon={BookOpen} title="暂无网文周报" desc="同步网文榜单后再刷新周报。" />
       ) : (
         <div className="mx-auto flex max-w-6xl flex-col gap-4">
           {/* 时间窗切换：'按 X 天上升最快' */}
@@ -1414,8 +1390,8 @@ export default function FanqiePage() {
               }
               if (filteredWebnovel.length === 0) {
                 return query.trim()
-                  ? <EmptyState title="没有匹配的作品" desc="换一个书名、作者或简介关键词试试。" />
-                  : <EmptyState />;
+                  ? <EmptyState icon={BookOpen} title="没有匹配的作品" desc="换一个书名、作者或简介关键词试试。" />
+                  : <EmptyState icon={BookOpen} title="暂无榜单数据" desc="可以先同步当前平台，或切换榜单筛选。" />;
               }
               if (isWebnovel) {
                 // ishugui: 按 gender × rank 分组 (男频 6 块 + 女频 6 块)
@@ -1446,7 +1422,7 @@ export default function FanqiePage() {
                   });
 
                   if (books.length === 0) {
-                    return <EmptyState title="该榜单暂无作品" />;
+                    return <EmptyState icon={BookOpen} title="该榜单暂无作品" />;
                   }
 
                   return (
@@ -1502,7 +1478,7 @@ export default function FanqiePage() {
                   });
 
                   if (books.length === 0) {
-                    return <EmptyState title="没有匹配的作品" desc="试试调整来源 / 分类 / 标签组合" />;
+                    return <EmptyState icon={BookOpen} title="没有匹配的作品" desc="试试调整来源 / 分类 / 标签组合" />;
                   }
 
                   // 推荐: 按 shelf 分组 (书城轮播 / 爆款力荐 / 热门绝佳 / 新书尝鲜)

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Metric, Panel, cx } from '@/components/ui';
+import { EmptyState } from '@/components/StateView';
 import { trendsApi, type TrendPoint, type TrendKeywordItem as KeywordItem } from '@/lib/api';
 
 interface TopicSeries {
@@ -203,7 +204,7 @@ function TopicCard({
 
 function KeywordBoard({ keywords }: { keywords: KeywordItem[] }) {
   if (keywords.length === 0) {
-    return <EmptyState title="暂无关键词数据" desc="等待趋势快照生成后会出现关键词频率。" />;
+    return <EmptyState icon={Filter} title="暂无关键词数据" desc="等待趋势快照生成后会出现关键词频率。" />;
   }
 
   const max = keywords[0]?.count || 1;
@@ -349,18 +350,6 @@ function SignalPanel({ topics }: { topics: TopicSeries[] }) {
   );
 }
 
-function EmptyState({ title, desc }: { title: string; desc: string }) {
-  return (
-    <Panel className="grid min-h-[280px] place-items-center p-8 text-center">
-      <div>
-        <Filter size={30} className="mx-auto text-gray-300" strokeWidth={1.8} />
-        <div className="mt-3 text-[15px] font-black text-gray-700">{title}</div>
-        <div className="mt-1.5 text-xs text-gray-400">{desc}</div>
-      </div>
-    </Panel>
-  );
-}
-
 function buildTopicSeries(trends: TrendPoint[]): TopicSeries[] {
   const byTopic = new Map<string, { name: string; pts: TrendPoint[]; total: number; picks: number }>();
   for (const point of trends) {
@@ -472,7 +461,7 @@ export default function TrendsPage() {
             </Panel>
           ) : activeTab === 'topics' ? (
             sortedTopics.length === 0 ? (
-              <EmptyState title="暂无趋势数据" desc="趋势快照生成后会在这里展示话题曲线。" />
+              <EmptyState icon={Filter} title="暂无趋势数据" desc="趋势快照生成后会在这里展示话题曲线。" />
             ) : (
               <div className="flex flex-col gap-3">
                 {sortedTopics.map((topic, index) => (

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { EmptyState, LoadingState } from '@/components/StateView';
 import { modelsApi } from '@/lib/api';
 import type {
   EvalResult,
@@ -286,10 +287,6 @@ function InfoCell({ label, value, muted = false }: { label: string; value: React
   );
 }
 
-function EmptyBlock({ children }: { children: React.ReactNode }) {
-  return <div className="grid min-h-[220px] place-items-center p-8 text-center text-sm text-gray-400">{children}</div>;
-}
-
 export default function ModelEvalPage() {
   const [tab, setTab] = useState<Tab>('models');
   const [models, setModels] = useState<LlmModelItem[]>([]);
@@ -401,7 +398,7 @@ export default function ModelEvalPage() {
 
       {loading ? (
         <Surface title="加载状态" icon={Beaker}>
-          <EmptyBlock>加载中...</EmptyBlock>
+          <LoadingState minHeight="220px" />
         </Surface>
       ) : (
         <>
@@ -554,7 +551,7 @@ function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRefresh: (
 
       {models.length === 0 && (
         <Surface title="空模型库" icon={Settings2}>
-          <EmptyBlock>还没有配置任何模型，点击“添加模型”开始</EmptyBlock>
+          <EmptyState panel={false} minHeight="220px" title="还没有配置任何模型，点击“添加模型”开始" />
         </Surface>
       )}
     </div>
@@ -1209,7 +1206,7 @@ function UsageTab({
   if (loading) {
     return (
       <Surface title="用量统计" icon={BarChart3}>
-        <EmptyBlock>加载中...</EmptyBlock>
+        <LoadingState minHeight="220px" />
       </Surface>
     );
   }
@@ -1217,7 +1214,7 @@ function UsageTab({
   if (!usage) {
     return (
       <Surface title="用量统计" icon={BarChart3}>
-        <EmptyBlock>暂无用量数据</EmptyBlock>
+        <EmptyState panel={false} minHeight="220px" title="暂无用量数据" />
       </Surface>
     );
   }
@@ -1246,7 +1243,7 @@ function UsageTab({
       <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
         <Surface title="按模型拆分" icon={Layers3} hint={`${usage.by_model.length} 个模型`}>
           <div className="flex flex-col gap-2.5">
-            {usage.by_model.length === 0 && <EmptyBlock>暂无模型调用记录</EmptyBlock>}
+            {usage.by_model.length === 0 && <EmptyState panel={false} minHeight="220px" title="暂无模型调用记录" />}
             {usage.by_model.map((item) => {
               const totalTokens = item.tokens_input + item.tokens_output;
               const width = Math.max(4, Math.round((totalTokens / maxModelTokens) * 100));
@@ -1279,7 +1276,7 @@ function UsageTab({
 
         <Surface title="按任务类型" icon={SlidersHorizontal} hint={`${usage.by_prompt.length} 类任务`}>
           <div className="flex flex-col gap-2.5">
-            {usage.by_prompt.length === 0 && <EmptyBlock>暂无任务统计</EmptyBlock>}
+            {usage.by_prompt.length === 0 && <EmptyState panel={false} minHeight="220px" title="暂无任务统计" />}
             {usage.by_prompt.map((item) => {
               const width = Math.max(4, Math.round((item.estimated_cost / maxPromptCost) * 100));
               return (
@@ -1330,7 +1327,7 @@ function HistoryTab() {
   if (loading) {
     return (
       <Surface title="测评历史" icon={History}>
-        <EmptyBlock>加载中...</EmptyBlock>
+        <LoadingState minHeight="220px" />
       </Surface>
     );
   }
@@ -1338,7 +1335,7 @@ function HistoryTab() {
   if (runs.length === 0) {
     return (
       <Surface title="测评历史" icon={History}>
-        <EmptyBlock>暂无测评记录，去 A/B 测评页开始第一次测评</EmptyBlock>
+        <EmptyState panel={false} minHeight="220px" title="暂无测评记录，去 A/B 测评页开始第一次测评" />
       </Surface>
     );
   }

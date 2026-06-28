@@ -21,6 +21,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { EmptyState, LoadingState } from '@/components/StateView';
 import {
   trendingApi,
   type TrendingItem,
@@ -227,14 +228,6 @@ function StatTile({
       </div>
       <div className="mt-1.5 text-[10.5px] text-gray-400">{hint}</div>
     </div>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return (
-    <Panel className="p-[72px] text-center text-sm text-gray-400">
-      {children}
-    </Panel>
   );
 }
 
@@ -649,7 +642,7 @@ function TrendingPage() {
 
       <div className="mt-4.5 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-4.5 max-xl:grid-cols-1">
         <main className="min-w-0">
-          {loading && <EmptyState>加载中...</EmptyState>}
+          {loading && <LoadingState />}
 
           {!loading && error && (
             <EmptyState>

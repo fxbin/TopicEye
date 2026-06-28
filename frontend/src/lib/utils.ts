@@ -7,31 +7,9 @@ import type { ContentItem, ContentAnalysis } from '@/types';
 import { explainRecommendation } from '@/lib/recommendation';
 
 // ─── timeAgo ───
-
-export function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return '从未同步';
-  try {
-    // Backend stores UTC datetimes without 'Z' suffix — append it so JS parses as UTC
-    const normalized = dateStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateStr)
-      ? dateStr
-      : dateStr + 'Z';
-    const date = new Date(normalized);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const seconds = Math.floor(diffMs / 1000);
-    if (seconds < 60) return '刚刚';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} 分钟前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
-    const months = Math.floor(days / 30);
-    return `${months} 个月前`;
-  } catch {
-    return '';
-  }
-}
+// timeAgo / parseUTC / formatDateTime 等时间工具已统一迁移到 @/lib/datetime。
+// 这里 re-export timeAgo 以保持既有 `import { timeAgo } from '@/lib/utils'` 不变。
+export { timeAgo } from '@/lib/datetime';
 
 // ─── weightStars ───
 

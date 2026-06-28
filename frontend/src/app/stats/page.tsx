@@ -23,6 +23,7 @@ import {
   type StatsTrendItem,
   type StatsNovelPlatform,
 } from '@/lib/api';
+import { timeAgoShort } from '@/lib/datetime';
 
 // ── Color helpers ──────────────────────────────────────────────
 const BAR_COLORS = ['#FF6B35', '#00C9A7', '#D97706', '#2563EB', '#E11D48', '#059669', '#D97706', '#64748B'];
@@ -340,17 +341,7 @@ function ContributionHeatmap({ data, days }: { data: StatsTrendItem[]; days: num
 
 function formatSyncLabel(lastSync: string | null) {
   if (!lastSync) return '未同步';
-  try {
-    const dt = new Date(lastSync);
-    const now = new Date();
-    const diffMs = now.getTime() - dt.getTime();
-    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
-    if (diffMin < 60) return `${diffMin}分钟前`;
-    if (diffMin < 1440) return `${Math.floor(diffMin / 60)}小时前`;
-    return `${Math.floor(diffMin / 1440)}天前`;
-  } catch {
-    return lastSync;
-  }
+  return timeAgoShort(lastSync);
 }
 
 function NovelPlatformStats({ platforms }: { platforms: StatsNovelPlatform[] }) {

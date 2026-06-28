@@ -27,6 +27,7 @@ import { useAppContext } from '@/components/ClientLayout';
 import CreationPlanDisplay, { type CreationPlan } from '@/components/CreationPlanDisplay';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import type { FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
+import { timeAgo } from '@/lib/datetime';
 
 const TYPE_OPTIONS: Array<{ value: FavoriteTargetType | ''; label: string }> = [
   { value: '', label: '全部' },
@@ -89,22 +90,6 @@ const CREATION_PLATFORMS: Array<{ id: string; label: string; icon: LucideIcon }>
   { id: 'short_video', label: '短视频', icon: Video },
 ];
 const FAVORITES_PAGE_SIZE = 200;
-
-function parseUTC(s: string): Date {
-  const normalized = s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
-  return new Date(normalized);
-}
-
-function timeAgo(dateStr: string | null | undefined): string {
-  if (!dateStr) return '';
-  const date = parseUTC(dateStr);
-  const hours = Math.floor((Date.now() - date.getTime()) / 3600000);
-  if (hours < 1) return '刚刚';
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  return `${Math.floor(days / 30)} 个月前`;
-}
 
 function getSnapshotText(item: FavoriteItem): string {
   const snapshot = item.snapshot || {};

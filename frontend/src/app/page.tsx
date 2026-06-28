@@ -29,6 +29,13 @@ import type { ContentItem, ContentAnalysis, RecommendLevel } from '@/types';
 import { explainRecommendation, getRecommendationReason } from '@/lib/recommendation';
 import ContentAnalysisPanel from '@/components/ContentAnalysisPanel';
 import { startContentWorkflow } from '@/lib/workflow';
+import {
+  parseUTC,
+  formatClock as formatTime,
+  timeAgo,
+  isToday,
+  formatTimelineDate,
+} from '@/lib/datetime';
 
 const TIME_RANGE_HOURS: Record<string, number | undefined> = {
   '24h': 24,
@@ -47,55 +54,6 @@ const RECOMMEND_FILTERS: Array<RecommendLevel | '全部'> = [
 ];
 
 // ── Helpers ──
-
-/** Parse a datetime string from backend (UTC, no 'Z' suffix) into a correct Date */
-function parseUTC(s: string): Date {
-  const normalized = s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
-  return new Date(normalized);
-}
-
-function formatTime(dateStr: string): string {
-  try {
-    const d = parseUTC(dateStr);
-    if (Number.isNaN(d.getTime())) return '--:--';
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
-  } catch {
-    return '--:--';
-  }
-}
-
-function timeAgo(dateStr: string): string {
-  try {
-    const now = Date.now();
-    const then = parseUTC(dateStr).getTime();
-    if (Number.isNaN(then)) return '';
-    const diffSec = Math.floor((now - then) / 1000);
-    if (diffSec < 60) return '刚刚';
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
-    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)} 天前`;
-    return parseUTC(dateStr).toLocaleDateString('zh-CN');
-  } catch {
-    return '';
-  }
-}
-
-function isToday(dateStr: string): boolean {
-  try {
-    const d = parseUTC(dateStr);
-    if (Number.isNaN(d.getTime())) return false;
-    const now = new Date();
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate()
-    );
-  } catch {
-    return false;
-  }
-}
 
 function getContentTime(item: ContentItem): string {
   return item.published_at || item.crawled_at || item.created_at || '';
@@ -122,23 +80,6 @@ function getItemTags(item: ContentItem): string[] {
     ...normalizeTags(item.analysis?.tags),
     ...normalizeTags(item.analyses?.[0]?.tags),
   ]));
-}
-
-function formatTimelineDate(dateStr: string): string {
-  try {
-    const d = parseUTC(dateStr);
-    if (Number.isNaN(d.getTime())) return '未知时间';
-    const today = new Date();
-    const isSameDay = (
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-    );
-    if (isSameDay) return '今天';
-    return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-  } catch {
-    return '未知时间';
-  }
 }
 
 function formatShanghaiToday(): string {

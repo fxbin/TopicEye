@@ -6,30 +6,9 @@ import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
 import type { ContentItem } from '@/types';
+import { timeAgo } from '@/lib/datetime';
 
 // ─── Helpers ──
-
-function parseUTC(s: string): Date {
-  const normalized = s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
-  return new Date(normalized);
-}
-
-function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return '-';
-  const date = parseUTC(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return '刚刚';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  const months = Math.floor(days / 30);
-  return `${months} 个月前`;
-}
 
 const STATUS_TONE: Record<string, 'neutral' | 'teal' | 'red'> = {
   pending: 'neutral',

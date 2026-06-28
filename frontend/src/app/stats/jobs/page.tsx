@@ -14,6 +14,7 @@ import {
 
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { statsJobsApi, type JobStatsByJobKey, type JobStatsResponse } from '@/lib/api';
+import { timeAgoShort as formatRelativeTime } from '@/lib/datetime';
 
 const DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 1, label: '今日' },
@@ -48,18 +49,6 @@ function formatDuration(ms: number | null | undefined): string {
   const minutes = seconds / 60;
   if (minutes < 60) return `${minutes.toFixed(1)}min`;
   return `${(minutes / 60).toFixed(1)}h`;
-}
-
-function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return '-';
-  const diff = Date.now() - ts;
-  if (diff < 0) return '刚刚';
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}秒前`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
-  return `${Math.floor(diff / 86_400_000)}天前`;
 }
 
 function successTone(rate: number): BadgeTone {

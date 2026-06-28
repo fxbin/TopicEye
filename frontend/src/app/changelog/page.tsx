@@ -23,22 +23,11 @@ import {
   type ProductUpdateKind,
   type ProductUpdateStatus,
 } from '@/lib/api';
+import { timeAgoShort as formatRelative } from '@/lib/datetime';
 
 type Tone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
 
 // ── Helpers (display formatters) ────────────────────────────────────────
-
-function formatRelative(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return '-';
-  const diff = Date.now() - ts;
-  if (diff < 0) return '刚刚';
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}秒前`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
-  return `${Math.floor(diff / 86_400_000)}天前`;
-}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-';

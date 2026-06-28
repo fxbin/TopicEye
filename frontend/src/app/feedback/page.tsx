@@ -26,6 +26,7 @@ import {
   type ProductUpdateKind,
   type ProductUpdateStatus,
 } from '@/lib/api';
+import { formatDateTime as formatTime, formatDate } from '@/lib/datetime';
 
 type Tone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
 
@@ -85,30 +86,6 @@ const AREA_OPTIONS = [
   { value: 'account', label: '账号/权限' },
   { value: 'general', label: '其他' },
 ];
-
-function formatTime(value?: string | null): string {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('zh-CN', {
-    hour12: false,
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-}
 
 function toneForBadge(tone: Tone): 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red' {
   return tone;

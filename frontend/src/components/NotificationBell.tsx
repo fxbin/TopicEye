@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 import { cx } from '@/components/ui';
 import { notificationsApi } from '@/lib/api';
 import type { NotificationItem } from '@/types';
+import { timeAgoShort } from '@/lib/datetime';
 
 const TYPE_STYLES: Record<string, { color: string; bg: string; icon: LucideIcon }> = {
   success: { color: '#059669', bg: '#ECFDF5', icon: Check },
@@ -73,19 +74,6 @@ export default function NotificationBell() {
     } catch {}
   };
 
-  const formatTime = (iso: string | null) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return '刚刚';
-    if (diffMin < 60) return `${diffMin}分钟前`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}小时前`;
-    return `${Math.floor(diffHr / 24)}天前`;
-  };
-
   return (
     <div ref={panelRef} className="relative">
       {/* 铃铛按钮 */}
@@ -151,7 +139,7 @@ export default function NotificationBell() {
                           {n.message}
                         </div>
                         <div className="mt-1 font-mono text-[10px] text-gray-400">
-                          {formatTime(n.created_at)}
+                          {timeAgoShort(n.created_at)}
                         </div>
                       </div>
                       {/* 未读指示点 */}

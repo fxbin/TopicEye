@@ -30,6 +30,7 @@ import {
   type CrossPlatformSourceItem,
   type PersistentTopic,
 } from '@/lib/api';
+import { timeAgoShort as formatTime } from '@/lib/datetime';
 
 /* ── Constants ── */
 
@@ -461,24 +462,6 @@ function ClusterCard({ cluster }: { cluster: CrossPlatformCluster }) {
       )}
     </Panel>
   );
-}
-
-/* ── Helpers ── */
-
-function formatTime(isoStr: string): string {
-  try {
-    const d = new Date(isoStr);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return '刚刚';
-    if (diffMin < 60) return `${diffMin}分钟前`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}小时前`;
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  } catch {
-    return '';
-  }
 }
 
 /* ── Page ── */

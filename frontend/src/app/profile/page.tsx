@@ -26,22 +26,13 @@ import { Badge, Button, Panel, cx } from '@/components/ui';
 import { integrationsApi, modelsApi } from '@/lib/api';
 import type { LlmModelItem, LlmModelPresetCatalog, LlmModelPresetItem } from '@/lib/api';
 import type { IntegrationStatus, WeReadSyncResult } from '@/types';
+import { formatDateTime } from '@/lib/datetime';
 
 const DEFAULT_INSTALL_COMMAND = 'npx skills add Tencent/WeChatReading -g';
 const INSTALL_SCRIPT_COMMAND = 'npm run skills:install-weread';
 
 function formatTime(value?: string | null) {
-  if (!value) return '尚未同步';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('zh-CN', {
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return value ? formatDateTime(value, true) : '尚未同步';
 }
 
 function CopyCommandButton({ command }: { command: string }) {

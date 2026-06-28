@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   ChevronLeft,
@@ -22,7 +22,8 @@ import { useAppContext } from '@/components/ClientLayout';
 import CategoryChip from '@/components/CategoryChip';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
-import { EmptyState } from '@/components/StateView';
+import { EmptyState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 import type { ContentAnalysis, ContentItem } from '@/types';
 
@@ -39,35 +40,30 @@ type AnalysisWithMeta = ContentAnalysis & { _content_id?: number };
 
 export default function LowFollowerViralPage() {
   const { toggleFavorite } = useAppContext();
-  const [items, setItems] = useState<ContentItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hours, setHours] = useState<number>(48);
   const [category, setCategory] = useState('');
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisWithMeta | null>(null);
 
-  const fetchItems = useCallback(async (targetPage: number) => {
-    try {
-      setLoading(true);
+  // hours / category 切换时回到第 1 页
+  React.useEffect(() => { setPage(1); }, [hours, category]);
+
+  type ListPayload = { items: ContentItem[]; total: number };
+  const { data, loading } = useFetch<ListPayload>(
+    async () => {
       const res = await viralApi.list({
-        page: targetPage,
+        page,
         hours,
         category: category || undefined,
         page_size: PAGE_SIZE,
       });
-      setItems(res.items || []);
-      setTotal(res.total || 0);
-    } catch (err) {
-      console.error('Failed to fetch LFV items:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [hours, category]);
+      return { items: res.items || [], total: res.total || 0 };
+    },
+    [page, hours, category],
+  );
 
-  useEffect(() => { void fetchItems(page); }, [fetchItems, page]);
-  useEffect(() => { setPage(1); }, [hours, category]);
-
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const startItem = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem = Math.min(page * PAGE_SIZE, total);
@@ -137,10 +133,7 @@ export default function LowFollowerViralPage() {
           )}
 
           {loading ? (
-            <Panel className="p-20 text-center text-gray-400">
-              <Radar size={30} className="mx-auto mb-3 opacity-50" />
-              <div className="text-sm">扫描突破样本...</div>
-            </Panel>
+            <LoadingState label="扫描突破样本…" minHeight="200px" />
           ) : items.length === 0 ? (
             <EmptyState icon={Inbox} title="暂无低粉爆文数据" desc="可以放宽时间窗口或分类范围。" />
           ) : (

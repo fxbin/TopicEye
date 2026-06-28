@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import type { ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
 
@@ -18,15 +20,7 @@ const STATUS_TONE: Record<string, 'neutral' | 'teal' | 'red'> = {
 
 const PAGE_SIZE = 50;
 
-// ─── Spinner ───
-
-function Spinner() {
-  return (
-    <span className="inline-block h-[18px] w-[18px] animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
-  );
-}
-
-// ─── Page Component ───
+/* ─── Page Component ── */
 
 function exportContentsAsCSV(items: ContentItem[]): void {
   // CSV 安全转义：双引号包裹 + 内部双引号转义
@@ -65,38 +59,25 @@ function exportContentsAsCSV(items: ContentItem[]): void {
 }
 
 export default function ContentsPage() {
-  const [items, setItems] = useState<ContentItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<string>('全部');
 
-  // ─── Fetch contents ───
-  const fetchContents = useCallback(async (p: number, cat: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const params: Record<string, unknown> = { page: p, page_size: PAGE_SIZE, admin_view: true };
-      if (cat && cat !== '全部') params.category = cat;
+  type ListPayload = { items: ContentItem[]; total: number };
+  const { data, loading, error, refetch } = useFetch<ListPayload>(
+    async () => {
+      const params: Record<string, unknown> = { page, page_size: PAGE_SIZE, admin_view: true };
+      if (category && category !== '全部') params.category = category;
       const res = await contentsApi.list(params);
-      const list = res?.items || [];
-      setItems(list as ContentItem[]);
-      setTotal(res?.total ?? list.length);
-      setPage(res?.page ?? p);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '加载内容列表失败';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        items: (res?.items || []) as ContentItem[],
+        total: res?.total ?? (res?.items?.length ?? 0),
+      };
+    },
+    [page, category],
+  );
 
-  useEffect(() => {
-    void fetchContents(1, category);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
-
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleCategoryChange = (cat: string) => {
@@ -105,19 +86,11 @@ export default function ContentsPage() {
   };
 
   const handlePrev = () => {
-    if (page > 1) {
-      const next = page - 1;
-      setPage(next);
-      fetchContents(next, category);
-    }
+    if (page > 1) setPage(page - 1);
   };
 
   const handleNext = () => {
-    if (page < totalPages) {
-      const next = page + 1;
-      setPage(next);
-      fetchContents(next, category);
-    }
+    if (page < totalPages) setPage(page + 1);
   };
 
   return (
@@ -157,24 +130,14 @@ export default function ContentsPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="mb-4 flex items-center justify-between rounded-sm bg-red-light px-4 py-2.5 text-[13px] text-red">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            className="cursor-pointer border-0 bg-transparent px-1 text-base font-bold leading-none text-red"
-          >
-            ×
-          </button>
+        <div className="mb-4">
+          <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
         </div>
       )}
 
       {/* Loading State */}
       {loading && (
-        <div className="flex h-[200px] items-center justify-center gap-2.5 text-sm text-gray-400">
-          <Spinner />
-          <span>加载中…</span>
-        </div>
+        <LoadingState label="加载中…" minHeight="200px" />
       )}
 
       {/* Table */}

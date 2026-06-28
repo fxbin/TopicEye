@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
   CircleDot,
@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import {
   productFeedbackApi,
   type IssueFeedbackItem,
@@ -208,16 +210,46 @@ export default function FeedbackPage() {
   // admin view, status machine, all-issue filters, etc.
   const { currentUser, authLoading } = useAppContext();
   const isAdmin = currentUser?.role === 'admin';
-  const [loading, setLoading] = useState(true);
   const [savingIssue, setSavingIssue] = useState(false);
   const [issueUpdatingId, setIssueUpdatingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [myIssues, setMyIssues] = useState<IssueFeedbackItem[]>([]);
-  const [allIssues, setAllIssues] = useState<IssueFeedbackItem[]>([]);
-  const [issueStats, setIssueStats] = useState({ myOpen: 0, myFixed: 0, total: 0, open: 0, fixed: 0 });
-  const [updates, setUpdates] = useState<ProductUpdateItem[]>([]);
   const [issueFilter, setIssueFilter] = useState<IssueFeedbackStatus | ''>('');
+
+  type FeedbackPayload = {
+    myIssues: IssueFeedbackItem[];
+    allIssues: IssueFeedbackItem[];
+    issueStats: { myOpen: number; myFixed: number; total: number; open: number; fixed: number };
+    updates: ProductUpdateItem[];
+  };
+  const { data, loading, error: fetchError, refetch } = useFetch<FeedbackPayload>(
+    async () => {
+      const [mine, updateList, adminIssues] = await Promise.all([
+        currentUser ? productFeedbackApi.listMine({ limit: 80 }) : Promise.resolve(null),
+        productFeedbackApi.listUpdates({ limit: 160 }),
+        isAdmin ? productFeedbackApi.listIssues({ status: issueFilter, limit: 200 }) : Promise.resolve(null),
+      ]);
+      return {
+        myIssues: mine?.items || [],
+        allIssues: adminIssues?.items || [],
+        issueStats: {
+          myOpen: mine?.open_count || 0,
+          myFixed: mine?.fixed_count || 0,
+          total: adminIssues?.total || 0,
+          open: adminIssues?.open_count || 0,
+          fixed: adminIssues?.fixed_count || 0,
+        },
+        updates: updateList.items || [],
+      };
+    },
+    [currentUser, isAdmin, issueFilter],
+    { enabled: !authLoading },
+  );
+
+  const myIssues = data?.myIssues ?? [];
+  const allIssues = data?.allIssues ?? [];
+  const issueStats = data?.issueStats ?? { myOpen: 0, myFixed: 0, total: 0, open: 0, fixed: 0 };
+  const updates = data?.updates ?? [];
 
   const [issueForm, setIssueForm] = useState({
     title: '',
@@ -235,56 +267,11 @@ export default function FeedbackPage() {
     [updates],
   );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [mine, updateList, adminIssues] = await Promise.all([
-        currentUser ? productFeedbackApi.listMine({ limit: 80 }) : Promise.resolve(null),
-        productFeedbackApi.listUpdates({ limit: 160 }),
-        isAdmin ? productFeedbackApi.listIssues({ status: issueFilter, limit: 200 }) : Promise.resolve(null),
-      ]);
-      setMyIssues(mine?.items || []);
-      setIssueStats((prev) => ({
-        ...prev,
-        myOpen: mine?.open_count || 0,
-        myFixed: mine?.fixed_count || 0,
-      }));
-      setUpdates(updateList.items || []);
-      if (adminIssues) {
-        setAllIssues(adminIssues.items || []);
-        setIssueStats((prev) => ({
-          ...prev,
-          total: adminIssues.total || 0,
-          open: adminIssues.open_count || 0,
-          fixed: adminIssues.fixed_count || 0,
-        }));
-      } else {
-        setAllIssues([]);
-        setIssueStats((prev) => ({
-          ...prev,
-          total: 0,
-          open: 0,
-          fixed: 0,
-        }));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '反馈与更新加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, isAdmin, issueFilter]);
-
-  useEffect(() => {
-    if (authLoading) return;
-    void loadData();
-  }, [authLoading, loadData]);
-
   const submitIssue = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!issueForm.title.trim() || !issueForm.description.trim()) return;
     setSavingIssue(true);
-    setError(null);
+    setFormError(null);
     setNotice(null);
     try {
       await productFeedbackApi.createIssue({
@@ -295,9 +282,9 @@ export default function FeedbackPage() {
       });
       setIssueForm({ title: '', area: 'analysis', severity: 'medium', description: '' });
       setNotice('反馈已提交，后台会在处理后更新状态。');
-      await loadData();
+      await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '提交反馈失败');
+      setFormError(err instanceof Error ? err.message : '提交反馈失败');
     } finally {
       setSavingIssue(false);
     }
@@ -305,7 +292,7 @@ export default function FeedbackPage() {
 
   const updateIssueStatus = async (issue: IssueFeedbackItem, status: IssueFeedbackStatus) => {
     setIssueUpdatingId(issue.id);
-    setError(null);
+    setFormError(null);
     setNotice(null);
     try {
       await productFeedbackApi.updateIssue(issue.id, {
@@ -313,23 +300,16 @@ export default function FeedbackPage() {
         resolution_note: status === 'fixed' ? issue.resolution_note || '相关问题已完成修复。' : issue.resolution_note || null,
       });
       setNotice(status === 'fixed' ? '已标记为修复。' : '反馈状态已更新。');
-      await loadData();
+      await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新反馈状态失败');
+      setFormError(err instanceof Error ? err.message : '更新反馈状态失败');
     } finally {
       setIssueUpdatingId(null);
     }
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page">
-        <div className="inline-flex items-center gap-2 text-sm font-bold text-gray-500">
-          <Loader2 size={16} className="animate-spin" />
-          正在加载反馈工作台
-        </div>
-      </div>
-    );
+    return <LoadingState label="正在加载反馈工作台" minHeight="60vh" />;
   }
 
   return (
@@ -346,20 +326,26 @@ export default function FeedbackPage() {
               反馈可以直接提交；更新路线和记录随版本发布内置展示。
             </p>
           </div>
-          <Button type="button" onClick={() => void loadData()}>
+          <Button type="button" onClick={() => void refetch()}>
             <RefreshCw size={14} />
             刷新
           </Button>
         </div>
 
-        {(error || notice) && (
+        {(formError || notice) && (
           <div
             className={cx(
               'rounded-sm border px-4 py-3 text-[13px] font-bold',
-              error ? 'border-red-light bg-red-light text-red' : 'border-teal-border bg-teal-light text-teal',
+              formError ? 'border-red-light bg-red-light text-red' : 'border-teal-border bg-teal-light text-teal',
             )}
           >
-            {error || notice}
+            {formError || notice}
+          </div>
+        )}
+
+        {fetchError && (
+          <div className="mb-4">
+            <ErrorState error={fetchError} onRetry={() => void refetch()} panel={false} />
           </div>
         )}
 

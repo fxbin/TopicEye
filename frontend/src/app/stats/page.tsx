@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import {
   statsApi,
   type StatsOverview,
@@ -433,36 +435,17 @@ function KpiCard({
 
 export default function StatsPage() {
   const [days, setDays] = useState(7);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // State for each section
-  const [overview, setOverview] = useState<StatsOverview | null>(null);
-  const [sources, setSources] = useState<StatsSourceItem[]>([]);
-  const [categories, setCategories] = useState<StatsCategoryItem[]>([]);
-  const [trend, setTrend] = useState<StatsTrendItem[]>([]);
-  const [novelPlatforms, setNovelPlatforms] = useState<StatsNovelPlatform[]>([]);
+  const { data: dashboard, loading, error, refetch } = useFetch(
+    () => statsApi.getDashboard(days),
+    [days],
+  );
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const dashboard = await statsApi.getDashboard(days);
-      setOverview(dashboard.overview);
-      setSources(dashboard.sources || []);
-      setCategories(dashboard.categories || []);
-      setTrend(dashboard.trend || []);
-      setNovelPlatforms(dashboard.platforms || []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  const overview = dashboard?.overview ?? null;
+  const sources = dashboard?.sources ?? [];
+  const categories = dashboard?.categories ?? [];
+  const trend = dashboard?.trend ?? [];
+  const novelPlatforms = dashboard?.platforms ?? [];
 
   const curatedRate = overview ? formatRatePercent(overview.curated, overview.total) : 0;
 
@@ -500,7 +483,7 @@ export default function StatsPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={fetchAll}
+                onClick={() => void refetch()}
                 title="刷新"
                 className="h-9 w-9 px-0"
               >
@@ -511,12 +494,12 @@ export default function StatsPage() {
         </Panel>
 
         {loading && (
-          <div className="p-10 text-center text-gray-400">加载中...</div>
+          <LoadingState label="加载中…" minHeight="120px" />
         )}
 
         {error && (
-          <div className="mb-5 rounded-sm border border-red-light bg-red-light p-4 text-[13px] text-red">
-            {error}
+          <div className="mb-5">
+            <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
           </div>
         )}
 

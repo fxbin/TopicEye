@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { ErrorState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import { statsJobsApi, type JobStatsByJobKey, type JobStatsResponse } from '@/lib/api';
 import { timeAgoShort as formatRelativeTime } from '@/lib/datetime';
 
@@ -64,27 +66,13 @@ function lastStatusTone(status: string | null | undefined): BadgeTone {
 
 export default function JobStatsPage() {
   const [days, setDays] = useState(7);
-  const [data, setData] = useState<JobStatsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const payload = await statsJobsApi.get(days, selectedJobKey ?? undefined);
-      setData(payload);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [days, selectedJobKey]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const { data, loading, error, refetch } = useFetch<JobStatsResponse>(
+    () => statsJobsApi.get(days, selectedJobKey ?? undefined),
+    [days, selectedJobKey],
+    { initialLoading: false },
+  );
 
   const totals = data?.totals;
   const byStatusMax = data
@@ -125,7 +113,7 @@ export default function JobStatsPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={fetchData}
+            onClick={() => void refetch()}
             disabled={loading}
             className="min-h-8 px-3.5 py-1.5 text-[13px]"
           >
@@ -136,8 +124,8 @@ export default function JobStatsPage() {
       </header>
 
       {error && (
-        <div className="mb-4 rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-          {error}
+        <div className="mb-4">
+          <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
         </div>
       )}
 

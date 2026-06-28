@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Activity,
   ArrowDownRight,
@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Metric, Panel, cx } from '@/components/ui';
-import { EmptyState } from '@/components/StateView';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
+import { useFetch } from '@/hooks/useFetch';
 import { trendsApi, type TrendPoint, type TrendKeywordItem as KeywordItem } from '@/lib/api';
 
 interface TopicSeries {
@@ -390,29 +391,26 @@ function buildTopicSeries(trends: TrendPoint[]): TopicSeries[] {
 }
 
 export default function TrendsPage() {
-  const [trends, setTrends] = useState<TrendPoint[]>([]);
-  const [keywords, setKeywords] = useState<KeywordItem[]>([]);
   const [days, setDays] = useState(7);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'topics' | 'keywords'>('topics');
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
+  type TrendsPayload = { trends: TrendPoint[]; keywords: KeywordItem[] };
+  const { data, loading, error, refetch } = useFetch<TrendsPayload>(
+    async () => {
       const [topicData, keywordData] = await Promise.all([
         trendsApi.topics(days),
         trendsApi.keywords({ days, limit: 60 }),
       ]);
-      setTrends(topicData.trends || []);
-      setKeywords(keywordData.keywords || []);
-    } catch (err) {
-      console.error('Failed to fetch trends:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
+      return {
+        trends: topicData.trends || [],
+        keywords: keywordData.keywords || [],
+      };
+    },
+    [days],
+  );
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const trends = data?.trends ?? [];
+  const keywords = data?.keywords ?? [];
 
   const topicSeries = useMemo(() => buildTopicSeries(trends), [trends]);
   const sortedTopics = topicSeries.slice(0, 15);
@@ -444,6 +442,11 @@ export default function TrendsPage() {
       </header>
 
       <div className="mx-auto mt-5 grid max-w-[1180px] grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
+        {error && (
+          <div className="col-span-full">
+            <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
+          </div>
+        )}
         <main className="min-w-0">
           <section className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
             <Metric label="话题数" value={totalTopics} colorClass="text-primary" icon={<Layers3 size={15} className="text-primary" />} />
@@ -453,12 +456,7 @@ export default function TrendsPage() {
           </section>
 
           {loading ? (
-            <Panel className="grid min-h-[320px] place-items-center text-center text-sm text-gray-400">
-              <div>
-                <Loader2 size={26} className="mx-auto mb-3 animate-spin opacity-60" />
-                <div>加载中...</div>
-              </div>
-            </Panel>
+            <LoadingState label="加载中…" minHeight="320px" />
           ) : activeTab === 'topics' ? (
             sortedTopics.length === 0 ? (
               <EmptyState icon={Filter} title="暂无趋势数据" desc="趋势快照生成后会在这里展示话题曲线。" />
@@ -485,7 +483,7 @@ export default function TrendsPage() {
           <ControlPanel days={days} setDays={setDays} activeTab={activeTab} setActiveTab={setActiveTab} />
           <SignalPanel topics={sortedTopics} />
           <KeywordPanel keywords={keywords} />
-          <Button type="button" variant="secondary" onClick={() => void fetchData()} disabled={loading} className="w-full">
+          <Button type="button" variant="secondary" onClick={() => void refetch()} disabled={loading} className="w-full">
             <Loader2 size={13} className={loading ? 'animate-spin' : 'hidden'} />
             刷新趋势
           </Button>

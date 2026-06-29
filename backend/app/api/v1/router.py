@@ -25,6 +25,7 @@ from app.api.v1.webnovel_reports import router as webnovel_reports_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.scheduler import router as scheduler_router
 from app.api.v1.llm_models import router as llm_models_router
+from app.api.v1.llm_evaluations import router as llm_evaluations_router
 from app.api.v1.favorites import router as favorites_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.user_api_tokens import router as user_api_tokens_router
@@ -62,4 +63,5 @@ router.include_router(webnovel_reports_router)
 router.include_router(notifications_router)
 router.include_router(scheduler_router)
 router.include_router(llm_models_router)
+router.include_router(llm_evaluations_router)
 router.include_router(favorites_router)

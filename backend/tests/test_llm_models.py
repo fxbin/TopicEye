@@ -22,6 +22,7 @@ from app.api.v1.llm_models import (
 )
 from app.api.v1 import auth as auth_api
 from app.api.v1 import llm_models as llm_models_api
+from app.api.v1 import llm_evaluations as llm_evaluations_api
 from app.core.database import Base
 from app.models.llm_model import LlmModel, ModelEvaluation
 from app.models.user import User
@@ -58,6 +59,7 @@ async def llm_model_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str, str
 
     app = FastAPI()
     app.include_router(llm_models_api.router)
+    app.include_router(llm_evaluations_api.router)
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with session_factory() as session:
@@ -70,6 +72,7 @@ async def llm_model_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str, str
 
     app.dependency_overrides[auth_api.get_db] = override_get_db
     app.dependency_overrides[llm_models_api.get_db] = override_get_db
+    app.dependency_overrides[llm_evaluations_api.get_db] = override_get_db
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -428,7 +431,9 @@ async def test_model_config_cache_ignores_user_models_without_paid_plan(llm_mode
 async def test_evaluation_run_executes_models_with_bounded_concurrency(llm_model_client, monkeypatch):
     client, _free_token, _pro_token, admin_token, session_factory = llm_model_client
     monkeypatch.setattr(llm_models_api, "async_session", session_factory)
+    monkeypatch.setattr(llm_evaluations_api, "async_session", session_factory)
     monkeypatch.setattr(llm_models_api.settings, "LLM_WORKER_CONCURRENCY", 2)
+    monkeypatch.setattr(llm_evaluations_api.settings, "LLM_WORKER_CONCURRENCY", 2)
 
     async with session_factory() as db:
         db.add(

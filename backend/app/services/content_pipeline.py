@@ -33,20 +33,11 @@ from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.dedup import build_hash
 from app.services.scraper_http import build_scraper_client_kwargs
 from app.services.scrapers import get_scraper_cls
+# Error redaction extracted to _error_redaction.py (pure functions + constants)
+from app.services._error_redaction import redact_source_sync_error  # noqa: F401 — re-export
 
 logger = logging.getLogger(__name__)
 
-_SENSITIVE_ENV_SUFFIXES = ("API_KEY", "TOKEN", "SECRET", "PASSWORD")
-_SENSITIVE_PAIR_RE = re.compile(
-    r"(?i)([\"']?\b(?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|"
-    r"client[_-]?secret|secret|password|passwd|pwd|token|key)\b[\"']?\s*[:=]\s*[\"']?)"
-    r"([^&\s,;\"'<>}]+)([\"']?)"
-)
-_AUTH_HEADER_RE = re.compile(
-    r"(?i)([\"']?\bauthorization\b[\"']?\s*[:=]\s*[\"']?)(?!Bearer\s+\*\*\*)"
-    r"([^,\s;\"'<>}]+)([\"']?)"
-)
-_BEARER_RE = re.compile(r"\bBearer\s+[^\s,;\"'<>]+", re.IGNORECASE)
 
 
 async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]:
@@ -409,32 +400,6 @@ def _update_source_error(source: Source, message: str) -> None:
     source.status = SourceStatus.ERROR
     source.sync_error = redact_source_sync_error(message)[:500]
     source.updated_at = datetime.now(UTC)
-
-
-def redact_source_sync_error(message: str) -> str:
-    """Remove source credentials before persisting sync errors."""
-    redacted = str(message or "")
-
-    for secret in _source_error_secrets():
-        redacted = redacted.replace(secret, "***")
-
-    redacted = _BEARER_RE.sub("Bearer ***", redacted)
-    redacted = _AUTH_HEADER_RE.sub(r"\1***\3", redacted)
-    redacted = _SENSITIVE_PAIR_RE.sub(r"\1***\3", redacted)
-    return redacted.strip() or "信源同步失败"
-
-
-def _source_error_secrets() -> list[str]:
-    secrets: set[str] = set()
-    for name, value in os.environ.items():
-        if not value or len(value.strip()) < 8:
-            continue
-        upper_name = name.upper()
-        if upper_name.endswith(_SENSITIVE_ENV_SUFFIXES) or upper_name in {"HTTPS_PROXY", "HTTP_PROXY"}:
-            stripped = value.strip()
-            secrets.add(stripped)
-            secrets.add(quote(stripped, safe=""))
-    return sorted(secrets, key=len, reverse=True)
 
 
 async def _get_active_category_names(db: AsyncSession) -> list[str]:

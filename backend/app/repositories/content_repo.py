@@ -26,43 +26,12 @@ from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locke
 from app.models.content import ContentItem, ContentStatus
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.base import BaseRepository
+from app.repositories._content_repo_types import (  # noqa: F401 — re-export for scoring_flow et al.
+    ANALYSIS_STALE_MINUTES,
+    ScoringContentRow,
+)
 
 logger = logging.getLogger(__name__)
-ANALYSIS_STALE_MINUTES = 10
-
-
-@dataclass
-class ScoringContentRow:
-    """Lightweight content + latest analysis row for scoring diagnostics."""
-
-    id: int
-    title: str
-    url: str
-    source_id: int | None
-    source_name: str | None
-    category: str | None
-    summary: str | None
-    tags: Any | None
-    is_favorited: bool
-    published_at: datetime | None
-    crawled_at: datetime
-    source_weight_db: int
-    ai_summary: str | None
-    recommendation: str | None
-    recommended_reason: str | None
-    analysis_tags: Any | None
-    creator_angles: Any | None
-    curation_score: float | None
-    info_density: float | None
-    actionability: float | None
-    source_weight: float | None
-    creator_score: float | None
-    viral_score: float | None
-    freshness_score: float | None
-    quality_score: float | None
-    hot_score: float | None
-    risk_score: float | None
-
 
 class ContentRepo(BaseRepository[ContentItem]):
     model = ContentItem

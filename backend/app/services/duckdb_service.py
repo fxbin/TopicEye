@@ -35,65 +35,15 @@ from app.core.db_backend import (
     redact_database_secrets,
 )
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoringInput, score_items
+from app.services._duckdb_sql import (  # noqa: F401 — re-export for backward compat
+    EMPTY_FEEDBACK_SCORES_CTE,
+    IGNORED_CONTENT_CTE,
+    LATEST_ANALYSIS_CTE,
+    LATEST_FEEDBACK_SCORES_CTE,
+    STATS_CURATION_FALLBACK_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
-STATS_CURATION_FALLBACK_THRESHOLD = 83.0
-
-LATEST_ANALYSIS_CTE = """
-latest_analysis AS (
-    SELECT *
-    FROM (
-        SELECT
-            a.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY a.content_id
-                ORDER BY a.created_at DESC, a.id DESC
-            ) AS analysis_rank
-        FROM oltp_db.ai_analyses a
-    )
-    WHERE analysis_rank = 1
-)
-"""
-
-LATEST_FEEDBACK_SCORES_CTE = """
-latest_user_feedback AS (
-    SELECT *
-    FROM (
-        SELECT
-            f.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY f.content_id, f.user_id
-                ORDER BY f.created_at DESC, f.id DESC
-            ) AS feedback_rank
-        FROM oltp_db.user_feedback f
-    )
-    WHERE feedback_rank = 1
-),
-feedback_scores AS (
-    SELECT
-        content_id,
-        SUM(score_delta) AS feedback_score
-    FROM latest_user_feedback
-    GROUP BY content_id
-)
-"""
-
-EMPTY_FEEDBACK_SCORES_CTE = """
-feedback_scores AS (
-    SELECT
-        CAST(NULL AS INTEGER) AS content_id,
-        CAST(0 AS DOUBLE) AS feedback_score
-    WHERE FALSE
-)
-"""
-
-IGNORED_CONTENT_CTE = """
-ignored_content AS (
-    SELECT DISTINCT content_id
-    FROM oltp_db.ignored_items
-)
-"""
-
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
 
 

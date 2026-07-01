@@ -22,6 +22,7 @@ import type { FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
 import {
   BatchActionBar,
   BoardGrid,
+  CreationDraftPanel,
   DirtyStatusBar,
   ErrorBanner,
   FiltersBar,
@@ -437,30 +438,11 @@ export default function FavoritesPage() {
       <ErrorBanner error={error} onRetry={() => void fetchFavorites()} />
 
       {creationDraft && (
-        <Panel className="mb-4 overflow-hidden p-0 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
-            <div className="min-w-0">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <Badge tone="primary" className="rounded px-2 py-0.5">创作方案</Badge>
-                <span className="text-xs font-bold text-gray-400">
-                  {CREATION_PLATFORMS.find((platform) => platform.id === creationDraft.platform)?.label || creationDraft.platform}
-                </span>
-              </div>
-              <div className="line-clamp-1 text-sm font-black text-gray-900">{creationDraft.item.title}</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setCreationDraft(null)}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-gray-200 bg-white text-gray-400 transition hover:text-gray-800"
-              title="关闭"
-            >
-              <X size={15} />
-            </button>
-          </div>
-          <div className="bg-gray-50 px-4 py-4">
-            <CreationPlanDisplay plan={creationDraft.plan} platform={creationDraft.platform} />
-          </div>
-        </Panel>
+        <CreationDraftPanel
+          draft={creationDraft}
+          platformLabel={CREATION_PLATFORMS.find((p) => p.id === creationDraft.platform)?.label || creationDraft.platform}
+          onClose={() => setCreationDraft(null)}
+        />
       )}
 
       <DirtyStatusBar

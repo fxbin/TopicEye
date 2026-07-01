@@ -30,9 +30,11 @@ import {
   Square,
   Star,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import CreationPlanDisplay from '@/components/CreationPlanDisplay';
 import { timeAgo } from '@/lib/datetime';
 import {
   CREATION_PLATFORMS,
@@ -660,6 +662,43 @@ export function BatchActionBar({
         </Button>
       </div>
     </div>
+  );
+}
+
+export function CreationDraftPanel({
+  draft,
+  platformLabel,
+  onClose,
+}: {
+  draft: { item: { title: string }; platform: string; plan: unknown };
+  platformLabel: string;
+  onClose: () => void;
+}) {
+  // 类型断言：plan 实际是 CreationPlan，但本组件仅做展示不引用字段，避免循环依赖
+  const plan = draft.plan as Parameters<typeof import('@/components/CreationPlanDisplay').default>[0]['plan'];
+  return (
+    <Panel className="mb-4 overflow-hidden p-0 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
+        <div className="min-w-0">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <Badge tone="primary" className="rounded px-2 py-0.5">创作方案</Badge>
+            <span className="text-xs font-bold text-gray-400">{platformLabel}</span>
+          </div>
+          <div className="line-clamp-1 text-sm font-black text-gray-900">{draft.item.title}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-gray-200 bg-white text-gray-400 transition hover:text-gray-800"
+          title="关闭"
+        >
+          <X size={15} />
+        </button>
+      </div>
+      <div className="bg-gray-50 px-4 py-4">
+        <CreationPlanDisplay plan={plan} platform={draft.platform} />
+      </div>
+    </Panel>
   );
 }
 

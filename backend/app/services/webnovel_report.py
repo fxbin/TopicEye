@@ -24,68 +24,18 @@ from app.models.fanqie import FanqieBook, FanqieCategory, FanqieRankSnapshot
 from app.models.qimao import QimaoBook
 from app.models.trending import TrendingItem, TrendingSnapshot
 from app.models.zhihu import ZhihuAlbum
+# Shared cross-platform helpers extracted to _webnovel_common.py
+from app.services._webnovel_common import (  # noqa: F401 — re-export for backward compat
+    _PER_PLATFORM_QUOTA,
+    _PLATFORM_LABELS,
+    _TOP_LIMIT,
+    _TRENDING_CATEGORY_FIELDS,
+    _movement_item,
+    _platform_label,
+    _safe_int,
+)
 
 
-# ── 平台标签 ──────────────────────────────────────────────────────────
-
-_PLATFORM_LABELS: dict[str, str] = {
-    "fanqie": "番茄小说",
-    "qimao": "七猫小说",
-    "zhihu": "知乎盐选",
-    "heiyan": "黑岩书城",
-    "ishugui": "点众阅读",
-}
-
-
-def _platform_label(platform: str) -> str:
-    return _PLATFORM_LABELS.get(platform, platform)
-
-
-# 黑岩/点众的分类字段在 TrendingItem.extra 中的 key
-_TRENDING_CATEGORY_FIELDS: dict[str, str] = {
-    "heiyan": "sortName",
-    "ishugui": "shelf",
-}
-
-# 每平台在跨平台涨跌榜中的配额上限（避免量纲碾压）
-_PER_PLATFORM_QUOTA = 5
-_TOP_LIMIT = 10
-
-
-def _safe_int(value: Any) -> int:
-    if value is None:
-        return 0
-    if isinstance(value, (int, float)):
-        return int(value)
-    text = str(value).replace(",", "").strip()
-    try:
-        return int(float(text))
-    except ValueError:
-        return 0
-
-
-def _movement_item(
-    *,
-    platform: str,
-    title: str,
-    author: str | None,
-    category: str | None,
-    rank_type: str,
-    position: int,
-    change: int,
-    url: str | None = None,
-) -> dict:
-    return {
-        "platform": platform,
-        "platform_label": _platform_label(platform),
-        "title": title,
-        "author": author or "",
-        "category": category or "未分类",
-        "rank_type": rank_type,
-        "position": position,
-        "change": change,
-        "url": url,
-    }
 
 
 # ── 番茄（独立 ORM + 日级排名快照） ──────────────────────────────────

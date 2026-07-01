@@ -32,15 +32,24 @@ from app.repositories.source_repo import SourceRepository
 from app.services.analysis import analyze_batch_concurrent
 from app.services.content_pipeline import ingest_from_source
 from app.services.job_tracker import track_job
+# Post-sync pipeline functions are extracted to a separate module for module size.
+# Re-export here so existing `from app.scheduler import _request_post_sync_pipeline` keeps working.
+from app._post_sync_pipeline import (
+    _request_post_sync_pipeline,  # noqa: F401 — re-export
+    _clear_post_sync_task,  # noqa: F401
+    _run_post_sync_pipeline,  # noqa: F401
+    _run_post_sync_pipeline_once,  # noqa: F401
+    _drain_pending_analysis,  # noqa: F401
+    _release_inflight_analysis_claims,  # noqa: F401
+    _get_post_sync_lock,  # noqa: F401
+)
 
 logger = logging.getLogger(__name__)
 
 # Semaphore to limit concurrent DB write tasks — SQLite single-writer constraint.
 _sync_semaphore: asyncio.Semaphore | None = None
 _sync_semaphore_limit: int | None = None
-_post_sync_lock: asyncio.Lock | None = None
-_post_sync_task: asyncio.Task | None = None
-_post_sync_rerun_requested = False
+# _post_sync_lock / _post_sync_task / _post_sync_rerun_requested 已外迁到 app._post_sync_pipeline
 
 
 def _positive_int(value: object, default: int) -> int:
@@ -239,206 +248,6 @@ async def _sync_single_source(source_id: int) -> None:
         except Exception:
             logger.exception("Scheduler: failed to sync source id=%d", source_id)
             await db.rollback()
-
-
-def _request_post_sync_pipeline(stats: dict | None = None) -> bool:
-    """Request shared post-sync work after a source sync produced new content."""
-    global _post_sync_task, _post_sync_rerun_requested
-
-    try:
-        if not stats or int(stats.get("new", 0) or 0) <= 0:
-            return False
-    except (TypeError, ValueError):
-        return False
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        logger.warning("Scheduler: could not request post-sync pipeline (no running loop)")
-        return False
-
-    lock = _get_post_sync_lock()
-    if (_post_sync_task is not None and not _post_sync_task.done()) or lock.locked():
-        _post_sync_rerun_requested = True
-        logger.info(
-            "Scheduler: post-sync pipeline already active; coalesced request for %d new items",
-            int(stats.get("new", 0) or 0),
-        )
-        return True
-
-    _post_sync_task = loop.create_task(_run_post_sync_pipeline())
-    _post_sync_task.add_done_callback(_clear_post_sync_task)
-    logger.info("Scheduler: requested post-sync pipeline for %d new items", int(stats.get("new", 0) or 0))
-    return True
-
-
-def _clear_post_sync_task(task: asyncio.Task) -> None:
-    """Clear the ad-hoc post-sync task reference and surface unexpected failures."""
-    global _post_sync_task
-    if _post_sync_task is task:
-        _post_sync_task = None
-    if task.cancelled():
-        logger.warning("Scheduler: ad-hoc post-sync pipeline task was cancelled")
-        return
-    try:
-        task.result()
-    except Exception:
-        logger.exception("Scheduler: ad-hoc post-sync pipeline task failed")
-
-
-@track_job(
-    "post_sync_pipeline",
-    name="同步后分析聚合",
-    timeout=600,
-    description="节流处理待分析内容、话题聚类和趋势快照，避免每个信源同步后重复触发",
-)
-async def _run_post_sync_pipeline() -> None:
-    """Run shared post-sync work, coalescing overlapping sync completions."""
-    global _post_sync_rerun_requested
-
-    lock = _get_post_sync_lock()
-    if lock.locked():
-        _post_sync_rerun_requested = True
-        logger.info("Scheduler: post-sync pipeline already running; queued one rerun")
-        return
-
-    async with lock:
-        while True:
-            _post_sync_rerun_requested = False
-            await _run_post_sync_pipeline_once()
-            if not _post_sync_rerun_requested:
-                break
-            logger.info("Scheduler: running coalesced post-sync pipeline rerun")
-
-
-async def _run_post_sync_pipeline_once() -> None:
-    """Analyze pending, cluster, and snapshot trends once."""
-    analysis_stats = await _drain_pending_analysis()
-    if analysis_stats["attempted"] == 0:
-        logger.info("Scheduler: post-sync pipeline skipped — no pending content")
-        return
-
-    if analysis_stats["analyzed"] == 0:
-        logger.info("Scheduler: post-sync pipeline analyzed no items — %s", analysis_stats)
-        return
-
-    if analysis_stats["remaining"]:
-        logger.info(
-            "Scheduler: post-sync pipeline deferred clustering while analysis backlog remains — %s",
-            analysis_stats,
-        )
-        return
-
-    try:
-        async with async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
-
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
-        if claimed:
-            logger.info("Scheduler: clustering done — %s", stats)
-        else:
-            logger.info("Scheduler: clustering skipped because another run holds the lease")
-    except Exception:
-        logger.exception("Scheduler: clustering failed")
-    try:
-        async with async_session() as db:
-            from app.services.trends import snapshot_daily_trends
-
-            stats = await snapshot_daily_trends(db)
-            await db.commit()
-        logger.info("Scheduler: trend snapshot done — %s", stats)
-    except Exception:
-        logger.exception("Scheduler: trend snapshot failed")
-
-
-async def _drain_pending_analysis(
-    *,
-    batch_size: int | None = None,
-    time_budget_seconds: int | None = None,
-) -> dict[str, int | bool | str]:
-    """Analyze pending and stale in-flight content until the time budget is nearly spent.
-
-    The scheduler wrapper has a hard timeout. This helper exits before that
-    boundary so the job can finish cleanly instead of being cancelled mid-call
-    and leaving more items in ``analyzing``.
-    """
-    started_at = asyncio.get_running_loop().time()
-    batch_size = _positive_int(batch_size, _post_sync_analysis_batch_size())
-    time_budget_seconds = _positive_int(time_budget_seconds, _post_sync_analysis_time_budget_seconds())
-    min_remaining_seconds = _post_sync_min_remaining_seconds()
-    attempted = 0
-    analyzed = 0
-    batches = 0
-    stop_reason = "no_pending"
-
-    while True:
-        elapsed = asyncio.get_running_loop().time() - started_at
-        remaining_seconds = time_budget_seconds - elapsed
-        if remaining_seconds < min_remaining_seconds:
-            stop_reason = "time_budget"
-            break
-
-        async with async_session() as db:
-            content_repo = ContentRepo(db)
-            pending_ids = await content_repo.claim_pending_analysis_ids(limit=batch_size)
-            await db.commit()
-
-        if not pending_ids:
-            stop_reason = "no_pending"
-            break
-
-        attempted += len(pending_ids)
-        batches += 1
-        try:
-            results = await asyncio.wait_for(
-                analyze_batch_concurrent(pending_ids, assume_claimed=True),
-                timeout=max(1, remaining_seconds - 10),
-            )
-        except TimeoutError:
-            logger.warning("Scheduler: auto-analysis batch timed out for ids=%s", pending_ids)
-            released = await _release_inflight_analysis_claims(pending_ids)
-            logger.info("Scheduler: released %d timed-out analysis claims", released)
-            stop_reason = "batch_timeout"
-            break
-        except Exception:
-            logger.exception("Scheduler: auto-analysis batch failed for ids=%s", pending_ids)
-            released = await _release_inflight_analysis_claims(pending_ids)
-            logger.info("Scheduler: released %d failed analysis claims", released)
-            stop_reason = "batch_failed"
-            break
-
-        analyzed += len(results)
-        logger.info(
-            "Scheduler: auto-analysis batch complete attempted=%d analyzed=%d ids=%s",
-            len(pending_ids),
-            len(results),
-            pending_ids,
-        )
-
-        if not results:
-            stop_reason = "no_progress"
-            break
-
-    async with async_session() as db:
-        content_repo = ContentRepo(db)
-        remaining = await content_repo.list_pending_for_analysis(limit=1)
-
-    return {
-        "attempted": attempted,
-        "analyzed": analyzed,
-        "batches": batches,
-        "remaining": bool(remaining),
-        "stop_reason": stop_reason,
-    }
-
-
-async def _release_inflight_analysis_claims(content_ids: list[int]) -> int:
-    """Return still-analyzing items from a cancelled scheduler batch to pending."""
-    async with async_session() as db:
-        content_repo = ContentRepo(db)
-        released = await content_repo.release_analyzing_to_pending(content_ids)
-        await db.commit()
-        return released
 
 
 async def _rescan_sources() -> None:

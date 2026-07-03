@@ -42,10 +42,16 @@ from app.services._duckdb_sql import (  # noqa: F401 — re-export for backward 
     LATEST_FEEDBACK_SCORES_CTE,
     STATS_CURATION_FALLBACK_THRESHOLD,
 )
+from app.services._duckdb_stats_helpers import (  # noqa: F401 — re-export
+    stats_row_to_scoring_input,
+    stats_threshold_from_scored,
+    selected_stats_items,
+    stats_date_key,
+    stats_source_key,
+)
 
 logger = logging.getLogger(__name__)
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
-
 
 class DuckDBAnalytics:
     """
@@ -382,7 +388,7 @@ class DuckDBAnalytics:
     def query_stats_curation_threshold(self, days: int = 7) -> float:
         """Unified scorer threshold for the stats surfaces."""
         scored_items = self._query_stats_scored_items(days=days)
-        return self._stats_threshold_from_scored(scored_items)
+        return stats_threshold_from_scored(scored_items)
 
     def _query_stats_scored_items(
         self,
@@ -453,7 +459,7 @@ class DuckDBAnalytics:
         ]
         item_rows = [dict(zip(columns, row)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}
-        scored = score_items([self._stats_row_to_scoring_input(row) for row in item_rows])
+        scored = score_items([stats_row_to_scoring_input(row) for row in item_rows])
         scored_items: list[dict[str, Any]] = []
         for breakdown, item in scored:
             row = dict(row_map[item.content_id])
@@ -463,62 +469,17 @@ class DuckDBAnalytics:
             scored_items.append(row)
         return scored_items
 
-    @staticmethod
-    def _stats_row_to_scoring_input(row: dict[str, Any]) -> ScoringInput:
-        return ScoringInput(
-            content_id=row["id"],
-            title="",
-            category=row.get("category"),
-            source_id=row.get("source_id"),
-            source_name=row.get("source_name"),
-            crawled_at=row.get("crawled_at"),
-            curation_score=row.get("curation_score") or 0,
-            info_density=row.get("info_density") or 50,
-            actionability=row.get("actionability") or 50,
-            source_weight=row.get("analysis_source_weight") or 50,
-            creator_score=row.get("creator_score") or 0,
-            viral_score=row.get("viral_score") or 0,
-            freshness_score=row.get("freshness_score") or 0,
-            quality_score=row.get("quality_score") or 0,
-            hot_score=row.get("hot_score") or 0,
-            risk_score=row.get("risk_score") or 0,
-            source_weight_db=row.get("source_weight_db") or 3,
-            feedback_score=row.get("feedback_score") or 0,
-        )
-
-    @staticmethod
-    def _stats_threshold_from_scored(scored_items: list[dict[str, Any]]) -> float:
-        for item in scored_items:
-            threshold = item.get("threshold_used")
-            if threshold is not None:
-                return round(float(threshold), 1)
-        return STATS_CURATION_FALLBACK_THRESHOLD
-
-    @staticmethod
-    def _selected_stats_items(scored_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [item for item in scored_items if item.get("selected")]
-
-    @staticmethod
-    def _stats_date_key(value: Any) -> str:
-        if hasattr(value, "date"):
-            return value.date().isoformat()
-        return str(value).split(" ")[0]
-
-    @staticmethod
-    def _stats_source_key(item: dict[str, Any]) -> tuple[str, str]:
-        return (item.get("source_name") or "未知", item.get("source_type") or "unknown")
-
     def _stats_selected_counts_by_source(self, scored_items: list[dict[str, Any]]) -> dict[tuple[str, str], int]:
         counts: dict[tuple[str, str], int] = {}
-        for item in self._selected_stats_items(scored_items):
-            key = self._stats_source_key(item)
+        for item in selected_stats_items(scored_items):
+            key = stats_source_key(item)
             counts[key] = counts.get(key, 0) + 1
         return counts
 
     def _stats_selected_counts_by_date(self, scored_items: list[dict[str, Any]]) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for item in self._selected_stats_items(scored_items):
-            key = self._stats_date_key(item.get("crawled_at"))
+        for item in selected_stats_items(scored_items):
+            key = stats_date_key(item.get("crawled_at"))
             counts[key] = counts.get(key, 0) + 1
         return counts
 
@@ -533,7 +494,7 @@ class DuckDBAnalytics:
         today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         if scored_items is None:
             scored_items = self._query_stats_scored_items(days=days)
-        threshold = self._stats_threshold_from_scored(scored_items)
+        threshold = stats_threshold_from_scored(scored_items)
 
         row = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
@@ -561,7 +522,7 @@ class DuckDBAnalytics:
         return {
             "total": row[0] or 0,
             "analyzed": row[1] or 0,
-            "curated": len(self._selected_stats_items(scored_items)),
+            "curated": len(selected_stats_items(scored_items)),
             "curation_threshold": round(threshold, 1),
             "today_new": today_row[0] or 0,
         }
@@ -739,7 +700,7 @@ class DuckDBAnalytics:
 
         return {
             "total_items": row[0] or 0,
-            "curated_count": len(self._selected_stats_items(scored_items)),
+            "curated_count": len(selected_stats_items(scored_items)),
             "avg_curation": round(float(row[1] or 0), 1),
             "max_curation": round(float(row[2] or 0), 1),
             "topic_count": row[3] or 0,
@@ -749,7 +710,7 @@ class DuckDBAnalytics:
     def query_dashboard_stats(self, days: int = 7) -> dict[str, Any]:
         """Full stats workspace payload, with legacy dashboard fields preserved."""
         scored_items = self._query_stats_scored_items(days=days)
-        selected_items = self._selected_stats_items(scored_items)
+        selected_items = selected_stats_items(scored_items)
         selected_by_source = self._stats_selected_counts_by_source(scored_items)
         selected_by_date = self._stats_selected_counts_by_date(scored_items)
         overview = self.query_stats_overview(days=days, scored_items=scored_items)
@@ -959,12 +920,10 @@ class DuckDBAnalytics:
             for row in results
         ]
 
-
 # ── Module-level singleton ─────────────────────────────────────────────
 
 _analytics: DuckDBAnalytics | None = None
 _lock = threading.Lock()
-
 
 def get_analytics() -> DuckDBAnalytics:
     """Get the module-level DuckDBAnalytics singleton."""
@@ -975,7 +934,6 @@ def get_analytics() -> DuckDBAnalytics:
                 _analytics = DuckDBAnalytics()
     return _analytics
 
-
 def close_analytics() -> None:
     """Close the DuckDBAnalytics singleton."""
     global _analytics
@@ -983,59 +941,45 @@ def close_analytics() -> None:
         _analytics.close()
         _analytics = None
 
-
 # ── Backward-compatible function API ───────────────────────────────────
 # These match the original function signatures so existing callers work
 # without any changes.
 
-
 def query_today_picks(hours: int = 48, **kwargs) -> list[dict[str, Any]]:
     return get_analytics().query_today_picks(hours=hours, **kwargs)
-
 
 def query_topics() -> list[dict[str, Any]]:
     return get_analytics().query_topics()
 
-
 def query_trend_topics(days: int = 7) -> list[dict[str, Any]]:
     return get_analytics().query_trend_topics(days=days)
-
 
 def query_keyword_cloud(days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
     return get_analytics().query_keyword_cloud(days=days, limit=limit)
 
-
 def query_stats_overview(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_overview(days=days)
-
 
 def query_stats_source_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_source_distribution(days=days)
 
-
 def query_stats_category_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_category_distribution(days=days)
-
 
 def query_stats_daily_trend(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_daily_trend(days=days)
 
-
 def query_stats_novel_platforms() -> dict[str, Any]:
     return get_analytics().query_stats_novel_platforms()
-
 
 def query_daily_stats() -> dict[str, Any]:
     return get_analytics().query_daily_stats()
 
-
 def query_dashboard_stats(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_dashboard_stats(days=days)
 
-
 def query_content_for_report(hours: int = 48) -> list[dict[str, Any]]:
     return get_analytics().query_content_for_report(hours=hours)
-
 
 def query_content_for_weekly(start_date: str, end_date: str) -> list[dict[str, Any]]:
     """Fetch analyzed content for a given week date range (YYYY-MM-DD strings)."""

@@ -25,6 +25,7 @@ import {
 
 import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
+import { RSSHubManager, SourceListPanel } from './_panels';
 
 // ─── Page Component ───
 
@@ -913,147 +914,38 @@ export default function SourcesPage() {
 
       {viewMode === 'list' && (
         <>
-          {/* RSSHub Instances Manager */}
-          <Panel className="mb-5 p-5">
-            <div className="mb-3.5 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="mb-0.5 text-[15px] font-black text-gray-800">RSSHub 实例</h2>
-                <p className="text-xs text-gray-400">按优先级顺序尝试，禁用则跳过。添加小红书/微博/B站等路由时使用。</p>
-              </div>
-              {rsshubSaving && <span className="text-xs text-gray-400">保存中…</span>}
-            </div>
-
-            <div className="mb-3 flex flex-col gap-2">
-              {rsshubLoading ? (
-                <div className="py-2 text-[13px] text-gray-400">加载中…</div>
-              ) : rsshubInstances.length === 0 ? (
-                <div className="py-2 text-[13px] text-gray-400">暂无实例</div>
-              ) : (
-                rsshubInstances.map((inst, idx) => (
-                  <div key={inst.url} className="flex items-center gap-2.5 rounded-sm border border-gray-100 bg-gray-50 px-3 py-2">
-                    <span className="min-w-4 font-mono text-[11px] text-gray-300">#{idx + 1}</span>
-                    <span className={cx('flex-1 break-all font-mono text-[13px]', inst.enabled ? 'text-gray-800' : 'text-gray-400')}>{inst.url}</span>
-                    {inst.note && <span className="text-[11px] text-gray-400">{inst.note}</span>}
-                    <button
-                      type="button"
-                      onClick={() => toggleInstance(inst.url)}
-                      disabled={rsshubSaving}
-                      className={cx(
-                        'rounded-full px-2.5 py-1 text-[11px] font-black transition disabled:cursor-wait disabled:opacity-60',
-                        inst.enabled ? 'bg-teal-light text-teal' : 'bg-gray-200 text-gray-400',
-                      )}
-                    >
-                      {inst.enabled ? '启用' : '禁用'}
-                    </button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      onClick={() => deleteInstance(inst.url)}
-                      disabled={rsshubSaving}
-                      className="min-h-7 px-2 py-1 text-[11px]"
-                    >
-                      删除
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newInstanceUrl}
-                onChange={(e) => setNewInstanceUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addInstance()}
-                placeholder="https://rsshub.example.com"
-                className="h-9 flex-1 rounded-sm border border-gray-200 px-3 font-mono text-[13px] outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-              />
-              <Button type="button" variant="primary" onClick={addInstance} disabled={rsshubSaving || !newInstanceUrl.trim()}>
-                + 添加实例
-              </Button>
-            </div>
-          </Panel>
-
-          {/* Loading State */}
-          {loading && sources.length === 0 && (
-            <div className="flex h-52 items-center justify-center gap-2.5 text-sm text-gray-400">
-              <Spinner />
-              <span>加载中…</span>
-            </div>
-          )}
-
-          {/* Table */}
-          {!loading && (
-            <Panel className="overflow-hidden">
-              <div className="grid grid-cols-[2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-black uppercase tracking-[0.05em] text-gray-500">
-                {['名称', '类型', '分类', '最后同步', '采集频率', '权重', '状态', '操作'].map((h) => (
-                  <div key={h}>{h}</div>
-                ))}
-              </div>
-              {sources.length === 0 && (
-                <div className="px-6 py-12 text-center text-sm text-gray-400">暂无信源，点击「添加信源」开始</div>
-              )}
-              {sources.map((src) => (
-                <SourceRowComponent key={src.id} source={src} syncing={syncingIds.has(src.id)} syncResult={syncResults[src.id] || null}
-                  deleting={deletingIds.has(src.id)} onSync={() => handleSync(src.id)} onEdit={() => openEditModal(src)}
-                  onDelete={() => handleDelete(src.id)} onWeightChange={(w) => handleWeightChange(src.id, w)}
-                  onIntervalChange={(mins) => handleIntervalChange(src.id, mins)}
-                  favorite={favoriteTargets.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id })) || sourceFavoriteKeys.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id }))}
-                  favoritePending={favoriteTargetPendingKeys.has(getFavoriteTargetKey({ target_type: 'source', target_id: src.id }))}
-                  onFavorite={() => handleToggleSourceFavorite(src)}
-                  selected={selectedIds.has(src.id)}
-                  onSelect={handleSelectSource}
-                />
-              ))}
-            </Panel>
-          )}
-
-          {/* Pagination */}
-          {total > pageSize && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 py-3 text-[13px] text-gray-500">
-              <span>
-                第 {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} 条，共 {total} 条
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <Button type="button" variant="secondary" disabled={page <= 1} onClick={() => fetchSources(page - 1)} className="min-h-8 px-3.5 py-1.5 text-[13px] disabled:cursor-not-allowed">
-                  上一页
-                </Button>
-                {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1)
-                  .filter((p) => {
-                    // Show first, last, and ±2 around current
-                    if (p === 1 || p === Math.ceil(total / pageSize)) return true;
-                    return Math.abs(p - page) <= 2;
-                  })
-                  .map((p, idx, arr) => {
-                    const pages = arr;
-                    const showEllipsis = idx > 0 && p - pages[idx - 1] > 1;
-                    return (
-                      <React.Fragment key={p}>
-                        {showEllipsis && <span className="px-1 py-1.5 text-gray-400">…</span>}
-                        <Button
-                          type="button"
-                          variant={p === page ? 'primary' : 'secondary'}
-                          onClick={() => fetchSources(p)}
-                          disabled={p === page}
-                          className="min-h-8 px-3 py-1.5 text-[13px]"
-                        >
-                          {p}
-                        </Button>
-                      </React.Fragment>
-                    );
-                  })}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={page >= Math.ceil(total / pageSize)}
-                  onClick={() => fetchSources(page + 1)}
-                  className="min-h-8 px-3.5 py-1.5 text-[13px] disabled:cursor-not-allowed"
-                >
-                  下一页
-                </Button>
-              </div>
-            </div>
-          )}
+          <RSSHubManager
+            instances={rsshubInstances}
+            loading={rsshubLoading}
+            saving={rsshubSaving}
+            newInstanceUrl={newInstanceUrl}
+            setNewInstanceUrl={setNewInstanceUrl}
+            onToggle={toggleInstance}
+            onDelete={deleteInstance}
+            onAdd={addInstance}
+          />
+          <SourceListPanel
+            loading={loading}
+            sources={sources}
+            syncingIds={syncingIds}
+            syncResults={syncResults}
+            deletingIds={deletingIds}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            favoriteTargets={favoriteTargets}
+            favoriteTargetPendingKeys={favoriteTargetPendingKeys}
+            sourceFavoriteKeys={sourceFavoriteKeys}
+            selectedIds={selectedIds}
+            onSync={handleSync}
+            onEdit={openEditModal}
+            onDelete={handleDelete}
+            onWeightChange={handleWeightChange}
+            onIntervalChange={handleIntervalChange}
+            onFavorite={handleToggleSourceFavorite}
+            onSelect={handleSelectSource}
+            onPageChange={(p) => void fetchSources(p)}
+          />
         </>
       )}
 

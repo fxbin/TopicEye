@@ -1,0 +1,606 @@
+/**
+ * _domains API objects extracted from lib/api.ts.
+ * Uses request from ./_core.
+ */
+
+import { request } from './_core';
+import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
+import type { ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
+import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
+import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
+import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
+import type { TopicGroupResponse } from '@/types/contents';
+
+// ─── Sources API ───
+
+export const sourcesApi = {
+  /** 获取信源列表（支持分页和筛选） */
+  list(params?: {
+    page?: number;
+    page_size?: number;
+    source_type?: string;
+    status?: string;
+    enabled?: boolean;
+    keyword?: string;
+  }): Promise<PaginatedResponse<Source> & { total?: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.page_size) qs.set('page_size', String(params.page_size));
+    if (params?.source_type) qs.set('source_type', params.source_type);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.enabled !== undefined) qs.set('enabled', String(params.enabled));
+    if (params?.keyword) qs.set('keyword', params.keyword);
+    const query = qs.toString();
+    return request(`/sources${query ? '?' + query : ''}`);
+  },
+
+  /** 获取单个信源 */
+  get(id: number): Promise<Source> {
+    return request(`/sources/${id}`);
+  },
+
+  /** 添加信源 */
+  create(data: CreateSourceRequest): Promise<Source> {
+    return request('/sources', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 更新信源 */
+  update(id: number, data: UpdateSourceRequest): Promise<Source> {
+    return request(`/sources/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 保存信源排序（用于信源地图看板拖拽） */
+  reorder(ordered_ids: number[]): Promise<{ message: string; updated: number }> {
+    assertUniqueIds(ordered_ids, '信源排序包含重复项，请刷新后重试');
+    return request('/sources/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ ordered_ids }),
+    });
+  },
+
+  /** 删除信源 */
+  delete(id: number): Promise<void> {
+    return request(`/sources/${id}`, { method: 'DELETE' });
+  },
+
+  /** 手动触发同步 */
+  sync(id: number): Promise<SyncResult> {
+    return request(`/sources/${id}/sync`, { method: 'POST' });
+  },
+
+  /** 从 OPML 文件导入 RSS 源（Folo/Follow 导出） */
+  importOPML(file: File): Promise<{ created: number; skipped: number; total: number; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = getAuthToken();
+    return fetch(`${BASE_URL}/sources/import-opml`, {
+      method: 'POST',
+      body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    }).then(async (response) => {
+      const text = await response.text();
+      const payload = text ? JSON.parse(text) : undefined;
+      if (!response.ok) {
+        const detail = formatApiErrorDetail(payload?.detail);
+        const message = typeof payload?.message === 'string' ? payload.message : undefined;
+        throw new Error(detail || message || `API Error: ${response.status}`);
+      }
+      return payload;
+    });
+  },
+
+  /** 预览批量信源配置 */
+  previewBatchSources(data: { content: string; category?: string; enabled?: boolean; weight?: number }): Promise<{
+    items: SourceBatchImportItem[];
+    total: number;
+    duplicates: number;
+    importable: number;
+  }> {
+    return request('/sources/preview-batch', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 导入批量信源配置 */
+  importBatchSources(data: { content: string; category?: string; enabled?: boolean; weight?: number }): Promise<{ created: number; skipped: number; total: number; message: string }> {
+    return request('/sources/import-batch', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── /me 系列：用户私有信源（对齐 modelsApi.mine/createMine 模式）──
+
+  /** 获取我的私有信源列表 */
+  listMine(params?: {
+    page?: number;
+    page_size?: number;
+    source_type?: string;
+    status?: string;
+    enabled?: boolean;
+    keyword?: string;
+  }): Promise<PaginatedResponse<Source> & { total?: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.page_size) qs.set('page_size', String(params.page_size));
+    if (params?.source_type) qs.set('source_type', params.source_type);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.enabled !== undefined) qs.set('enabled', String(params.enabled));
+    if (params?.keyword) qs.set('keyword', params.keyword);
+    const query = qs.toString();
+    return request(`/sources/me${query ? '?' + query : ''}`);
+  },
+
+  /** 获取我的单个私有信源 */
+  getMine(id: number): Promise<Source> {
+    return request(`/sources/me/${id}`);
+  },
+
+  /** 创建我的私有信源 */
+  createMine(data: CreateSourceRequest): Promise<Source> {
+    return request('/sources/me', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 更新我的私有信源 */
+  updateMine(id: number, data: UpdateSourceRequest): Promise<Source> {
+    return request(`/sources/me/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 删除我的私有信源 */
+  deleteMine(id: number): Promise<void> {
+    return request(`/sources/me/${id}`, { method: 'DELETE' });
+  },
+
+  /** 手动触发我的私有信源同步 */
+  syncMine(id: number): Promise<SyncResult> {
+    return request(`/sources/me/${id}/sync`, { method: 'POST' });
+  },
+};
+
+export interface SourceBatchImportItem {
+  name: string;
+  url: string;
+  source_type: string;
+  category: string;
+  platform: string | null;
+  duplicate: boolean;
+}
+
+// ─── Contents API ───
+
+export const contentsApi = {
+  /** 获取内容列表 */
+  list(params?: ContentFilterParams): Promise<PaginatedResponse<ContentItem>> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/contents${query}`);
+  },
+
+  /** 获取单条内容 */
+  get(id: number): Promise<ContentItem> {
+    return request(`/contents/${id}`);
+  },
+
+  /** 切换收藏状态 */
+  toggleFavorite(id: number): Promise<{ is_favorited: boolean; favorite_id?: number | null }> {
+    return request(`/contents/${id}/favorite`, { method: 'POST' });
+  },
+
+  /** 获取收藏列表 */
+  listFavorites(params?: { page?: number; page_size?: number }): Promise<PaginatedResponse<ContentItem>> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/contents/favorites/list${query}`);
+  },
+
+  /** 当日精选（自动 Top 30%） */
+  todayPicks(params?: { category?: string; time_range?: string; limit?: number }): Promise<{
+    items: ContentItem[];
+    topics: TopicInfo[];
+    total: number;
+    duplicates_hidden: number;
+  }> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== '')
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/contents/today-picks${query}`);
+  },
+
+  scoringFlow(params?: { hours?: number; limit?: number }): Promise<ScoringFlowResponse> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/contents/scoring-flow${query}`);
+  },
+
+  /** 忽略/不感兴趣 */
+  ignore(id: number, reason: string = 'not_interested'): Promise<{ content_id: number; ignored: boolean; reason: string }> {
+    return request(`/contents/${id}/ignore?reason=${encodeURIComponent(reason)}`, { method: 'POST' });
+  },
+
+  /** 取消忽略 */
+  unignore(id: number): Promise<{ content_id: number; ignored: boolean; removed: boolean }> {
+    return request(`/contents/${id}/ignore`, { method: 'DELETE' });
+  },
+};
+
+export const contentCategoriesApi = {
+  list(): Promise<{ categories: ContentCategoryItem[] }> {
+    return request('/categories');
+  },
+};
+
+// ─── Favorites API ───
+
+export const favoritesApi = {
+  list(params?: {
+    page?: number;
+    page_size?: number;
+    target_type?: FavoriteTargetType | '';
+    status?: FavoriteStatus | '';
+    keyword?: string;
+  }): Promise<PaginatedResponse<FavoriteItem>> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== '')
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/favorites${query}`);
+  },
+
+  create(data: FavoriteCreatePayload): Promise<FavoriteItem> {
+    return request('/favorites', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async state(params: {
+    target_type: FavoriteTargetType;
+    target_ids?: number[];
+    target_keys?: string[];
+  }): Promise<{ items: FavoriteTargetState[] }> {
+    const targetIds = params.target_ids || [];
+    const targetKeys = params.target_keys || [];
+    if (targetIds.length + targetKeys.length > FAVORITE_STATE_BATCH_SIZE) {
+      const responses = await Promise.all([
+        ...chunkArray(targetIds, FAVORITE_STATE_BATCH_SIZE).map((ids) => (
+          favoritesApi.state({ target_type: params.target_type, target_ids: ids })
+        )),
+        ...chunkArray(targetKeys, FAVORITE_STATE_BATCH_SIZE).map((keys) => (
+          favoritesApi.state({ target_type: params.target_type, target_keys: keys })
+        )),
+      ]);
+      return { items: responses.flatMap((response) => response.items || []) };
+    }
+
+    const qs = new URLSearchParams();
+    qs.set('target_type', params.target_type);
+    if (targetIds.length) qs.set('target_ids', targetIds.join(','));
+    if (targetKeys.length) qs.set('target_keys', targetKeys.join(','));
+    return request(`/favorites/state?${qs.toString()}`);
+  },
+
+  update(id: number, data: { status?: FavoriteStatus; note?: string | null; tags?: unknown; snapshot?: Record<string, unknown> | null }): Promise<FavoriteItem> {
+    return request(`/favorites/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  reorder(status: FavoriteStatus, orderedIds: number[]): Promise<FavoriteItem[]> {
+    assertUniqueIds(orderedIds, '收藏排序包含重复项，请刷新后重试');
+    return request('/favorites/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ status, ordered_ids: orderedIds }),
+    });
+  },
+
+  reorderBoard(columns: Array<{ status: FavoriteStatus; orderedIds: number[] }>): Promise<FavoriteItem[]> {
+    const seen = new Set<number>();
+    for (const column of columns) {
+      assertUniqueIds(column.orderedIds, '收藏排序包含重复项，请刷新后重试');
+      for (const id of column.orderedIds) {
+        if (seen.has(id)) {
+          throw new Error('收藏排序包含跨列重复项，请刷新后重试');
+        }
+        seen.add(id);
+      }
+    }
+    return request('/favorites/reorder-board', {
+      method: 'POST',
+      body: JSON.stringify({
+        columns: columns.map((column) => ({
+          status: column.status,
+          ordered_ids: column.orderedIds,
+        })),
+      }),
+    });
+  },
+
+  bulkStatus(status: FavoriteStatus, ids: number[]): Promise<FavoriteItem[]> {
+    assertUniqueIds(ids, '批量移动包含重复收藏，请刷新后重试');
+    return request('/favorites/bulk-status', {
+      method: 'POST',
+      body: JSON.stringify({ status, ids }),
+    });
+  },
+
+  bulkDelete(ids: number[]): Promise<{ deleted: number }> {
+    assertUniqueIds(ids, '批量删除包含重复收藏，请刷新后重试');
+    return request('/favorites/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+
+  delete(id: number): Promise<{ deleted: boolean }> {
+    return request(`/favorites/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ─── Topics API ───
+
+export const topicsApi = {
+  /** 获取选题分组列表 */
+  list(params?: TopicFilterParams): Promise<{items: TopicGroupResponse[]; total: number}> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== '')
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/topics${query}`);
+  },
+
+  /** 获取选题详情（含成员内容） */
+  get(id: number): Promise<{topic: TopicGroupResponse; items: Array<{id: number; title: string; url: string; source_name: string}>}> {
+    return request(`/topics/${id}`);
+  },
+
+  /** 触发聚类 */
+  cluster(): Promise<{status: string; stats: Record<string, unknown>}> {
+    return request('/topics/cluster', { method: 'POST' });
+  },
+};
+
+// ─── Analyses API ───
+
+export const analysesApi = {
+  /** 分析单条内容 */
+  analyzeContent(id: number): Promise<ContentAnalysis> {
+    return request(`/analyses/content/${id}`, { method: 'POST' });
+  },
+
+  /** 获取内容的分析结果 */
+  getAnalysis(contentId: number): Promise<ContentAnalysis> {
+    return request(`/analyses/content/${contentId}`);
+  },
+
+  /** 批量分析 */
+  analyzeBatch(contentIds: number[]): Promise<ContentAnalysis[]> {
+    return request('/analyses/batch', {
+      method: 'POST',
+      body: JSON.stringify(contentIds),
+    });
+  },
+
+  /** 分析所有待处理内容 */
+  analyzePending(params?: { limit?: number; hours?: number; sync?: boolean }): Promise<{
+    message: string;
+    count: number;
+    ids?: number[];
+    queued_ids?: number[];
+    skipped_inflight_ids?: number[];
+    analyzed_ids?: number[];
+    job_id?: string | null;
+    hours?: number | null;
+    mode?: 'background' | 'sync';
+  }> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '?limit=20';
+    return request(`/analyses/pending${query}`, { method: 'POST' });
+  },
+
+  /** 查询后台分析任务状态 */
+  getJob(jobId: string): Promise<{
+    job_id: string;
+    status: 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED' | 'EXPIRED' | string;
+    content_ids: number[];
+    queued_ids: number[];
+    skipped_inflight_ids: number[];
+    analyzed_ids: number[];
+    failed_ids: number[];
+    pending_ids: number[];
+    count: number;
+    queued_count: number;
+    skipped_inflight_count: number;
+    analyzed_count: number;
+    failed_count: number;
+    queued_at: string;
+    started_at?: string | null;
+    finished_at?: string | null;
+    error_message?: string | null;
+  }> {
+    return request(`/analyses/jobs/${jobId}`);
+  },
+
+  /** 获取分析列表 */
+  list(params?: { page?: number; page_size?: number; min_creator_score?: number }): Promise<PaginatedResponse<ContentAnalysis>> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/analyses${query}`);
+  },
+};
+
+// ─── Daily Report API ───
+
+export const dailyReportApi = {
+  /** 获取今日日报（不存在则自动生成） */
+  getToday(): Promise<Record<string, unknown>> {
+    return request('/daily-reports/today');
+  },
+
+  /** 按日期查询单个日报 */
+  getByDate(date: string): Promise<Record<string, unknown>> {
+    return request(`/daily-reports/by-date?date=${encodeURIComponent(date)}`);
+  },
+
+  /** 获取有日报的日期列表 */
+  listDates(): Promise<{ dates: Array<{ report_date: string; weekday: string; takeaway: string | null; status: string }> }> {
+    return request('/daily-reports/dates');
+  },
+
+  /** 获取最近一段时间的日报状态地图 */
+  calendar(days: number = 30): Promise<{
+    days: Array<{
+      report_date: string;
+      weekday: string;
+      status: string;
+      edition: string | null;
+      generated_at: string | null;
+      cutoff_at: string | null;
+      takeaway: string | null;
+      content_count: number;
+      analyzed_count: number;
+      topic_count: number;
+      has_report: boolean;
+      can_generate: boolean;
+      is_today: boolean;
+    }>;
+    total_days: number;
+    done_count: number;
+    error_count: number;
+    missing_count: number;
+    generating_count: number;
+  }> {
+    return request(`/daily-reports/calendar?days=${days}`);
+  },
+
+  /** 日报列表 */
+  list(limit: number = 7): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    return request(`/daily-reports?limit=${limit}`);
+  },
+
+  /** 强制重新生成今日日报 */
+  regenerate(): Promise<Record<string, unknown>> {
+    return request('/daily-reports/generate', { method: 'POST' });
+  },
+
+  /** 生成指定日报版本 */
+  generateVersion(params: { target_date?: string; edition?: string; cutoff_at?: string; force?: boolean } = {}): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    return request(`/daily-reports/generate-version${query ? `?${query}` : ''}`, { method: 'POST' });
+  },
+
+  // ── /me series: user-owned private daily reports (T2) ──
+
+  /** 获取今日我的专属日报（不存在则自动生成；需 Pro+） */
+  getMyToday(): Promise<Record<string, unknown>> {
+    return request('/daily-reports/me/today');
+  },
+
+  /** 按日期查询我的日报 */
+  getMyByDate(date: string): Promise<Record<string, unknown>> {
+    return request(`/daily-reports/me/by-date?date=${encodeURIComponent(date)}`);
+  },
+
+  /** 获取我的日报日期列表 */
+  listMyDates(): Promise<{ dates: Array<{ report_date: string; weekday: string; takeaway: string | null; status: string }> }> {
+    return request('/daily-reports/me/dates');
+  },
+
+  /** 强制重新生成我的今日日报 */
+  regenerateMy(): Promise<Record<string, unknown>> {
+    return request('/daily-reports/me/generate', { method: 'POST' });
+  },
+};
+
+export const creationApi = {
+  /** 生成创作方案 */
+  generatePlan(contentId: number, platform: string): Promise<Record<string, unknown>> {
+    return request('/creation/plan', {
+      method: 'POST',
+      body: JSON.stringify({ content_id: contentId, platform }),
+    });
+  },
+
+  /** 获取可用平台列表 */
+  listPlatforms(): Promise<Record<string, unknown>> {
+    return request('/creation/platforms');
+  },
+};
+
+// ─── Viral (低粉爆文) API ───
+
+export const viralApi = {
+  /** 获取低粉爆文列表 */
+  async list(params?: {
+    category?: string;
+    hours?: number;
+    sort_by?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<ContentItem> & { total?: number }> {
+    const page = params?.page || 1;
+    const pageSize = params?.page_size || 20;
+    const query = '?' + new URLSearchParams(
+      Object.entries({
+        page: String(page),
+        page_size: String(pageSize),
+        sort_by: 'low_follower_viral',
+        hours: params?.hours !== undefined ? String(params.hours) : '',
+        category: params?.category || '',
+      }).filter(([, v]) => v !== '') as [string, string][]
+    ).toString();
+    return request(`/contents${query}`);
+  },
+};

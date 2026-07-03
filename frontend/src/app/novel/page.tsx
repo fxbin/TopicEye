@@ -36,203 +36,37 @@ import {
   type ZhihuAlbum,
   type TrendingItem,
 } from '@/lib/api';
+import {
+  type Platform,
+  type BookItem,
+  type ViewMode,
+  type BookFavoriteMeta,
+  PLATFORM_META,
+  GROUP_LABELS,
+  RANK_TYPE_LABELS,
+  QIMAO_RANK_LABELS,
+  ISHUGUI_RANK_LABELS,
+  ISHUGUI_SHELF_TO_RANK,
+  HEIYAN_SORT_STYLE,
+  HEIYAN_SORT_FALLBACK,
+  HEIYAN_HOME_SHELF_LABELS,
+  HEIYAN_TYPE_STYLE,
+  QIMAO_CHANNEL_LABELS,
+  ZHIHU_SORT_LABELS,
+  ZHIHU_SUBCATS,
+  formatCount,
+  getItemTitle,
+  getItemAuthor,
+  getItemAbstract,
+  getItemCover,
+  getItemUrl,
+  getPositionChange,
+  getBookStableId,
+  getBookFavoriteMeta,
+  chipStyle,
+  formatDate,
+} from './_novel-utils';
 
-type Platform = 'fanqie' | 'qimao' | 'zhihu' | 'heiyan' | 'ishugui';
-type BookItem = FanqieBook | QimaoBook | ZhihuAlbum;
-type ViewMode = 'rankings' | 'weekly';
-
-interface BookFavoriteMeta {
-  target_key: string;
-  title: string;
-  url: string | null;
-  cover_url: string | null;
-  source_name: string;
-  snapshot: Record<string, unknown>;
-}
-
-const PLATFORM_META: Record<Platform, { label: string; subtitle: string; color: string; bg: string }> = {
-  fanqie: { label: '番茄小说', subtitle: '免费网文热榜', color: '#DC2626', bg: '#FEF2F2' },
-  qimao: { label: '七猫小说', subtitle: '付费与免费混合榜', color: '#2563EB', bg: '#EFF6FF' },
-  zhihu: { label: '知乎盐选', subtitle: '故事与付费内容', color: '#0F766E', bg: '#ECFDF5' },
-  heiyan: { label: '黑岩书城', subtitle: '掌文品读公开 CDN', color: '#A855F7', bg: '#F5F0FF' },
-  ishugui: { label: '点众阅读', subtitle: 'Next.js 公开榜单', color: '#0EA5E9', bg: '#EBF8FF' },
-};
-
-const GROUP_LABELS = {
-  male: { label: '男频', color: '#2563EB', bg: '#EFF6FF' },
-  female: { label: '女频', color: '#E11D48', bg: '#FFF1F2' },
-} as const;
-
-const RANK_TYPE_LABELS = {
-  reading: { label: '阅读榜', color: '#059669', bg: '#ECFDF5' },
-  new: { label: '新书榜', color: '#7C3AED', bg: '#F5F3FF' },
-} as const;
-
-const QIMAO_RANK_LABELS = {
-  hot: { label: '大热', color: '#DC2626', bg: '#FEF2F2' },
-  new: { label: '新书', color: '#7C3AED', bg: '#F5F3FF' },
-  over: { label: '完结', color: '#D97706', bg: '#FFFBEB' },
-  collect: { label: '收藏', color: '#2563EB', bg: '#EFF6FF' },
-  update: { label: '更新', color: '#059669', bg: '#ECFDF5' },
-} as const;
-
-/** 点众 6 个具体榜单 (按男女频 × 6 维度), key 跟 backend 同步 */
-const ISHUGUI_RANK_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  bestselling:  { label: '畅销榜', color: '#DC2626', bg: '#FEF2F2' },
-  finished:     { label: '完本榜', color: '#D97706', bg: '#FFFBEB' },
-  newest:       { label: '新书榜', color: '#7C3AED', bg: '#F5F3FF' },
-  hot_read:     { label: '热读榜', color: '#059669', bg: '#ECFDF5' },
-  top_rated:    { label: '好评榜', color: '#2563EB', bg: '#EFF6FF' },
-  classic:      { label: '经典榜', color: '#4B5563', bg: '#F3F4F6' },
-};
-
-/** 后端 shelf 名 → ISHUGUI_RANK_LABELS key 的映射 */
-const ISHUGUI_SHELF_TO_RANK: Record<string, string> = {
-  '男生小说畅销榜': 'bestselling',
-  '男生小说完本榜': 'finished',
-  '男生小说新书榜': 'newest',
-  '男生小说热读榜': 'hot_read',
-  '男生小说好评榜': 'top_rated',
-  '男生小说经典榜': 'classic',
-  '女生小说畅销榜': 'bestselling',
-  '女生小说完本榜': 'finished',
-  '女生小说新书榜': 'newest',
-  '女生小说热读榜': 'hot_read',
-  '女生小说好评榜': 'top_rated',
-  '女生小说经典榜': 'classic',
-};
-
-/** 黑岩 sortName 分类的颜色/标签兜底表 (key=sortName, value=配色).
- *  不再是「候选 chip 列表」, 实际 chip 由 useMemo 从数据中动态生成.
- *  未在本表中的 sortName (如未来平台新增分类) 用灰色兜底, 不报错.
- */
-const HEIYAN_SORT_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  '现言':   { label: '现言', color: '#9333EA', bg: '#F3E8FF' },
-  '古言':   { label: '古言', color: '#B45309', bg: '#FEF3C7' },
-  '世情':   { label: '世情', color: '#0F766E', bg: '#CCFBF1' },
-  '现实':   { label: '现实', color: '#1F2937', bg: '#E5E7EB' },
-  '豪门':   { label: '豪门', color: '#9F1239', bg: '#FFE4E6' },
-  '重生':   { label: '重生', color: '#7C3AED', bg: '#EDE9FE' },
-  '穿越':   { label: '穿越', color: '#0369A1', bg: '#E0F2FE' },
-  '其他':   { label: '其他', color: '#6B7280', bg: '#F3F4F6' },
-};
-const HEIYAN_SORT_FALLBACK = HEIYAN_SORT_STYLE['其他'];
-
-/** 黑岩 home (推荐) shelf 名 → UI 显示名映射.
- *  后端继续存原始 shelf 名, 前端展示时转换. 便于平台改名时只改一处.
- *  不在本表中的 shelf 名原样显示.
- */
-const HEIYAN_HOME_SHELF_LABELS: Record<string, string> = {
-  '书城轮播图': '编辑精选',
-  // 爆款力荐 / 热门绝佳 / 新书尝鲜 维持原名
-};
-
-/** 长短篇 (book.type) 配色: 当前数据 100% 是 1 (短篇), 3 (长篇) 暂未观察到.
- *  保留配色表, 后续若抓到长篇可直接用.
- */
-const HEIYAN_TYPE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  '1': { label: '短篇', color: '#0F766E', bg: '#CCFBF1' },
-  '3': { label: '长篇', color: '#9F1239', bg: '#FFE4E6' },
-};
-
-const QIMAO_CHANNEL_LABELS = {
-  boy: { label: '男频', color: '#2563EB', bg: '#EFF6FF' },
-  girl: { label: '女频', color: '#E11D48', bg: '#FFF1F2' },
-} as const;
-
-const ZHIHU_SORT_LABELS = {
-  hottest: { label: '热门', color: '#DC2626', bg: '#FEF2F2' },
-  newest: { label: '最新', color: '#7C3AED', bg: '#F5F3FF' },
-  monthly_hottest: { label: '月热', color: '#D97706', bg: '#FFFBEB' },
-} as const;
-
-const ZHIHU_SUBCATS = [
-  { key: '', label: '全部' },
-  { key: '爱情', label: '爱情' },
-  { key: '科幻', label: '科幻' },
-  { key: '历史', label: '历史' },
-  { key: '漫画', label: '漫画' },
-  { key: '脑洞', label: '脑洞' },
-  { key: '奇闻', label: '奇闻' },
-  { key: '亲历', label: '亲历' },
-  { key: '校园', label: '校园' },
-  { key: '悬疑', label: '悬疑' },
-];
-
-function formatCount(v: string | number | null | undefined): string {
-  if (v === null || v === undefined || v === '') return '-';
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  if (Number.isNaN(n)) return String(v);
-  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}亿`;
-  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
-  return String(n);
-}
-
-function getItemTitle(item: BookItem): string {
-  if ('book_name' in item) return item.book_name;
-  return item.title;
-}
-
-function getItemAuthor(item: BookItem): string {
-  return item.author || '未知作者';
-}
-
-function getItemAbstract(item: BookItem): string {
-  return (item.abstract || '').replace(/\n/g, ' ');
-}
-
-function getItemCover(item: BookItem): string | null {
-  if ('thumb_url' in item) return item.thumb_url;
-  return item.thumb_uri;
-}
-
-function getItemUrl(item: BookItem): string | null {
-  if ('url' in item && item.url) return item.url;
-  return null;
-}
-
-function getPositionChange(item: BookItem): number | null {
-  if ('rank_pos_diff' in item && typeof item.rank_pos_diff === 'number') return item.rank_pos_diff;
-  if ('index_change' in item && typeof item.index_change === 'number') return item.index_change;
-  return null;
-}
-
-function getBookStableId(item: BookItem, platform: Platform): string {
-  if (platform === 'zhihu' && 'business_id' in item) return item.business_id;
-  return 'book_id' in item ? item.book_id : item.business_id;
-}
-
-function getBookFavoriteMeta(item: BookItem, platform: Platform, rankTab: string): BookFavoriteMeta {
-  const stableId = getBookStableId(item, platform);
-  const categoryText = 'category1_name' in item
-    ? [item.category1_name, item.category2_name].filter(Boolean).join(' · ')
-    : '';
-  return {
-    target_key: `${platform}:${stableId}`,
-    title: getItemTitle(item),
-    url: getItemUrl(item),
-    cover_url: getItemCover(item),
-    source_name: PLATFORM_META[platform].label,
-    snapshot: {
-      platform,
-      platform_label: PLATFORM_META[platform].label,
-      author: getItemAuthor(item),
-      category: categoryText,
-      position: item.position,
-      rank_type: 'rank_type' in item ? item.rank_type : rankTab,
-      summary: getItemAbstract(item),
-      source_url: getItemUrl(item),
-    },
-  };
-}
-
-function chipStyle(active: boolean, color: string = '#111827'): React.CSSProperties {
-  return {
-    borderColor: active ? color : '#E5E7EB',
-    background: active ? color : '#FFFFFF',
-    color: active ? '#FFFFFF' : '#4B5563',
-  };
-}
 
 function MetricPill({ children, color = '#6B7280', bg = '#F3F4F6' }: { children: React.ReactNode; color?: string; bg?: string }) {
   return (
@@ -242,10 +76,6 @@ function MetricPill({ children, color = '#6B7280', bg = '#F3F4F6' }: { children:
   );
 }
 
-function formatDate(value: string): string {
-  const [, month, day] = value.split('-');
-  return `${Number(month)}.${Number(day)}`;
-}
 
 function MovementBadge({ change }: { change: number }) {
   const rising = change > 0;

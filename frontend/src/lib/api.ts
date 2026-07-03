@@ -163,123 +163,18 @@ export type {
   ModelUsageSummary,
 };
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
-const AUTH_TOKEN_STORAGE_KEY = 'topiceye_auth_token';
-const FAVORITE_STATE_BATCH_SIZE = 200;
-
-function formatDetailItem(item: unknown): string | undefined {
-  if (!item) return undefined;
-  if (typeof item === 'string') return item;
-  if (typeof item !== 'object') return String(item);
-
-  const record = item as Record<string, unknown>;
-  const message = record.msg || record.message || record.detail;
-  const loc = Array.isArray(record.loc) ? record.loc.join('.') : undefined;
-
-  if (typeof message === 'string' && loc) {
-    return `${loc}: ${message}`;
-  }
-  if (typeof message === 'string') {
-    return message;
-  }
-
-  try {
-    return JSON.stringify(record);
-  } catch {
-    return undefined;
-  }
-}
-
-export function formatApiErrorDetail(detail: unknown): string | undefined {
-  if (!detail) return undefined;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    const parts = detail
-      .map(formatDetailItem)
-      .filter((item): item is string => Boolean(item));
-    return parts.length ? parts.join('；') : undefined;
-  }
-  return formatDetailItem(detail);
-}
-
-function assertUniqueIds(ids: number[], message: string): void {
-  if (ids.length !== new Set(ids).size) {
-    throw new Error(message);
-  }
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-}
-
-export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setAuthToken(token: string | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (token) {
-      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    } else {
-      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    }
-  } catch {}
-}
-
-/** Generic fetch wrapper with error handling */
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
-  const token = getAuthToken();
-  const config: RequestInit = {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  };
-
-  const response = await fetch(url, config);
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    let error: { detail?: unknown; message?: string } = { message: response.statusText };
-    if (errorText) {
-      try {
-        error = JSON.parse(errorText);
-      } catch {
-        error = { message: errorText };
-      }
-    }
-    const detail = formatApiErrorDetail(error.detail);
-    const message = typeof error.message === 'string' ? error.message : undefined;
-    throw new Error(detail || message || `API Error: ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const text = await response.text();
-  if (!text) {
-    return undefined as T;
-  }
-
-  return JSON.parse(text) as T;
-}
+// Core API infrastructure (request / token / error helpers) extracted to _core.ts
+import {
+  request,
+  getAuthToken,
+  setAuthToken,
+  formatApiErrorDetail,
+  assertUniqueIds,
+  chunkArray,
+  BASE_URL,
+  FAVORITE_STATE_BATCH_SIZE,
+} from './api/_core';
+export { getAuthToken, setAuthToken, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE };
 
 // ─── Auth API ───
 

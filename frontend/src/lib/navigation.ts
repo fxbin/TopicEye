@@ -100,6 +100,10 @@ export const NAV_SPACES: NavSpace[] = [
 const EXTRA_USER_ONLY_PATHS = ['/profile'];
 const EXTRA_ADMIN_ONLY_PATHS = ['/contents', '/mother-topics/config', '/admin/updates'];
 
+// 显式声明的公开路径（未登录可访问）。OAuth 回调页必须在此列，
+// 否则未登录态进来会被路由守卫踢去 /login，丢失 URL fragment 里的 token。
+const PUBLIC_PATHS = ['/login', '/oauth/callback'];
+
 function uniquePaths(paths: string[]): string[] {
   return Array.from(new Set(paths));
 }
@@ -138,6 +142,7 @@ function matchesPath(pathname: string, href: string): boolean {
 }
 
 export function requiredAccessForPath(pathname: string): NavAccess {
+  if (PUBLIC_PATHS.some((href) => matchesPath(pathname, href))) return 'public';
   if (ADMIN_ONLY_PATHS.some((href) => matchesPath(pathname, href))) return 'admin';
   if (USER_ONLY_PATHS.some((href) => matchesPath(pathname, href))) return 'user';
   return 'public';

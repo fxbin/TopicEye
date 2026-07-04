@@ -200,6 +200,17 @@ export const authApi = {
   logout(): Promise<{ logged_out: boolean }> {
     return request('/auth/logout', { method: 'POST' });
   },
+
+  /** OAuth 登录入口 URL。前端用 window.location.href 整页跳转，
+   *  后端 302 到 provider 授权页，回调后再 302 回 /oauth/callback（token 走 fragment）。 */
+  oauthLoginUrl(provider: 'google' | 'github'): string {
+    return `${BASE_URL}/auth/oauth/${provider}/login`;
+  },
+
+  /** 已启用的 OAuth provider 列表，前端据此渲染按钮。 */
+  async oauthProviders(): Promise<{ providers: string[] }> {
+    return request('/auth/oauth/providers');
+  },
 };
 
 // ─── Plans API ───

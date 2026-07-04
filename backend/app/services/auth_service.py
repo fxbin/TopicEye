@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sqlite_retry import retry_sqlite_locked
-from app.models.user import User, UserSession, UserApiToken
+from app.models.user import User, UserSession, UserApiToken, UserOAuthAccount
 
 _HASH_ALGORITHM = "pbkdf2_sha256"
 _HASH_ITERATIONS = 260_000
@@ -82,6 +82,129 @@ async def create_user(
     await db.flush()
     await db.refresh(user)
     return user
+
+
+class OAuthAccountConflictError(Exception):
+    """OAuth 登录时邮箱与现有账号冲突但无法自动合并。
+
+    典型场景：provider 声明的邮箱未验证，但该邮箱已被本地密码账号占用。
+    拒绝自动合并以防账号劫持，提示用户先用密码登录后在设置页手动绑定。
+    """
+
+
+async def get_oauth_account(
+    db: AsyncSession, *, provider: str, provider_user_id: str
+) -> UserOAuthAccount | None:
+    result = await db.execute(
+        select(UserOAuthAccount).where(
+            UserOAuthAccount.provider == provider,
+            UserOAuthAccount.provider_user_id == provider_user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_or_create_oauth_user(
+    db: AsyncSession,
+    *,
+    provider: str,
+    provider_user_id: str,
+    email: str,
+    email_verified: bool,
+    display_name: str | None = None,
+) -> User:
+    """解析 OAuth 身份为本地 User，自动关联合并同邮箱账号。
+
+    合并策略（见 plan）：
+    1. (provider, provider_user_id) 已绑定 → 直接返回关联 User
+    2. 未绑定 + email_verified=True + email 命中现有账号 → 新建 oauth_account 挂上去
+    3. 未绑定 + email_verified=False + email 命中现有账号 → 抛 OAuthAccountConflictError（防劫持）
+    4. 都没命中 → 创建新 User（无密码）+ oauth_account
+    """
+    normalized = normalize_email(email)
+
+    # 1. 已绑定的 provider 用户
+    existing = await get_oauth_account(db, provider=provider, provider_user_id=provider_user_id)
+    if existing:
+        user = await db.get(User, existing.user_id)
+        if user and user.is_active:
+            return user
+        if user:
+            raise OAuthAccountConflictError("绑定的账号已被停用，请联系管理员")
+        # 绑定记录存在但用户不存在（理论上有 CASCADE 不该发生），清理僵尸记录
+        await db.delete(existing)
+        await db.flush()
+
+    # 检查邮箱是否已被现有账号占用
+    existing_user = await get_user_by_email(db, normalized)
+
+    # 2 & 3. 邮箱冲突时的合并 / 拒绝
+    if existing_user:
+        if not email_verified:
+            raise OAuthAccountConflictError(
+                "该邮箱已注册但 OAuth 邮箱未验证，请先用密码登录后在设置页绑定第三方账号"
+            )
+        # 已验证 → 自动合并：把 oauth_account 挂到现有账号
+        await _link_oauth_account(
+            db,
+            user_id=existing_user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            provider_email=normalized,
+            email_verified=email_verified,
+            display_name=display_name,
+        )
+        return existing_user
+
+    # 4. 全新用户
+    fallback_name = display_name or normalized.split("@", 1)[0]
+
+    async def _create_oauth_only_user() -> User:
+        user = User(
+            email=normalized,
+            password_hash=None,
+            display_name=fallback_name,
+        )
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+        await _link_oauth_account(
+            db,
+            user_id=user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            provider_email=normalized,
+            email_verified=email_verified,
+            display_name=display_name,
+        )
+        return user
+
+    return await retry_sqlite_locked(_create_oauth_only_user, on_retry=db.rollback)
+
+
+async def _link_oauth_account(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    provider: str,
+    provider_user_id: str,
+    provider_email: str,
+    email_verified: bool,
+    display_name: str | None,
+) -> UserOAuthAccount:
+    """新建一条 user_oauth_accounts 记录（已假设 (provider, provider_user_id) 未占用）。"""
+    account = UserOAuthAccount(
+        user_id=user_id,
+        provider=provider,
+        provider_user_id=str(provider_user_id),
+        provider_email=provider_email,
+        email_verified=email_verified,
+        display_name=display_name,
+    )
+    db.add(account)
+    await db.flush()
+    await db.refresh(account)
+    return account
 
 
 async def ensure_admin_user(

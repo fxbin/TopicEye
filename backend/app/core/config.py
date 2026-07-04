@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # ── Rate limiting ──
     AUTH_LOGIN_ATTEMPTS_PER_MINUTE: int = 20
     AUTH_REGISTER_ATTEMPTS_PER_MINUTE: int = 10
+
+    # ── OAuth (Google / GitHub 登录) ──
+    # 留空则该 provider 不启用。申请方式见 .env.example。
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_GITHUB_CLIENT_ID: str = ""
+    OAUTH_GITHUB_CLIENT_SECRET: str = ""
+    # OAuth 登录成功后重定向到的前端回调页（token 走 URL fragment 传回）
+    OAUTH_FRONTEND_REDIRECT_URL: str = "http://localhost:3000/oauth/callback"
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
     LLM_WORKER_CONCURRENCY: int = 4
@@ -87,6 +96,16 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS into a clean list of origin strings."""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def oauth_enabled_providers(self) -> list[str]:
+        """已配置 client_id 的 OAuth provider 列表（前端据此渲染按钮）。"""
+        providers: list[str] = []
+        if self.OAUTH_GOOGLE_CLIENT_ID and self.OAUTH_GOOGLE_CLIENT_SECRET:
+            providers.append("google")
+        if self.OAUTH_GITHUB_CLIENT_ID and self.OAUTH_GITHUB_CLIENT_SECRET:
+            providers.append("github")
+        return providers
 
 
 settings = Settings()

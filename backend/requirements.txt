@@ -18,6 +18,9 @@ duckdb==1.2.2
 jieba==0.42.1
 cryptography==44.0.0
 alembic==1.14.0
+# OAuth (Google/GitHub 登录); itsdangerous 是 authlib starlette 集成的依赖
+authlib==1.3.2
+itsdangerous==2.2.0
 # 七猫 scraper: 执行 window.__NUXT__ IIFE 拿 listData (替代 Playwright, 镜像 -500MB)
 # 注: 包名 mini-racer (新版), import 仍走 py_mini_racer.MiniRacer
 mini-racer==0.14.1

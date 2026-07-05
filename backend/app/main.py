@@ -24,19 +24,15 @@ import app.models.trending  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
+import app.models.fanqie  # noqa: F401
+import app.models.qimao  # noqa: F401
+import app.models.zhihu  # noqa: F401
 from app.api.v1.router import router as v1_router
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings
 from app.core.database import async_session, database_profile, engine
 from app.core.db_backend import database_diagnostics, redact_database_secrets
 from app.core.exceptions import AppException
 from app.scheduler import shutdown_scheduler, start_scheduler
-
-# 国内网文 model —— 受 WEBNOVEL_CN_ENABLED 守卫，默认关闭。
-# 表不建不影响运行（关闭时这些路由/scheduler 任务也不注册）。
-if settings.WEBNOVEL_CN_ENABLED:
-    import app.models.fanqie  # noqa: F401
-    import app.models.qimao  # noqa: F401
-    import app.models.zhihu  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

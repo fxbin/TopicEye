@@ -446,7 +446,11 @@ async def _cleanup_old_trending_snapshots() -> None:
 
 @track_job("sync_fanqie", name="番茄小说榜单抓取", timeout=300, description="每日凌晨1点抓取番茄小说34个分类榜单")
 async def _sync_fanqie() -> None:
-    """番茄小说榜单每日抓取（凌晨1点）。"""
+    """番茄小说榜单每日抓取（凌晨1点）。任务永远注册，运行时由 flag 决定是否执行。"""
+    async with async_session() as db:
+        from app.models.app_setting import get_feature_flag_async
+        if not await get_feature_flag_async(db, "webnovel_module"):
+            return  # 网文模块未启用，跳过抓取
     logger.info("Scheduler: fanqie sync started")
     try:
         from app.services.fanqie_service import full_sync
@@ -460,7 +464,11 @@ async def _sync_fanqie() -> None:
 
 @track_job("sync_qimao", name="七猫小说榜单抓取", timeout=300, description="每日凌晨2点抓取七猫小说10个榜单")
 async def _sync_qimao() -> None:
-    """七猫小说榜单每日抓取（凌晨2点）。"""
+    """七猫小说榜单每日抓取（凌晨2点）。任务永远注册，运行时由 flag 决定是否执行。"""
+    async with async_session() as db:
+        from app.models.app_setting import get_feature_flag_async
+        if not await get_feature_flag_async(db, "webnovel_module"):
+            return
     logger.info("Scheduler: qimao sync started")
     try:
         from app.services.qimao_service import sync_qimao_ranks
@@ -474,7 +482,11 @@ async def _sync_qimao() -> None:
 
 @track_job("sync_zhihu", name="知乎故事榜单抓取", timeout=300, description="每日凌晨4点抓取知乎故事分类榜单")
 async def _sync_zhihu() -> None:
-    """知乎故事榜单每日抓取（凌晨4点）。"""
+    """知乎故事榜单每日抓取（凌晨4点）。任务永远注册，运行时由 flag 决定是否执行。"""
+    async with async_session() as db:
+        from app.models.app_setting import get_feature_flag_async
+        if not await get_feature_flag_async(db, "webnovel_module"):
+            return
     logger.info("Scheduler: zhihu sync started")
     try:
         from app.services.zhihu_service import sync_zhihu_ranks
@@ -710,15 +722,14 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # 番茄小说榜单：每日凌晨1点抓取（受 WEBNOVEL_CN_ENABLED 守卫）
-    if settings.WEBNOVEL_CN_ENABLED:
-        scheduler.add_job(
-            _sync_fanqie,
-            trigger=CronTrigger(hour=1, minute=0),
-            id="sync_fanqie",
-            name="番茄小说榜单每日抓取",
-            replace_existing=True,
-        )
+    # 番茄小说榜单：每日凌晨1点抓取（任务永远注册，运行时由 _sync_fanqie 内 flag 检查决定是否执行）
+    scheduler.add_job(
+        _sync_fanqie,
+        trigger=CronTrigger(hour=1, minute=0),
+        id="sync_fanqie",
+        name="番茄小说榜单每日抓取",
+        replace_existing=True,
+    )
 
     # AI日报：午间、晚间生成当日快照
     scheduler.add_job(
@@ -767,24 +778,23 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # 七猫小说榜单：每日凌晨2点抓取（受 WEBNOVEL_CN_ENABLED 守卫）
-    if settings.WEBNOVEL_CN_ENABLED:
-        scheduler.add_job(
-            _sync_qimao,
-            trigger=CronTrigger(hour=2, minute=0),
-            id="sync_qimao",
-            name="七猫小说榜单每日抓取",
-            replace_existing=True,
-        )
+    # 七猫小说榜单：每日凌晨2点抓取（任务永远注册，运行时由 _sync_qimao 内 flag 检查决定是否执行）
+    scheduler.add_job(
+        _sync_qimao,
+        trigger=CronTrigger(hour=2, minute=0),
+        id="sync_qimao",
+        name="七猫小说榜单每日抓取",
+        replace_existing=True,
+    )
 
-        # 知乎故事榜单：每日凌晨4点抓取
-        scheduler.add_job(
-            _sync_zhihu,
-            trigger=CronTrigger(hour=4, minute=0),
-            id="sync_zhihu",
-            name="知乎故事榜单每日抓取",
-            replace_existing=True,
-        )
+    # 知乎故事榜单：每日凌晨4点抓取
+    scheduler.add_job(
+        _sync_zhihu,
+        trigger=CronTrigger(hour=4, minute=0),
+        id="sync_zhihu",
+        name="知乎故事榜单每日抓取",
+        replace_existing=True,
+    )
 
     scheduler.start()
 

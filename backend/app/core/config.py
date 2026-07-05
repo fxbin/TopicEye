@@ -74,10 +74,6 @@ class Settings(BaseSettings):
     # OAuth 登录成功后重定向到的前端回调页（token 走 URL fragment 传回）
     OAUTH_FRONTEND_REDIRECT_URL: str = "http://localhost:3000/oauth/callback"
 
-    # ── Webnovel-CN (国内网文爬虫) ──
-    # 番茄/七猫/知乎盐选/黑岩/点众等国内网文平台爬虫开关。默认关闭以保持国际化体验干净；
-    # router 注册、scheduler 任务、model 表创建都受此开关守卫。代码不删除，只是默认不加载。
-    WEBNOVEL_CN_ENABLED: bool = False
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
     LLM_WORKER_CONCURRENCY: int = 4

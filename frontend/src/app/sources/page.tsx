@@ -418,31 +418,11 @@ export default function SourcesPage() {
   // ─── Toggle source enabled (soft pause / resume) ───
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
-  // Status-filtered sourceMap（client-side 过滤；后端不分页所以全量返回）
-  const filteredSourceMap = useMemo(() => {
-    if (statusFilter === 'all') return sourceMap;
-    const filteredTiers = Object.fromEntries(
-      Object.entries(sourceMap.tiers).map(([tier, items]) => {
-        const matched = items.filter((s) => {
-          if (statusFilter === 'active') return s.status === 'active' && s.enabled;
-          if (statusFilter === 'syncing') return s.status === 'syncing';
-          if (statusFilter === 'error') return s.status === 'error' || (s.enabled && s.sync_error);
-          if (statusFilter === 'disabled') return !s.enabled || s.status === 'disabled';
-          return true;
-        });
-        return [tier, matched];
-      })
-    );
-    return {
-      ...sourceMap,
-      tiers: filteredTiers as Record<SourceTierKey, BackendSource[]>,
-    };
-  }, [sourceMap, statusFilter]);
+  // 状态筛选（按 source.status + enabled 状态过滤）— 声明在前，供 filteredSourceMap 使用
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'syncing' | 'error' | 'disabled'>('all');
   // 批量选择：多选 + 批量启用/暂停
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
-  // 状态筛选（按 source.status + enabled 状态过滤）
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'syncing' | 'error' | 'disabled'>('all');
   const handleSelectSource = (source: BackendSource, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -684,6 +664,27 @@ export default function SourcesPage() {
       coreCount: tiers.core.length,
     };
   }, [mapSources]);
+
+  // Status-filtered sourceMap（client-side 过滤；后端不分页所以全量返回）
+  const filteredSourceMap = useMemo(() => {
+    if (statusFilter === 'all') return sourceMap;
+    const filteredTiers = Object.fromEntries(
+      Object.entries(sourceMap.tiers).map(([tier, items]) => {
+        const matched = items.filter((s) => {
+          if (statusFilter === 'active') return s.status === 'active' && s.enabled;
+          if (statusFilter === 'syncing') return s.status === 'syncing';
+          if (statusFilter === 'error') return s.status === 'error' || (s.enabled && s.sync_error);
+          if (statusFilter === 'disabled') return !s.enabled || s.status === 'disabled';
+          return true;
+        });
+        return [tier, matched];
+      })
+    );
+    return {
+      ...sourceMap,
+      tiers: filteredTiers as Record<SourceTierKey, BackendSource[]>,
+    };
+  }, [sourceMap, statusFilter]);
 
   const syncBoard = useMemo(() => buildSourceSyncBoard(mapSources, syncingIds, new Date()), [mapSources, syncingIds]);
 

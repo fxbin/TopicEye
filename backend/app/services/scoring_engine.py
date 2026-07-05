@@ -97,6 +97,10 @@ class ScoringInput:
         for slot in self.__slots__:
             if slot == "feedback_score":
                 setattr(self, slot, kwargs.get(slot, 0))
+            elif slot in ("published_at", "crawled_at"):
+                # datetime 字段默认 None（表示"没有"），不能是 0（int），
+                # 否则 _compute_time_decay 的 ensure_aware_utc(0) 会崩。
+                setattr(self, slot, kwargs.get(slot, None))
             else:
                 setattr(self, slot, kwargs.get(slot, 0))
 
@@ -288,6 +292,9 @@ def _compute_time_decay(item: ScoringInput, now: datetime | None = None) -> floa
     if t is None:
         t = item.crawled_at
     if t is None:
+        t = now
+    # 防御：int / 其他非 datetime/str 类型直接回落到 now（DuckDB 路径可能返回 int epoch）
+    if isinstance(t, (int, float)):
         t = now
     if isinstance(t, str):
         try:

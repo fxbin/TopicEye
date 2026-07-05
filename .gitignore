@@ -44,8 +44,9 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Docs (PRD, screenshots, prototypes, plans)
-docs/
+# Docs (PRD, prototypes, internal plans) — keep screenshots for README
+docs/*
+!docs/screenshots/
 
 # Test cache
 .pytest_cache/

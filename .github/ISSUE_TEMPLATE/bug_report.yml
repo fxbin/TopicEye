@@ -1,0 +1,62 @@
+name: Bug Report
+description: Report something that's broken
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in the sections below.
+        Redact secrets from logs / env files before pasting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened?
+      placeholder: "Expected the daily report to generate at 9am, but..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start backend with `WEBNOVEL_CN_ENABLED=true`
+        2. Hit `POST /api/v1/sources/sync-all`
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - backend (FastAPI)
+        - frontend (Next.js)
+        - database / migration
+        - scraper / source connector
+        - auth / OAuth
+        - Docker / deployment
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend `ERROR` / `WARNI` lines or browser console errors. Redact secrets.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "OS / Python version / Node version / Docker / DATABASE_URL (redacted)"
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I redacted secrets from logs and env files
+          required: true
+        - label: I searched existing issues for duplicates
+          required: true

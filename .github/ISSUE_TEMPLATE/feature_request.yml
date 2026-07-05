@@ -1,0 +1,43 @@
+name: Feature Request
+description: Suggest a new feature or source connector
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea? Tell us about it. For new source connectors,
+        check [CONTRIBUTING.md → How to add a source connector](../CONTRIBUTING.md) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today? What pain does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would the ideal behavior look like?
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of request
+      options:
+        - New source connector (RSS / podcast / newsletter / trending board)
+        - Improvement to existing feature
+        - New feature
+        - Developer experience / API
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Willingness to contribute
+      options:
+        - label: I'm willing to open a PR for this
+        - label: I'd like to discuss the design first

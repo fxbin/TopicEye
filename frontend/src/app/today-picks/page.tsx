@@ -24,6 +24,7 @@ import type { LucideIcon } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
@@ -65,7 +66,7 @@ export default function TodayPicksPageWrapper() {
 function TodayPicksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { toggleFavorite } = useAppContext();
+  const { toggleFavorite, currentUser } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
@@ -182,10 +183,18 @@ function TodayPicksPage() {
   }, [filteredItems]);
 
   const handleFav = async (id: number) => {
+    if (!currentUser) {
+      setActionError('收藏需要登录，点击右上角登录或使用 Google / GitHub 快速登录');
+      return;
+    }
     await toggleFavorite(id);
     contentFavoriteState.refresh();
   };
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
+    if (!currentUser) {
+      setActionError('推进选题需要登录，点击右上角登录或使用 Google / GitHub 快速登录');
+      return;
+    }
     setWorkflowPendingId(item.id);
     setActionError(null);
     try {
@@ -202,7 +211,7 @@ function TodayPicksPage() {
     } finally {
       setWorkflowPendingId(null);
     }
-  }, [contentFavoriteState, router, toggleFavorite]);
+  }, [contentFavoriteState, currentUser, router, toggleFavorite]);
   const toggleTopic = (id: number) => {
     setExpandedTopics((prev) => {
       const next = new Set(prev);
@@ -664,6 +673,8 @@ function PickCard({
   const tags = tagsOf(analysis);
   const recommendation = analysis?.recommendation || analysis?.recommended_reason || item.summary || '';
   const scoreClass = score >= 80 ? 'text-primary' : score >= 70 ? 'text-amber' : 'text-teal';
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const breakdown = analysis?.score_breakdown;
 
   return (
     <article
@@ -706,12 +717,28 @@ function PickCard({
           onStartWorkflow={onStartWorkflow}
           workflowPending={workflowPending}
         />
+        {showBreakdown && breakdown && (
+          <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/50 p-3" onClick={(e) => e.stopPropagation()}>
+            <ScoreBreakdownChart breakdown={breakdown} />
+          </div>
+        )}
       </div>
       <div className="text-right">
         <div className={cx('font-mono text-[22px] font-black leading-none', scoreClass)}>
           {Math.round(score)}
         </div>
         <div className="mt-1 text-[10px] text-gray-400">分</div>
+        {breakdown && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setShowBreakdown((v) => !v); }}
+            className="mt-2 inline-flex items-center gap-0.5 rounded-xs border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-500 transition hover:border-primary-border hover:text-primary"
+            title={showBreakdown ? '收起评分解释' : '展开评分解释'}
+          >
+            <BarChart3 size={11} />
+            {showBreakdown ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </button>
+        )}
       </div>
     </article>
   );

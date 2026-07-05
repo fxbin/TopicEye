@@ -244,7 +244,7 @@ const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
   },
 };
 
-export function FeatureFlagsPanel() {
+export function FeatureFlagsPanel({ onUpdate }: { onUpdate?: (flags: Record<string, boolean>) => void }) {
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -270,6 +270,7 @@ export function FeatureFlagsPanel() {
     try {
       const { flags: merged } = await settingsApi.updateFeatureFlags({ [key]: next });
       setFlags(merged);
+      onUpdate?.(merged);  // 同步全局 enabledFeatures → 菜单/路由守卫实时刷新
     } catch {
       // 失败回滚由用户重试
     } finally {

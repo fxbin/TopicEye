@@ -28,6 +28,8 @@ interface AppContextType {
   topicCount: number;
   isFavoriteTarget: (target: FavoriteTargetRef) => boolean;
   applyAuthSession: (session: AuthTokenResponse) => void;
+  /** 同步更新 enabledFeatures（toggle 后调用，菜单/路由守卫实时刷新） */
+  updateEnabledFeatures: (flags: Record<string, boolean>) => void;
   logout: () => Promise<void>;
   toggleFavoriteTarget: (target: FavoriteCreatePayload, options?: { throwOnError?: boolean }) => Promise<boolean>;
   toggleFavorite: (id: number, options?: { throwOnError?: boolean }) => Promise<boolean>;
@@ -46,6 +48,7 @@ const AppContext = createContext<AppContextType>({
   topicCount: 0,
   isFavoriteTarget: () => false,
   applyAuthSession: () => {},
+  updateEnabledFeatures: () => {},
   logout: async () => {},
   toggleFavoriteTarget: async () => false,
   toggleFavorite: async () => false,
@@ -151,6 +154,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const applyAuthSession = useCallback((session: AuthTokenResponse) => {
     setAuthToken(session.access_token);
     setCurrentUser(session.user);
+  }, []);
+
+  const updateEnabledFeatures = useCallback((flags: Record<string, boolean>) => {
+    setEnabledFeatures(flags || {});
   }, []);
 
   const logout = useCallback(async () => {
@@ -462,6 +469,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         topicCount: contentCount,
         isFavoriteTarget,
         applyAuthSession,
+        updateEnabledFeatures,
         logout,
         toggleFavoriteTarget,
         toggleFavorite,

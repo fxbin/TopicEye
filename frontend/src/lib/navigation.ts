@@ -30,6 +30,8 @@ export interface NavItem {
   icon: LucideIcon;
   access: NavAccess;
   countKey?: 'topics' | 'favorites' | 'sources';
+  /** 功能模块开关 key。若设置且对应 flag !== true，菜单项不渲染、路由被守卫拦截 */
+  feature?: string;
 }
 
 export interface NavSpace {
@@ -74,7 +76,7 @@ export const NAV_SPACES: NavSpace[] = [
       { id: 'my-topics', label: '我的母题', href: '/my-topics', icon: Crosshair, access: 'user' },
       { id: 'favorites', label: '收藏夹', href: '/favorites', icon: Bookmark, access: 'user', countKey: 'favorites' },
       { id: 'algorithm', label: '算法流程', href: '/algorithm', icon: GitBranch, access: 'user' },
-      { id: 'fanqie', label: '网文雷达', href: '/novel', icon: BookOpen, access: 'user' },
+      { id: 'fanqie', label: '网文雷达', href: '/novel', icon: BookOpen, access: 'user', feature: 'webnovel_module' },
     ],
   },
   {
@@ -121,17 +123,24 @@ export function isAdmin(user: AuthUser | null): boolean {
   return user?.role === 'admin';
 }
 
-export function canAccessNavItem(item: NavItem, user: AuthUser | null): boolean {
+/** 检查某 feature 是否已启用。enabledFeatures 未加载时默认视为关（安全侧） */
+function isFeatureEnabled(feature: string | undefined, enabledFeatures?: Record<string, boolean>): boolean {
+  if (!feature) return true;  // 无 feature 关联 → 不受开关约束
+  return Boolean(enabledFeatures?.[feature]);
+}
+
+export function canAccessNavItem(item: NavItem, user: AuthUser | null, enabledFeatures?: Record<string, boolean>): boolean {
+  if (!isFeatureEnabled(item.feature, enabledFeatures)) return false;
   if (item.access === 'public') return true;
   if (item.access === 'admin') return isAdmin(user);
   return Boolean(user);
 }
 
-export function visibleNavSpaces(user: AuthUser | null): NavSpace[] {
+export function visibleNavSpaces(user: AuthUser | null, enabledFeatures?: Record<string, boolean>): NavSpace[] {
   return NAV_SPACES
     .map((space) => ({
       ...space,
-      items: space.items.filter((item) => canAccessNavItem(item, user)),
+      items: space.items.filter((item) => canAccessNavItem(item, user, enabledFeatures)),
     }))
     .filter((space) => space.items.length > 0);
 }
@@ -141,15 +150,31 @@ function matchesPath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function requiredAccessForPath(pathname: string): NavAccess {
+/** 找到匹配当前路径的 NavItem（用于 feature 守卫） */
+function navItemForPath(pathname: string): NavItem | undefined {
+  for (const space of NAV_SPACES) {
+    for (const item of space.items) {
+      if (matchesPath(pathname, item.href)) return item;
+    }
+  }
+  return undefined;
+}
+
+export function requiredAccessForPath(pathname: string, enabledFeatures?: Record<string, boolean>): NavAccess {
+  // feature 关闭的路径直接返回 'user'（让守卫把已登录用户踢回首页，未登录去登录页）
+  // 这里返回 user 是为了让 canAccessPath 的 fallthrough 逻辑处理，真正的拦截在 canAccessPath
   if (PUBLIC_PATHS.some((href) => matchesPath(pathname, href))) return 'public';
   if (ADMIN_ONLY_PATHS.some((href) => matchesPath(pathname, href))) return 'admin';
   if (USER_ONLY_PATHS.some((href) => matchesPath(pathname, href))) return 'user';
   return 'public';
 }
 
-export function canAccessPath(pathname: string, user: AuthUser | null): boolean {
-  const access = requiredAccessForPath(pathname);
+export function canAccessPath(pathname: string, user: AuthUser | null, enabledFeatures?: Record<string, boolean>): boolean {
+  // feature 守卫：路径关联了未启用的 feature → 不可访问
+  const item = navItemForPath(pathname);
+  if (item && !isFeatureEnabled(item.feature, enabledFeatures)) return false;
+
+  const access = requiredAccessForPath(pathname, enabledFeatures);
   if (access === 'public') return true;
   if (access === 'admin') return isAdmin(user);
   return Boolean(user);

@@ -24,6 +24,19 @@ export const settingsApi = {
       body: JSON.stringify({ instances }),
     });
   },
+
+  /** 获取功能模块开关（管理员） */
+  getFeatureFlags(): Promise<{ flags: Record<string, boolean>; defaults: Record<string, boolean> }> {
+    return request('/settings/feature-flags');
+  },
+
+  /** 更新功能模块开关（管理员，upsert 合并） */
+  updateFeatureFlags(flags: Record<string, boolean>): Promise<{ flags: Record<string, boolean> }> {
+    return request('/settings/feature-flags', {
+      method: 'PUT',
+      body: JSON.stringify({ flags }),
+    });
+  },
 };
 
 // ─── Stats / Dashboard API ───

@@ -25,12 +25,12 @@ import {
 
 import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
-import { RSSHubManager, SourceListPanel } from './_panels';
+import { RSSHubManager, SourceListPanel, FeatureFlagsPanel } from './_panels';
 
 // ─── Page Component ───
 
 export default function SourcesPage() {
-  const { favoriteTargets, favoriteTargetPendingKeys, toggleFavoriteTarget, refreshCounts } = useAppContext();
+  const { currentUser, favoriteTargets, favoriteTargetPendingKeys, toggleFavoriteTarget, refreshCounts } = useAppContext();
   const [sources, setSources] = useState<BackendSource[]>([]);
   const [mapSources, setMapSources] = useState<BackendSource[]>([]);
   const [sourceFavoriteKeys, setSourceFavoriteKeys] = useState<Set<string>>(new Set());
@@ -924,6 +924,7 @@ export default function SourcesPage() {
             onDelete={deleteInstance}
             onAdd={addInstance}
           />
+          {currentUser?.role === 'admin' && <FeatureFlagsPanel />}
           <SourceListPanel
             loading={loading}
             sources={sources}

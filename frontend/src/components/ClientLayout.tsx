@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import NotificationBell from '@/components/NotificationBell';
-import { authApi, getAuthToken, setAuthToken, sourcesApi, contentsApi, favoritesApi } from '@/lib/api';
+import { authApi, getAuthToken, setAuthToken, settingsApi, sourcesApi, contentsApi, favoritesApi } from '@/lib/api';
 import {
   favoriteItemToTargetKey,
   getContentFavoriteKey,
@@ -19,6 +19,8 @@ import type { AuthTokenResponse, AuthUser, FavoriteItem } from '@/types';
 interface AppContextType {
   currentUser: AuthUser | null;
   authLoading: boolean;
+  enabledFeatures: Record<string, boolean>;
+  featuresLoading: boolean;
   favorites: Set<number>;
   favoritePendingIds: Set<number>;
   favoriteTargets: Set<string>;
@@ -35,6 +37,8 @@ interface AppContextType {
 const AppContext = createContext<AppContextType>({
   currentUser: null,
   authLoading: true,
+  enabledFeatures: {},
+  featuresLoading: true,
   favorites: new Set(),
   favoritePendingIds: new Set(),
   favoriteTargets: new Set(),
@@ -129,6 +133,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>({});
+  const [featuresLoading, setFeaturesLoading] = useState(true);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [favoritePendingIds, setFavoritePendingIds] = useState<Set<number>>(new Set());
   const favoritePendingRef = useRef<Set<number>>(new Set());
@@ -245,6 +251,27 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     return () => { cancelled = true; };
   }, []);
 
+  // 拉取功能模块开关（管理员端点，普通用户 403 时回退空对象——所有 feature 视为关）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!getAuthToken()) {
+        setFeaturesLoading(false);
+        return;
+      }
+      try {
+        const { flags } = await settingsApi.getFeatureFlags();
+        if (!cancelled) setEnabledFeatures(flags || {});
+      } catch {
+        // 非管理员或端点不可用：保持默认空对象（feature 全部视为关）
+        if (!cancelled) setEnabledFeatures({});
+      } finally {
+        if (!cancelled) setFeaturesLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const updateCompact = () => setCompactNav(window.innerWidth < 900);
     updateCompact();
@@ -253,9 +280,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    if (authLoading || canAccessPath(pathname, currentUser)) return;
-    router.replace(requiredAccessForPath(pathname) === 'admin' && currentUser ? '/' : '/login');
-  }, [authLoading, currentUser, pathname, router]);
+    if (authLoading || featuresLoading) return;
+    if (canAccessPath(pathname, currentUser, enabledFeatures)) return;
+    // feature 关闭的路径踢回首页（登录用户也可能命中）；权限不足按原有逻辑
+    router.replace(requiredAccessForPath(pathname, enabledFeatures) === 'admin' && currentUser ? '/' : '/login');
+  }, [authLoading, featuresLoading, currentUser, enabledFeatures, pathname, router]);
 
   // Sync favorites to localStorage whenever it changes
   useEffect(() => {
@@ -424,6 +453,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       value={{
         currentUser,
         authLoading,
+        enabledFeatures,
+        featuresLoading,
         favorites,
         favoritePendingIds,
         favoriteTargets,
@@ -450,6 +481,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             compact={compactNav}
             currentUser={currentUser}
             authLoading={authLoading}
+            enabledFeatures={enabledFeatures}
             onLogout={logout}
           />
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">

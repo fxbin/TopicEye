@@ -19,6 +19,7 @@ interface SidebarProps {
   compact?: boolean;
   currentUser?: AuthUser | null;
   authLoading?: boolean;
+  enabledFeatures?: Record<string, boolean>;
   onLogout?: () => void;
 }
 
@@ -29,12 +30,13 @@ export default function Sidebar({
   compact = false,
   currentUser = null,
   authLoading = false,
+  enabledFeatures,
   onLogout,
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const navSpaces = visibleNavSpaces(currentUser);
+  const navSpaces = visibleNavSpaces(currentUser, enabledFeatures);
   const counts = {
     topics: topicCount,
     favorites: favCount,

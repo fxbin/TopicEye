@@ -7,12 +7,13 @@
  * - SourceListPanel 信源列表表格 + 分页器
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Panel, cx } from '@/components/ui';
 import { Spinner } from '@/components/SourceRow';
 import SourceRowComponent, { type BackendSource } from '@/components/SourceRow';
 import type { RSSHubInstance } from '@/types/stats';
 import { getFavoriteTargetKey } from '@/lib/favorites';
+import { settingsApi } from '@/lib/api';
 
 export function RSSHubManager({
   instances,
@@ -231,5 +232,98 @@ export function SourceListPanel({
         </div>
       )}
     </>
+  );
+}
+
+// ── Feature flags 面板（管理员后台一键开关功能模块）──
+
+const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
+  webnovel_module: {
+    label: '网文雷达',
+    description: '番茄/七猫/知乎盐选等国内网文榜单。默认关闭以保持国际化体验干净，按需开启。',
+  },
+};
+
+export function FeatureFlagsPanel() {
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await settingsApi.getFeatureFlags();
+        if (!cancelled) setFlags(data.flags || {});
+      } catch {
+        // 非管理员或端点不可用，静默
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggle = async (key: string) => {
+    const next = !flags[key];
+    setSavingKey(key);
+    try {
+      const { flags: merged } = await settingsApi.updateFeatureFlags({ [key]: next });
+      setFlags(merged);
+    } catch {
+      // 失败回滚由用户重试
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const entries = Object.entries(flags);
+  return (
+    <Panel className="mb-5 p-5">
+      <div className="mb-3.5">
+        <h2 className="mb-0.5 text-[15px] font-black text-gray-800">功能模块开关</h2>
+        <p className="text-xs text-gray-400">按需启用/禁用功能模块。关闭后菜单和接口同步隐藏，开启后立即生效。</p>
+      </div>
+      {loading ? (
+        <div className="py-2 text-[13px] text-gray-400">加载中…</div>
+      ) : entries.length === 0 ? (
+        <div className="py-2 text-[13px] text-gray-400">暂无可配置的功能模块</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {entries.map(([key, enabled]) => {
+            const meta = FEATURE_LABELS[key] || { label: key, description: '' };
+            const isSaving = savingKey === key;
+            return (
+              <div key={key} className="flex items-center gap-3 rounded-sm border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-bold text-gray-800">{meta.label}</div>
+                  {meta.description && <div className="mt-0.5 text-[11px] leading-5 text-gray-500">{meta.description}</div>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggle(key)}
+                  disabled={isSaving}
+                  className={cx(
+                    'relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-wait disabled:opacity-60',
+                    enabled ? 'bg-primary' : 'bg-gray-300',
+                  )}
+                  title={enabled ? '点击关闭' : '点击开启'}
+                >
+                  <span
+                    className={cx(
+                      'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+                      enabled ? 'left-[22px]' : 'left-0.5',
+                    )}
+                  />
+                </button>
+                <span className={cx('w-10 text-[11px] font-black', enabled ? 'text-primary' : 'text-gray-400')}>
+                  {isSaving ? '...' : enabled ? '已启用' : '已关闭'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
   );
 }

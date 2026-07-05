@@ -22,6 +22,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
             "daily_topic_view": "暂未强制限额",
             "favorites": "按账号隔离",
             "custom_sources": "管理员维护",
+            "private_sources_quota": 0,
             "creation_plans_per_day": "暂未强制限额",
             "team_members": 1,
         },
@@ -46,6 +47,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
             "daily_topic_view": "规划：更高额度",
             "favorites": "规划：扩容",
             "custom_sources": "规划：个人可配置",
+            "private_sources_quota": 20,
             "creation_plans_per_day": "规划：更高额度",
             "team_members": 1,
         },
@@ -69,6 +71,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
             "daily_topic_view": "规划：团队额度",
             "favorites": "规划：团队容量",
             "custom_sources": "规划：批量维护",
+            "private_sources_quota": 100,
             "creation_plans_per_day": "规划：团队额度",
             "team_members": "规划：多人",
         },
@@ -92,6 +95,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
             "daily_topic_view": "定制",
             "favorites": "定制",
             "custom_sources": "定制",
+            "private_sources_quota": -1,
             "creation_plans_per_day": "定制",
             "team_members": "定制",
         },
@@ -149,3 +153,20 @@ def plan_allows_custom_ai(plan_key: str | None) -> bool:
 def plan_allows_private_source(plan_key: str | None) -> bool:
     """Whether the plan tier permits creating user-owned (private) sources."""
     return get_tier_by_key(plan_key)["key"] in {"pro", "studio", "enterprise"}
+
+
+def private_sources_quota(plan_key: str | None) -> int:
+    """Max private sources the plan allows. -1 means unlimited."""
+    return int(get_tier_by_key(plan_key)["limits"].get("private_sources_quota", 0))
+
+
+def private_sources_quota_exceeded(plan_key: str | None, current_count: int) -> bool:
+    """True if the user can no longer create private sources.
+
+    quota = -1 → unlimited (never exceeded); quota = 0 → blocked entirely
+    (handled by plan_allows_private_source gate, but kept defensive here).
+    """
+    quota = private_sources_quota(plan_key)
+    if quota < 0:
+        return False
+    return current_count >= quota

@@ -92,34 +92,55 @@ Keep local-only files out of commits — especially `backend/.env`, `*.db`, `ven
 
 This is the most valuable contribution and the most beginner-friendly. A connector lives in `backend/app/services/scrapers/` (for content sources) or `backend/app/services/trending_scrapers/` (for ranking boards).
 
-A minimal source connector:
+### The scraper contract
+
+Every scraper subclasses `BaseScraper` and registers itself with `@register_scraper("<SourceType>")`. The framework instantiates it with `(source_url, source_config)` and calls `async fetch(client)` to get items.
 
 ```python
 # backend/app/services/scrapers/my_source.py
 from __future__ import annotations
-from dataclasses import dataclass
+from typing import Any
+import httpx
+from . import BaseScraper, register_scraper
 
-@dataclass
-class MySourceItem:
-    title: str
-    url: str
-    summary: str = ""
-    published_at: str | None = None
+@register_scraper("MySource")  # must match a SourceType enum value (backend/app/models/source.py)
+class MySourceScraper(BaseScraper):
+    def __init__(self, source_url: str, source_config: dict[str, Any] | None = None):
+        super().__init__(source_url, source_config)
+        # pre-parse anything you need from source_config (e.g. channel id)
 
-def fetch(url: str) -> list[MySourceItem]:
-    """Fetch and parse items from the given source URL."""
-    # 1. fetch the page / feed (use httpx, reuse RSS parser if applicable)
-    # 2. parse into MySourceItem list
-    # 3. return — the framework handles normalization & storage
-    ...
+    async def fetch(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
+        """Fetch items. Each dict MUST have these keys:
+            title, url, author, summary, raw_content, tags,
+            published_at, cover_url
+        Missing keys should be "" / None / [] — the framework normalizes.
+        """
+        resp = await client.get(self.url)
+        resp.raise_for_status()
+        # parse resp.text / resp.json() into entries...
+        return [{"title": ..., "url": ..., "summary": ..., "published_at": ...}]
 ```
 
-Then register it in the URL auto-recognizer (`backend/app/services/scrapers/__init__.py`) so the frontend "paste URL" flow can detect it. See existing connectors like `rss.py`, `youtube.py`, or `podcast.py` for the full pattern.
+### Four places to touch (currently — we're consolidating this)
+
+1. **Write the scraper** in `backend/app/services/scrapers/my_source.py` (use `rss.py` / `youtube.py` / `podcast.py` as templates — start with the simplest one matching your source type).
+2. **Register the import** in `backend/app/services/scrapers/__init__.py` (the `from . import xxx` block near the bottom). Without this, the decorator never runs.
+3. **Add the type** to `SourceType` enum in `backend/app/models/source.py` if it's genuinely new.
+4. **Add host patterns** to `backend/app/services/scrapers/recognizer.py` so the "paste URL" auto-detect recognizes your source.
+
+> **Note:** we're working on collapsing steps 2 + 4 into the registry so contributors only write the scraper. For now, copy an existing scraper end-to-end.
+
+### Test template
+
+The best template is `backend/tests/test_youtube_scraper.py` — it shows the three things to verify:
+1. Registration: `get_scraper_cls("YouTube") is YouTubeScraper`
+2. URL parsing helpers (pure functions, no network)
+3. Full `fetch()` with a `FakeClient` that returns canned responses (no real HTTP)
 
 **Suggested flow:**
 1. Open an issue with `good first issue` + the source you want to add.
-2. Copy an existing connector as a template.
-3. Add a test under `backend/tests/` (see `test_rss_scraper.py` / `test_youtube_scraper.py`).
+2. Copy the closest existing connector as a template.
+3. Add a test under `backend/tests/` (copy `test_youtube_scraper.py` structure).
 4. Submit a PR — include a sample URL you tested against.
 
 ## Adding an OAuth provider

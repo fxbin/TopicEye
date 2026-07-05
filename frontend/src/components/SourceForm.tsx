@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { cx } from '@/components/ui';
+import { sourcesApi } from '@/lib/api';
 
 export interface FormState {
   name: string;
@@ -26,7 +27,11 @@ export const emptyForm: FormState = {
 };
 
 export const CATEGORIES = ['AI', '商业', '科技', '教育', '自媒体', '生活', '职场', '产品'];
-export const SOURCE_TYPES = ['RSS', 'RSSHub', 'Reddit', 'TwitterRSS', 'API', '公众号', '网站', 'Zhihu'];
+// 对齐后端 SourceType 枚举 + 已注册的 scraper（见 backend/app/services/scrapers/__init__.py）
+export const SOURCE_TYPES = [
+  'RSS', 'RSSHub', 'Reddit', 'API', '网站', '自定义',
+  'YouTube', 'Podcast', 'Newsletter', 'X', 'TwitterRSS', 'Zhihu',
+];
 export const SOURCE_INTERVAL_OPTIONS = [
   { value: 30, label: '30分钟' },
   { value: 60, label: '1小时' },
@@ -81,8 +86,24 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
           placeholder={form.source_type === 'API' ? 'https://example.com/api/items' : 'https://example.com/feed'}
           value={form.url}
           onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+          onBlur={async (e) => {
+            const pastedUrl = e.target.value.trim();
+            if (!pastedUrl) return;
+            try {
+              const result = await sourcesApi.recognizeMine(pastedUrl, form.name || undefined);
+              // 用识别结果覆盖（仅当当前类型是默认 RSS 或与识别结果不同时）
+              setForm((f) => ({
+                ...f,
+                source_type: SOURCE_TYPES.includes(result.source_type) ? result.source_type : f.source_type,
+                url: result.normalized_url || f.url,
+              }));
+            } catch {
+              // 识别失败静默处理，用户可手动选类型
+            }
+          }}
           className={cx(inputClass, 'font-mono')}
         />
+        <p className="mt-1 text-[11px] text-gray-400">粘贴 URL 后自动识别类型（失焦触发）</p>
       </div>
 
       {form.source_type === 'API' && (

@@ -33,7 +33,11 @@ from app.api.v1._importers import (  # noqa: F401 — SourceBatchImportItem + _p
     _parse_source_batch,
     _preview_source_batch_items,
 )
-from app.services.plan_catalog import plan_allows_private_source
+from app.services.plan_catalog import (
+    plan_allows_private_source,
+    private_sources_quota,
+    private_sources_quota_exceeded,
+)
 from app.services.scrapers.recognizer import recognize_source_type
 from app.services.source_cache import (
     SourceListCacheParams,
@@ -219,6 +223,8 @@ async def list_my_sources(
     async with async_session() as db:
         stmt = select(Source).where(Source.owner_user_id == current_user.id)
         count_stmt = select(func.count()).select_from(Source).where(Source.owner_user_id == current_user.id)
+        # 未过滤的私有信源总数，用于配额展示（total 是过滤后分页计数，不能直接复用）
+        private_sources_used = int(await db.scalar(count_stmt) or 0)
         filters = []
         if source_type is not None:
             filters.append(Source.source_type == source_type)
@@ -247,13 +253,36 @@ async def list_my_sources(
             stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
         )
         items = list(result.scalars().all())
-    payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size).model_dump()
+    payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size, private_sources_used=private_sources_used, private_sources_quota=private_sources_quota(current_user.plan)).model_dump()
     content = set_cached_source_list(cache_params, payload)
     return Response(
         content=content,
         media_type="application/json",
         headers={"X-Sources-Cache": "MISS"},
     )
+
+
+@router.get("/me/recognize")
+async def recognize_my_source_url(
+    url: str = Query(..., min_length=3, max_length=2048, description="用户粘贴的信源 URL"),
+    name: str | None = Query(None, description="可选信源名，辅助识别 handle"),
+    current_user: User = Depends(get_current_user),
+):
+    """根据粘贴的 URL 推断信源类型 + 规范化 URL + extra_config。
+
+    前端在创建私有信源时，粘贴 URL 后调此端点自动填充 source_type 字段。
+    不消耗配额、不创建任何记录——纯识别辅助。
+    """
+    try:
+        source_type, normalized_url, extra_config = recognize_source_type(url, name=name)
+    except Exception:
+        # 识别失败不报错，兜底返回 RSS（让用户自己确认）
+        return {"source_type": "RSS", "normalized_url": url, "extra_config": None}
+    return {
+        "source_type": source_type.value if hasattr(source_type, "value") else str(source_type),
+        "normalized_url": normalized_url,
+        "extra_config": extra_config,
+    }
 
 
 @router.post("/me", response_model=SourceResponse, status_code=201)
@@ -264,6 +293,19 @@ async def create_my_source(
 ):
     if not plan_allows_private_source(current_user.plan):
         raise HTTPException(status_code=403, detail="私有信源需要 Pro 及以上套餐")
+    # 配额检查：在去重/创建前拦截，避免无效写入
+    current_count = int(
+        await db.scalar(
+            select(func.count()).select_from(Source).where(Source.owner_user_id == current_user.id)
+        )
+        or 0
+    )
+    if private_sources_quota_exceeded(current_user.plan, current_count):
+        quota = private_sources_quota(current_user.plan)
+        raise HTTPException(
+            status_code=403,
+            detail=f"私有信源已达上限（{current_count}/{quota}），请升级套餐或删除不再使用的信源",
+        )
     repo = SourceRepository(db)
     payload = data.model_dump()
     _normalize_source_status(payload)

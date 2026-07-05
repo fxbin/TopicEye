@@ -118,7 +118,7 @@ export const sourcesApi = {
 
   // ── /me 系列：用户私有信源（对齐 modelsApi.mine/createMine 模式）──
 
-  /** 获取我的私有信源列表 */
+  /** 获取我的私有信源列表（含配额信息） */
   listMine(params?: {
     page?: number;
     page_size?: number;
@@ -126,7 +126,11 @@ export const sourcesApi = {
     status?: string;
     enabled?: boolean;
     keyword?: string;
-  }): Promise<PaginatedResponse<Source> & { total?: number }> {
+  }): Promise<PaginatedResponse<Source> & {
+    total?: number;
+    private_sources_used?: number | null;
+    private_sources_quota?: number | null;
+  }> {
     const qs = new URLSearchParams();
     if (params?.page) qs.set('page', String(params.page));
     if (params?.page_size) qs.set('page_size', String(params.page_size));
@@ -136,6 +140,17 @@ export const sourcesApi = {
     if (params?.keyword) qs.set('keyword', params.keyword);
     const query = qs.toString();
     return request(`/sources/me${query ? '?' + query : ''}`);
+  },
+
+  /** 根据粘贴的 URL 推断信源类型（创建私有信源时的 UX 辅助） */
+  recognizeMine(url: string, name?: string): Promise<{
+    source_type: string;
+    normalized_url: string;
+    extra_config: Record<string, unknown> | null;
+  }> {
+    const qs = new URLSearchParams({ url });
+    if (name) qs.set('name', name);
+    return request(`/sources/me/recognize?${qs.toString()}`);
   },
 
   /** 获取我的单个私有信源 */

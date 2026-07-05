@@ -172,6 +172,9 @@ class SourceListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    # 私有信源配额（仅 GET /sources/me 填充；公共列表留空）
+    private_sources_used: int | None = None
+    private_sources_quota: int | None = None
 
 
 class SourceReorderRequest(BaseModel):

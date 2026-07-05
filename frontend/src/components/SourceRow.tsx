@@ -131,13 +131,28 @@ export default function SourceRowComponent({
         deleting && 'opacity-50',
       )}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={(e) => onSelect?.(source, e.target.checked)}
-        onClick={(e) => e.stopPropagation()}
-        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-orange focus:ring-orange"
-      />
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={`选择 ${source.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.(source, !selected);
+        }}
+        className={cx(
+          'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition',
+          selected
+            ? 'border-primary bg-primary text-white'
+            : 'border-gray-300 bg-white hover:border-primary-border hover:bg-primary-light',
+        )}
+      >
+        {selected && (
+          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 8.5l3.5 3.5L13 4.5" />
+          </svg>
+        )}
+      </button>
       <div className="min-w-0">
         <span className="font-bold">{source.name}</span>
         {displayUrl && (

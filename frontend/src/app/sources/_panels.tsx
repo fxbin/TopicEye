@@ -117,6 +117,7 @@ export function SourceListPanel({
   onIntervalChange,
   onFavorite,
   onSelect,
+  onSelectAllVisible,
   onPageChange,
 }: {
   loading: boolean;
@@ -138,8 +139,11 @@ export function SourceListPanel({
   onIntervalChange: (id: number, mins: number) => void;
   onFavorite: (source: BackendSource) => void;
   onSelect: (source: BackendSource, checked: boolean) => void;
+  onSelectAllVisible?: (sources: BackendSource[], checked: boolean) => void;
   onPageChange: (p: number) => void;
 }) {
+  const allVisibleSelected = sources.length > 0 && sources.every((s) => selectedIds.has(s.id));
+  const someVisibleSelected = !allVisibleSelected && sources.some((s) => selectedIds.has(s.id));
   return (
     <>
       {/* Loading State */}
@@ -153,7 +157,31 @@ export function SourceListPanel({
       {/* Table */}
       {!loading && (
         <Panel className="overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-black uppercase tracking-[0.05em] text-gray-500">
+          <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-black uppercase tracking-[0.05em] text-gray-500">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={allVisibleSelected}
+              aria-label="全选当前页"
+              onClick={() => onSelectAllVisible?.(sources, !allVisibleSelected)}
+              className={cx(
+                'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition',
+                allVisibleSelected
+                  ? 'border-primary bg-primary text-white'
+                  : someVisibleSelected
+                    ? 'border-primary-border bg-primary-light text-primary'
+                    : 'border-gray-300 bg-white hover:border-primary-border hover:bg-primary-light',
+              )}
+            >
+              {allVisibleSelected && (
+                <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 8.5l3.5 3.5L13 4.5" />
+                </svg>
+              )}
+              {someVisibleSelected && !allVisibleSelected && (
+                <span className="h-[2px] w-2.5 rounded-full bg-primary" aria-hidden="true" />
+              )}
+            </button>
             {['名称', '类型', '分类', '最后同步', '采集频率', '权重', '状态', '操作'].map((h) => (
               <div key={h}>{h}</div>
             ))}

@@ -695,8 +695,8 @@ export default function SourcesPage() {
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-1.5 rounded-sm border border-orange/30 bg-orange/5 px-2.5 py-1 text-[12px]">
-                <span className="font-mono font-semibold text-orange">{selectedIds.size}</span>
+              <div className="flex items-center gap-1.5 rounded-sm border border-primary-border bg-primary-light px-2.5 py-1 text-[12px]">
+                <span className="font-mono font-semibold text-primary">{selectedIds.size}</span>
                 <span className="text-gray-600">已选</span>
                 <button
                   type="button"
@@ -946,6 +946,7 @@ export default function SourcesPage() {
             onIntervalChange={handleIntervalChange}
             onFavorite={handleToggleSourceFavorite}
             onSelect={handleSelectSource}
+            onSelectAllVisible={handleSelectAllVisible}
             onPageChange={(p) => void fetchSources(p)}
           />
         </>

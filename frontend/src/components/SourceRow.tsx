@@ -127,7 +127,7 @@ export default function SourceRowComponent({
     <div
       onMouseLeave={() => setIntervalOpen(false)}
       className={cx(
-        'grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center border-b border-gray-100 bg-white px-6 py-3.5 text-[13px] text-gray-700 transition hover:bg-gray-50',
+        'grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center gap-x-3 border-b border-gray-100 bg-white px-6 py-3.5 text-[13px] text-gray-700 transition hover:bg-gray-50',
         deleting && 'opacity-50',
       )}
     >

@@ -157,7 +157,7 @@ export function SourceListPanel({
       {/* Table */}
       {!loading && (
         <Panel className="overflow-hidden">
-          <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-black uppercase tracking-[0.05em] text-gray-500">
+          <div className="grid grid-cols-[auto_2fr_1fr_1fr_1.2fr_1fr_1fr_0.8fr_1.5fr] items-center gap-x-3 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-black uppercase tracking-[0.05em] text-gray-500">
             <button
               type="button"
               role="checkbox"

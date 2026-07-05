@@ -710,14 +710,15 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # 番茄小说榜单：每日凌晨1点抓取
-    scheduler.add_job(
-        _sync_fanqie,
-        trigger=CronTrigger(hour=1, minute=0),
-        id="sync_fanqie",
-        name="番茄小说榜单每日抓取",
-        replace_existing=True,
-    )
+    # 番茄小说榜单：每日凌晨1点抓取（受 WEBNOVEL_CN_ENABLED 守卫）
+    if settings.WEBNOVEL_CN_ENABLED:
+        scheduler.add_job(
+            _sync_fanqie,
+            trigger=CronTrigger(hour=1, minute=0),
+            id="sync_fanqie",
+            name="番茄小说榜单每日抓取",
+            replace_existing=True,
+        )
 
     # AI日报：午间、晚间生成当日快照
     scheduler.add_job(
@@ -766,23 +767,24 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # 七猫小说榜单：每日凌晨2点抓取
-    scheduler.add_job(
-        _sync_qimao,
-        trigger=CronTrigger(hour=2, minute=0),
-        id="sync_qimao",
-        name="七猫小说榜单每日抓取",
-        replace_existing=True,
-    )
+    # 七猫小说榜单：每日凌晨2点抓取（受 WEBNOVEL_CN_ENABLED 守卫）
+    if settings.WEBNOVEL_CN_ENABLED:
+        scheduler.add_job(
+            _sync_qimao,
+            trigger=CronTrigger(hour=2, minute=0),
+            id="sync_qimao",
+            name="七猫小说榜单每日抓取",
+            replace_existing=True,
+        )
 
-    # 知乎故事榜单：每日凌晨4点抓取
-    scheduler.add_job(
-        _sync_zhihu,
-        trigger=CronTrigger(hour=4, minute=0),
-        id="sync_zhihu",
-        name="知乎故事榜单每日抓取",
-        replace_existing=True,
-    )
+        # 知乎故事榜单：每日凌晨4点抓取
+        scheduler.add_job(
+            _sync_zhihu,
+            trigger=CronTrigger(hour=4, minute=0),
+            id="sync_zhihu",
+            name="知乎故事榜单每日抓取",
+            replace_existing=True,
+        )
 
     scheduler.start()
 

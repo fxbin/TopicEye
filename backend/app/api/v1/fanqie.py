@@ -205,3 +205,25 @@ async def trigger_sync(
 
     background_tasks.add_task(_sync_fanqie)
     return {"status": "started", "message": "番茄同步已在后台启动"}
+
+
+@router.post("/refresh-covers")
+async def trigger_cover_refresh(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_admin_user),
+):
+    """后台触发番茄封面兜底刷新。
+
+    扫描所有 thumb_uri 已过期的图书，重新调 rank API 刷新签名 URL。
+    用于 full_sync 失败或长期未同步时的封面修复。
+    """
+    from app.services.fanqie_service import refresh_stale_covers
+
+    async def _run():
+        try:
+            await refresh_stale_covers()
+        except Exception:
+            logger.exception("手动触发番茄封面刷新失败")
+
+    background_tasks.add_task(_run)
+    return {"status": "started", "message": "番茄封面刷新已在后台启动"}

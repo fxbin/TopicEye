@@ -16,7 +16,7 @@ For the full history of what's shipped, see the **Product Updates** page inside 
 **Theme: make the project legally and practically participable.**
 
 - [ ] **Open-source infrastructure pack** — Apache-2.0 license, English README, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, screenshots in README, CI badge, `frontend/.env.example`.
-- [ ] **Webnovel-CN feature flag** — China-specific scrapers (Fanqie / Qimao / Zhihu Yanxuan / Heiyan / Ishugui, ~2500 lines) gated behind `WEBNOVEL_CN_ENABLED` (default off). Keeps the international experience clean; code stays, just not loaded by default.
+- [x] **Webnovel-CN feature flag** — China-specific scrapers (Fanqie / Qimao / Zhihu Yanxuan / Heiyan / Ishugui, ~2500 lines) gated behind a runtime DB feature flag `webnovel_module` (default off). Admins enable it from Source management → Feature flags; routes return 404 and scheduler tasks skip when disabled. No restart needed.
 - [ ] **Source quota counting** — count private sources per user + numerify `plan_catalog.limits.custom_sources`. This is the *prerequisite* for any future paywall — charging without a quota enforced is a product incident.
 - [ ] **Source contributor interface** — formalize the `scrapers/` plugin protocol, "paste URL auto-detect" flow, and a `good first issue` template. Turn feature development into a contribution pipeline.
 - [ ] **Guest today-picks** — let logged-out visitors see `today-picks` with a lightweight score explanation and a non-blocking login prompt. The north-star page's first impression.

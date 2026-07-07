@@ -21,7 +21,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Start backend with `WEBNOVEL_CN_ENABLED=true`
+        1. Start backend with default config
         2. Hit `POST /api/v1/sources/sync-all`
         3. ...
     validations:

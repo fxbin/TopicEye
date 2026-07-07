@@ -100,7 +100,8 @@ All configuration is environment-driven. See [`backend/.env.example`](backend/.e
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed frontend origins. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | empty | Enable Google login. [Guide](backend/.env.example). |
 | `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | empty | Enable GitHub login. |
-| `WEBNOVEL_CN_ENABLED` | `false` | Enable China-specific webnovel scrapers (Fanqie / Qimao / Zhihu Yanxuan). Disabled by default to keep the international experience clean. |
+
+> **Webnovel-CN module** (Fanqie / Qimao / Zhihu Yanxuan) is gated behind a runtime feature flag — disabled by default. Admins can enable it from **Source management → Feature flags** in the UI, or via `PUT /api/v1/settings/feature-flags`. No restart needed.
 
 ## Development
 

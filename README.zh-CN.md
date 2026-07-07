@@ -96,7 +96,9 @@ npm run dev
 | `CORS_ORIGINS` | `http://localhost:3000,...` | 允许的前端来源，逗号分隔 |
 | `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | 空 | 启用 Google 登录。[申请指引](backend/.env.example) |
 | `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | 空 | 启用 GitHub 登录 |
-| `WEBNOVEL_CN_ENABLED` | `false` | 启用国内网文爬虫（番茄 / 七猫 / 知乎盐选）。默认关闭以保持国际化体验干净 |
+| `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | 空 | 启用 GitHub 登录 |
+
+> **网文雷达模块**（番茄 / 七猫 / 知乎盐选）受运行时功能开关控制，默认关闭。管理员可在 **信源管理 → 功能模块开关** 一键开启，或调 `PUT /api/v1/settings/feature-flags`。无需重启。
 
 ## 开发
 

@@ -1,0 +1,64 @@
+name: 🌱 Good First Issue
+description: New source connector or beginner-friendly task — perfect for a first contribution
+title: "[source] Add support for "
+labels: ["good first issue", "enhancement", "sources"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for picking up a starter task! The most common good-first-issue is **adding a new source connector** (RSS feed, podcast platform, newsletter, trending board).
+
+        📖 **Read [CONTRIBUTING.md → How to add a source connector](../../CONTRIBUTING.md) first** — it has the full contract (`BaseScraper` + `@register_scraper`) and a copy-ready test template.
+
+        When you comment `/assign` below, maintainers will assign you.
+  - type: input
+    id: source
+    attributes:
+      label: Source / platform name
+      placeholder: "e.g. Mastodon RSS, Bilibili UP, Substack newsletter"
+    validations:
+      required: true
+  - type: input
+    id: sample-url
+    attributes:
+      label: Sample URL you tested against
+      placeholder: "https://..."
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Source kind
+      options:
+        - RSS / Atom feed
+        - Podcast (RSS with audio enclosure)
+        - Newsletter (buttondown / substack / beehiiv / ...)
+        - Trending board (ranking list)
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Plan
+      description: |
+        Briefly describe how you'll implement it. Example:
+        - Copy `backend/app/services/scrapers/podcast.py` as template
+        - Add host patterns to `recognizer.py`
+        - Register import in `scrapers/__init__.py`
+        - Add test in `backend/tests/test_<name>_scraper.py` (copy `test_youtube_scraper.py`)
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-PR checklist (tick what you've done)
+      options:
+        - label: Read CONTRIBUTING.md "How to add a source connector"
+        - label: Copied an existing scraper as template
+        - label: Added host patterns to `recognizer.py`
+        - label: Registered the import in `scrapers/__init__.py`
+        - label: Added a test under `backend/tests/`
+        - label: Ran `python -m pytest tests/test_<name>_scraper.py -q`

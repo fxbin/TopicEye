@@ -329,7 +329,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TopicEye API",
     description="AI-powered content discovery and topic analysis platform",
-    version="0.1.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 

@@ -40,12 +40,20 @@ HEADERS = {
 
 
 async def fetch_json(url: str, params: dict, timeout: int = 30) -> dict | None:
-    """发送 GET 请求并返回 JSON。"""
+    """发送 GET 请求并返回 JSON。
+
+    用 sync httpx + asyncio.to_thread 而非 httpx.AsyncClient——容器环境下
+    AsyncClient 连部分域名会抛空 ConnectError（sync client 正常），换用
+    sync transport 绕过此问题，to_thread 保证不阻塞事件循环。
+    """
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, headers=HEADERS, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        def _fetch() -> dict:
+            with httpx.Client(timeout=timeout, headers=HEADERS) as client:
+                resp = client.get(url, params=params)
+                resp.raise_for_status()
+                return resp.json()
+
+        return await asyncio.to_thread(_fetch)
     except Exception as e:
         logger.error(f"请求失败 [{url}]: {e}")
         return None

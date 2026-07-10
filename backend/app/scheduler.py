@@ -498,6 +498,62 @@ async def _sync_zhihu() -> None:
         logger.exception("Scheduler: zhihu sync failed")
 
 
+@track_job(
+    "snapshot_trends",
+    name="趋势快照(话题+关键词)",
+    timeout=300,
+    description="每日04:30计算话题热度/关键词频率快照,供趋势追踪页展示",
+)
+async def _snapshot_trends() -> None:
+    """每日趋势快照：聚合当天的 topic/keyword 数据写入 topic_trends。
+
+    趋势追踪页 (/trends) 依赖此快照展示话题曲线和高频热词。
+    历史上嵌在 sync_and_analyze 的 Phase 4,但该 job 未被注册,
+    导致 6/14 后再无新快照,趋势追踪页长期空白。独立成每日 job 修复。
+    """
+    logger.info("Scheduler: trend snapshot started")
+    try:
+        async with async_session() as db:
+            from app.services.trends import snapshot_daily_trends
+
+            stats = await snapshot_daily_trends(db)
+            await db.commit()
+        logger.info("Scheduler: trend snapshot done — %s", stats)
+        return str(stats)
+    except Exception:
+        logger.exception("Scheduler: trend snapshot failed")
+
+
+@track_job(
+    "topic_clustering_daily",
+    name="话题聚类(为趋势快照准备topic_id)",
+    timeout=600,
+    description="每日04:15对近期内容做话题聚类+去重,产出topic_id供趋势快照聚合",
+)
+async def _topic_clustering_daily() -> None:
+    """每日话题聚类：给近期无 topic_id 的内容打上话题标签。
+
+    趋势快照 (snapshot_trends) 按 topic_id 聚合内容,若内容没 topic_id,
+    快照的 topic 部分就是空的,趋势追踪页的话题曲线/统计卡片全为 0。
+    聚类历史上嵌在 sync_and_analyze 的 Phase 3,但该 job 未被注册,
+    所以 6/17 后再无新聚类。独立成每日 job 修复。
+    排在 snapshot_trends (04:30) 之前跑,保证快照能聚到当天的 topic。
+    """
+    logger.info("Scheduler: daily topic clustering started")
+    try:
+        async with async_session() as db:
+            from app.services.topic_clustering import cluster_and_dedup_with_lease
+
+            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
+            await db.commit()
+        if claimed:
+            logger.info("Scheduler: daily topic clustering done — %s", stats)
+            return str(stats)
+        logger.info("Scheduler: daily topic clustering skipped (lease held)")
+    except Exception:
+        logger.exception("Scheduler: daily topic clustering failed")
+
+
 # ── NEW: AI 日报 & 周刊定时任务 ──────────────────────────────────────
 
 
@@ -793,6 +849,25 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=4, minute=0),
         id="sync_zhihu",
         name="知乎故事榜单每日抓取",
+        replace_existing=True,
+    )
+
+    # 话题聚类：每日04:15给近期内容打 topic_id (为04:30的趋势快照准备)
+    scheduler.add_job(
+        _topic_clustering_daily,
+        trigger=CronTrigger(hour=4, minute=15),
+        id="topic_clustering_daily",
+        name="话题聚类每日执行",
+        replace_existing=True,
+    )
+
+    # 趋势快照：每日04:30计算话题热度+关键词频率
+    # (错开 04:00 知乎抓取 + 04:15 聚类,避免 DB 写锁竞争)
+    scheduler.add_job(
+        _snapshot_trends,
+        trigger=CronTrigger(hour=4, minute=30),
+        id="snapshot_trends",
+        name="趋势快照每日生成",
         replace_existing=True,
     )
 

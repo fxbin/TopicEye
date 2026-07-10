@@ -37,9 +37,11 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         target_date = date.today()
 
     # ── 1. Delete existing snapshots for this date ──────────────────
+    # 传 date 对象而非 isoformat 字符串：asyncpg 对 DATE 列严格校验，
+    # 拒绝 str→date（SQLite 宽松接受，但 PG 会抛 'str' has no attribute 'toordinal'）
     await db.execute(
         text("DELETE FROM topic_trends WHERE snapshot_date = :d"),
-        {"d": target_date.isoformat()},
+        {"d": target_date},
     )
 
     # ── 2. Topic-level trends ───────────────────────────────────────

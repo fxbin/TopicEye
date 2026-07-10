@@ -148,6 +148,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [contentCount, setContentCount] = useState(0);
   const [sourceCount, setSourceCount] = useState(0);
   const [favoriteTotal, setFavoriteTotal] = useState(0);
+  const [todayPicksCount, setTodayPicksCount] = useState(0);
   const [compactNav, setCompactNav] = useState(false);
   const isChromelessPath = CHROMELESS_PATHS.has(pathname);
 
@@ -176,8 +177,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const refreshCounts = useCallback(async () => {
     try {
       if (!currentUser) {
-        const contents = await contentsApi.list({ page_size: 1 });
-        setContentCount(contents.total || 0);
+        const counts = await contentsApi.todayCount();
+        setContentCount(counts.today_content || 0);
+        setTodayPicksCount(counts.today_picks || 0);
         setSourceCount(0);
         setFavoriteTotal(0);
         setFavorites(new Set());
@@ -185,14 +187,15 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         setFavoriteTargetIds(new Map());
         return;
       }
-      const [contents, sources, allFavorites] = await Promise.all([
-        contentsApi.list({ page_size: 1 }),
+      const [counts, sources, allFavorites] = await Promise.all([
+        contentsApi.todayCount(),
         isAdmin(currentUser)
           ? sourcesApi.list({ page_size: 1 })
           : sourcesApi.listMine({ page_size: 1 }),
         fetchAllFavoriteItems(),
       ]);
-      setContentCount(contents.total || 0);
+      setContentCount(counts.today_content || 0);
+      setTodayPicksCount(counts.today_picks || 0);
       setSourceCount(sources ? sources.total || sources.items?.length || 0 : 0);
       setFavoriteTotal(allFavorites.total || 0);
 
@@ -484,6 +487,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <div className="flex h-dvh overflow-hidden">
           <Sidebar
             topicCount={contentCount}
+            todayPicksCount={todayPicksCount}
             favCount={favoriteTotal}
             sourceCount={sourceCount}
             compact={compactNav}

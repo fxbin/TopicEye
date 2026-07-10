@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -45,6 +46,8 @@ router = APIRouter(prefix="/contents", tags=["contents"])
 # Large batch size for scoring — enough for diversity penalty to work well
 _SCORING_BATCH_SIZE = 500
 _TREND_SOURCE_TYPES = {"DouyinHot"}
+
+logger = logging.getLogger(__name__)
 
 
 class _LowLatencyBusyTimeout:
@@ -247,6 +250,84 @@ async def list_contents(
 
         # ── Low-follower viral discovery path ────────────────────────────────
         if sort_by == "low_follower_viral":
+            # 优先走 DuckDB（消除 500 行 Python 批处理）；不可用时 fallback 到原路径
+            try:
+                import asyncio
+
+                from app.services.duckdb_service import get_analytics
+
+                analytics = get_analytics()
+                if analytics.available:
+                    lfv_hours = hours or 48
+                    offset = (page - 1) * page_size
+                    # DuckDB 是同步的，推到 worker thread 避免阻塞事件循环
+                    lfv_items, lfv_total = await asyncio.to_thread(
+                        analytics.query_low_follower_viral,
+                        hours=lfv_hours,
+                        category=category,
+                        limit=page_size,
+                        offset=offset,
+                    )
+                    result_items = []
+                    for lfv in lfv_items:
+                        raw = lfv["raw_item"]
+                        analysis_data = {
+                            "adjusted_curation_score": lfv["lfv_final"],
+                            "score_breakdown": {
+                                "final_score": lfv["lfv_final"],
+                                "base_score": lfv["content_score"],
+                                "source_bonus": lfv["obscure_factor"],
+                                "time_decay": lfv["time_decay"],
+                                "dimension_scores": {
+                                    "viral_score": raw.get("viral_score", 0),
+                                    "creator_score": raw.get("creator_score", 0),
+                                    "quality_score": raw.get("quality_score", 0),
+                                    "source_weight": raw.get("source_weight") or 0,
+                                    "obscure_factor": lfv["obscure_factor"],
+                                    "freshness_boost": lfv["freshness_boost"],
+                                },
+                            },
+                            "curation_score": raw.get("curation_score"),
+                            "quality_score": raw.get("quality_score"),
+                            "freshness_score": raw.get("freshness_score"),
+                            "creator_score": raw.get("creator_score"),
+                            "viral_score": raw.get("viral_score"),
+                            "risk_score": raw.get("risk_score"),
+                        }
+                        result_items.append({
+                            "id": raw["id"],
+                            "title": raw["title"],
+                            "url": raw["url"],
+                            "source_id": raw["source_id"],
+                            "source_name": raw["source_name"],
+                            "source_type": raw["source_type"],
+                            "platform": raw["platform"],
+                            "author": raw["author"],
+                            "published_at": raw.get("published_at"),
+                            "crawled_at": raw.get("crawled_at"),
+                            "content_hash": raw.get("content_hash"),
+                            "summary": raw.get("summary"),
+                            "cover_url": raw.get("cover_url"),
+                            "category": raw.get("category"),
+                            "tags": raw.get("tags"),
+                            "status": raw.get("status"),
+                            "topic_id": raw.get("topic_id"),
+                            "duplicate_of": raw.get("duplicate_of"),
+                            "similarity_score": raw.get("similarity_score"),
+                            "created_at": raw.get("created_at"),
+                            "analysis": analysis_data,
+                        })
+
+                    payload = {"items": result_items, "total": lfv_total, "page": page, "page_size": page_size}
+                    content = set_cached_content_list(cache_params, payload) if cache_params.cacheable and not include_raw_content else None
+                    return Response(
+                        content=content or json.dumps(payload, default=str),
+                        media_type="application/json",
+                        headers={"X-Content-List-Cache": "MISS (DuckDB-LFV)"},
+                    )
+            except Exception:
+                logger.warning("DuckDB LFV path failed, falling back to Python scoring", exc_info=True)
+
             from app.services.scoring_engine import score_low_follower_viral
 
             return await _score_content_page(
@@ -331,6 +412,64 @@ async def today_picks(
             )
     except Exception as exc:
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc
+
+
+
+@router.get("/today-count")
+async def today_count():
+    """返回当天(自然日 0 点至今)的内容总数 + 当日精选数。
+
+    用于侧边栏 badge 计数。走 DuckDB COUNT,几毫秒完成。
+    """
+    import asyncio
+    from datetime import datetime, UTC
+
+    from app.services.json_cache import get_cached_json, set_cached_json
+
+    cache_key = "today_count:v1"
+    cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
+    if cached:
+        return Response(
+            content=cached[0],
+            media_type="application/json",
+            headers={"X-Today-Count-Cache": f"HIT; age={cached[1]:.3f}s"},
+        )
+
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    result = {"today_content": 0, "today_picks": 0}
+
+    # 当日内容数:直接 OLTP COUNT(有 status+crawled_at 索引,很快)
+    try:
+        async with async_session() as db:
+            r = await db.execute(
+                select(ContentItem.id).where(
+                    ContentItem.status == "analyzed",
+                    ContentItem.crawled_at >= today_start,
+                    ContentItem.duplicate_of.is_(None),
+                )
+            )
+            result["today_content"] = len(r.all())
+    except Exception:
+        logger.warning("today_count content query failed", exc_info=True)
+
+    # 当日精选数:走 DuckDB(已有缓存)
+    try:
+        from app.services.duckdb_service import get_analytics
+
+        analytics = get_analytics()
+        if analytics.available:
+            picks = await asyncio.to_thread(analytics.query_today_picks, 48)
+            result["today_picks"] = len(picks)
+    except Exception:
+        logger.warning("today_count picks query failed", exc_info=True)
+
+    payload = json.dumps(result, default=str)
+    set_cached_json(cache_key, payload)
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"X-Today-Count-Cache": "MISS"},
+    )
 
 
 @router.get("/scoring-flow")

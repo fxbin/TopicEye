@@ -29,7 +29,7 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   access: NavAccess;
-  countKey?: 'topics' | 'favorites' | 'sources';
+  countKey?: 'topics' | 'todayPicks' | 'favorites' | 'sources';
   /** 功能模块开关 key。若设置且对应 flag !== true，菜单项不渲染、路由被守卫拦截 */
   feature?: string;
 }
@@ -55,7 +55,7 @@ export const NAV_SPACES: NavSpace[] = [
     label: '今日',
     items: [
       { id: 'today', label: '今日选题', href: '/', icon: Lightbulb, access: 'public', countKey: 'topics' },
-      { id: 'picks', label: '当日精选', href: '/today-picks', icon: Star, access: 'public' },
+      { id: 'picks', label: '当日精选', href: '/today-picks', icon: Star, access: 'public', countKey: 'todayPicks' },
     ],
   },
   {

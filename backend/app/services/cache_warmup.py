@@ -49,6 +49,15 @@ async def warmup_startup_critical_caches() -> dict[str, Any]:
         logger.warning("Startup stats workspace cache warmup skipped: %s", exc)
         errors.append(f"stats:{exc}")
 
+    # 趋势雷达页面预热:用户进入后首个请求即可命中缓存,
+    # 避免冷启动 3s 等待(尤其 /persistent 的 Python 嵌套循环)
+    async with async_session() as db:
+        try:
+            warmed.extend(await warmup_trending_workspace(db))
+        except Exception as exc:
+            logger.warning("Startup trending workspace cache warmup skipped: %s", exc)
+            errors.append(f"trending:{exc}")
+
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     logger.info("Startup critical cache warmup completed in %.1fms: %s", elapsed_ms, ", ".join(warmed) or "none")
     return {"warmed": warmed, "errors": errors, "elapsed_ms": elapsed_ms}

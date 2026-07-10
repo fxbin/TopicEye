@@ -14,6 +14,7 @@ import type { AuthUser } from '@/types';
 
 interface SidebarProps {
   topicCount?: number;
+  todayPicksCount?: number;
   favCount?: number;
   sourceCount?: number;
   compact?: boolean;
@@ -25,6 +26,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   topicCount = 0,
+  todayPicksCount = 0,
   favCount = 0,
   sourceCount = 0,
   compact = false,
@@ -39,6 +41,7 @@ export default function Sidebar({
   const navSpaces = visibleNavSpaces(currentUser, enabledFeatures);
   const counts = {
     topics: topicCount,
+    todayPicks: todayPicksCount,
     favorites: favCount,
     sources: sourceCount,
   };

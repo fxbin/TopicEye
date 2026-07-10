@@ -248,6 +248,11 @@ export const contentsApi = {
     return request(`/contents/today-picks${query}`);
   },
 
+  /** 当日计数（今日选题 + 当日精选的 badge 数字） */
+  todayCount(): Promise<{ today_content: number; today_picks: number }> {
+    return request('/contents/today-count');
+  },
+
   scoringFlow(params?: { hours?: number; limit?: number }): Promise<ScoringFlowResponse> {
     const query = params
       ? '?' + new URLSearchParams(

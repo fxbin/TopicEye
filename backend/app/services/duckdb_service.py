@@ -311,6 +311,164 @@ class DuckDBAnalytics:
 
         return items
 
+    def query_low_follower_viral(
+        self,
+        hours: int = 48,
+        category: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """
+        Low-Follower Viral discovery via DuckDB.
+
+        Pushes the entire LFV scoring + sorting + pagination into SQL,
+        eliminating the 500-row Python batch fetch + Python sort.
+
+        Returns (page_items, total).
+        """
+        import math
+
+        conn = self._get_conn()
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        risk_threshold = float(SCORING_CONFIG["risk_threshold"])
+        now_ts = datetime.now(UTC).timestamp()
+
+        category_clause = ""
+        params: list[Any] = [cutoff]
+        if category:
+            category_clause = " AND c.category = ?"
+            params.append(category)
+
+        # LFV score formula (mirrors scoring_engine.score_low_follower_viral):
+        #   content_score   = viral*0.45 + creator*0.30 + quality*0.25
+        #   obscure_factor  = GREATEST(0.05, 1 - source_weight/100)
+        #   freshness_boost = 1 + freshness_score/200
+        #   time_decay      = GREATEST(0.3, LEAST(1.0, EXP(-0.02 * hours_age)))
+        #   lfv_final       = content_score * obscure_factor * freshness_boost * time_decay
+        lfv_sql = f"""
+            WITH {LATEST_ANALYSIS_CTE},
+                 {self._feedback_scores_cte(conn)},
+                 {IGNORED_CONTENT_CTE},
+                 scored AS (
+                    SELECT
+                        c.id, c.title, c.url, c.source_id, c.source_name, c.source_type,
+                        c.platform, c.author, c.published_at, c.crawled_at,
+                        c.content_hash, c.summary, c.cover_url,
+                        c.category, c.tags, c.language, c.status,
+                        c.topic_id, c.duplicate_of, c.similarity_score,
+                        c.created_at, c.updated_at,
+                        a.id AS analysis_id, a.created_at AS analysis_created_at,
+                        a.quality_score, a.hot_score, a.freshness_score,
+                        a.creator_score, a.viral_score, a.risk_score,
+                        a.curation_score, a.info_density, a.actionability,
+                        a.source_weight, a.recommended_reason, a.recommendation,
+                        a.summary AS ai_summary, a.tags AS ai_tags,
+                        COALESCE(s.weight, 3) AS source_weight_db,
+                        COALESCE(f.feedback_score, 0) AS feedback_score,
+                        -- LFV computation
+                        COALESCE(a.viral_score, 0) * 0.45
+                          + COALESCE(a.creator_score, 0) * 0.30
+                          + COALESCE(a.quality_score, 0) * 0.25 AS content_score,
+                        GREATEST(0.05, 1.0 - COALESCE(a.source_weight, 50) / 100.0) AS obscure_factor,
+                        1.0 + COALESCE(a.freshness_score, 0) / 200.0 AS freshness_boost,
+                        GREATEST(0.3, LEAST(1.0, EXP(-0.02 * (
+                            ({now_ts} - EPOCH(COALESCE(c.published_at, c.crawled_at))) / 3600.0
+                        )))) AS time_decay
+                    FROM oltp_db.content_items c
+                    LEFT JOIN latest_analysis a ON a.content_id = c.id
+                    LEFT JOIN oltp_db.sources s ON s.id = c.source_id
+                    LEFT JOIN feedback_scores f ON f.content_id = c.id
+                    LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
+                    WHERE c.status = 'analyzed'
+                      AND c.crawled_at >= ?
+                      AND ignored.content_id IS NULL
+                      AND a.risk_score <= {risk_threshold}
+                      AND c.duplicate_of IS NULL
+                      {category_clause}
+                )
+            SELECT * FROM scored
+            ORDER BY content_score * obscure_factor * freshness_boost * time_decay DESC
+            LIMIT ? OFFSET ?
+        """
+        query_params = params + [limit, offset]
+        results = conn.execute(lfv_sql, query_params).fetchall()
+
+        # Total count (separate query without LIMIT/OFFSET)
+        count_sql = f"""
+            WITH {LATEST_ANALYSIS_CTE},
+                 {IGNORED_CONTENT_CTE},
+                 scored AS (
+                    SELECT c.id
+                    FROM oltp_db.content_items c
+                    LEFT JOIN latest_analysis a ON a.content_id = c.id
+                    LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
+                    WHERE c.status = 'analyzed'
+                      AND c.crawled_at >= ?
+                      AND ignored.content_id IS NULL
+                      AND a.risk_score <= {risk_threshold}
+                      AND c.duplicate_of IS NULL
+                      {category_clause}
+                )
+            SELECT COUNT(*) FROM scored
+        """
+        total = conn.execute(count_sql, params).fetchone()[0]
+
+        columns = [
+            "id", "title", "url", "source_id", "source_name", "source_type",
+            "platform", "author", "published_at", "crawled_at",
+            "content_hash", "summary", "cover_url",
+            "category", "tags", "language", "status",
+            "topic_id", "duplicate_of", "similarity_score",
+            "created_at", "updated_at",
+            "analysis_id", "analysis_created_at",
+            "quality_score", "hot_score", "freshness_score",
+            "creator_score", "viral_score", "risk_score",
+            "curation_score", "info_density", "actionability",
+            "source_weight", "recommended_reason", "recommendation",
+            "ai_summary", "ai_tags",
+            "source_weight_db", "feedback_score",
+            "content_score", "obscure_factor", "freshness_boost", "time_decay",
+        ]
+
+        items: list[dict[str, Any]] = []
+        for row in results:
+            item = dict(zip(columns, row))
+            # Compute final LFV score
+            lfv_final = round(
+                float(item["content_score"])
+                * float(item["obscure_factor"])
+                * float(item["freshness_boost"])
+                * float(item["time_decay"]),
+                2,
+            )
+            # Serialize datetime fields
+            for dt_field in ("published_at", "crawled_at", "created_at", "updated_at", "analysis_created_at"):
+                val = item.get(dt_field)
+                if val and hasattr(val, "isoformat"):
+                    item[dt_field] = val.isoformat()
+            # Round floats
+            for score_field in (
+                "quality_score", "hot_score", "freshness_score", "creator_score",
+                "viral_score", "risk_score", "curation_score", "info_density",
+                "actionability", "similarity_score", "obscure_factor",
+                "freshness_boost", "time_decay", "content_score",
+            ):
+                val = item.get(score_field)
+                if val is not None:
+                    item[score_field] = round(float(val), 4 if score_field in ("obscure_factor", "freshness_boost", "time_decay") else 2)
+
+            items.append({
+                "lfv_final": lfv_final,
+                "content_score": item["content_score"],
+                "obscure_factor": item["obscure_factor"],
+                "freshness_boost": item["freshness_boost"],
+                "time_decay": item["time_decay"],
+                "source_weight": item.get("source_weight"),
+                "raw_item": item,
+            })
+
+        return items, total
+
     def query_topics(self) -> list[dict[str, Any]]:
         """Get all topic groups ordered by best_score."""
         conn = self._get_conn()

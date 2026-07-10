@@ -79,6 +79,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         .where(
             and_(
                 ContentItem.topic_id.isnot(None),
+                ContentItem.duplicate_of.is_(None),
                 ContentItem.created_at >= start_dt,
                 ContentItem.created_at < end_dt,
             )
@@ -133,6 +134,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         .where(
             and_(
                 AiAnalysis.tags.isnot(None),
+                ContentItem.duplicate_of.is_(None),
                 ContentItem.created_at >= start_dt,
                 ContentItem.created_at < end_dt,
             )

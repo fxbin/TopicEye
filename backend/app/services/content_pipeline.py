@@ -163,10 +163,16 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
 
         incoming_hashes = {e["_content_hash"] for e in entries}
 
+        # 去重范围:同 platform 下按 content_hash 全局去重。
+        # arXiv 等聚合平台的论文会同时出现在多个分类源(cs.AI/cs.CL/cs.LG),
+        # 之前按 source_id 隔离去重导致同一 URL 被每个源各入一次。
+        # 改为按 platform 分组,同一平台下相同内容只入库一次,归属首个抓到的源。
         result = await db.execute(
-            select(ContentItem.content_hash).where(
+            select(ContentItem.content_hash)
+            .join(Source, Source.id == ContentItem.source_id)
+            .where(
                 ContentItem.content_hash.in_(incoming_hashes),
-                ContentItem.source_id == source.id,
+                Source.platform == source.platform,
             )
         )
         existing_hashes = {row[0] for row in result.all()}

@@ -49,7 +49,7 @@ import {
 
 export default function HomePage() {
   const router = useRouter();
-  const { currentUser, toggleFavorite, refreshCounts } = useAppContext();
+  const { currentUser, toggleFavorite, refreshCounts, reportContentTotal } = useAppContext();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
@@ -106,6 +106,7 @@ export default function HomePage() {
         if (!cancelled) {
           setItems(res.items || []);
           setTotalAvailable(res.total ?? (res.items || []).length);
+          reportContentTotal(res.total ?? 0);
           setCategoryOptions((prev) => {
             const merged = new Set(prev);
             merged.add('全部');

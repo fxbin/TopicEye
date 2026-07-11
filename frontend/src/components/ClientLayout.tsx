@@ -26,6 +26,8 @@ interface AppContextType {
   favoriteTargets: Set<string>;
   favoriteTargetPendingKeys: Set<string>;
   topicCount: number;
+  /** 首页等内容列表拿到 total 后回传，驱动侧边栏 badge 跟随时间筛选变化 */
+  reportContentTotal: (total: number) => void;
   isFavoriteTarget: (target: FavoriteTargetRef) => boolean;
   applyAuthSession: (session: AuthTokenResponse) => void;
   /** 同步更新 enabledFeatures（toggle 后调用，菜单/路由守卫实时刷新） */
@@ -46,6 +48,7 @@ const AppContext = createContext<AppContextType>({
   favoriteTargets: new Set(),
   favoriteTargetPendingKeys: new Set(),
   topicCount: 0,
+  reportContentTotal: () => {},
   isFavoriteTarget: () => false,
   applyAuthSession: () => {},
   updateEnabledFeatures: () => {},
@@ -178,7 +181,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     try {
       if (!currentUser) {
         const counts = await contentsApi.todayCount();
-        setContentCount(counts.today_content || 0);
         setTodayPicksCount(counts.today_picks || 0);
         setSourceCount(0);
         setFavoriteTotal(0);
@@ -194,7 +196,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           : sourcesApi.listMine({ page_size: 1 }),
         fetchAllFavoriteItems(),
       ]);
-      setContentCount(counts.today_content || 0);
       setTodayPicksCount(counts.today_picks || 0);
       setSourceCount(sources ? sources.total || sources.items?.length || 0 : 0);
       setFavoriteTotal(allFavorites.total || 0);
@@ -470,6 +471,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         favoriteTargets,
         favoriteTargetPendingKeys,
         topicCount: contentCount,
+        reportContentTotal: setContentCount,
         isFavoriteTarget,
         applyAuthSession,
         updateEnabledFeatures,

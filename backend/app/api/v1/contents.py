@@ -417,16 +417,17 @@ async def today_picks(
 
 @router.get("/today-count")
 async def today_count():
-    """返回当天(自然日 0 点至今)的内容总数 + 当日精选数。
+    """返回滚动 48 小时的内容总数 + 当日精选数。
 
-    用于侧边栏 badge 计数。走 DuckDB COUNT,几毫秒完成。
+    用于侧边栏 badge 计数。口径与首页「今日选题」和「当日精选」页面一致:
+    - today_content: 滚动 48h 内 analyzed 且非重复的内容数 (同首页默认 48h)
+    - today_picks: 当日精选数 (同 /contents/today-picks 的 total)
     """
-    import asyncio
-    from datetime import datetime, UTC
+    from datetime import timedelta
 
     from app.services.json_cache import get_cached_json, set_cached_json
 
-    cache_key = "today_count:v1"
+    cache_key = "today_count:v2"
     cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
         return Response(
@@ -435,16 +436,16 @@ async def today_count():
             headers={"X-Today-Count-Cache": f"HIT; age={cached[1]:.3f}s"},
         )
 
-    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     result = {"today_content": 0, "today_picks": 0}
+    cutoff = datetime.now(UTC) - timedelta(hours=48)
 
-    # 当日内容数:直接 OLTP COUNT(有 status+crawled_at 索引,很快)
+    # 滚动 24h 内容数:与 /contents?hours=24 同口径
     try:
         async with async_session() as db:
             r = await db.execute(
                 select(ContentItem.id).where(
                     ContentItem.status == "analyzed",
-                    ContentItem.crawled_at >= today_start,
+                    ContentItem.crawled_at >= cutoff,
                     ContentItem.duplicate_of.is_(None),
                 )
             )
@@ -452,14 +453,13 @@ async def today_count():
     except Exception:
         logger.warning("today_count content query failed", exc_info=True)
 
-    # 当日精选数:走 DuckDB(已有缓存)
+    # 当日精选数:复用 /today-picks 的 build_today_picks,拿到同样的 total
     try:
-        from app.services.duckdb_service import get_analytics
+        from app.services.today_picks import build_today_picks
 
-        analytics = get_analytics()
-        if analytics.available:
-            picks = await asyncio.to_thread(analytics.query_today_picks, 48)
-            result["today_picks"] = len(picks)
+        async with async_session() as db:
+            payload = await build_today_picks(db, category=None, hours=48)
+            result["today_picks"] = payload.get("total", 0)
     except Exception:
         logger.warning("today_count picks query failed", exc_info=True)
 

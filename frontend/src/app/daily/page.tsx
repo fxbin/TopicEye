@@ -311,7 +311,7 @@ export default function DailyReportPage() {
     ? Object.entries(platformTips as Record<string, unknown>)
     : [];
   const recoveryDate = report?.report_date || selectedDate || todayStr;
-  const [expandedPick, setExpandedPick] = useState<number | null>(0);
+  const [expandedPick, setExpandedPick] = useState<number | null>(null);
 
   const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
     '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
@@ -513,12 +513,12 @@ export default function DailyReportPage() {
 
               {/* 选题按分类分组展示 */}
               <div className="space-y-4">
-                {groupedPicks.map(([cat, picks]) => (
+                {groupedPicks.map(([cat, picks], groupIdx) => (
                   <div key={`group-${cat}`} id={`cat-${cat}`}>
                     {/* 分组标题 */}
                     <div className="mb-2 flex items-center gap-2 px-1">
                       <span className="font-mono text-lg font-black text-primary">
-                        {String(CATEGORY_ORDER.indexOf(cat) + 1).padStart(2, '0')}
+                        {String(groupIdx + 1).padStart(2, '0')}
                       </span>
                       <h2 className="text-sm font-black text-gray-900">{cat}</h2>
                       {CATEGORY_EN[cat] && (
@@ -550,17 +550,17 @@ export default function DailyReportPage() {
                               {/* 评分 */}
                               <div className="flex shrink-0 flex-col items-center gap-0.5">
                                 <div className={cx(
-                                  'grid h-9 w-9 place-items-center rounded-lg font-mono text-lg font-black',
+                                  'grid h-11 w-11 place-items-center rounded-lg font-mono text-lg font-black',
                                   globalIdx === 0 ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600',
                                 )}>
-                                  {pick.score || '-'}
+                                  {pick.score ? (typeof pick.score === 'number' ? pick.score : parseFloat(String(pick.score)) || '-') : '-'}
                                 </div>
                               </div>
 
                               {/* 标题 + 元数据 */}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2">
-                                  <h3 className="flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
+                                  <h3 className="min-w-0 flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
                                   {pick.source_url && (
                                     <a
                                       href={pick.source_url}

@@ -585,7 +585,7 @@ export default function DailyReportPage() {
                               {/* 标题 + 元数据 */}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2">
-                                  <h3 className="min-w-0 flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
+                                  <h3 className="min-w-0 flex-1 break-words text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
                                   {pick.source_url && (
                                     <a
                                       href={pick.source_url}
@@ -599,6 +599,7 @@ export default function DailyReportPage() {
                                     </a>
                                   )}
                                 </div>
+                                {/* 元数据行：lifecycle + 平台 + 时窗（不挤 sparkline） */}
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                   {lc && (
                                     <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', lc.bg, lc.color)}>
@@ -613,11 +614,12 @@ export default function DailyReportPage() {
                                   {pick.time_window && (
                                     <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
                                   )}
-                                  {/* 24h 内容热度趋势 sparkline（"内容热度"非"流量热度"） */}
+                                </div>
+                                {/* 24h 内容热度趋势 sparkline 独立一行（"内容热度"非"流量热度"） */}
+                                <div className="mt-1.5 flex justify-end">
                                   <Sparkline
                                     data={sparklines[pick.title]}
                                     loading={!sparklines[pick.title]?.points}
-                                    className="ml-auto"
                                   />
                                 </div>
                               </div>

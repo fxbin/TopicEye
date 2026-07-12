@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
+from app.models.content import ContentItem
 from app.models.daily_report import DailyReport
 from app.models.user import User
 from app.repositories.daily_report_repo import DailyReportRepository
@@ -237,3 +238,113 @@ async def trigger_generate_version(
         force=force,
     )
     return report
+
+
+def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:
+    """从选题标题里提取 1-4 个最具区分度的关键词供 sparkline 查询。
+
+    - 中文走 jieba 切词，英文/数字按 regex 切
+    - 去除常见停用词 + 单字无意义词
+    - 按长度排序优先长词（专有名词通常更长），去重后取前 N 个
+    """
+    import re as _re
+    if not title:
+        return []
+    stopwords = {"的", "了", "在", "是", "和", "与", "或", "为", "我", "你", "他", "她", "它", "也", "都", "就", "把", "被", "了", "着",
+                 "the", "a", "an", "of", "to", "in", "on", "at", "by", "for", "with"}
+    # 中文用 jieba 切词
+    try:
+        import jieba
+        chinese_words = [w for w in jieba.lcut_for_search(title) if len(w) >= 2 and w not in stopwords]
+    except Exception:
+        # fallback: regex 粗切
+        chinese_words = [w for w in _re.findall(r"[\u4e00-\u9fa5]{2,}", title) if w not in stopwords]
+    # 英文/数字 token
+    en_tokens = [w for w in _re.findall(r"[A-Za-z0-9]+", title) if len(w) >= 2 and w.lower() not in stopwords]
+    tokens = chinese_words + en_tokens
+    tokens.sort(key=lambda t: (-len(t), t))
+    seen, result = set(), []
+    for t in tokens:
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(t)
+        if len(result) >= limit:
+            break
+    return result
+
+
+@router.get("/sparkline")
+async def get_sparkline(
+    title: str = Query(..., min_length=2, max_length=200, description="选题标题"),
+    hours: int = Query(48, ge=4, le=168, description="时间窗口小时数"),
+    bucket_hours: int = Query(2, ge=1, le=12, description="分桶大小"),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回选题近 N 小时的内容流入速率（按指定小时分桶），给前端画 sparkline。
+
+    用 ILIKE 任意一个关键词命中即算（OR 匹配），保证标题里 1-2 个核心词也能查到曲线。
+    """
+    from sqlalchemy import or_
+
+    keywords = _extract_sparkline_keywords(title)
+    if not keywords:
+        return {"points": [], "keywords": [], "total": 0, "window_hours": hours}
+
+    cutoff = datetime.now() - timedelta(hours=hours)
+    # ILIKE 任一关键词，OR 组合；过滤掉 AI 分析失败的（duplicate_of）、当天以外未分类的噪声
+    pattern_clauses = [
+        ContentItem.title.ilike(f"%{kw}%") for kw in keywords
+    ]
+    rows = await db.execute(
+        select(
+            func.date_trunc("hour", ContentItem.crawled_at).label("ts"),
+            func.count().label("cnt"),
+        )
+        .where(
+            ContentItem.crawled_at >= cutoff,
+            ContentItem.status == "analyzed",
+            ContentItem.duplicate_of.is_(None),
+            or_(*pattern_clauses),
+        )
+        .group_by("ts")
+    )
+    raw = rows.all()  # [(datetime_hour, count), ...]
+
+    # 桶化：按 bucket_hours 聚合
+    bucket_seconds = bucket_hours * 3600
+    bucket_counts: dict[int, int] = {}
+    for ts, cnt in raw:
+        bucket_key = int(ts.timestamp() // bucket_seconds)
+        bucket_counts[bucket_key] = bucket_counts.get(bucket_key, 0) + int(cnt)
+
+    if not bucket_counts:
+        return {"points": [], "keywords": keywords, "total": 0, "window_hours": hours}
+
+    # 生成连续桶时间序列
+    sorted_buckets = sorted(bucket_counts.keys())
+    min_bucket = sorted_buckets[0]
+    max_bucket = sorted_buckets[-1]
+    # 对齐到当前时刻
+    now_bucket = int(datetime.now().timestamp() // bucket_seconds)
+    points: list[dict] = []
+    for b in range(min_bucket, now_bucket + 1):
+        ts_dt = datetime.fromtimestamp(b * bucket_seconds)
+        points.append({
+            "ts": ts_dt.isoformat(),
+            "count": bucket_counts.get(b, 0),
+        })
+
+    # 相对变化率基线（避免不同选题绝对值差异过大）：用平均值作 baseline
+    counts = [p["count"] for p in points]
+    baseline = max(1.0, sum(counts) / max(1, len(counts)))
+    for p in points:
+        p["baseline"] = round(baseline, 2)
+
+    return {
+        "points": points,
+        "keywords": keywords,
+        "total": sum(counts),
+        "window_hours": hours,
+    }

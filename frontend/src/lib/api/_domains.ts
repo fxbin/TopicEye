@@ -510,6 +510,18 @@ export const dailyReportApi = {
     return request(`/daily-reports/by-date?date=${encodeURIComponent(date)}`);
   },
 
+  /** 选题 sparkline 趋势数据（按标题关键词查询近 N 小时内容流入速率） */
+  sparkline(title: string, hours: number = 48, bucketHours: number = 2): Promise<{
+    points: Array<{ ts: string; count: number; baseline?: number }>;
+    keywords: string[];
+    total: number;
+    window_hours: number;
+  }> {
+    return request(
+      `/daily-reports/sparkline?title=${encodeURIComponent(title)}&hours=${hours}&bucket_hours=${bucketHours}`,
+    );
+  },
+
   /** 获取有日报的日期列表 */
   listDates(): Promise<{ dates: Array<{ report_date: string; weekday: string; takeaway: string | null; status: string }> }> {
     return request('/daily-reports/dates');

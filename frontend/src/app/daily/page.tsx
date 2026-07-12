@@ -25,6 +25,7 @@ import {
 import { Panel, cx } from '@/components/ui';
 import { dailyReportApi } from '@/lib/api';
 import DailyWeeklyMonthlyTabs from '@/components/DailyWeeklyMonthlyTabs';
+import Sparkline, { SparklineData } from '@/components/Sparkline';
 import {
   CurrentPeriodButton,
   PlatformHeading,
@@ -226,6 +227,32 @@ export default function DailyReportPage() {
         : ((reportScope === 'mine' ? await dailyReportApi.getMyToday() : await dailyReportApi.getToday()) as unknown as DailyReportData);
       setReport(data);
       setSelectedDate(data.report_date);
+
+      // 异步批量预加载所有选题的 sparkline 趋势（不阻塞主 UI）
+      const topPicks = parseJson(data.top_picks) as Array<{ title: string }> | null;
+      if (topPicks && topPicks.length > 0) {
+        // 标记为 loading（点为灰），让用户先看到占位再等数据
+        const initial: Record<string, SparklineData> = {};
+        for (const pick of topPicks) {
+          if (pick.title) {
+            initial[pick.title] = { points: [], keywords: [], total: 0, window_hours: 48 };
+          }
+        }
+        setSparklines(initial);
+        // 并发预加载
+        await Promise.all(
+          topPicks
+            .filter((p) => p.title)
+            .map(async (pick) => {
+              try {
+                const sp = await dailyReportApi.sparkline(pick.title, 48, 2);
+                setSparklines((prev) => ({ ...prev, [pick.title]: sp }));
+              } catch {
+                // 静默失败：保持空点（组件会显示 "no data"）
+              }
+            }),
+        );
+      }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : '加载失败';
       if (errMsg.includes('404') || errMsg.includes('not found')) {
@@ -313,6 +340,7 @@ export default function DailyReportPage() {
     : [];
   const recoveryDate = report?.report_date || selectedDate || todayStr;
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
+  const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
 
   const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
     '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
@@ -585,6 +613,12 @@ export default function DailyReportPage() {
                                   {pick.time_window && (
                                     <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
                                   )}
+                                  {/* 24h 内容热度趋势 sparkline（"内容热度"非"流量热度"） */}
+                                  <Sparkline
+                                    data={sparklines[pick.title]}
+                                    loading={!sparklines[pick.title]?.points}
+                                    className="ml-auto"
+                                  />
                                 </div>
                               </div>
 

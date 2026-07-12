@@ -61,6 +61,7 @@ interface DailyReportData {
     pitfall?: string;
     lifecycle?: string;
     time_window?: string;
+    category?: string;
   }> | null;
   platform_tips: Record<string, string[]> | null;
   topic_count: number;
@@ -303,7 +304,7 @@ export default function DailyReportPage() {
     ? topPicks as Array<{
       title: string; reason: string; score?: number; platforms?: string[];
       source_url?: string; angles?: string[]; pitfall?: string;
-      lifecycle?: string; time_window?: string;
+      lifecycle?: string; time_window?: string; category?: string;
     }>
     : [];
   const platformTipEntries = platformTips && typeof platformTips === 'object'
@@ -321,10 +322,44 @@ export default function DailyReportPage() {
   const generatedDates = useMemo(() => dates.filter((d) => d.report_date !== todayStr), [dates, todayStr]);
   const recoveryDays = calendarDays.filter((day) => day.status === 'MISSING' || day.status === 'ERROR');
 
+  // 选题按 category 分组（无 category 的归到"精选选题"）
+  const CATEGORY_ORDER = ['模型发布', '产品更新', '行业动态', '技巧观点', '科研论文', '开源项目'];
+  const CATEGORY_EN: Record<string, string> = {
+    '模型发布': 'Model Releases',
+    '产品更新': 'Product Updates',
+    '行业动态': 'Industry',
+    '技巧观点': 'Tips & Takes',
+    '科研论文': 'Research',
+    '开源项目': 'Open Source',
+  };
+  const groupedPicks = useMemo(() => {
+    const groups: Record<string, typeof pickList> = {};
+    for (const pick of pickList) {
+      const cat = pick.category || '精选选题';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(pick);
+    }
+    // 按 CATEGORY_ORDER 排序分组，未知分类排最后
+    return Object.entries(groups).sort(([a], [b]) => {
+      const ia = CATEGORY_ORDER.indexOf(a);
+      const ib = CATEGORY_ORDER.indexOf(b);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+  }, [pickList]);
+  const readMinutes = Math.max(1, Math.ceil(pickList.length * 0.8));
+
   return (
     <div className="h-full w-full overflow-hidden">
-      {/* 顶栏：scope 切换 + 日期选择 */}
+      {/* 顶栏：三报切换 + scope + 日期选择 */}
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-2">
+        {/* 三报切换 */}
+        <div className="flex items-center gap-0.5">
+          <a href="/daily" className="rounded px-3 py-1 text-xs font-black bg-primary-light text-primary">日报</a>
+          <a href="/weekly" className="rounded px-3 py-1 text-xs font-bold text-gray-400 hover:text-gray-700">周报</a>
+          <a href="/monthly" className="rounded px-3 py-1 text-xs font-bold text-gray-400 hover:text-gray-700">月报</a>
+        </div>
+
+        {/* scope 切换 */}
         <div className="flex items-center gap-1 text-[11px] font-black text-gray-500">
           <a
             href="/daily"
@@ -441,14 +476,14 @@ export default function DailyReportPage() {
             <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
             <div className="space-y-3">
-              {/* 头部摘要行：日期 + takeaway + 关键统计 */}
+              {/* 头部摘要行：日期 + takeaway + 阅读时间 */}
               <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2 text-[11px] font-black text-gray-400">
                       <span>{report.report_date} {report.weekday}</span>
                       {generatedAt && <span>· 更新于 {generatedAt}</span>}
-                      {report.content_count ? <span>· 基于 {report.content_count} 条</span> : null}
+                      <span>· {pickList.length} 个选题 · 约 {readMinutes} 分钟</span>
                     </div>
                     <p className="text-sm font-bold leading-6 text-gray-800">
                       {report.takeaway || report.overview?.slice(0, 80) || '今日内容已完成分析。'}
@@ -457,132 +492,170 @@ export default function DailyReportPage() {
                 </div>
               </div>
 
-              {/* 选题决策列表 */}
-              <div className="space-y-2">
-                {pickList.map((pick, i) => {
-                  const isExpanded = expandedPick === i;
-                  const lc = pick.lifecycle ? LIFECYCLE_META[pick.lifecycle] || LIFECYCLE_META['上升期'] : null;
-                  return (
-                    <div
-                      key={`pick-${i}`}
-                      className={cx(
-                        'rounded-lg border bg-white shadow-sm transition',
-                        isExpanded ? 'border-primary-border shadow-md' : 'border-gray-200',
-                      )}
-                    >
-                      {/* 选题一行摘要（可扫描层） */}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedPick(isExpanded ? null : i)}
-                        className="flex w-full items-start gap-3 p-3 text-left sm:p-4"
+              {/* 今日看点 TOC（可点击跳转） */}
+              {groupedPicks.length > 1 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <div className="mb-2 text-[11px] font-black text-gray-400">今日看点</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {groupedPicks.map(([cat, picks]) => (
+                      <a
+                        key={`toc-${cat}`}
+                        href={`#cat-${cat}`}
+                        className="flex items-center gap-1.5 text-[12px] font-bold text-gray-500 hover:text-primary"
                       >
-                        {/* 排名 + 评分 */}
-                        <div className="flex shrink-0 flex-col items-center gap-0.5">
-                          <div className={cx(
-                            'grid h-9 w-9 place-items-center rounded-lg font-mono text-lg font-black',
-                            i === 0 ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600',
-                          )}>
-                            {i + 1}
-                          </div>
-                          <div className="text-[10px] font-bold text-primary">{pick.score || '-'}</div>
-                        </div>
+                        <span className="text-primary">{picks.length}</span>
+                        <span>{cat}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                        {/* 标题 + 元数据 */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start gap-2">
-                            <h3 className="flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
-                            {pick.source_url && (
-                              <a
-                                href={pick.source_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
-                                title="查看原文"
-                              >
-                                <ExternalLink size={14} />
-                              </a>
-                            )}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {lc && (
-                              <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', lc.bg, lc.color)}>
-                                {lc.label}
-                              </span>
-                            )}
-                            {(pick.platforms ?? []).slice(0, 3).map((p, j) => (
-                              <span key={`${p}-${j}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-500">
-                                {p}
-                              </span>
-                            ))}
-                            {pick.time_window && (
-                              <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 展开指示 */}
-                        <div className={cx('mt-1 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
-                          <ChevronRight size={16} />
-                        </div>
-                      </button>
-
-                      {/* 展开后的决策卡 */}
-                      {isExpanded && (
-                        <div className="border-t border-gray-100 px-3 pb-3 pt-2 sm:px-4">
-                          {/* 推荐理由 */}
-                          <div className="mb-3 text-[13px] leading-6 text-gray-600">{pick.reason}</div>
-
-                          {/* 创作角度 */}
-                          {pick.angles && pick.angles.length > 0 && (
-                            <div className="mb-3">
-                              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-black text-gray-500">
-                                <Lightbulb size={12} className="text-primary" /> 推荐角度
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {pick.angles.map((angle, j) => (
-                                  <span key={`angle-${j}`} className="rounded-md border border-primary-border bg-primary-light px-2.5 py-1 text-[12px] font-medium text-gray-700">
-                                    {angle}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 避坑提示 */}
-                          {pick.pitfall && (
-                            <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2">
-                              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber" />
-                              <span className="text-[12px] leading-5 text-gray-600">{pick.pitfall}</span>
-                            </div>
-                          )}
-
-                          {/* 操作按钮 */}
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
-                              className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90"
-                            >
-                              <FileText size={13} /> 写这个
-                            </a>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
-                            >
-                              <Inbox size={13} /> 观察
-                            </button>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-400 hover:text-gray-600"
-                            >
-                              跳过
-                            </button>
-                          </div>
-                        </div>
+              {/* 选题按分类分组展示 */}
+              <div className="space-y-4">
+                {groupedPicks.map(([cat, picks]) => (
+                  <div key={`group-${cat}`} id={`cat-${cat}`}>
+                    {/* 分组标题 */}
+                    <div className="mb-2 flex items-center gap-2 px-1">
+                      <span className="font-mono text-lg font-black text-primary">
+                        {String(CATEGORY_ORDER.indexOf(cat) + 1).padStart(2, '0')}
+                      </span>
+                      <h2 className="text-sm font-black text-gray-900">{cat}</h2>
+                      {CATEGORY_EN[cat] && (
+                        <span className="text-[11px] font-bold text-gray-300">{CATEGORY_EN[cat]}</span>
                       )}
+                      <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">{picks.length} 篇</span>
                     </div>
-                  );
-                })}
+
+                    {/* 组内选题列表 */}
+                    <div className="space-y-2">
+                      {picks.map((pick, j) => {
+                        const globalIdx = pickList.indexOf(pick);
+                        const isExpanded = expandedPick === globalIdx;
+                        const lc = pick.lifecycle ? LIFECYCLE_META[pick.lifecycle] || LIFECYCLE_META['上升期'] : null;
+                        return (
+                          <div
+                            key={`pick-${cat}-${j}`}
+                            className={cx(
+                              'rounded-lg border bg-white shadow-sm transition',
+                              isExpanded ? 'border-primary-border shadow-md' : 'border-gray-200',
+                            )}
+                          >
+                            {/* 选题一行摘要（可扫描层） */}
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPick(isExpanded ? null : globalIdx)}
+                              className="flex w-full items-start gap-3 p-3 text-left sm:p-4"
+                            >
+                              {/* 评分 */}
+                              <div className="flex shrink-0 flex-col items-center gap-0.5">
+                                <div className={cx(
+                                  'grid h-9 w-9 place-items-center rounded-lg font-mono text-lg font-black',
+                                  globalIdx === 0 ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600',
+                                )}>
+                                  {pick.score || '-'}
+                                </div>
+                              </div>
+
+                              {/* 标题 + 元数据 */}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start gap-2">
+                                  <h3 className="flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
+                                  {pick.source_url && (
+                                    <a
+                                      href={pick.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                                      title="查看原文"
+                                    >
+                                      <ExternalLink size={14} />
+                                    </a>
+                                  )}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  {lc && (
+                                    <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', lc.bg, lc.color)}>
+                                      {lc.label}
+                                    </span>
+                                  )}
+                                  {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
+                                    <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-500">
+                                      {p}
+                                    </span>
+                                  ))}
+                                  {pick.time_window && (
+                                    <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 展开指示 */}
+                              <div className={cx('mt-1 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
+                                <ChevronRight size={16} />
+                              </div>
+                            </button>
+
+                            {/* 展开后的决策卡 */}
+                            {isExpanded && (
+                              <div className="border-t border-gray-100 px-3 pb-3 pt-2 sm:px-4">
+                                {/* 推荐理由 */}
+                                <div className="mb-3 text-[13px] leading-6 text-gray-600">{pick.reason}</div>
+
+                                {/* 创作角度 */}
+                                {pick.angles && pick.angles.length > 0 && (
+                                  <div className="mb-3">
+                                    <div className="mb-1.5 flex items-center gap-1 text-[11px] font-black text-gray-500">
+                                      <Lightbulb size={12} className="text-primary" /> 推荐角度
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {pick.angles.map((angle, k) => (
+                                        <span key={`angle-${k}`} className="rounded-md border border-primary-border bg-primary-light px-2.5 py-1 text-[12px] font-medium text-gray-700">
+                                          {angle}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* 避坑提示 */}
+                                {pick.pitfall && (
+                                  <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2">
+                                    <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber" />
+                                    <span className="text-[12px] leading-5 text-gray-600">{pick.pitfall}</span>
+                                  </div>
+                                )}
+
+                                {/* 操作按钮 */}
+                                <div className="flex items-center gap-2">
+                                  <a
+                                    href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+                                    className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90"
+                                  >
+                                    <FileText size={13} /> 写这个
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
+                                  >
+                                    <Inbox size={13} /> 观察
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-400 hover:text-gray-600"
+                                  >
+                                    跳过
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* 背景层：趋势 + 关键词 + 平台建议 */}

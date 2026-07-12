@@ -50,8 +50,18 @@ interface DailyReportData {
   overview: string | null;
   takeaway: string | null;
   keywords: string[] | null;
-  trends: Array<{ title: string; desc: string; color: string }> | null;
-  top_picks: Array<{ title: string; reason: string; score: number; platforms: string[]; source_url?: string }> | null;
+  trends: Array<{ title: string; desc: string; color: string; momentum?: string }> | null;
+  top_picks: Array<{
+    title: string;
+    reason: string;
+    score: number;
+    platforms: string[];
+    source_url?: string;
+    angles?: string[];
+    pitfall?: string;
+    lifecycle?: string;
+    time_window?: string;
+  }> | null;
   platform_tips: Record<string, string[]> | null;
   topic_count: number;
   content_count: number;
@@ -286,256 +296,115 @@ export default function DailyReportPage() {
 
   const todayStr = localDateString();
   const isToday = report?.report_date === todayStr;
-  const editionLabel = EDITION_LABELS[report?.edition || 'snapshot'] || report?.edition || '快照';
   const generatedAt = formatDateTime(report?.generated_at || report?.updated_at);
-  const windowText = report?.window_start && report?.window_end
-    ? `${formatTimeOnly(report.window_start)} - ${formatTimeOnly(report.window_end)}`
-    : '';
   const keywordList = Array.isArray(keywords) ? keywords as string[] : [];
-  const trendList = Array.isArray(trends) ? trends as Array<{ title: string; desc: string; color?: string }> : [];
+  const trendList = Array.isArray(trends) ? trends as Array<{ title: string; desc: string; color?: string; momentum?: string }> : [];
   const pickList = Array.isArray(topPicks)
-    ? topPicks as Array<{ title: string; reason: string; score?: number; platforms?: string[]; source_url?: string }>
+    ? topPicks as Array<{
+      title: string; reason: string; score?: number; platforms?: string[];
+      source_url?: string; angles?: string[]; pitfall?: string;
+      lifecycle?: string; time_window?: string;
+    }>
     : [];
-  const leadPick = pickList[0];
-  const secondaryPicks = pickList.slice(1);
   const platformTipEntries = platformTips && typeof platformTips === 'object'
     ? Object.entries(platformTips as Record<string, unknown>)
     : [];
-  const selectedCalendarDay = calendarDays.find((day) => day.report_date === selectedDate);
-  const recoveryDays = calendarDays.filter((day) => day.status === 'MISSING' || day.status === 'ERROR');
-  const nextRecoveryDay = recoveryDays[0];
   const recoveryDate = report?.report_date || selectedDate || todayStr;
-  const displayDate = report?.report_date || selectedDate;
-  const displayWeekday = report?.weekday || selectedCalendarDay?.weekday || '';
-  const displayMeta = selectedCalendarDay
-    ? CALENDAR_STATUS_META[selectedCalendarDay.status] || CALENDAR_STATUS_META.MISSING
-    : null;
-  const mainActionLabel = recoveryDate < todayStr ? `补生成 ${recoveryDate}` : `生成 ${recoveryDate}`;
+  const [expandedPick, setExpandedPick] = useState<number | null>(0);
+
+  const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
+    '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
+    '见顶': { label: '→ 见顶', color: 'text-amber', bg: 'bg-amber-light' },
+    '退潮': { label: '↓ 退潮', color: 'text-gray-400', bg: 'bg-gray-100' },
+  };
 
   const generatedDates = useMemo(() => dates.filter((d) => d.report_date !== todayStr), [dates, todayStr]);
+  const recoveryDays = calendarDays.filter((day) => day.status === 'MISSING' || day.status === 'ERROR');
 
   return (
-    <div className="h-full w-full overflow-x-auto overflow-y-hidden">
-      <div className="flex items-center gap-1 border-b border-gray-200 bg-white px-3 py-1.5 text-[11px] font-black text-gray-500">
-        <a
-          href="/daily"
-          className={cx(
-            "rounded px-2.5 py-1",
-            reportScope === 'public'
-              ? "bg-teal-light text-teal"
-              : "text-gray-500 hover:text-gray-700"
-          )}
-        >
-          公共日报
-        </a>
-        <a
-          href="/daily?scope=mine"
-          className={cx(
-            "rounded px-2.5 py-1",
-            reportScope === 'mine'
-              ? "bg-teal-light text-teal"
-              : "text-gray-500 hover:text-gray-700"
-          )}
-        >
-          我的日报
-        </a>
-        {reportScope === 'mine' && (
-          <span className="ml-1 text-[10px] font-normal text-gray-400">
-            基于你的私有信源（需 Pro 及以上）
+    <div className="h-full w-full overflow-hidden">
+      {/* 顶栏：scope 切换 + 日期选择 */}
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-2">
+        <div className="flex items-center gap-1 text-[11px] font-black text-gray-500">
+          <a
+            href="/daily"
+            className={cx("rounded px-2.5 py-1", reportScope === 'public' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
+          >
+            公共日报
+          </a>
+          <a
+            href="/daily?scope=mine"
+            className={cx("rounded px-2.5 py-1", reportScope === 'mine' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
+          >
+            我的日报
+          </a>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 简洁日期选择器（替代 30 天日历） */}
+          <button
+            type="button"
+            onClick={() => {
+              if (report) {
+                const d = new Date(report.report_date);
+                d.setDate(d.getDate() - 1);
+                fetchReport(localDateString(d));
+              }
+            }}
+            className="grid h-7 w-7 place-items-center rounded-xs border border-gray-200 text-gray-400 hover:text-gray-700"
+            title="前一天"
+          >
+            <ChevronRight size={14} className="rotate-180" />
+          </button>
+          <span className="min-w-[100px] text-center text-xs font-bold text-gray-700">
+            {report?.report_date || todayStr}
           </span>
-        )}
+          <button
+            type="button"
+            onClick={() => {
+              if (report) {
+                const d = new Date(report.report_date);
+                d.setDate(d.getDate() + 1);
+                if (localDateString(d) <= todayStr) fetchReport(localDateString(d));
+              }
+            }}
+            disabled={isToday}
+            className="grid h-7 w-7 place-items-center rounded-xs border border-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+            title="后一天"
+          >
+            <ChevronRight size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => fetchReport()}
+            className={cx('ml-1 rounded-xs px-2 py-1 text-[11px] font-bold', isToday ? 'bg-primary text-white' : 'text-gray-500 hover:bg-gray-50')}
+          >
+            今天
+          </button>
+
+          {/* 管理入口（折叠隐藏的补录中心入口） */}
+          {recoveryDays.length > 0 && (
+            <span className="ml-2 rounded-full bg-amber-light px-2 py-0.5 text-[10px] font-bold text-amber" title={`${recoveryDays.length} 天待补录`}>
+              {recoveryDays.length} 待补
+            </span>
+          )}
+          {report && (
+            <button
+              type="button"
+              onClick={handleRegenerate}
+              disabled={generating}
+              className="ml-1 flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-primary disabled:opacity-50"
+            >
+              {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              刷新
+            </button>
+          )}
+        </div>
       </div>
-      <div className="flex h-full min-w-[1040px] overflow-hidden">
-        <aside className="flex w-[260px] min-w-[260px] flex-col overflow-hidden border-r border-gray-200 bg-[linear-gradient(180deg,#F8FAFC_0%,#FFFFFF_34%,#F8FAFC_100%)]">
-          <ReportSidebarHeader icon={CalendarDays} title="日报补录中心" countText={`近 30 天 · 待处理 ${recoveryDays.length}`} />
 
-          <div className="px-3 pb-1 pt-2">
-            <CurrentPeriodButton active={selectedDate === todayStr || !selectedDate} icon={Pin} onClick={() => fetchReport()}>
-              今天
-            </CurrentPeriodButton>
-          </div>
-
-          <Panel className="mx-3 my-2 p-3 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
-            <div className="mb-2.5 flex items-center justify-between">
-              <div>
-                <div className="text-xs font-black text-gray-800">待补录任务</div>
-                <div className="mt-0.5 text-[11px] text-gray-400">
-                  {nextRecoveryDay ? `下一天 ${nextRecoveryDay.report_date}` : '近 30 天已闭环'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => refreshReportIndexes()}
-                title="刷新时间地图"
-                className="grid h-6.5 w-6.5 place-items-center rounded-xs border border-gray-200 bg-gray-50 text-gray-500"
-              >
-                <RefreshCw size={13} />
-              </button>
-            </div>
-
-            <div className="mb-2.5 grid grid-cols-2 gap-2">
-              <StatBox label="缺失日报" value={calendarStats.missing} tone="primary" />
-              <StatBox label="生成失败" value={calendarStats.error} tone="red" />
-            </div>
-
-            {nextRecoveryDay ? (
-              <button
-                type="button"
-                disabled={generating}
-                onClick={() => generateForDate(nextRecoveryDay.report_date)}
-                className="mb-3 flex w-full items-center justify-between gap-2 rounded-sm border border-primary-border bg-primary px-3 py-2.5 text-left text-white disabled:cursor-wait disabled:opacity-70"
-              >
-                <span className="min-w-0">
-                  <span className="block text-xs font-black">补生成最近遗漏</span>
-                  <span className="mt-0.5 block text-[11px] opacity-80">{nextRecoveryDay.report_date} {nextRecoveryDay.weekday}</span>
-                </span>
-                {generatingDate === nextRecoveryDay.report_date ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
-              </button>
-            ) : (
-              <div className="mb-3 rounded-sm border border-teal-border bg-teal-light px-3 py-2.5 text-xs font-black text-teal">
-                最近 30 天无需补录
-              </div>
-            )}
-
-            {recoveryDays.length > 0 && (
-              <div className="mb-3">
-                <div className="mb-1.5 text-[11px] font-black text-gray-500">待补录队列</div>
-                <div className="grid gap-1.5">
-                  {recoveryDays.slice(0, 3).map((day) => {
-                    const meta = CALENDAR_STATUS_META[day.status] || CALENDAR_STATUS_META.MISSING;
-                    return (
-                      <button
-                        key={`queue-${day.report_date}`}
-                        type="button"
-                        onClick={() => handleCalendarDayClick(day)}
-                        className={cx('grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xs border px-2.5 py-2 text-left', meta.bg, meta.border)}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs font-black text-gray-800">{day.report_date}</span>
-                          <span className="mt-0.5 block text-[10px] text-gray-500">{day.weekday} · {meta.label}</span>
-                        </span>
-                        <span className={cx('grid h-6 w-6 place-items-center rounded-xs border bg-white', meta.text, meta.border)}>
-                          <ChevronRight size={13} />
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-[11px] font-black text-gray-500">日期定位</div>
-              <div className="flex gap-1.5 text-[10px] text-gray-400">
-                <span>绿 已完成</span>
-                <span>橙 待补</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 gap-1.5">
-              {calendarLoading ? (
-                Array.from({ length: 30 }).map((_, index) => (
-                  <div key={index} className="h-7 rounded-xs bg-gray-100" />
-                ))
-              ) : (
-                calendarDays.map((day) => {
-                  const meta = CALENDAR_STATUS_META[day.status] || CALENDAR_STATUS_META.MISSING;
-                  const isActive = selectedDate === day.report_date;
-                  const isBusy = generatingDate === day.report_date;
-                  return (
-                    <button
-                      key={day.report_date}
-                      type="button"
-                      onClick={() => handleCalendarDayClick(day)}
-                      title={`${day.report_date} · ${meta.label}${day.takeaway ? ` · ${day.takeaway}` : ''}`}
-                      className={cx(
-                        'grid h-7 min-w-0 place-items-center rounded-xs border font-mono text-[11px] font-black shadow-none transition',
-                        isActive ? `${meta.active} shadow-[0_6px_14px_rgba(15,23,42,0.12)]` : `${meta.bg} ${meta.border} ${meta.text}`,
-                      )}
-                    >
-                      {isBusy ? <Loader2 size={12} className="animate-spin" /> : day.report_date.slice(8)}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </Panel>
-
-          <div className="flex-1 overflow-y-auto px-3 pb-3">
-            <div className="flex items-center gap-2 px-0.5 pb-2 pt-1 text-[11px] font-black text-gray-500">
-              <CheckCircle2 size={13} className="text-teal" />
-              已生成记录
-            </div>
-            {datesLoading ? (
-              <div className="px-2 py-5 text-center text-xs text-gray-400">加载中...</div>
-            ) : generatedDates.length === 0 ? (
-              <div className="px-2 py-5 text-center text-xs text-gray-400">暂无历史日报</div>
-            ) : (
-              generatedDates.map((d) => {
-                const isActive = selectedDate === d.report_date;
-                return (
-                  <button
-                    key={d.report_date}
-                    type="button"
-                    onClick={() => handleDateSelect(d.report_date)}
-                    className={cx(
-                      'mb-1.5 block w-full rounded-sm border px-3 py-2.5 text-left text-[13px] transition',
-                      isActive ? 'border-gray-200 bg-white font-bold text-gray-900 shadow-[0_8px_22px_rgba(15,23,42,0.07)]' : 'border-transparent text-gray-600 hover:bg-white',
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={isActive ? 'text-gray-900' : 'text-gray-700'}>{d.report_date}</span>
-                      <span className="text-[11px] text-gray-400">{EDITION_LABELS[d.edition || ''] || d.weekday}</span>
-                    </div>
-                    {d.takeaway && <div className="mt-1 truncate text-[11px] text-gray-400">{d.takeaway}</div>}
-                    {d.status === 'ERROR' && (
-                      <div className="mt-1 flex items-center justify-between">
-                        <span className="inline-flex items-center gap-1 text-[10px] text-red">
-                          <Circle size={7} className="fill-red" />生成失败
-                        </span>
-                        <span
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            generateForDate(d.report_date);
-                          }}
-                          className="text-[10px] font-black text-primary"
-                        >
-                          补生成
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </aside>
-
-        <main className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)] px-10 pb-10">
-          <header className="sticky top-0 z-10 -mx-10 flex items-center justify-between gap-4 border-b border-gray-200 bg-[#F8FAFC]/90 px-10 py-4 backdrop-blur-md">
-            <div>
-              <div className="mb-1.5 flex items-center gap-3">
-                <h1 className="m-0 text-lg font-black text-gray-900">AI 日报</h1>
-                <ReportBadge>{editionLabel}</ReportBadge>
-                {!isToday && report && <ReportBadge tone="history">历史回顾</ReportBadge>}
-              </div>
-              <p className="text-[13px] text-gray-400">
-                {report
-                  ? `${report.report_date} ${report.weekday}`
-                  : displayDate
-                    ? `${displayDate} ${displayWeekday} · ${displayMeta?.label || '待生成'}`
-                    : '加载中...'}
-                {report?.content_count ? ` · 基于 ${report.content_count} 条内容分析` : ''}
-                {windowText ? ` · ${windowText}` : ''}
-              </p>
-            </div>
-            {report && (
-              <ReportActionButton onClick={handleRegenerate} loading={generating} icon={RefreshCw}>
-                重新生成
-              </ReportActionButton>
-            )}
-          </header>
-
+      {/* 主区域 */}
+      <div className="h-[calc(100%-40px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
+        <div className="mx-auto max-w-[920px] px-4 py-4 sm:px-6">
           {loading ? (
             <ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>
           ) : error ? (
@@ -548,184 +417,263 @@ export default function DailyReportPage() {
                   loading={generating && generatingDate === recoveryDate}
                   icon={RotateCcw}
                 >
-                  {mainActionLabel}
+                  生成 {recoveryDate}
                 </ReportActionButton>
               )}
             >
               {error}
             </ReportStatusPanel>
           ) : report?.status === 'ERROR' ? (
-            <div className="grid min-h-[360px] place-items-center p-10 text-center">
+            <div className="grid min-h-[300px] place-items-center p-8 text-center">
               <div>
-                <AlertTriangle size={30} className="mx-auto mb-3 text-red" strokeWidth={1.9} />
+                <AlertTriangle size={28} className="mx-auto mb-3 text-red" strokeWidth={1.9} />
                 <div className="mb-3 text-sm text-gray-500">{report.overview}</div>
                 <ReportActionButton
                   onClick={() => generateForDate(report.report_date)}
                   loading={generating && generatingDate === report.report_date}
                   icon={RotateCcw}
                 >
-                  重试生成 {report.report_date}
+                  重试生成
                 </ReportActionButton>
               </div>
             </div>
           ) : report?.status === 'GENERATING' ? (
             <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
-          ) : report ? (
-            <article className="mx-auto mt-5 max-w-[760px] text-gray-900">
-              <Panel className="relative overflow-hidden p-6 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" />
-                <div className="relative flex items-start justify-between gap-5">
-                  <div>
-                    <div className="mb-4 flex items-center gap-2">
-                      <span className="rounded-full border border-primary-border bg-primary-light px-2.5 py-1 font-mono text-[11px] font-black text-primary">
-                        TOPIC RADAR DAILY
-                      </span>
-                      <span className="text-xs text-gray-500">{report.weekday}</span>
-                      <span className="text-xs text-gray-500">{editionLabel}</span>
+          ) : report && pickList.length > 0 ? (
+            <div className="space-y-3">
+              {/* 头部摘要行：日期 + takeaway + 关键统计 */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2 text-[11px] font-black text-gray-400">
+                      <span>{report.report_date} {report.weekday}</span>
+                      {generatedAt && <span>· 更新于 {generatedAt}</span>}
+                      {report.content_count ? <span>· 基于 {report.content_count} 条</span> : null}
                     </div>
-                    <h2 className="mb-3.5 text-[34px] font-black leading-none text-gray-900">
-                      选题雷达<br />日报
-                    </h2>
-                    <p className="max-w-[520px] text-base font-bold leading-7 text-gray-700">
-                      {report.takeaway || report.overview || '今日内容已完成归档，等待进一步分析。'}
+                    <p className="text-sm font-bold leading-6 text-gray-800">
+                      {report.takeaway || report.overview?.slice(0, 80) || '今日内容已完成分析。'}
                     </p>
                   </div>
-                  <div className="min-w-28 rounded-sm border border-primary-border bg-primary-light px-3.5 py-3 text-right">
-                    <div className="mb-1.5 text-[11px] text-gray-500">ISSUE DATE</div>
-                    <div className="font-mono text-[22px] font-black text-primary">{report.report_date.slice(5)}</div>
-                    <div className="mt-1 text-[11px] text-gray-500">{windowText || report.report_date.slice(0, 4)}</div>
-                  </div>
                 </div>
-                <div className="relative mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                  {[
-                    { label: '内容样本', value: report.content_count || 0 },
-                    { label: '完成分析', value: report.analyzed_count || 0 },
-                    { label: '推荐选题', value: report.topic_count || pickList.length },
-                    { label: '生成时间', value: generatedAt || '-' },
-                  ].map((stat) => (
-                    <StatBox key={stat.label} label={stat.label} value={stat.value} />
-                  ))}
-                </div>
-              </Panel>
+              </div>
 
-              <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_210px]">
-                <Panel className="p-5">
-                  <ReportSectionTitle icon={Newspaper} title="编辑摘要" />
-                  <p className="text-sm leading-8 text-gray-600">{report.overview || '暂无概述。'}</p>
-                </Panel>
-                <Panel className="p-4.5">
-                  <div className="mb-3 flex items-center gap-2 text-[13px] font-black text-gray-900">
-                    <KeyRound size={14} className="text-primary" strokeWidth={2.2} />
-                    今日关键词
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {keywordList.length > 0 ? keywordList.map((kw, i) => (
-                      <span
-                        key={`${kw}-${i}`}
-                        className={cx(
-                          'rounded-full border px-2.5 py-1 text-xs font-bold',
-                          i === 0 ? 'border-primary-border bg-primary-light text-gray-700' : 'border-gray-200 bg-gray-50 text-gray-700',
-                        )}
+              {/* 选题决策列表 */}
+              <div className="space-y-2">
+                {pickList.map((pick, i) => {
+                  const isExpanded = expandedPick === i;
+                  const lc = pick.lifecycle ? LIFECYCLE_META[pick.lifecycle] || LIFECYCLE_META['上升期'] : null;
+                  return (
+                    <div
+                      key={`pick-${i}`}
+                      className={cx(
+                        'rounded-lg border bg-white shadow-sm transition',
+                        isExpanded ? 'border-primary-border shadow-md' : 'border-gray-200',
+                      )}
+                    >
+                      {/* 选题一行摘要（可扫描层） */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedPick(isExpanded ? null : i)}
+                        className="flex w-full items-start gap-3 p-3 text-left sm:p-4"
                       >
-                        {kw}
-                      </span>
-                    )) : <span className="text-xs text-gray-400">暂无关键词</span>}
-                  </div>
-                </Panel>
-              </section>
+                        {/* 排名 + 评分 */}
+                        <div className="flex shrink-0 flex-col items-center gap-0.5">
+                          <div className={cx(
+                            'grid h-9 w-9 place-items-center rounded-lg font-mono text-lg font-black',
+                            i === 0 ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600',
+                          )}>
+                            {i + 1}
+                          </div>
+                          <div className="text-[10px] font-bold text-primary">{pick.score || '-'}</div>
+                        </div>
 
-              {leadPick && (
-                <Panel className="mt-4 overflow-hidden">
-                  <div className="flex items-stretch border-b border-gray-100">
-                    <div className="flex w-24 shrink-0 flex-col items-center justify-center gap-1 border-r border-gray-100 bg-orange-50">
-                      <Target size={18} className="text-primary" strokeWidth={2.2} />
-                      <div className="text-[10px] font-black text-primary">今日主推</div>
-                      <div className="font-mono text-3xl font-black text-primary">{leadPick.score || 1}</div>
-                    </div>
-                    <div className="min-w-0 flex-1 p-5">
-                      <div className="flex items-start gap-2">
-                        <h3 className="m-0 flex-1 text-lg font-black leading-7 text-gray-900">{leadPick.title}</h3>
-                        {leadPick.source_url && (
-                          <a href={leadPick.source_url} target="_blank" rel="noopener noreferrer" title="查看原文" className="mt-1 text-gray-400 hover:text-primary">
-                            <ExternalLink size={15} strokeWidth={2} />
-                          </a>
-                        )}
-                      </div>
-                      <p className="mt-2 text-[13px] leading-7 text-gray-500">{leadPick.reason}</p>
-                      {(leadPick.platforms ?? []).length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {(leadPick.platforms ?? []).map((p, j) => (
-                            <span key={`${p}-${j}`} className="rounded-full border border-teal-border bg-teal-light px-2 py-0.5 text-[11px] text-teal">
-                              {p}
-                            </span>
-                          ))}
+                        {/* 标题 + 元数据 */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-2">
+                            <h3 className="flex-1 text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
+                            {pick.source_url && (
+                              <a
+                                href={pick.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                                title="查看原文"
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {lc && (
+                              <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', lc.bg, lc.color)}>
+                                {lc.label}
+                              </span>
+                            )}
+                            {(pick.platforms ?? []).slice(0, 3).map((p, j) => (
+                              <span key={`${p}-${j}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-500">
+                                {p}
+                              </span>
+                            ))}
+                            {pick.time_window && (
+                              <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 展开指示 */}
+                        <div className={cx('mt-1 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
+                          <ChevronRight size={16} />
+                        </div>
+                      </button>
+
+                      {/* 展开后的决策卡 */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 px-3 pb-3 pt-2 sm:px-4">
+                          {/* 推荐理由 */}
+                          <div className="mb-3 text-[13px] leading-6 text-gray-600">{pick.reason}</div>
+
+                          {/* 创作角度 */}
+                          {pick.angles && pick.angles.length > 0 && (
+                            <div className="mb-3">
+                              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-black text-gray-500">
+                                <Lightbulb size={12} className="text-primary" /> 推荐角度
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {pick.angles.map((angle, j) => (
+                                  <span key={`angle-${j}`} className="rounded-md border border-primary-border bg-primary-light px-2.5 py-1 text-[12px] font-medium text-gray-700">
+                                    {angle}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 避坑提示 */}
+                          {pick.pitfall && (
+                            <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2">
+                              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber" />
+                              <span className="text-[12px] leading-5 text-gray-600">{pick.pitfall}</span>
+                            </div>
+                          )}
+
+                          {/* 操作按钮 */}
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+                              className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90"
+                            >
+                              <FileText size={13} /> 写这个
+                            </a>
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
+                            >
+                              <Inbox size={13} /> 观察
+                            </button>
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-400 hover:text-gray-600"
+                            >
+                              跳过
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
-                  </div>
-                  {secondaryPicks.length > 0 && (
-                    <div className="px-4.5 pb-3 pt-2">
-                      {secondaryPicks.map((pick, i) => (
-                        <div key={`${pick.title}-${i}`} className="grid grid-cols-[28px_minmax(0,1fr)_42px] items-start gap-2.5 border-b border-gray-100 py-3 last:border-b-0">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 font-mono text-[11px] font-black text-gray-600">{i + 2}</div>
+                  );
+                })}
+              </div>
+
+              {/* 背景层：趋势 + 关键词 + 平台建议 */}
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {/* 趋势 */}
+                {trendList.length > 0 && (
+                  <Panel className="p-4">
+                    <ReportSectionTitle icon={TrendingUp} title="趋势信号" />
+                    <div className="space-y-2">
+                      {trendList.map((trend, i) => (
+                        <div key={`trend-${i}`} className="flex items-start gap-2">
+                          <span className={cx(
+                            'mt-0.5 shrink-0 text-[11px] font-black',
+                            trend.momentum === 'up' ? 'text-teal' : trend.momentum === 'down' ? 'text-gray-400' : 'text-amber',
+                          )}>
+                            {trend.momentum === 'up' ? '↑' : trend.momentum === 'down' ? '↓' : '→'}
+                          </span>
                           <div className="min-w-0">
-                            <div className="text-sm font-bold leading-6 text-gray-900">{pick.title}</div>
-                            <div className="mt-0.5 text-xs leading-5 text-gray-500">{pick.reason}</div>
+                            <span className="text-[13px] font-bold text-gray-800">{trend.title}</span>
+                            <span className="ml-1.5 text-[11px] text-gray-400">{trend.desc}</span>
                           </div>
-                          <div className="text-right font-mono text-lg font-black text-primary">{pick.score || '-'}</div>
                         </div>
                       ))}
                     </div>
-                  )}
-                </Panel>
-              )}
+                  </Panel>
+                )}
 
-              {trendList.length > 0 && (
-                <Panel className="mt-4 p-5">
-                  <ReportSectionTitle icon={TrendingUp} title="内容趋势" />
-                  <div>
-                    {trendList.map((trend, i) => (
-                      <div key={`${trend.title}-${i}`} className="grid grid-cols-[34px_minmax(0,1fr)] gap-3 border-t border-gray-100 py-3.5 first:border-t-0">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-sm bg-primary font-mono text-xs font-black text-white">
-                          {String(i + 1).padStart(2, '0')}
-                        </div>
-                        <div>
-                          <div className="mb-1 text-[15px] font-black text-gray-900">{trend.title}</div>
-                          <div className="text-[13px] leading-7 text-gray-500">{trend.desc}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              )}
+                {/* 关键词 */}
+                {keywordList.length > 0 && (
+                  <Panel className="p-4">
+                    <ReportSectionTitle icon={KeyRound} title="高频关键词" />
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywordList.map((kw, i) => (
+                        <span
+                          key={`kw-${i}`}
+                          className={cx(
+                            'rounded-full border px-2.5 py-1 text-xs font-bold',
+                            i === 0 ? 'border-primary-border bg-primary-light text-gray-700' : 'border-gray-200 bg-gray-50 text-gray-600',
+                          )}
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </Panel>
+                )}
+              </div>
 
+              {/* 平台建议（折叠态） */}
               {platformTipEntries.length > 0 && (
-                <section className="mb-6 mt-4">
-                  <ReportSectionTitle icon={Lightbulb} title="平台创作建议" />
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <details className="rounded-lg border border-gray-200 bg-white">
+                  <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-gray-600">
+                    平台创作建议
+                  </summary>
+                  <div className="grid grid-cols-1 gap-3 px-4 pb-4 lg:grid-cols-3">
                     {platformTipEntries.map(([platform, tips]) => (
-                      <Panel key={platform} className="p-4.5">
+                      <div key={platform}>
                         <PlatformHeading icon={Smartphone} label={platform} />
                         {(Array.isArray(tips) ? tips : []).map((tip: string, j: number) => (
-                          <div
-                            key={`${platform}-${j}`}
-                            className={cx('mb-2 border-l-2 pl-2.5 text-xs leading-6 text-gray-500', j === 0 ? 'border-primary-border' : 'border-gray-200')}
-                          >
+                          <div key={`${platform}-${j}`} className="mb-1.5 border-l-2 border-primary-border pl-2.5 text-[12px] leading-5 text-gray-500">
                             {tip}
                           </div>
                         ))}
-                      </Panel>
+                      </div>
                     ))}
                   </div>
-                </section>
+                </details>
               )}
 
-              <div className="flex flex-wrap gap-4 border-t border-gray-200 pt-3.5 text-xs text-gray-400">
-                <ReportFooterStat icon={CalendarDays}>{report.report_date} {report.weekday}</ReportFooterStat>
-                <ReportFooterStat icon={BarChart3}>分析 {report.analyzed_count} 条内容</ReportFooterStat>
-                <ReportFooterStat icon={Target}>推荐 {report.topic_count} 个选题</ReportFooterStat>
+              {/* 底部统计 */}
+              <div className="flex flex-wrap gap-4 border-t border-gray-200 pt-3 text-[11px] text-gray-400">
+                <ReportFooterStat icon={BarChart3}>分析 {report.analyzed_count || 0} 条</ReportFooterStat>
+                <ReportFooterStat icon={Target}>推荐 {pickList.length} 个选题</ReportFooterStat>
+                {generatedAt && <ReportFooterStat icon={CalendarDays}>{generatedAt}</ReportFooterStat>}
               </div>
-            </article>
+            </div>
+          ) : report ? (
+            <ReportStatusPanel
+              icon={Inbox}
+              action={(
+                <ReportActionButton
+                  onClick={() => generateForDate(recoveryDate)}
+                  loading={generating && generatingDate === recoveryDate}
+                  icon={FileText}
+                >
+                  生成 {recoveryDate}
+                </ReportActionButton>
+              )}
+            >
+              今日暂无精选选题，点击生成
+            </ReportStatusPanel>
           ) : (
             <ReportStatusPanel
               icon={Inbox}
@@ -735,14 +683,14 @@ export default function DailyReportPage() {
                   loading={generating && generatingDate === recoveryDate}
                   icon={FileText}
                 >
-                  {mainActionLabel}
+                  生成日报
                 </ReportActionButton>
               )}
             >
               暂无日报数据
             </ReportStatusPanel>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );

@@ -348,3 +348,112 @@ async def get_sparkline(
         "total": sum(counts),
         "window_hours": hours,
     }
+
+
+# ── 选题标记（写这个/观察/跳过）──────────────────────────────
+
+
+@router.get("/pick-marks")
+async def list_pick_marks(
+    report_date: str = Query(None, description="按日期过滤（YYYY-MM-DD）"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """获取用户的选题标记列表。"""
+    from app.models.pick_mark import PickMark
+    from datetime import date as date_type
+
+    parsed_date = date_type.fromisoformat(report_date) if report_date else None
+    stmt = select(PickMark).where(PickMark.user_id == user.id)
+    if parsed_date:
+        stmt = stmt.where(PickMark.report_date == parsed_date)
+    stmt = stmt.order_by(PickMark.updated_at.desc())
+    result = await db.execute(stmt)
+    marks = result.scalars().all()
+    return {
+        "marks": [
+            {
+                "report_date": str(m.report_date),
+                "pick_title": m.pick_title,
+                "action": m.action,
+                "pick_category": m.pick_category,
+                "pick_source_url": m.pick_source_url,
+            }
+            for m in marks
+        ],
+        "total": len(marks),
+    }
+
+
+@router.post("/pick-marks")
+async def upsert_pick_mark(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """创建或更新选题标记（同一 user+date+title 只保留一条，覆盖 action）。"""
+    from app.models.pick_mark import PickMark
+    from datetime import date as date_type
+
+    report_date_str = body.get("report_date")
+    pick_title = body.get("pick_title")
+    action = body.get("action")
+
+    if not report_date_str or not pick_title or not action:
+        raise HTTPException(status_code=400, detail="report_date, pick_title, action are required")
+    if action not in ("write", "watch", "skip"):
+        raise HTTPException(status_code=400, detail="action must be write/watch/skip")
+
+    parsed_date = date_type.fromisoformat(report_date_str)
+    pick_category = body.get("pick_category")
+    pick_source_url = body.get("pick_source_url")
+
+    # Upsert：先查有没有
+    existing = await db.execute(
+        select(PickMark).where(
+            PickMark.user_id == user.id,
+            PickMark.report_date == parsed_date,
+            PickMark.pick_title == pick_title,
+        )
+    )
+    mark = existing.scalar_one_or_none()
+    if mark:
+        mark.action = action
+        mark.pick_category = pick_category or mark.pick_category
+        mark.pick_source_url = pick_source_url or mark.pick_source_url
+    else:
+        mark = PickMark(
+            user_id=user.id,
+            report_date=parsed_date,
+            pick_title=pick_title,
+            action=action,
+            pick_category=pick_category,
+            pick_source_url=pick_source_url,
+        )
+        db.add(mark)
+    await db.commit()
+    return {"status": "ok", "action": action}
+
+
+@router.delete("/pick-marks")
+async def delete_pick_mark(
+    report_date: str = Query(...),
+    pick_title: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """删除选题标记。"""
+    from app.models.pick_mark import PickMark
+    from sqlalchemy import delete as sa_delete
+    from datetime import date as date_type
+
+    parsed_date = date_type.fromisoformat(report_date)
+    await db.execute(
+        sa_delete(PickMark).where(
+            PickMark.user_id == user.id,
+            PickMark.report_date == parsed_date,
+            PickMark.pick_title == pick_title,
+        )
+    )
+    await db.commit()
+    return {"status": "deleted"}

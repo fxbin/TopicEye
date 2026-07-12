@@ -218,6 +218,9 @@ export default function DailyReportPage() {
     })();
   }, [refreshReportIndexes]);
 
+  const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
+  const [pickMarks, setPickMarks] = useState<Record<string, 'write' | 'watch' | 'skip'>>({});
+
   const fetchReport = useCallback(async (date?: string) => {
     try {
       setLoading(true);
@@ -227,6 +230,18 @@ export default function DailyReportPage() {
         : ((reportScope === 'mine' ? await dailyReportApi.getMyToday() : await dailyReportApi.getToday()) as unknown as DailyReportData);
       setReport(data);
       setSelectedDate(data.report_date);
+
+      // 加载用户已标记的选题（恢复操作状态，刷新不丢失）
+      try {
+        const marksResp = await dailyReportApi.listPickMarks(data.report_date);
+        const marksMap: Record<string, 'write' | 'watch' | 'skip'> = {};
+        for (const m of marksResp.marks) {
+          marksMap[m.pick_title] = m.action;
+        }
+        setPickMarks(marksMap);
+      } catch {
+        // 静默失败（游客无 token 等），标记功能不可用不影响阅读
+      }
 
       // 异步批量预加载所有选题的 sparkline 趋势（不阻塞主 UI）
       const topPicks = parseJson(data.top_picks) as Array<{ title: string }> | null;
@@ -308,6 +323,40 @@ export default function DailyReportPage() {
     await generateForDate(report?.report_date || selectedDate || localDateString());
   };
 
+  const handleMark = useCallback(
+    async (pickTitle: string, action: 'write' | 'watch' | 'skip', category?: string, sourceUrl?: string) => {
+      if (!report) return;
+      // 乐观更新
+      setPickMarks((prev) => {
+        const next = { ...prev };
+        if (next[pickTitle] === action) {
+          delete next[pickTitle]; // toggle: 再点一次取消标记
+        } else {
+          next[pickTitle] = action;
+        }
+        return next;
+      });
+      // 当前标记（乐观更新后判断是否 toggle off）
+      const willUnmark = pickMarks[pickTitle] === action;
+      try {
+        if (willUnmark) {
+          await dailyReportApi.unmarkPick(report.report_date, pickTitle);
+        } else {
+          await dailyReportApi.markPick({
+            report_date: report.report_date,
+            pick_title: pickTitle,
+            action,
+            pick_category: category,
+            pick_source_url: sourceUrl,
+          });
+        }
+      } catch {
+        // 静默失败，乐观更新已生效
+      }
+    },
+    [report, pickMarks],
+  );
+
   const handleCalendarDayClick = (day: CalendarDay) => {
     setSelectedDate(day.report_date);
     if (day.has_report) {
@@ -340,7 +389,7 @@ export default function DailyReportPage() {
     : [];
   const recoveryDate = report?.report_date || selectedDate || todayStr;
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
-  const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
+
 
   const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
     '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
@@ -670,13 +719,37 @@ export default function DailyReportPage() {
                                   </a>
                                   <button
                                     type="button"
-                                    className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
+                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'write', pick.category, pick.source_url); }}
+                                    className={cx(
+                                      'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
+                                      pickMarks[pick.title] === 'write'
+                                        ? 'border-primary bg-primary-light text-primary'
+                                        : 'border-gray-200 text-gray-500 hover:text-gray-700',
+                                    )}
+                                  >
+                                    <CheckCircle2 size={13} /> 已选
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'watch', pick.category, pick.source_url); }}
+                                    className={cx(
+                                      'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
+                                      pickMarks[pick.title] === 'watch'
+                                        ? 'border-amber bg-amber-light text-amber'
+                                        : 'border-gray-200 text-gray-500 hover:text-gray-700',
+                                    )}
                                   >
                                     <Inbox size={13} /> 观察
                                   </button>
                                   <button
                                     type="button"
-                                    className="flex items-center gap-1 rounded-md border border-gray-200 px-3 py-2 text-xs font-bold text-gray-400 hover:text-gray-600"
+                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'skip', pick.category, pick.source_url); }}
+                                    className={cx(
+                                      'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
+                                      pickMarks[pick.title] === 'skip'
+                                        ? 'border-gray-400 bg-gray-100 text-gray-500'
+                                        : 'border-gray-200 text-gray-400 hover:text-gray-600',
+                                    )}
                                   >
                                     跳过
                                   </button>

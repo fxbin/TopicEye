@@ -18,6 +18,7 @@ import app.models.llm_model  # noqa: F401
 import app.models.monthly_digest  # noqa: F401
 import app.models.mother_topic  # noqa: F401
 import app.models.notification  # noqa: F401
+import app.models.pick_mark  # noqa: F401
 import app.models.product_feedback  # noqa: F401
 import app.models.scheduled_job  # noqa: F401
 import app.models.trending  # noqa: F401

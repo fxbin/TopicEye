@@ -522,6 +522,41 @@ export const dailyReportApi = {
     );
   },
 
+  /** 获取用户的选题标记 */
+  listPickMarks(reportDate?: string): Promise<{
+    marks: Array<{
+      report_date: string;
+      pick_title: string;
+      action: 'write' | 'watch' | 'skip';
+      pick_category: string | null;
+      pick_source_url: string | null;
+    }>;
+    total: number;
+  }> {
+    return request(
+      `/daily-reports/pick-marks${reportDate ? `?report_date=${reportDate}` : ''}`,
+    );
+  },
+
+  /** 创建/更新选题标记 */
+  markPick(body: {
+    report_date: string;
+    pick_title: string;
+    action: 'write' | 'watch' | 'skip';
+    pick_category?: string;
+    pick_source_url?: string;
+  }): Promise<{ status: string; action: string }> {
+    return request('/daily-reports/pick-marks', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  /** 删除选题标记 */
+  unmarkPick(reportDate: string, pickTitle: string): Promise<{ status: string }> {
+    return request(
+      `/daily-reports/pick-marks?report_date=${encodeURIComponent(reportDate)}&pick_title=${encodeURIComponent(pickTitle)}`,
+      { method: 'DELETE' },
+    );
+  },
+
   /** 获取有日报的日期列表 */
   listDates(): Promise<{ dates: Array<{ report_date: string; weekday: string; takeaway: string | null; status: string }> }> {
     return request('/daily-reports/dates');

@@ -32,60 +32,89 @@ VALID_EDITIONS = {"snapshot", "noon", "evening", "final", "manual", "legacy"}
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GENERATING_STALE_AFTER = timedelta(minutes=10)
 
-REPORT_PROMPT = """你是一位资深内容策划顾问。请根据以下「精选内容」和「全天候选背景」，生成一份面向创作者的日报。
+SYSTEM_PROMPT = """你是 TopicEye 的资深内容主编，为内容创作者编写每日 AI 选题日报。读者是公众号、小红书、视频号的创作者，他们需要"今天写什么、怎么写、为什么值得写"。
 
-## 日报窗口
+## 编辑立场
+- 你是"行业观察者"，不是"预言家"。可以有点评和取舍，但不做"必将/彻底改变/颠覆/革命性"这类无证据的因果断言。
+- 标题要带编辑判断，允许使用立场动词（别再用/重构/重新审视/重新定义/重新思考），但必须锚定原文中的核心实体或数字，不得凭空拔高。
+- 任何 lifecycle 或趋势判断，必须有至少 2 条素材支撑；只有单一信号时，不要下"见顶/退潮"的强判断，在 pitfall 里注明"单一信号，待观察"。
+
+## 防幻觉硬规则
+- top_picks 只能从「精选内容」中选。source_idx 必须是精选内容列表里真实存在的序号；source_title 必须逐字复制该序号对应素材的标题原文，不得改写。
+- editorial_title 是展示用的观点化标题，可以改写，但必须包含原文中的核心实体或关键数字，让读者能对应回原文。
+- source_url 字段留空字符串即可，系统会根据 source_idx 自动填入正确链接，你不要自己写 URL。
+- overview / reason / angles 中的每个事实，必须能在精选内容或候选背景中找到依据；找不到依据的字段填 null，禁止编造。
+- 素材里没有的信息，一律不输出。所有文本用中文，不要输出英文。
+
+## 输出格式
+- 只输出一个合法 JSON 对象。不要 markdown 代码围栏，不要任何解释文字。
+- 如果精选内容不足 6 条，就少输出 top_picks，不要从候选背景里硬凑。"""
+
+
+REPORT_PROMPT = """## 日报窗口
 - 日期：{date}（{weekday}）
 - 版本：{edition_label}
 - 统计窗口：{window_start} ~ {window_end}
 
-## 精选内容（用于 top_picks，只能从这里选）
+## 精选内容（top_picks 只能从这里选，序号即 source_idx）
 {curated_items_text}
 
-## 今日候选背景（用于 overview / trends / keywords，不要直接作为 top_picks）
+## 候选背景（仅用于判断 overview / trends / keywords 的方向，不能作为 top_picks）
 {background_items_text}
 
-## 请严格按以下 JSON 格式输出：
+## 输出 JSON 结构（严格按此输出，只输出 JSON）
 {{
-  "overview": "一段200字以内的今日热点概述，用轻松专业的口吻，点出今日最值得关注的方向",
-  "takeaway": "一句话核心要点，适合作为日报标题/推送文案",
+  "overview": "今日主题段。第一句必须是论点判断，用'当……时，……首先要解决的不是……，而是……'的结构，说明今天这些内容共同指向一个什么判断；第二句用'从 X、Y 切入，分别看 A、B 怎样变化'，把精讲选题映射到抽象维度。禁止用'今天有N篇报道'开头，禁止只罗列关键词。120字以内。",
+  "takeaway": "一句话核心要点，适合做推送标题，20字内",
   "keywords": ["关键词1", "关键词2", "关键词3", "关键词4", "关键词5"],
   "trends": [
     {{"title": "趋势标题", "desc": "趋势描述（30字内）", "color": "#3B82F6", "momentum": "up"}}
   ],
   "top_picks": [
     {{
-      "title": "选题标题",
+      "source_idx": 1,
+      "source_title": "逐字复制精选内容中序号1的标题原文",
+      "editorial_title": "观点化展示标题：立场动词+原文核心实体，如'别再用X评估模型：用Y重构基准测试'",
+      "tier": "feature",
       "category": "模型发布",
-      "reason": "中文摘要式推荐理由（40字内，概括核心信息+为什么值得写）",
-      "source_url": "原文链接URL",
-      "score": 85,
-      "platforms": ["公众号", "小红书"],
-      "angles": ["具体创作角度1（15字内）", "具体创作角度2（15字内）"],
-      "pitfall": "避坑提示（20字内，指出时效/争议/信息不足等风险）",
+      "reason": "中文摘要式推荐理由，两段式：先概括这条内容讲了什么，再说明为什么值得写。feature 60字内，brief 40字内",
+      "angles": ["具体可操作的创作角度，15字内"],
+      "pitfall": "避坑提示（时效/争议/信息不足），无依据时填 null",
       "lifecycle": "上升期",
-      "time_window": "建议48h内发布"
+      "time_window": "发布时间建议，如'建议48h内发布'",
+      "platforms": ["公众号", "小红书"],
+      "source_url": ""
+    }},
+    {{
+      "source_idx": 5,
+      "source_title": "逐字复制精选内容中序号5的标题原文",
+      "editorial_title": "速览标题：一句话事实+价值点",
+      "tier": "brief",
+      "category": "产品更新",
+      "reason": "一句话说明为什么值得扫一眼，40字内",
+      "platforms": ["公众号"],
+      "source_url": ""
     }}
   ],
   "platform_tips": {{
-    "公众号": ["tip1"],
-    "小红书": ["tip1"],
-    "视频号": ["tip1"]
+    "公众号": ["今日面向公众号的创作建议"],
+    "小红书": ["今日面向小红书的创作建议"],
+    "视频号": ["今日面向视频号的创作建议"]
   }}
 }}
 
-要求：
-- top_picks 从「精选内容」中选 3-5 个最值得写的选题，source_url 必须复制原始URL，不要编造
-- top_picks.category: 对选题分类，从"模型发布""产品更新""行业动态""技巧观点""科研论文""开源项目"中选最贴近的一个
-- top_picks.reason 必须是中文摘要式推荐理由：先概括这条内容讲了什么，再说明为什么值得写；不要输出英文、不要营销夸张词、不要只写"建议关注/可以写"
-- top_picks.angles: 1-2个差异化的创作角度，每个15字内，要具体可操作（如"MCP实操教程""Agent vs Workflow对比"）
-- top_picks.pitfall: 指出这个选题的风险或注意点（如"官方文档不全""争议性话题注意立场"）
-- top_picks.lifecycle: 从"上升期"/"见顶"/"退潮"三选一，判断话题热度阶段
-- top_picks.time_window: 发布时间建议（如"建议48h内发布""可周末发"）
-- trends.momentum: 从"up"/"down"/"stable"三选一
-- overview / trends / keywords 可以结合候选背景判断今天的整体方向
-- 如果精选内容较少，就少选，不要从候选背景中硬凑
-- 所有文本用中文
+## 选题分层规则（重要）
+- top_picks 共 6-9 条。其中 tier="feature" 2-3 条（深度精讲，必须给全 reason/angles/pitfall/lifecycle/time_window/platforms），tier="brief" 4-6 条（速览，只给 reason 和 platforms）。
+- feature 的选取依据是"是否落在 overview 论点上"，不是分数高低。每条 feature 要能对应到 overview 里提到的一个维度。如果一条分数很高但偏离今日主线，应放入 brief 而非 feature。
+- brief 是单项值得关注、但不需要展开创作角度的话题。
+
+## 写作规范
+- category 从"模型发布""产品更新""行业动态""技巧观点""科研论文""开源项目"中选最贴近的一个。
+- trends.momentum 从"up""down""stable"三选一，给出 2-3 个今日内容趋势。
+- editorial_title 不得直接照搬 source_title；必须有编辑增量（立场或角度）。但禁止使用感叹号堆叠和"震惊/必看/重磅"类词。
+- reason 必须是中文摘要式推荐理由：先概括这条内容讲了什么，再说明为什么值得写；不要输出英文、不要营销夸张词、不要只写"建议关注/可以写"。
+- overview 必须兼顾机会与风险，不能纯褒或纯贬。
+- 如果精选内容较少，就少选，不要从候选背景中硬凑。
 - 只输出 JSON，不要其他内容"""
 
 
@@ -236,17 +265,18 @@ def _format_items(items: list[dict], *, limit: int, selected: bool) -> str:
     lines: list[str] = []
     for idx, item in enumerate(items[:limit], 1):
         score = item.get("adjusted_score") if selected else item.get("curation_score")
+        # 序号即 source_idx，模型按序号回引；URL 不喂给模型（由后端按 idx 注入，避免改写）。
         lines.append(f"\n{idx}. [{item['category']}] {item['title']}")
         lines.append(
             "   "
-            f"来源: {item['source_name']} | URL: {item.get('url', '')} | "
+            f"来源: {item['source_name']} | "
             f"精选:{score:.1f} 创作:{item['creator_score']:.1f} "
             f"爆文:{item['viral_score']:.1f} 质量:{item['quality_score']:.1f} 风险:{item['risk_score']:.1f}"
         )
         if item.get("recommendation"):
-            lines.append(f"   推荐: {str(item['recommendation'])[:100]}")
+            lines.append(f"   推荐: {str(item['recommendation'])[:150]}")
         if item.get("summary"):
-            lines.append(f"   摘要: {str(item['summary'])[:120]}")
+            lines.append(f"   摘要: {str(item['summary'])[:200]}")
     return "\n".join(lines)
 
 
@@ -390,7 +420,9 @@ async def generate_daily_report(
         await db.commit()
         return report
 
-    curated_text = _format_items(curated_items, limit=50, selected=True)
+    # 截断一次：prompt 展示列表与下方匹配逻辑共用同一份，保证 source_idx 一致。
+    curated_for_prompt = curated_items[:50]
+    curated_text = _format_items(curated_for_prompt, limit=50, selected=True)
     background_text = _format_items(background_items, limit=80, selected=False)
 
     prompt = REPORT_PROMPT.format(
@@ -404,7 +436,15 @@ async def generate_daily_report(
     )
 
     try:
-        result = await call_llm_json([{"role": "user", "content": prompt}], scene="daily_report")
+        result = await call_llm_json(
+            [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            scene="daily_report",
+            temperature=0.4,
+            max_tokens=4000,
+        )
         overview = result.get("overview", "")
         if not overview or "raw_response" in result:
             fallback_items = curated_items or background_items
@@ -418,28 +458,36 @@ async def generate_daily_report(
 
         raw_picks = result.get("top_picks", [])
         picks = []
-        curated_by_title = {item["title"]: item for item in curated_items}
-        curated_by_url = {normalize_zhihu_url(item.get("url", "")): item for item in curated_items if item.get("url")}
+        # source_idx 主匹配（精确），source_title 子串兜底，URL 末位兜底。
+        curated_by_idx = {i + 1: item for i, item in enumerate(curated_for_prompt)}
+        curated_by_title = {item["title"]: item for item in curated_for_prompt}
+        curated_by_url = {
+            normalize_zhihu_url(item.get("url", "")): item for item in curated_for_prompt if item.get("url")
+        }
         curated_titles = set(curated_by_title)
         selected_source_ids: list[int] = []
         for pick in raw_picks:
-            if not curated_titles:
-                break
-            pick_title = pick.get("title", "")
-            pick_url = normalize_zhihu_url(pick.get("source_url", ""))
-            matched_title = next(
-                (title for title in curated_titles if pick_title and (pick_title in title or title in pick_title)),
-                None,
-            )
-            matched_item = curated_by_title.get(matched_title) if matched_title else curated_by_url.get(pick_url)
+            matched_item: dict | None = None
+            idx = pick.get("source_idx")
+            if isinstance(idx, int):
+                matched_item = curated_by_idx.get(idx)
+            if not matched_item:
+                source_title = pick.get("source_title", "")
+                matched_title = next(
+                    (t for t in curated_titles if source_title and (source_title in t or t in source_title)),
+                    None,
+                )
+                matched_item = curated_by_title.get(matched_title) if matched_title else None
+            if not matched_item:
+                pick_url_norm = normalize_zhihu_url(pick.get("source_url", ""))
+                matched_item = curated_by_url.get(pick_url_norm)
             if not matched_item:
                 continue
-            if pick_url:
-                pick["source_url"] = pick_url
-            if not pick_url or not pick_url.startswith("http"):
-                fallback_url = normalize_zhihu_url(matched_item.get("url", ""))
-                if fallback_url:
-                    pick["source_url"] = fallback_url
+            # 注入稳定字段：URL/title/score 由后端按匹配结果填，模型无需也不应改写。
+            pick["source_url"] = normalize_zhihu_url(matched_item.get("url", ""))
+            pick["source_title"] = pick.get("source_title") or matched_item["title"]
+            pick["title"] = pick.get("editorial_title") or matched_item["title"]
+            pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
             picks.append(pick)
             if matched_item["id"] not in selected_source_ids:
                 selected_source_ids.append(matched_item["id"])

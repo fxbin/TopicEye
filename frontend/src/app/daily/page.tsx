@@ -412,7 +412,11 @@ export default function DailyReportPage() {
   const topPicks = parseJson(report?.top_picks);
   const platformTips = parseJson(report?.platform_tips);
 
-  const todayStr = localDateString();
+  // todayStr 用 state 延迟到客户端渲染后计算，避免 SSR/CSR 跨天日期不一致导致 hydration mismatch。
+  const [todayStr, setTodayStr] = useState('');
+  useEffect(() => {
+    setTodayStr(localDateString());
+  }, []);
   const isToday = report?.report_date === todayStr;
   const generatedAt = formatDateTime(report?.generated_at || report?.updated_at);
   const keywordList = Array.isArray(keywords) ? keywords as string[] : [];

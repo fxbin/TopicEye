@@ -63,6 +63,10 @@ interface DailyReportData {
     lifecycle?: string;
     time_window?: string;
     category?: string;
+    source_idx?: number;
+    source_title?: string;
+    editorial_title?: string;
+    tier?: 'feature' | 'brief';
   }> | null;
   platform_tips: Record<string, string[]> | null;
   topic_count: number;
@@ -145,6 +149,23 @@ function parseJson(val: unknown) {
     }
   }
   return val;
+}
+
+/**
+ * 选题稳定键：优先 source_title（原文标题，跨版本稳定），无则回退 title。
+ * 用于 sparkline 关键词查询、PickMark 标记 —— 这两处依赖标题，观点化标题每次生成都变会导致标记/趋势丢失。
+ */
+function pickKey(pick: { source_title?: string; title?: string }): string {
+  return pick.source_title || pick.title || '';
+}
+
+type MarkAction = 'write' | 'watch' | 'skip';
+function marksMapFromResp(marks: Array<{ pick_title: string; action: string }>): Record<string, MarkAction> {
+  const map: Record<string, MarkAction> = {};
+  for (const m of marks) {
+    map[m.pick_title] = m.action as MarkAction;
+  }
+  return map;
 }
 
 function StatBox({ label, value, tone = 'neutral' }: { label: string; value: React.ReactNode; tone?: 'primary' | 'red' | 'neutral' }) {
@@ -231,36 +252,32 @@ export default function DailyReportPage() {
       setSelectedDate(data.report_date);
 
       // 加载用户已标记的选题（恢复操作状态，刷新不丢失）
+      // 标记键优先用 source_title（稳定）；历史日报无该字段时回退 title。
       try {
         const marksResp = await dailyReportApi.listPickMarks(data.report_date);
-        const marksMap: Record<string, 'write' | 'watch' | 'skip'> = {};
-        for (const m of marksResp.marks) {
-          marksMap[m.pick_title] = m.action;
-        }
-        setPickMarks(marksMap);
+        setPickMarks(marksMapFromResp(marksResp.marks));
       } catch {
         // 静默失败（游客无 token 等），标记功能不可用不影响阅读
       }
 
       // 异步批量预加载所有选题的 sparkline 趋势（不阻塞主 UI）
-      const topPicks = parseJson(data.top_picks) as Array<{ title: string }> | null;
+      // sparkline 关键词从 source_title 提取（原文标题信号更纯）；无则回退 title。
+      const topPicks = parseJson(data.top_picks) as Array<{ title: string; source_title?: string }> | null;
       if (topPicks && topPicks.length > 0) {
-        // 标记为 loading（点为灰），让用户先看到占位再等数据
         const initial: Record<string, SparklineData> = {};
         for (const pick of topPicks) {
-          if (pick.title) {
-            initial[pick.title] = { points: [], keywords: [], total: 0, window_hours: 48 };
-          }
+          const key = pick.source_title || pick.title;
+          if (key) initial[key] = { points: [], keywords: [], total: 0, window_hours: 48 };
         }
         setSparklines(initial);
-        // 并发预加载
         await Promise.all(
           topPicks
-            .filter((p) => p.title)
-            .map(async (pick) => {
+            .map((pick) => pick.source_title || pick.title)
+            .filter(Boolean)
+            .map(async (key) => {
               try {
-                const sp = await dailyReportApi.sparkline(pick.title, 48, 2);
-                setSparklines((prev) => ({ ...prev, [pick.title]: sp }));
+                const sp = await dailyReportApi.sparkline(key, 48, 2);
+                setSparklines((prev) => ({ ...prev, [key]: sp }));
               } catch {
                 // 静默失败：保持空点（组件会显示 "no data"）
               }
@@ -405,6 +422,8 @@ export default function DailyReportPage() {
       title: string; reason: string; score?: number; platforms?: string[];
       source_url?: string; angles?: string[]; pitfall?: string;
       lifecycle?: string; time_window?: string; category?: string;
+      source_idx?: number; source_title?: string; editorial_title?: string;
+      tier?: 'feature' | 'brief';
     }>
     : [];
   const platformTipEntries = platformTips && typeof platformTips === 'object'
@@ -433,20 +452,37 @@ export default function DailyReportPage() {
     '科研论文': 'Research',
     '开源项目': 'Open Source',
   };
-  const groupedPicks = useMemo(() => {
+  // 按 tier 分区，区内再按 category 分组。feature 优先展示（深度精讲），brief 次之（速览）。
+  // 兼容历史数据：无 tier 字段视为 feature。
+  const featureGroups = useMemo(() => {
     const groups: Record<string, typeof pickList> = {};
     for (const pick of pickList) {
+      if (pick.tier && pick.tier !== 'feature') continue;
       const cat = pick.category || '精选选题';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(pick);
     }
-    // 按 CATEGORY_ORDER 排序分组，未知分类排最后
     return Object.entries(groups).sort(([a], [b]) => {
       const ia = CATEGORY_ORDER.indexOf(a);
       const ib = CATEGORY_ORDER.indexOf(b);
       return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
   }, [pickList]);
+  const briefGroups = useMemo(() => {
+    const groups: Record<string, typeof pickList> = {};
+    for (const pick of pickList) {
+      if (pick.tier !== 'brief') continue;
+      const cat = pick.category || '精选选题';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(pick);
+    }
+    return Object.entries(groups).sort(([a], [b]) => {
+      const ia = CATEGORY_ORDER.indexOf(a);
+      const ib = CATEGORY_ORDER.indexOf(b);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+  }, [pickList]);
+  const hasBrief = briefGroups.length > 0;
   const readMinutes = Math.max(1, Math.ceil(pickList.length * 0.8));
 
   return (
@@ -586,12 +622,12 @@ export default function DailyReportPage() {
                 </div>
               </div>
 
-              {/* 今日看点 TOC（可点击跳转） */}
-              {groupedPicks.length > 1 && (
+              {/* 今日看点 TOC（可点击跳转，仅深度精讲） */}
+              {featureGroups.length > 1 && (
                 <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
                   <div className="mb-2 text-[11px] font-black text-gray-400">今日看点</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                    {groupedPicks.map(([cat, picks]) => (
+                    {featureGroups.map(([cat, picks]) => (
                       <a
                         key={`toc-${cat}`}
                         href={`#cat-${cat}`}
@@ -605,12 +641,13 @@ export default function DailyReportPage() {
                 </div>
               )}
 
-              {/* 选题按分类分组展示 */}
-              <div className="space-y-4">
-                {groupedPicks.map(([cat, picks], groupIdx) => (
-                  <div key={`group-${cat}`} id={`cat-${cat}`}>
-                    {/* 分组标题 */}
-                    <div className="mb-2 flex items-center gap-2 px-1">
+              {/* 深度精讲（feature：全字段卡片） */}
+              {featureGroups.length > 0 && (
+                <div className="space-y-4">
+                  {featureGroups.map(([cat, picks], groupIdx) => (
+                    <div key={`group-${cat}`} id={`cat-${cat}`}>
+                      {/* 分组标题 */}
+                      <div className="mb-2 flex items-center gap-2 px-1">
                       <span className="font-mono text-lg font-black text-primary">
                         {String(groupIdx + 1).padStart(2, '0')}
                       </span>
@@ -627,6 +664,7 @@ export default function DailyReportPage() {
                         const globalIdx = pickList.indexOf(pick);
                         const isExpanded = expandedPick === globalIdx;
                         const lc = pick.lifecycle ? LIFECYCLE_META[pick.lifecycle] || LIFECYCLE_META['上升期'] : null;
+                        const key = pickKey(pick);
                         return (
                           <div
                             key={`pick-${cat}-${j}`}
@@ -668,6 +706,10 @@ export default function DailyReportPage() {
                                     </a>
                                   )}
                                 </div>
+                                {/* 原文标题（对照锚点，editorial_title 改写后让读者回溯原文） */}
+                                {pick.source_title && pick.source_title !== pick.title && (
+                                  <div className="mt-0.5 truncate text-[11px] text-gray-400">原文：{pick.source_title}</div>
+                                )}
                                 {/* 元数据行：lifecycle + 平台 + 时窗（不挤 sparkline） */}
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                   {lc && (
@@ -687,8 +729,8 @@ export default function DailyReportPage() {
                                 {/* 24h 内容热度趋势 sparkline 独立一行（"内容热度"非"流量热度"） */}
                                 <div className="mt-1.5 flex justify-end">
                                   <Sparkline
-                                    data={sparklines[pick.title]}
-                                    loading={!sparklines[pick.title]?.points}
+                                    data={sparklines[key]}
+                                    loading={!sparklines[key]?.points}
                                   />
                                 </div>
                               </div>
@@ -739,10 +781,10 @@ export default function DailyReportPage() {
                                   </a>
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'write', pick.category, pick.source_url); }}
+                                    onClick={(e) => { e.stopPropagation(); handleMark(key, 'write', pick.category, pick.source_url); }}
                                     className={cx(
                                       'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
-                                      pickMarks[pick.title] === 'write'
+                                      pickMarks[key] === 'write'
                                         ? 'border-primary bg-primary-light text-primary'
                                         : 'border-gray-200 text-gray-500 hover:text-gray-700',
                                     )}
@@ -751,10 +793,10 @@ export default function DailyReportPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'watch', pick.category, pick.source_url); }}
+                                    onClick={(e) => { e.stopPropagation(); handleMark(key, 'watch', pick.category, pick.source_url); }}
                                     className={cx(
                                       'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
-                                      pickMarks[pick.title] === 'watch'
+                                      pickMarks[key] === 'watch'
                                         ? 'border-amber bg-amber-light text-amber'
                                         : 'border-gray-200 text-gray-500 hover:text-gray-700',
                                     )}
@@ -763,10 +805,10 @@ export default function DailyReportPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleMark(pick.title, 'skip', pick.category, pick.source_url); }}
+                                    onClick={(e) => { e.stopPropagation(); handleMark(key, 'skip', pick.category, pick.source_url); }}
                                     className={cx(
                                       'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
-                                      pickMarks[pick.title] === 'skip'
+                                      pickMarks[key] === 'skip'
                                         ? 'border-gray-400 bg-gray-100 text-gray-500'
                                         : 'border-gray-200 text-gray-400 hover:text-gray-600',
                                     )}
@@ -781,8 +823,114 @@ export default function DailyReportPage() {
                       })}
                     </div>
                   </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+              {hasBrief && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="font-mono text-lg font-black text-gray-400">→</span>
+                    <h2 className="text-sm font-black text-gray-700">速览</h2>
+                    <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                      {briefGroups.reduce((n, [, ps]) => n + ps.length, 0)} 篇
+                    </span>
+                  </div>
+                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white shadow-sm">
+                    {briefGroups.map(([cat, picks]) => (
+                      picks.map((pick, j) => {
+                        const globalIdx = pickList.indexOf(pick);
+                        const isExpanded = expandedPick === globalIdx;
+                        const key = pickKey(pick);
+                        return (
+                          <div key={`brief-${cat}-${j}`}>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPick(isExpanded ? null : globalIdx)}
+                              className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left sm:px-4"
+                            >
+                              <span className="mt-0.5 shrink-0 font-mono text-[11px] font-bold text-gray-300">{String(globalIdx + 1).padStart(2, '0')}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start gap-2">
+                                  <h3 className="min-w-0 flex-1 break-words text-[13px] font-bold leading-5 text-gray-800">{pick.title}</h3>
+                                  {pick.source_url && (
+                                    <a
+                                      href={pick.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                                      title="查看原文"
+                                    >
+                                      <ExternalLink size={13} />
+                                    </a>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-gray-500">{pick.reason}</div>
+                                {(pick.platforms ?? []).length > 0 && (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                                    {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
+                                      <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-400">{p}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className={cx('mt-0.5 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
+                                <ChevronRight size={14} />
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 sm:px-4">
+                                <a
+                                  href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+                                  className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:opacity-90"
+                                >
+                                  <FileText size={12} /> 写这个
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleMark(key, 'write', pick.category, pick.source_url); }}
+                                  className={cx(
+                                    'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+                                    pickMarks[key] === 'write'
+                                      ? 'border-primary bg-primary-light text-primary'
+                                      : 'border-gray-200 text-gray-500 hover:text-gray-700',
+                                  )}
+                                >
+                                  <CheckCircle2 size={12} /> 已选
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleMark(key, 'watch', pick.category, pick.source_url); }}
+                                  className={cx(
+                                    'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+                                    pickMarks[key] === 'watch'
+                                      ? 'border-amber bg-amber-light text-amber'
+                                      : 'border-gray-200 text-gray-500 hover:text-gray-700',
+                                  )}
+                                >
+                                  <Inbox size={12} /> 观察
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleMark(key, 'skip', pick.category, pick.source_url); }}
+                                  className={cx(
+                                    'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+                                    pickMarks[key] === 'skip'
+                                      ? 'border-gray-400 bg-gray-100 text-gray-500'
+                                      : 'border-gray-200 text-gray-400 hover:text-gray-600',
+                                  )}
+                                >
+                                  跳过
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 背景层：趋势 + 关键词 + 平台建议 */}
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

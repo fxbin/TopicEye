@@ -126,6 +126,7 @@ interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends D
   getDigestEnd: (digest: TDigest) => string;
   getSummaryKey: (summary: TSummary) => string;
   getSummaryLabel: (summary: TSummary) => string;
+  onDigestChange?: (digest: TDigest | null) => void;
 }
 
 function DigestStat({
@@ -214,6 +215,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   getDigestEnd,
   getSummaryKey,
   getSummaryLabel,
+  onDigestChange,
 }: DigestReportPageProps<TDigest, TSummary>) {
   const [digest, setDigest] = useState<TDigest | null>(null);
   const [periods, setPeriods] = useState<TSummary[]>([]);
@@ -243,10 +245,12 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
       const data = periodKey ? await api.getByPeriod(periodKey) : await api.getCurrent();
       setDigest(data);
       setSelectedPeriod(getDigestKey(data));
+      onDigestChange?.(data);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg?.includes('404') || errMsg?.includes('not found')) {
         setDigest(null);
+        onDigestChange?.(null);
         setError(periodKey ? `${periodKey} 暂无${periodName}` : `暂无${periodName}数据`);
       } else {
         setError(errMsg || '加载失败');

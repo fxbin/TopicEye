@@ -1,13 +1,19 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { ClipboardList } from 'lucide-react';
 import DigestReportPage from '@/components/DigestReportPage';
 import DailyWeeklyMonthlyTabs from '@/components/DailyWeeklyMonthlyTabs';
+import WeeklyPickTracking from '@/components/WeeklyPickTracking';
 import { weeklyDigestApi } from '@/lib/api';
 import type { WeeklyDigest, WeeklyDigestWeekSummary } from '@/types';
 
 export default function WeeklyDigestPage() {
+  const [currentWeekKey, setCurrentWeekKey] = useState<string | undefined>();
+  const handleDigestChange = useCallback((digest: WeeklyDigest | null) => {
+    setCurrentWeekKey(digest?.week_key);
+  }, []);
+
   return (
     <>
       <DailyWeeklyMonthlyTabs current="weekly" />
@@ -42,7 +48,9 @@ export default function WeeklyDigestPage() {
           getDigestEnd={(digest) => digest.week_end}
           getSummaryKey={(summary) => summary.week_key}
           getSummaryLabel={(summary) => summary.week_label}
+          onDigestChange={handleDigestChange}
         />
+        <WeeklyPickTracking weekKey={currentWeekKey} />
       </div>
     </>
   );

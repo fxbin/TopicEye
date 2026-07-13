@@ -4,15 +4,17 @@ Weekly Digest API endpoints.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
+from app.models.daily_report import DailyReport
+from app.models.pick_mark import PickMark
 from app.models.weekly_digest import WeeklyDigest
 from app.repositories.weekly_digest_repo import WeeklyDigestRepository
 from app.schemas.weekly_digest import (
@@ -21,6 +23,7 @@ from app.schemas.weekly_digest import (
     WeeklyDigestWeeksResponse,
 )
 from app.services.weekly_digest import generate_weekly_digest
+from app.models.user import User
 
 router = APIRouter(prefix="/weekly-digests", tags=["weekly-digests"], dependencies=[Depends(get_current_user)])
 
@@ -107,3 +110,99 @@ async def trigger_generate(
 
     digest = await generate_weekly_digest(db, reference_date=reference_date)
     return digest
+
+
+@router.get("/pick-tracking")
+async def get_pick_tracking(
+    week_key: str = Query(..., description="Week key YYYY-WNN"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """追踪用户在指定周的日报中标记的选题。
+
+    返回每个被标记的选题：
+    - 标记类型（write/watch/skip）
+    - 标记日期
+    - 该选题在本周出现在几天日报的 top_picks 里（连续在榜天数）
+
+    这是周报「金字塔压缩」的独特价值——日报看不到跨日趋势，
+    周报能看到选题的持续性和变化。
+    """
+    import json as _json
+
+    # 解析 week_key 得到日期范围
+    try:
+        parts = week_key.split("-W")
+        year = int(parts[0])
+        week_num = int(parts[1])
+        monday = date.fromisocalendar(year, week_num, 1)
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail=f"Invalid week_key: {week_key}")
+    sunday = monday + timedelta(days=6)
+
+    # 1. 查用户本周的所有标记
+    marks_result = await db.execute(
+        select(PickMark).where(
+            PickMark.user_id == user.id,
+            PickMark.report_date >= monday,
+            PickMark.report_date <= sunday,
+        ).order_by(PickMark.report_date)
+    )
+    marks = marks_result.scalars().all()
+    if not marks:
+        return {"marks": [], "total": 0, "week_key": week_key, "week_range": f"{monday.isoformat()} ~ {sunday.isoformat()}"}
+
+    # 2. 查本周所有日报的 top_picks（统计每个标记选题出现在几天的榜单里）
+    reports_result = await db.execute(
+        select(DailyReport).where(
+            DailyReport.report_date >= monday.isoformat(),
+            DailyReport.report_date <= sunday.isoformat(),
+            DailyReport.status == "DONE",
+        ).order_by(DailyReport.report_date)
+    )
+    reports = reports_result.scalars().all()
+
+    # 构建 标题 → 出现日期集合
+    title_to_dates: dict[str, list[str]] = {}
+    for report in reports:
+        try:
+            picks = _json.loads(report.top_picks or "[]")
+            for pick in picks:
+                title = pick.get("title", "").strip()
+                if title:
+                    title_to_dates.setdefault(title, []).append(report.report_date)
+        except (_json.JSONDecodeError, TypeError):
+            continue
+
+    # 3. 组装结果
+    result_marks = []
+    for mark in marks:
+        title = mark.pick_title.strip()
+        appearances = title_to_dates.get(title, [])
+
+        # 模糊匹配（标记标题可能是日报 pick 标题的子串）
+        if not appearances:
+            for rpt_title, dates in title_to_dates.items():
+                if title in rpt_title or rpt_title in title:
+                    appearances = dates
+                    break
+
+        result_marks.append({
+            "pick_title": mark.pick_title,
+            "action": mark.action,
+            "mark_date": str(mark.report_date),
+            "pick_category": mark.pick_category,
+            "appearances_in_week": len(appearances),
+            "appearance_dates": appearances,
+            "pick_source_url": mark.pick_source_url,
+        })
+
+    # 按 appearances 降序排（最持续的排前面）
+    result_marks.sort(key=lambda x: x["appearances_in_week"], reverse=True)
+
+    return {
+        "marks": result_marks,
+        "total": len(result_marks),
+        "week_key": week_key,
+        "week_range": f"{monday.isoformat()} ~ {sunday.isoformat()}",
+    }

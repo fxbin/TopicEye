@@ -34,6 +34,24 @@ export const weeklyDigestApi = {
     const query = weekKey ? `?week_key=${encodeURIComponent(weekKey)}` : '';
     return request(`/weekly-digests/generate${query}`, { method: 'POST' });
   },
+
+  /** 获取用户在指定周的选题标记追踪（引用日报标记） */
+  pickTracking(weekKey: string): Promise<{
+    marks: Array<{
+      pick_title: string;
+      action: 'write' | 'watch' | 'skip';
+      mark_date: string;
+      pick_category: string | null;
+      appearances_in_week: number;
+      appearance_dates: string[];
+      pick_source_url: string | null;
+    }>;
+    total: number;
+    week_key: string;
+    week_range: string;
+  }> {
+    return request(`/weekly-digests/pick-tracking?week_key=${encodeURIComponent(weekKey)}`);
+  },
 };
 
 // ─── Monthly Digest (月刊) API ───

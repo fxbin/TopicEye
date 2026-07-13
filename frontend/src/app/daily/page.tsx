@@ -303,14 +303,38 @@ export default function DailyReportPage() {
       setGeneratingDate(date);
       setError(null);
       const today = localDateString();
-      const data = await dailyReportApi.generateVersion({
+      // POST 返回 202（后台异步生成），不再等 LLM 完成
+      await dailyReportApi.generateVersion({
         target_date: date,
         edition: date < today ? 'final' : 'manual',
         force: true,
       });
-      setReport(data as unknown as DailyReportData);
-      setSelectedDate((data as unknown as DailyReportData).report_date || date);
-      await refreshReportIndexes();
+      // 轮询直到 DONE（最多 120 秒）
+      const maxAttempts = 24;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 5000)); // 每 5 秒轮询
+        try {
+          const data = date < today
+            ? await dailyReportApi.getByDate(date)
+            : await dailyReportApi.getToday();
+          const reportData = data as unknown as DailyReportData;
+          if (reportData.status === 'DONE' || reportData.status === 'ERROR') {
+            setReport(reportData);
+            setSelectedDate(reportData.report_date || date);
+            if (reportData.status === 'ERROR') {
+              setError(reportData.overview || '生成失败');
+            }
+            await refreshReportIndexes();
+            return;
+          }
+          // 还在 GENERATING，继续等
+          setReport(reportData);
+        } catch {
+          // 轮询失败，继续重试
+        }
+      }
+      // 超时
+      setError('生成超时，请稍后刷新查看');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失败');
     } finally {

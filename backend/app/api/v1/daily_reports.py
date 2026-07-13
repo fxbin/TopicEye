@@ -4,6 +4,7 @@ Daily Report API endpoints.
 
 from __future__ import annotations
 
+import logging
 from typing import Tuple, Optional
 
 from datetime import date as date_cls, datetime, timedelta
@@ -13,7 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
-from app.core.database import get_db
+from app.core.database import get_db, async_session
 from app.models.content import ContentItem
 from app.models.daily_report import DailyReport
 from app.models.user import User
@@ -26,6 +27,8 @@ from app.schemas.daily_report import (
 )
 from app.services.daily_report import LOCAL_TZ, WEEKDAYS, generate_daily_report, get_latest_today_report
 from app.services.plan_catalog import plan_allows_private_source
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/daily-reports", tags=["daily-reports"], dependencies=[Depends(get_current_user)])
 
@@ -219,7 +222,7 @@ async def trigger_generate(db: AsyncSession = Depends(get_db)):
     return report
 
 
-@router.post("/generate-version", response_model=DailyReportResponse)
+@router.post("/generate-version")
 async def trigger_generate_version(
     target_date: str | None = Query(None, description="Target date in YYYY-MM-DD, defaults to today"),
     edition: str | None = Query(None, description="snapshot/noon/evening/final/manual"),
@@ -227,17 +230,98 @@ async def trigger_generate_version(
     force: bool = Query(True, description="Regenerate even if this exact version exists"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate a specific daily report version/window."""
-    parsed_date = date_cls.fromisoformat(target_date) if target_date else None
+    """Generate a specific daily report version/window (async).
+
+    日报生成调 LLM 耗时 30-60 秒，超过 Next.js 代理默认超时。
+    改为异步：先创建/标记 GENERATING 记录立即返回 202，
+    后台 task 完成后前端通过轮询 /today 拿最终结果。
+    """
+    import asyncio
+    from app.services.daily_report import _local_today, _day_window, _local_window_to_utc_naive
+
+    parsed_date = date_cls.fromisoformat(target_date) if target_date else _local_today()
     parsed_cutoff = datetime.fromisoformat(cutoff_at) if cutoff_at else None
-    report = await generate_daily_report(
-        db,
-        target_date=parsed_date,
-        edition=edition,
-        cutoff_at=parsed_cutoff,
-        force=force,
+    normalized_edition = edition or "manual"
+
+    # 快速创建 GENERATING 占位记录（如果还没有）
+    from app.services.daily_report import VALID_EDITIONS
+    if normalized_edition not in VALID_EDITIONS:
+        normalized_edition = "manual"
+
+    window_start, window_end = _day_window(parsed_date, parsed_cutoff, normalized_edition)
+    utc_start, utc_end = _local_window_to_utc_naive(window_start, window_end)
+
+    # 查是否已有记录
+    existing = await db.execute(
+        select(DailyReport).where(
+            DailyReport.report_date == parsed_date.isoformat(),
+            DailyReport.edition == normalized_edition,
+        )
     )
-    return report
+    report = existing.scalar_one_or_none()
+
+    if report and report.status == "DONE" and not force:
+        return report
+
+    if report:
+        report.status = "GENERATING"
+        report.updated_at = datetime.now(LOCAL_TZ)
+    else:
+        report = DailyReport(
+            report_date=parsed_date.isoformat(),
+            weekday=WEEKDAYS[parsed_date.weekday()],
+            edition=normalized_edition,
+            window_start=utc_start,
+            window_end=utc_end,
+            cutoff_at=parsed_cutoff,
+            status="GENERATING",
+            overview="正在生成日报...",
+        )
+        db.add(report)
+
+    await db.commit()
+    report_id = report.id
+    report_date_iso = parsed_date.isoformat()
+
+    # 后台异步生成（独立 DB session，不阻塞当前请求）
+    async def _bg_generate():
+        async with async_session() as bg_db:
+            try:
+                await generate_daily_report(
+                    bg_db,
+                    target_date=parsed_date,
+                    edition=normalized_edition,
+                    cutoff_at=parsed_cutoff,
+                    force=True,
+                )
+            except Exception as e:
+                logger.error("Background daily report generation failed: %s", e)
+                # 标记失败
+                try:
+                    fail_result = await bg_db.execute(
+                        select(DailyReport).where(DailyReport.id == report_id)
+                    )
+                    fail_report = fail_result.scalar_one_or_none()
+                    if fail_report:
+                        fail_report.status = "ERROR"
+                        fail_report.overview = f"生成失败: {str(e)[:200]}"
+                        await bg_db.commit()
+                except Exception:
+                    pass
+
+    asyncio.create_task(_bg_generate())
+
+    # 返回 GENERATING 状态（HTTP 202 Accepted）
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={
+            "id": report_id,
+            "report_date": report_date_iso,
+            "status": "GENERATING",
+            "message": "日报正在后台生成，请稍后刷新查看",
+        },
+    )
 
 
 def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:

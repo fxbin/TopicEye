@@ -26,7 +26,7 @@ from app.services.json_cache import get_cached_json, set_cached_json
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
 ANALYTICS_HEADERS = {"X-Analytics-Backend": "duckdb"}
-DEFAULT_STATS_DAYS = 7
+DEFAULT_STATS_DAYS = 30
 STATS_CACHE_KEYS = {
     "overview": "stats:overview:{days}",
     "source_distribution": "stats:source-distribution:{days}",
@@ -149,7 +149,7 @@ async def get_novel_platform_stats():
 
 
 @router.get("/dashboard")
-async def get_dashboard_stats(days: int = Query(7, ge=1, le=90)):
+async def get_dashboard_stats(days: int = Query(30, ge=1, le=90)):
     """Legacy dashboard stats: KPI cards + source breakdown + daily volume trend."""
     cache_key = _stats_cache_key("dashboard", days=days)
     cached = _cached_response(cache_key)

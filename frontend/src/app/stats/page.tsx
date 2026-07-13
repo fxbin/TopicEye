@@ -434,7 +434,7 @@ function KpiCard({
 // ── Main page ──────────────────────────────────────────────────
 
 export default function StatsPage() {
-  const [days, setDays] = useState(7);
+  const days = 30;
 
   const { data: dashboard, loading, error, refetch } = useFetch(
     () => statsApi.getDashboard(days),
@@ -470,16 +470,9 @@ export default function StatsPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {[7, 14, 30].map(d => (
-                <Button
-                  key={d}
-                  type="button"
-                  variant={days === d ? 'primary' : 'secondary'}
-                  onClick={() => setDays(d)}
-                >
-                  {d} 天
-                </Button>
-              ))}
+              <span className="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-500">
+                近 30 天
+              </span>
               <Button
                 type="button"
                 variant="secondary"

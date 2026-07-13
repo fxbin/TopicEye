@@ -3,16 +3,12 @@
 import React from 'react';
 import { CalendarDays } from 'lucide-react';
 import DigestReportPage from '@/components/DigestReportPage';
-import DailyWeeklyMonthlyTabs from '@/components/DailyWeeklyMonthlyTabs';
 import { monthlyDigestApi } from '@/lib/api';
 import type { MonthlyDigest, MonthlyDigestMonthSummary } from '@/types';
 
 export default function MonthlyDigestPage() {
   return (
-    <>
-      <DailyWeeklyMonthlyTabs current="monthly" />
-      <div className="flex-1 overflow-hidden">
-        <DigestReportPage<MonthlyDigest, MonthlyDigestMonthSummary>
+    <DigestReportPage<MonthlyDigest, MonthlyDigestMonthSummary>
       title="AI 月刊"
       badge="MONTHLY REVIEW"
       heroLabel="TOPIC RADAR MONTHLY"
@@ -42,8 +38,6 @@ export default function MonthlyDigestPage() {
       getDigestEnd={(digest) => digest.month_end}
       getSummaryKey={(summary) => summary.month_key}
       getSummaryLabel={(summary) => summary.month_label}
-      />
-      </div>
-    </>
+    />
   );
 }

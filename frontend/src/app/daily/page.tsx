@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
 import { dailyReportApi } from '@/lib/api';
-import DailyWeeklyMonthlyTabs from '@/components/DailyWeeklyMonthlyTabs';
 import Sparkline, { SparklineData } from '@/components/Sparkline';
 import {
   CurrentPeriodButton,
@@ -452,9 +451,6 @@ export default function DailyReportPage() {
 
   return (
     <div className="h-full w-full overflow-hidden">
-      {/* 顶栏：三报切换 */}
-      <DailyWeeklyMonthlyTabs current="daily" />
-
       {/* 工具栏：scope + 日期选择 */}
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-2">
         {/* scope 切换 */}
@@ -536,7 +532,7 @@ export default function DailyReportPage() {
       </div>
 
       {/* 主区域 */}
-      <div className="h-[calc(100%-80px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
+      <div className="h-[calc(100%-40px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
         <div className="mx-auto max-w-[920px] px-4 py-4 sm:px-6">
           {loading ? (
             <ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>

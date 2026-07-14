@@ -251,12 +251,16 @@ async def trigger_generate_version(
     window_start, window_end = _day_window(parsed_date, parsed_cutoff, normalized_edition)
     utc_start, utc_end = _local_window_to_utc_naive(window_start, window_end)
 
-    # 查是否已有记录
+    # 查是否已有记录（取最新一条，避免历史脏数据导致 MultipleResultsFound）
     existing = await db.execute(
-        select(DailyReport).where(
+        select(DailyReport)
+        .where(
             DailyReport.report_date == parsed_date.isoformat(),
             DailyReport.edition == normalized_edition,
+            DailyReport.owner_user_id.is_(None),
         )
+        .order_by(DailyReport.id.desc())
+        .limit(1)
     )
     report = existing.scalar_one_or_none()
 

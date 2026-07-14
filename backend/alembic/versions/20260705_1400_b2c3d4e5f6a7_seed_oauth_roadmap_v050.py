@@ -56,6 +56,15 @@ def _has_title(items: list[dict], title: str) -> bool:
     return any(it.get("title") == title for it in items)
 
 
+def _store_items(bind, row_id: int, items: list[dict]) -> None:
+    """Persist JSON with a timestamp expression supported by both OLTP backends."""
+    now_sql = "CURRENT_TIMESTAMP" if bind.dialect.name == "sqlite" else "NOW()"
+    bind.execute(
+        sa.text(f"UPDATE product_updates SET items = CAST(:items AS JSON), updated_at = {now_sql} WHERE id = :id"),
+        {"items": json.dumps(items, ensure_ascii=False), "id": row_id},
+    )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     row_id, items = _load_items(bind, _VERSION)
@@ -66,10 +75,7 @@ def upgrade() -> None:
         # 已存在，幂等返回
         return
     items.append(_OAUTH_ENTRY)
-    bind.execute(
-        sa.text("UPDATE product_updates SET items = CAST(:items AS JSON), updated_at = NOW() WHERE id = :id"),
-        {"items": json.dumps(items, ensure_ascii=False), "id": row_id},
-    )
+    _store_items(bind, row_id, items)
 
 
 def downgrade() -> None:
@@ -80,7 +86,4 @@ def downgrade() -> None:
     if not _has_title(items, _OAUTH_TITLE):
         return
     filtered = [it for it in items if it.get("title") != _OAUTH_TITLE]
-    bind.execute(
-        sa.text("UPDATE product_updates SET items = CAST(:items AS JSON), updated_at = NOW() WHERE id = :id"),
-        {"items": json.dumps(filtered, ensure_ascii=False), "id": row_id},
-    )
+    _store_items(bind, row_id, filtered)

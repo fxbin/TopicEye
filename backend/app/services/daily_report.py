@@ -32,11 +32,18 @@ VALID_EDITIONS = {"snapshot", "noon", "evening", "final", "manual", "legacy"}
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GENERATING_STALE_AFTER = timedelta(minutes=10)
 
+# 后端兜底校验常量（不信任 LLM 输出的枚举/字段约束）
+_VALID_LIFECYCLE = {"上升期", "见顶", "退潮"}
+_BRIEF_ALLOWED_FIELDS = {
+    "source_idx", "source_title", "editorial_title", "title",
+    "tier", "category", "reason", "platforms", "source_url", "score",
+}
+
 SYSTEM_PROMPT = """你是 TopicEye 的资深内容主编，为内容创作者编写每日 AI 选题日报。读者是公众号、小红书、视频号的创作者，他们需要"今天写什么、怎么写、为什么值得写"。
 
 ## 编辑立场
 - 你是"行业观察者"，不是"预言家"。可以有点评和取舍，但不做"必将/彻底改变/颠覆/革命性"这类无证据的因果断言。
-- 标题要带编辑判断，允许使用立场动词（别再用/重构/重新审视/重新定义/重新思考），但必须锚定原文中的核心实体或数字，不得凭空拔高。
+- 标题要带编辑判断，必须锚定原文中的核心实体或数字，不得凭空拔高。全篇不得有 2 条 editorial_title 使用相同句式开头。
 - 任何 lifecycle 或趋势判断，必须有至少 2 条素材支撑；只有单一信号时，不要下"见顶/退潮"的强判断，在 pitfall 里注明"单一信号，待观察"。
 
 ## 防幻觉硬规则
@@ -64,8 +71,8 @@ REPORT_PROMPT = """## 日报窗口
 
 ## 输出 JSON 结构（严格按此输出，只输出 JSON）
 {{
-  "overview": "今日主题段。第一句必须是论点判断，用'当……时，……首先要解决的不是……，而是……'的结构，说明今天这些内容共同指向一个什么判断；第二句用'从 X、Y 切入，分别看 A、B 怎样变化'，把精讲选题映射到抽象维度。禁止用'今天有N篇报道'开头，禁止只罗列关键词。120字以内。",
-  "takeaway": "一句话核心要点，适合做推送标题，20字内",
+  "overview": "今日主题段，150字内。第一句必须是行动指令，直接告诉创作者'今天最值得写什么'（必须含当天至少1个具体实体名或数字）；第二句给论点判断——从下列句式中选一个，不要每次都用同一个：(a)'当……时，首先要解决的不是……，而是……' (b)'这些信号合在一起，指向一个反直觉的结论：……' (c)'表面上看是……，真正的机会在……' (d)'……这件事，比看上去更值得做（或更危险），原因是……'；第三句用'从 X、Y 切入，分别看 A、B'把精讲选题映射到维度。禁止'今天有N篇报道'开头，禁止罗列关键词，必须兼顾机会与风险。",
+  "takeaway": "适合做推送标题的一句话，20字内，必须带一个冲突或一个数字，禁止'XX成新焦点''XX时代来了'这类万能句式",
   "keywords": ["关键词1", "关键词2", "关键词3", "关键词4", "关键词5"],
   "trends": [
     {{"title": "趋势标题", "desc": "趋势描述（30字内）", "color": "#3B82F6", "momentum": "up"}}
@@ -74,11 +81,11 @@ REPORT_PROMPT = """## 日报窗口
     {{
       "source_idx": 1,
       "source_title": "逐字复制精选内容中序号1的标题原文",
-      "editorial_title": "观点化展示标题：立场动词+原文核心实体，如'别再用X评估模型：用Y重构基准测试'",
+      "editorial_title": "观点化展示标题",
       "tier": "feature",
       "category": "模型发布",
-      "reason": "中文摘要式推荐理由，两段式：先概括这条内容讲了什么，再说明为什么值得写。feature 60字内，brief 40字内",
-      "angles": ["具体可操作的创作角度，15字内"],
+      "reason": "中文摘要式推荐理由，两段式：先概括这条内容讲了什么，再说明为什么值得写。feature 80字内，brief 40字内",
+      "angles": ["动宾短语，描述能做成什么内容，≤15字，禁问句"],
       "pitfall": "避坑提示（时效/争议/信息不足），无依据时填 null",
       "lifecycle": "上升期",
       "time_window": "发布时间建议，如'建议48h内发布'",
@@ -104,16 +111,33 @@ REPORT_PROMPT = """## 日报窗口
 }}
 
 ## 选题分层规则（重要）
-- top_picks 共 6-9 条。其中 tier="feature" 2-3 条（深度精讲，必须给全 reason/angles/pitfall/lifecycle/time_window/platforms），tier="brief" 4-6 条（速览，只给 reason 和 platforms）。
-- feature 的选取依据是"是否落在 overview 论点上"，不是分数高低。每条 feature 要能对应到 overview 里提到的一个维度。如果一条分数很高但偏离今日主线，应放入 brief 而非 feature。
-- brief 是单项值得关注、但不需要展开创作角度的话题。
+- top_picks 共 6-9 条。按"可写性"分层（不是按 overview 主线）：
+  - tier="feature" 2-3 条：精选分最高的、最有实操空间的选题。必须给全 reason/angles/pitfall/lifecycle/time_window/platforms。
+  - tier="brief" 4-6 条：其余值得关注但不展开的。允许字段仅 source_idx/source_title/editorial_title/tier/category/reason/platforms/source_url。禁止出现 lifecycle、time_window、angles、pitfall 字段（哪怕值为空或"?"也不行）。
+- 排序：feature 在前（精选分降序），brief 在后（精选分降序）。
 
-## 写作规范
+## angles 写作规范（核心）
+- angles 必须是名词短语或动宾短语，描述"能做成什么内容"，≤15字，禁止问句。
+- 正例：MCP实操教程 | 拆解Claude的token计费 | 测评5款开源Agent框架 | 用Coze复刻XX工作流 | 扒5个判例看巨头挖角史
+- 负例（禁止）：大厂能多霸道？ | AI真的能取代编辑吗？ | 你会用MCP吗？
+- 每条 feature 给 2-3 个 angles，切入主体要差异化（如换主角视角/换时间尺度/换输出形态各一）。
+
+## editorial_title 写作规范
+- 必须含原文核心实体（让读者能对应回原文），但与 source_title 的字面重合度 < 50%。
+- 从下列结构中选一个（全篇不得 2 条用相同结构）：
+  (a) "别再用 X 做 Y" + 立场（如：别再用BLEU评估中文模型）
+  (b) "X 的真正问题不是 A，是 B"
+  (c) "把 X 拆开看：A 比 B 更值得抄"
+  (d) "X 这一步，决定了 Y 的天花板"
+- 反例（太接近搬运，禁止）：source="Siri升级为系统核心，公测开启" → editorial="Siri升级背后：系统核心之争"
+- 正例：source 同上 → editorial="Siri想当系统大脑，得先过开发者信任这一关"
+- 禁止感叹号堆叠和"震惊/必看/重磅"类词。
+
+## 其他写作规范
 - category 从"模型发布""产品更新""行业动态""技巧观点""科研论文""开源项目"中选最贴近的一个。
 - trends.momentum 从"up""down""stable"三选一，给出 2-3 个今日内容趋势。
-- editorial_title 不得直接照搬 source_title；必须有编辑增量（立场或角度）。但禁止使用感叹号堆叠和"震惊/必看/重磅"类词。
+- lifecycle 仅限三选一："上升期" | "见顶" | "退潮"。不得输出"爆发期/萌芽期/成长期/衰退期/发酵期"等同义词。仅 feature 需要此字段。
 - reason 必须是中文摘要式推荐理由：先概括这条内容讲了什么，再说明为什么值得写；不要输出英文、不要营销夸张词、不要只写"建议关注/可以写"。
-- overview 必须兼顾机会与风险，不能纯褒或纯贬。
 - 如果精选内容较少，就少选，不要从候选背景中硬凑。
 - 只输出 JSON，不要其他内容"""
 
@@ -488,6 +512,21 @@ async def generate_daily_report(
             pick["source_title"] = pick.get("source_title") or matched_item["title"]
             pick["title"] = pick.get("editorial_title") or matched_item["title"]
             pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
+            # —— 后端兜底校验（不信任 LLM 输出的枚举/字段约束）——
+            tier = pick.get("tier") or "feature"
+            pick["tier"] = tier
+            if tier == "brief":
+                # brief 字段白名单：过滤掉 LLM 残留的 feature 专属字段
+                pick = {k: v for k, v in pick.items() if k in _BRIEF_ALLOWED_FIELDS}
+            else:
+                # feature：lifecycle 必须是合法枚举，越界值静默降级
+                lc = pick.get("lifecycle")
+                pick["lifecycle"] = lc if lc in _VALID_LIFECYCLE else "上升期"
+                # angles 过滤问句 + 限 3 条
+                angles = pick.get("angles") or []
+                pick["angles"] = [
+                    a for a in angles if isinstance(a, str) and not a.strip().endswith(("？", "?"))
+                ][:3]
             picks.append(pick)
             if matched_item["id"] not in selected_source_ids:
                 selected_source_ids.append(matched_item["id"])

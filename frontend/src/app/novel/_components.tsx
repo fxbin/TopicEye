@@ -125,7 +125,7 @@ export function MovementList({ title, items, tone }: { title: string; items: Web
 }
 
 export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysChange }: { report: WebnovelWeeklyReport | null; loading: boolean; onRefresh: () => void; days: number; onDaysChange: (d: number) => void }) {
-  const maxDaily = Math.max(...(report?.daily_counts.map((item) => item.count) || [1]), 1);
+  const maxDaily = Math.max(...(report?.daily_counts?.map((item) => item.count) || [1]), 1);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
       {loading ? (
@@ -162,7 +162,7 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
                     WEBNOVEL WEEKLY
                   </div>
                   <h2 className="m-0 text-[24px] font-black text-gray-900">网文周报</h2>
-                  <p className="mt-1 text-xs text-gray-500">{report.period.label} · 覆盖 {report.platforms.length} 个平台 · {report.summary.snapshot_days} 天历史快照</p>
+                  <p className="mt-1 text-xs text-gray-500">{report.period?.label || ''} · 覆盖 {report.platforms?.length || 0} 个平台 · {report.summary?.snapshot_days || 0} 天历史快照</p>
                 </div>
                 <Button type="button" variant="secondary" onClick={onRefresh}>
                   <RefreshCw size={15} />
@@ -171,13 +171,13 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
               </div>
             </div>
             <div className="grid grid-cols-2 gap-0 border-b border-gray-100 md:grid-cols-4">
-              <SummaryMetric label="榜单样本" value={report.summary.total_items} />
-              <SummaryMetric label="上升作品" value={report.summary.rising_count} tone="teal" />
-              <SummaryMetric label="下跌作品" value={report.summary.falling_count} tone="red" />
-              <SummaryMetric label="阅读增量" value={formatCount(report.summary.read_count_delta)} />
+              <SummaryMetric label="榜单样本" value={report.summary?.total_items || 0} />
+              <SummaryMetric label="上升作品" value={report.summary?.rising_count || 0} tone="teal" />
+              <SummaryMetric label="下跌作品" value={report.summary?.falling_count || 0} tone="red" />
+              <SummaryMetric label="阅读增量" value={formatCount(report.summary?.read_count_delta || 0)} />
             </div>
             <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
-              {report.platforms.map((platform) => (
+              {(report.platforms || []).map((platform) => (
                 <div key={platform.platform} className="rounded-sm border border-gray-100 bg-gray-50 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm font-black text-gray-900">{platform.label}</div>
@@ -195,8 +195,8 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <MovementList title="上升最快" items={report.top_risers} tone="up" />
-              <MovementList title="下跌明显" items={report.top_fallers} tone="down" />
+              <MovementList title="上升最快" items={report.top_risers || []} tone="up" />
+              <MovementList title="下跌明显" items={report.top_fallers || []} tone="down" />
             </div>
 
             <div className="flex flex-col gap-4">
@@ -206,9 +206,9 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
                   番茄快照覆盖
                 </div>
                 <div className="flex items-end gap-1.5">
-                  {report.daily_counts.length === 0 ? (
+                  {(report.daily_counts || []).length === 0 ? (
                     <div className="rounded-sm border border-gray-100 bg-gray-50 p-4 text-center text-xs text-gray-400">暂无历史快照</div>
-                  ) : report.daily_counts.map((item) => (
+                  ) : (report.daily_counts || []).map((item) => (
                     <div key={item.date} className="flex flex-1 flex-col items-center gap-1.5">
                       <div className="w-full rounded-t-xs bg-primary" style={{ height: `${Math.max(12, (item.count / maxDaily) * 86)}px` }} />
                       <span className="text-[10px] text-gray-400">{formatDate(item.date)}</span>
@@ -223,12 +223,12 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
                   分类热度
                 </div>
                 <div className="flex flex-col gap-3">
-                  {Object.entries(report.category_mix).map(([platform, items]) => (
+                  {Object.entries(report.category_mix || {}).map(([platform, items]) => (
                     <div key={platform}>
                       <div className="mb-1.5 text-[11px] font-black text-gray-400">{PLATFORM_META[platform as Platform]?.label || platform}</div>
                       <div className="flex flex-wrap gap-1.5">
-                        {items.slice(0, 6).map((item) => (
-                          <span key={`${platform}-${item.category}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-bold text-gray-600">
+                        {items.slice(0, 6).map((item, idx) => (
+                          <span key={`${platform}-${item.category}-${idx}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-bold text-gray-600">
                             {item.category} · {item.count}
                           </span>
                         ))}
@@ -241,7 +241,7 @@ export function WebnovelWeeklyPanel({ report, loading, onRefresh, days, onDaysCh
               <Panel className="p-4">
                 <div className="mb-2 text-[13px] font-black text-gray-800">数据说明</div>
                 <div className="space-y-2 text-xs leading-6 text-gray-500">
-                  {report.notes.map((note, index) => (
+                  {(report.notes || []).map((note, index) => (
                     <p key={index} className="m-0">{note}</p>
                   ))}
                 </div>

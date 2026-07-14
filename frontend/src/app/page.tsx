@@ -59,7 +59,7 @@ export default function HomePage() {
   const [activeRecommendLevel, setActiveRecommendLevel] = useState<RecommendLevel | '全部'>('全部');
   const [activeTag, setActiveTag] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTimeRange, setActiveTimeRange] = useState('48h');
+  const [activeTimeRange, setActiveTimeRange] = useState('24h');
   const [activeSourceType, setActiveSourceType] = useState('全部');
   const [selectedAnalysis, setSelectedAnalysis] = useState<ContentAnalysis | null>(null);
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);

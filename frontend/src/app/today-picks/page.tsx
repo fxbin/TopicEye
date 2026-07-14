@@ -49,7 +49,7 @@ const TIME_RANGES = [
   { value: '48h', label: '48h' },
   { value: '7d', label: '7d' },
 ] as const;
-const DEFAULT_TIME_RANGE = '48h';
+const DEFAULT_TIME_RANGE = '24h';
 
 function normalizeTimeRange(value: string | null) {
   return TIME_RANGES.some((range) => range.value === value) ? value! : DEFAULT_TIME_RANGE;

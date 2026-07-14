@@ -417,10 +417,10 @@ async def today_picks(
 
 @router.get("/today-count")
 async def today_count():
-    """返回滚动 48 小时的内容总数 + 当日精选数。
+    """返回滚动 24 小时的内容总数 + 当日精选数。
 
     用于侧边栏 badge 计数。口径与首页「今日选题」和「当日精选」页面一致:
-    - today_content: 滚动 48h 内 analyzed 且非重复的内容数 (同首页默认 48h)
+    - today_content: 滚动 24h 内 analyzed 且非重复的内容数 (同首页默认 24h)
     - today_picks: 当日精选数 (同 /contents/today-picks 的 total)
     """
     from datetime import timedelta
@@ -437,7 +437,7 @@ async def today_count():
         )
 
     result = {"today_content": 0, "today_picks": 0}
-    cutoff = datetime.now(UTC) - timedelta(hours=48)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     # 滚动 24h 内容数:与 /contents?hours=24 同口径
     try:
@@ -458,7 +458,7 @@ async def today_count():
         from app.services.today_picks import build_today_picks
 
         async with async_session() as db:
-            payload = await build_today_picks(db, category=None, hours=48)
+            payload = await build_today_picks(db, category=None, hours=24)
             result["today_picks"] = payload.get("total", 0)
     except Exception:
         logger.warning("today_count picks query failed", exc_info=True)

@@ -63,7 +63,7 @@ export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps)
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                 <div className="h-full rounded-full" style={{ width: `${s.value}%`, background: s.color }} />
               </div>
-              <span className="w-6 text-right text-xs font-semibold text-gray-700">{Math.round(s.value)}</span>
+              <span className="w-6 text-right text-xs font-semibold text-gray-700">{Math.round(s.value || 0)}</span>
             </div>
           ))}
         </div>
@@ -83,7 +83,7 @@ export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps)
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                 <div className="h-full rounded-full" style={{ width: `${s.value}%`, background: s.color }} />
               </div>
-              <span className="w-6 text-right text-xs font-semibold text-gray-700">{Math.round(s.value)}</span>
+              <span className="w-6 text-right text-xs font-semibold text-gray-700">{Math.round(s.value || 0)}</span>
             </div>
           ))}
         </div>

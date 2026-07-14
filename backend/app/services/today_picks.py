@@ -11,15 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.content import ContentItem
+from app.repositories.ignored_repo import IgnoredRepo
 from app.services.duckdb_service import query_today_picks, query_topics
+from app.services.feedback_signal import get_feedback_scores
+from app.services.scoring_engine import CONFIG as SCORING_CONFIG
 from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_items
 
 logger = logging.getLogger(__name__)
 
 # OLTP fallback 拉取上限：避免一次拉到几万条无分析记录
 _OLTP_FALLBACK_CANDIDATE_LIMIT = 200
-# 与 SCORING_CONFIG["risk_threshold"] 对齐；这里硬编码避免循环 import
-_OLTP_FALLBACK_RISK_THRESHOLD = 50.0
+# 与 DuckDB query_today_picks 的 weight_bonus 默认值（duckdb_service.py）一致，
+# fallback 复刻 adjusted_curation_score 排序时使用。
+_OLTP_FALLBACK_WEIGHT_BONUS = 8
 
 
 async def build_today_picks(
@@ -37,8 +41,8 @@ async def build_today_picks(
     若 DuckDB 不可用（扩展缺失、ATTACH 失败、host 无法解析等），降级到
     ``_build_today_picks_via_oltp``：走 SQLAlchemy 拉 ContentItem + analyses，
     输出与 DuckDB 路径**完全一致**的 row dict 结构，便于 scoring / payload
-    构造代码复用。降级路径会少几个 DuckDB-only 字段（feedback_score=0、
-    duplicate_of=None、source_weight 加成关闭），得分会偏低但**有数据**。
+    构造代码复用。降级路径复刻 DuckDB 的 ignored / feedback_score /
+    duplicate_of / source_weight 加成 / 风险门口径，保证两条路径行为等价。
     """
     duckdb_exc: Exception | None = None
     try:
@@ -98,14 +102,19 @@ async def _build_today_picks_via_oltp(
     """OLTP fallback：直接走 SQLAlchemy 拉 ContentItem + analyses，
     输出与 ``query_today_picks`` 一致的 row dict，便于 scoring 复用。
 
-    简化点（vs DuckDB 路径）:
-    - 无 ignored 过滤（数据量小时影响不大）
-    - 无 feedback_score 聚合（=0）
-    - 无 source_weight 加成（adjusted_curation_score = curation_score 原值）
+    口径与 DuckDB 主路径对齐（避免 DuckDB 不可用时结果漂移）:
+    - ignored 过滤：复用 IgnoredRepo.list_ignored_ids() 做 NOT IN
+    - 风险门：取 SCORING_CONFIG["risk_threshold"]（与 DuckDB SQL 及 scorer 一致）
+    - duplicate_of：读 content_items 真实列，交由 _score_rows 按 IS NULL 剔除
+    - feedback_score：复用 get_feedback_scores（latest-per-user → SUM，同 DuckDB CTE）
+    - adjusted_curation_score：复刻 DuckDB 排序公式，保证候选顺序一致
     - 一次拉 _OLTP_FALLBACK_CANDIDATE_LIMIT 条，由统一 scorer 决定最终入选
     """
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
     fetch_limit = min(limit * 5, _OLTP_FALLBACK_CANDIDATE_LIMIT) if limit else _OLTP_FALLBACK_CANDIDATE_LIMIT
+
+    risk_threshold = float(SCORING_CONFIG["risk_threshold"])
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids()
 
     stmt = (
         select(ContentItem)
@@ -119,11 +128,14 @@ async def _build_today_picks_via_oltp(
     )
     if category:
         stmt = stmt.where(ContentItem.category == category)
+    if ignored_ids:
+        stmt = stmt.where(ContentItem.id.notin_(ignored_ids))
 
     result = await db.execute(stmt)
     items = result.scalars().unique().all()
 
-    rows: list[dict] = []
+    # 先按风险门 / curation 预筛（与 DuckDB SQL where 子句一致）
+    eligible: list[ContentItem] = []
     for item in items:
         if not item.analyses:
             continue
@@ -131,11 +143,31 @@ async def _build_today_picks_via_oltp(
         latest = item.analyses[-1]
         if latest.curation_score is None:
             continue
-        if latest.risk_score is not None and latest.risk_score > _OLTP_FALLBACK_RISK_THRESHOLD:
+        if latest.risk_score is not None and latest.risk_score > risk_threshold:
             continue
+        eligible.append(item)
 
+    # feedback 聚合（与 DuckDB LATEST_FEEDBACK_SCORES_CTE 同口径）
+    feedback_scores = await get_feedback_scores(db, [item.id for item in eligible])
+
+    feedback_min = float(SCORING_CONFIG["feedback_score_min"])
+    feedback_max = float(SCORING_CONFIG["feedback_score_max"])
+    feedback_weight = float(SCORING_CONFIG["w_feedback"])
+    weight_bonus = _OLTP_FALLBACK_WEIGHT_BONUS
+
+    rows: list[dict] = []
+    for item in eligible:
+        latest = item.analyses[-1]
         source = item.source
         source_weight_db = source.weight if source else 3
+        feedback_score = feedback_scores.get(item.id, 0)
+
+        curation_score = latest.curation_score or 0
+        # 复刻 DuckDB adjusted_curation_score 排序公式
+        feedback_clamped = min(max(feedback_score, feedback_min), feedback_max)
+        adjusted_curation_score = (
+            curation_score + (source_weight_db - 3) * weight_bonus + feedback_clamped * feedback_weight
+        )
 
         rows.append(
             {
@@ -159,8 +191,8 @@ async def _build_today_picks_via_oltp(
                 "status": str(item.status) if item.status else "analyzed",
                 "is_favorited": bool(item.is_favorited),
                 "topic_id": item.topic_id,
-                "duplicate_of": None,  # OLTP 不跑 dedup join
-                "similarity_score": None,
+                "duplicate_of": item.duplicate_of,  # 读真实列，交由 _score_rows 剔除
+                "similarity_score": item.similarity_score,
                 "created_at": item.created_at.isoformat() if item.created_at else None,
                 "updated_at": item.updated_at.isoformat() if item.updated_at else None,
                 "analysis_id": latest.id,
@@ -171,7 +203,7 @@ async def _build_today_picks_via_oltp(
                 "creator_score": latest.creator_score or 0,
                 "viral_score": latest.viral_score or 0,
                 "risk_score": latest.risk_score or 0,
-                "curation_score": latest.curation_score or 0,
+                "curation_score": curation_score,
                 "info_density": latest.info_density or 0,
                 "actionability": latest.actionability or 0,
                 "recommended_reason": latest.recommended_reason,
@@ -182,8 +214,8 @@ async def _build_today_picks_via_oltp(
                 "enrichment": latest.enrichment,
                 "analysis_source_weight": None,  # OLTP 不存这个字段
                 "source_weight_db": source_weight_db,
-                "feedback_score": 0,  # OLTP 不做 user_feedback 聚合
-                "adjusted_curation_score": latest.curation_score or 0,  # 无加成
+                "feedback_score": feedback_score,
+                "adjusted_curation_score": adjusted_curation_score,
             }
         )
     return rows

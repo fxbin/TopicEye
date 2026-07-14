@@ -515,3 +515,238 @@ def test_score_rows_does_not_double_filter_with_today_picks_threshold():
     assert len(out) == len(
         selected_in_engine
     ), f"_score_rows ({len(out)}) 不应再过滤掉 score_items 选中的 {len(selected_in_engine)} 条"
+
+
+# ── OLTP fallback 口径对齐 DuckDB 的回归测试 ──────────────────────────
+
+
+async def _seed_oltp_fixture(engine, *, extra_content=None, ignored_ids=(), feedback_rows=()):
+    """Seed an in-memory OLTP DB with a source + content + analyses.
+
+    ``extra_content``: list of dicts overriding ContentItem/AiAnalysis fields.
+    ``ignored_ids``: content ids to mark ignored.
+    ``feedback_rows``: list of (content_id, user_id, score_delta) tuples.
+    Returns the list of created content ids.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.analysis import AiAnalysis
+    from app.models.content import ContentItem, ContentStatus
+    from app.models.feedback import UserFeedback
+    from app.models.ignored import IgnoredItem
+    from app.models.source import Source, SourceStatus, SourceType
+
+    now = datetime.now(UTC)
+    crawled_at = now - timedelta(hours=2)
+    created_ids: list[int] = []
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        source = Source(
+            name="测试信源",
+            source_type=SourceType.RSS,
+            url="https://example.com/feed",
+            weight=5,
+            status=SourceStatus.ACTIVE,
+        )
+        db.add(source)
+        await db.flush()
+
+        specs = [
+            {  # 高质量基线样本
+                "title": "高质量样本",
+                "url": "https://example.com/pick-1",
+                "quality_score": 80.0,
+                "creator_score": 86.0,
+                "risk_score": 15.0,
+                "curation_score": 88.0,
+            }
+        ]
+        if extra_content:
+            specs.extend(extra_content)
+
+        for spec in specs:
+            url = spec.get("url", f"https://example.com/c-{len(created_ids) + 1}")
+            title = spec.get("title", f"样本 {len(created_ids) + 1}")
+            content = ContentItem(
+                title=title,
+                url=url,
+                source_id=source.id,
+                source_type=SourceType.RSS,
+                crawled_at=spec.get("crawled_at", crawled_at),
+                published_at=spec.get("crawled_at", crawled_at),
+                category=spec.get("category", "AI"),
+                status=ContentStatus.ANALYZED,
+                duplicate_of=spec.get("duplicate_of"),
+                created_at=crawled_at,
+                updated_at=crawled_at,
+            )
+            db.add(content)
+            await db.flush()
+            cid = content.id
+            created_ids.append(cid)
+            db.add(
+                AiAnalysis(
+                    content_id=cid,
+                    quality_score=spec.get("quality_score", 80.0),
+                    hot_score=spec.get("hot_score", 75.0),
+                    freshness_score=spec.get("freshness_score", 90.0),
+                    creator_score=spec.get("creator_score", 86.0),
+                    viral_score=spec.get("viral_score", 70.0),
+                    risk_score=spec.get("risk_score", 15.0),
+                    curation_score=spec.get("curation_score", 88.0),
+                    info_density=spec.get("info_density", 82.0),
+                    actionability=spec.get("actionability", 78.0),
+                    summary=spec.get("summary", "AI 摘要"),
+                    tags=spec.get("tags", ["AI"]),
+                    recommended_reason="值得写",
+                    recommendation="可作为创作者选题",
+                    source_weight=72.0,
+                    created_at=now,
+                )
+            )
+
+        for cid in ignored_ids:
+            db.add(IgnoredItem(content_id=cid))
+        for content_id, user_id, score_delta in feedback_rows:
+            db.add(UserFeedback(content_id=content_id, user_id=user_id, score_delta=score_delta, feedback_type="like"))
+        await db.commit()
+
+    return created_ids
+
+
+@pytest.mark.asyncio
+async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
+    """风险 60 的内容在旧 fallback（阈值 50）会被误杀；对齐到 82 后应保留。
+
+    场景：risk_score=60，在 DuckDB 主路径（risk <= 82）能进、scorer 软降权后仍可入选；
+    旧 fallback 用硬编码 50 会直接丢弃。
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    ids = await _seed_oltp_fixture(
+        engine,
+        extra_content=[
+            {"title": "中风险样本", "url": "https://example.com/mid-risk", "risk_score": 60.0},
+        ],
+    )
+    mid_risk_id = ids[1]
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_k: (_ for _ in ()).throw(OSError("duckdb down")))
+    monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+
+    await engine.dispose()
+    row_ids = {row["id"] for row in rows}
+    assert mid_risk_id in row_ids, "风险 60 的内容应保留（阈值对齐 82 后不被误杀）"
+    assert all(row["risk_score"] <= 82 for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_fallback_excludes_ignored_content(monkeypatch):
+    """OLTP fallback 应剔除 ignored 内容（与 DuckDB IGNORED_CONTENT_CTE 口径一致）。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    ids = await _seed_oltp_fixture(
+        engine,
+        extra_content=[{"title": "应被忽略", "url": "https://example.com/ignored"}],
+    )
+    to_ignore = ids[1]
+    # 单独插一条 ignored 记录
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.ignored import IgnoredItem
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        db.add(IgnoredItem(content_id=to_ignore))
+        await db.commit()
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_k: (_ for _ in ()).throw(OSError("duckdb down")))
+    monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+
+    await engine.dispose()
+    row_ids = {row["id"] for row in rows}
+    assert to_ignore not in row_ids, "ignored 内容应被 fallback 剔除"
+    assert ids[0] in row_ids, "非 ignored 高质量样本应保留"
+
+
+@pytest.mark.asyncio
+async def test_fallback_aggregates_feedback_score(monkeypatch):
+    """OLTP fallback 应聚合真实 feedback_score（不再硬编码 0）。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    ids = await _seed_oltp_fixture(
+        engine,
+        feedback_rows=[(1, 100, 10.0), (1, 200, 20.0)],  # content_id=1，两用户合计 +30
+    )
+    # _seed_oltp_fixture 用自增 id，第一条 content id 通常是 1
+    target_id = ids[0]
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_k: (_ for _ in ()).throw(OSError("duckdb down")))
+    monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+
+    await engine.dispose()
+    target_row = next(row for row in rows if row["id"] == target_id)
+    assert target_row["feedback_score"] == 30.0, f"应聚合 +30，实际 {target_row['feedback_score']}"
+
+
+@pytest.mark.asyncio
+async def test_fallback_reads_real_duplicate_of(monkeypatch):
+    """OLTP fallback 应读真实 duplicate_of 列并剔除重复（不再硬编码 None）。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    canonical_id = 1  # 先占位，seed 后回填
+    ids = await _seed_oltp_fixture(
+        engine,
+        extra_content=[
+            {"title": "重复样本", "url": "https://example.com/dup", "duplicate_of": canonical_id},
+        ],
+    )
+    canonical_id = ids[0]
+    dup_id = ids[1]
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_k: (_ for _ in ()).throw(OSError("duckdb down")))
+    monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
+
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+
+    await engine.dispose()
+    # fallback row dict 应携带真实 duplicate_of（而非硬编码 None）
+    dup_row = next(row for row in rows if row["id"] == dup_id)
+    assert dup_row["duplicate_of"] == canonical_id, "fallback 应读真实 duplicate_of 列"
+    # _score_rows 应剔除重复项（duplicate_of is None 过滤）
+    scored = today_picks._score_rows(rows)
+    scored_ids = {row["id"] for _, row in scored}
+    assert dup_id not in scored_ids, "重复项应被 _score_rows 剔除"

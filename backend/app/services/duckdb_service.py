@@ -157,6 +157,58 @@ class DuckDBAnalytics:
             logger.debug("DuckDB feedback score CTE disabled: %s", exc)
         return EMPTY_FEEDBACK_SCORES_CTE
 
+    def _content_visibility_clause(
+        self,
+        conn,
+        *,
+        public_only: bool,
+        visible_user_id: int | None,
+    ) -> tuple[str, list[Any]]:
+        """Return a content-owner filter when the attached schema supports it.
+
+        Some historical/test databases predate ``content_items.owner_user_id``.
+        Keeping the feature-detection fallback lets those read-only analytical
+        fixtures stay compatible while production data gets the same visibility
+        contract as the OLTP path.
+        """
+        if not public_only and visible_user_id is None:
+            return "", []
+        if not self._oltp_column_exists(conn, "content_items", "owner_user_id"):
+            logger.debug("DuckDB attached content_items has no owner_user_id column; visibility filter disabled")
+            return "", []
+        if public_only:
+            return " AND c.owner_user_id IS NULL", []
+        return " AND (c.owner_user_id IS NULL OR c.owner_user_id = ?)", [visible_user_id]
+
+    def _oltp_column_exists(self, conn, table_name: str, column_name: str) -> bool:
+        """Return whether an attached OLTP table exposes a column.
+
+        The production schema is migrated together, but read-only development
+        snapshots and historical test fixtures can lag behind.  Analytics
+        should keep serving the compatible subset rather than failing an
+        entire endpoint because an optional score or ownership field is new.
+        """
+        try:
+            result = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'oltp_db'
+                  AND table_name = ?
+                  AND column_name = ?
+                """,
+                [table_name, column_name],
+            ).fetchone()
+            return bool(result and result[0])
+        except Exception as exc:
+            logger.debug(
+                "DuckDB attached schema lookup failed for %s.%s: %s",
+                table_name,
+                column_name,
+                exc,
+            )
+            return False
+
     # ── Analytical queries ──────────────────────────────────────────────
 
     def query_today_picks(
@@ -167,6 +219,8 @@ class DuckDBAnalytics:
         risk_threshold: float | None = None,
         category: str | None = None,
         limit: int | None = None,
+        visible_user_id: int | None = None,
+        public_only: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Top curated picks from the last N hours.
@@ -185,6 +239,17 @@ class DuckDBAnalytics:
         if category:
             category_clause = " AND c.category = ?"
             params.append(category)
+        visibility_clause, visibility_params = self._content_visibility_clause(
+            conn,
+            public_only=public_only,
+            visible_user_id=visible_user_id,
+        )
+        params.extend(visibility_params)
+        analysis_source_weight_expr = (
+            "a.source_weight AS analysis_source_weight"
+            if self._oltp_column_exists(conn, "ai_analyses", "source_weight")
+            else "CAST(NULL AS DOUBLE) AS analysis_source_weight"
+        )
         _ = limit
 
         results = conn.execute(
@@ -204,6 +269,7 @@ class DuckDBAnalytics:
                 a.quality_score, a.hot_score, a.freshness_score,
                 a.creator_score, a.viral_score, a.risk_score,
                 a.curation_score, a.info_density, a.actionability,
+                {analysis_source_weight_expr},
                 a.recommended_reason, a.recommendation,
                 a.summary AS ai_summary, a.tags AS ai_tags,
                 a.enrichment_status, a.enrichment,
@@ -227,6 +293,7 @@ class DuckDBAnalytics:
               AND a.risk_score <= {risk_threshold}
               AND a.curation_score IS NOT NULL
               {category_clause}
+              {visibility_clause}
             ORDER BY adjusted_curation_score DESC
         """,
             params,
@@ -268,6 +335,7 @@ class DuckDBAnalytics:
             "curation_score",
             "info_density",
             "actionability",
+            "analysis_source_weight",
             "recommended_reason",
             "recommendation",
             "ai_summary",
@@ -301,6 +369,7 @@ class DuckDBAnalytics:
                 "curation_score",
                 "info_density",
                 "actionability",
+                "analysis_source_weight",
                 "feedback_score",
                 "similarity_score",
             ):
@@ -317,6 +386,8 @@ class DuckDBAnalytics:
         category: str | None = None,
         limit: int = 500,
         offset: int = 0,
+        visible_user_id: int | None = None,
+        public_only: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         """
         Low-Follower Viral discovery via DuckDB.
@@ -338,6 +409,12 @@ class DuckDBAnalytics:
         if category:
             category_clause = " AND c.category = ?"
             params.append(category)
+        visibility_clause, visibility_params = self._content_visibility_clause(
+            conn,
+            public_only=public_only,
+            visible_user_id=visible_user_id,
+        )
+        params.extend(visibility_params)
 
         # LFV score formula (mirrors scoring_engine.score_low_follower_viral):
         #   content_score   = viral*0.45 + creator*0.30 + quality*0.25
@@ -385,6 +462,7 @@ class DuckDBAnalytics:
                       AND a.risk_score <= {risk_threshold}
                       AND c.duplicate_of IS NULL
                       {category_clause}
+                      {visibility_clause}
                 )
             SELECT * FROM scored
             ORDER BY content_score * obscure_factor * freshness_boost * time_decay DESC
@@ -408,6 +486,7 @@ class DuckDBAnalytics:
                       AND a.risk_score <= {risk_threshold}
                       AND c.duplicate_of IS NULL
                       {category_clause}
+                      {visibility_clause}
                 )
             SELECT COUNT(*) FROM scored
         """

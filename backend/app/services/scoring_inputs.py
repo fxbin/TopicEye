@@ -36,6 +36,9 @@ def build_scoring_input(item: Any, feedback_score: float = 0) -> ScoringInput:
     if analysis is None:
         raise ValueError("Content item has no loaded analyses")
     source_weight = item.source.weight if item.source else 3
+    def value_or_default(value: Any, default: float | int) -> float | int:
+        return default if value is None else value
+
     return ScoringInput(
         content_id=item.id,
         title=item.title,
@@ -44,16 +47,16 @@ def build_scoring_input(item: Any, feedback_score: float = 0) -> ScoringInput:
         source_name=item.source_name,
         published_at=item.published_at,
         crawled_at=item.crawled_at,
-        curation_score=analysis.curation_score or 0,
-        info_density=analysis.info_density or 50,
-        actionability=analysis.actionability or 50,
-        source_weight=analysis.source_weight or 50,
-        creator_score=analysis.creator_score or 0,
-        viral_score=analysis.viral_score or 0,
-        freshness_score=analysis.freshness_score or 0,
-        quality_score=analysis.quality_score or 0,
-        hot_score=analysis.hot_score or 0,
-        risk_score=analysis.risk_score or 0,
+        curation_score=value_or_default(analysis.curation_score, 0),
+        info_density=value_or_default(analysis.info_density, 50),
+        actionability=value_or_default(analysis.actionability, 50),
+        source_weight=value_or_default(analysis.source_weight, 50),
+        creator_score=value_or_default(analysis.creator_score, 0),
+        viral_score=value_or_default(analysis.viral_score, 0),
+        freshness_score=value_or_default(analysis.freshness_score, 0),
+        quality_score=value_or_default(analysis.quality_score, 0),
+        hot_score=value_or_default(analysis.hot_score, 0),
+        risk_score=value_or_default(analysis.risk_score, 0),
         source_weight_db=source_weight,
         feedback_score=feedback_score,
     )

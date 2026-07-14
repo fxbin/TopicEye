@@ -85,7 +85,10 @@ def test_today_picks_cache_key_and_invalidation():
     invalidate_json_cache()
     params = TodayPicksCacheParams(hours=48, category="AI", limit=80)
     key = params.key
-    assert key == "contents:today-picks:hours=48&category=AI&limit=80"
+    assert key == "contents:today-picks:hours=48&category=AI&limit=80&user_id="
+    assert TodayPicksCacheParams(hours=48, category="AI", limit=80, user_id=42).key == (
+        "contents:today-picks:hours=48&category=AI&limit=80&user_id=42"
+    )
 
     set_cached_json(key, {"items": [], "total": 0})
     set_cached_json("contents:list:example", {"items": []})

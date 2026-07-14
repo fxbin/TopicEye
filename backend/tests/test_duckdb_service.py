@@ -381,6 +381,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
             curation_score DOUBLE,
             info_density DOUBLE,
             actionability DOUBLE,
+            source_weight DOUBLE,
             recommended_reason VARCHAR,
             recommendation VARCHAR,
             summary VARCHAR,
@@ -416,7 +417,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     conn.execute(
         """
         INSERT INTO oltp_db.ai_analyses VALUES (
-            1, 1, 50, 50, 50, 50, 50, 10, 20, 50, 50,
+            1, 1, 50, 50, 50, 50, 50, 10, 20, 50, 50, 40,
             '旧理由', '旧推荐', '旧摘要', '["旧"]', 'pending', NULL, ?
         )
         """,
@@ -425,7 +426,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     conn.execute(
         """
         INSERT INTO oltp_db.ai_analyses VALUES (
-            2, 1, 88, 80, 90, 86, 78, 12, 90, 85, 82,
+            2, 1, 88, 80, 90, 86, 78, 12, 90, 85, 82, 0,
             '新理由', '新推荐', '新摘要', '["新"]', 'pending', NULL, ?
         )
         """,
@@ -440,6 +441,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     assert len(rows) == 1
     assert rows[0]["analysis_id"] == 2
     assert rows[0]["curation_score"] == 90.0
+    assert rows[0]["analysis_source_weight"] == 0.0
     assert rows[0]["recommended_reason"] == "新理由"
     assert rows[0]["adjusted_curation_score"] == 106.0
 

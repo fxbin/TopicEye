@@ -290,6 +290,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         exclude_source_types: set[str] | None = None,
         time_cutoff: datetime | None = None,
         visible_user_id: int | None = None,
+        public_only: bool = False,
         search_query: str | None = None,
     ) -> tuple[Sequence[ContentItem], int]:
         """Like list_paginated but eager-loads analyses relation.
@@ -301,7 +302,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         stmt = select(self.model).options(selectinload(self.model.analyses))
         count_stmt = select(func.count()).select_from(self.model)
-        if visible_user_id is not None:
+        if public_only:
+            stmt = stmt.where(self.model.owner_user_id.is_(None))
+            count_stmt = count_stmt.where(self.model.owner_user_id.is_(None))
+        elif visible_user_id is not None:
             stmt = stmt.where(
                 or_(
                     self.model.owner_user_id.is_(None),
@@ -372,6 +376,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         id: int,
         visible_user_id: int | None = None,
+        public_only: bool = False,
     ) -> ContentItem | None:
         """Fetch a content item eagerly loaded with metrics and analyses.
 
@@ -385,7 +390,9 @@ class ContentRepo(BaseRepository[ContentItem]):
             .options(selectinload(self.model.analyses))
             .where(self.model.id == id)
         )
-        if visible_user_id is not None:
+        if public_only:
+            stmt = stmt.where(self.model.owner_user_id.is_(None))
+        elif visible_user_id is not None:
             stmt = stmt.where(
                 or_(
                     self.model.owner_user_id.is_(None),
@@ -516,6 +523,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         time_cutoff: datetime | None = None,
         limit: int = 500,
         visible_user_id: int | None = None,
+        public_only: bool = False,
     ) -> tuple[Sequence[ContentItem], int]:
         """
         Fetch ANALYZED items with analyses + source for scoring pipeline.
@@ -569,7 +577,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         if time_cutoff:
             count_stmt = count_stmt.where(self.model.crawled_at >= time_cutoff)
             data_stmt = data_stmt.where(self.model.crawled_at >= time_cutoff)
-        if visible_user_id is not None:
+        if public_only:
+            count_stmt = count_stmt.where(self.model.owner_user_id.is_(None))
+            data_stmt = data_stmt.where(self.model.owner_user_id.is_(None))
+        elif visible_user_id is not None:
             count_stmt = count_stmt.where(
                 or_(
                     self.model.owner_user_id.is_(None),

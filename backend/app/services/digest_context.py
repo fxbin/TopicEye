@@ -57,24 +57,27 @@ def _score_digest_rows(rows: list[dict]) -> list[dict]:
 
 
 def _row_to_scoring_input(row: dict) -> ScoringInput:
+    def value_or_default(value, default):
+        return default if value is None else value
+
     return ScoringInput(
         content_id=int(row["id"]),
         title=row.get("title") or "",
         category=row.get("category"),
         source_name=row.get("source_name"),
         crawled_at=row.get("crawled_at"),
-        curation_score=row.get("curation_score") or 0,
-        info_density=row.get("info_density") or 50,
-        actionability=row.get("actionability") or 50,
-        source_weight=row.get("source_weight") or 50,
-        creator_score=row.get("creator_score") or 0,
-        viral_score=row.get("viral_score") or 0,
-        freshness_score=row.get("freshness_score") or 50,
-        quality_score=row.get("quality_score") or 0,
-        hot_score=row.get("hot_score") or 0,
-        risk_score=row.get("risk_score") or 0,
-        source_weight_db=row.get("source_weight_db") or 3,
-        feedback_score=row.get("feedback_score") or 0,
+        curation_score=value_or_default(row.get("curation_score"), 0),
+        info_density=value_or_default(row.get("info_density"), 50),
+        actionability=value_or_default(row.get("actionability"), 50),
+        source_weight=value_or_default(row.get("source_weight"), 50),
+        creator_score=value_or_default(row.get("creator_score"), 0),
+        viral_score=value_or_default(row.get("viral_score"), 0),
+        freshness_score=value_or_default(row.get("freshness_score"), 50),
+        quality_score=value_or_default(row.get("quality_score"), 0),
+        hot_score=value_or_default(row.get("hot_score"), 0),
+        risk_score=value_or_default(row.get("risk_score"), 0),
+        source_weight_db=value_or_default(row.get("source_weight_db"), 3),
+        feedback_score=value_or_default(row.get("feedback_score"), 0),
     )
 
 

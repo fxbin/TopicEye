@@ -108,6 +108,7 @@ async def _score_content_page(
     score_fn,
     sort_order: str = "desc",
     visible_user_id: int | None = None,
+    public_only: bool = False,
 ) -> dict:
     from app.services.scoring_inputs import build_scoring_inputs
 
@@ -118,6 +119,7 @@ async def _score_content_page(
         time_cutoff=time_cutoff,
         limit=_SCORING_BATCH_SIZE,
         visible_user_id=visible_user_id,
+        public_only=public_only,
     )
     if not scored_items:
         return _empty_list_response(page, page_size)
@@ -246,6 +248,7 @@ async def list_contents(
                 score_fn=score_items,
                 sort_order=sort_order,
                 visible_user_id=current_user.id if current_user is not None else None,
+                public_only=current_user is None,
             )
 
         # ── Low-follower viral discovery path ────────────────────────────────
@@ -267,6 +270,8 @@ async def list_contents(
                         category=category,
                         limit=page_size,
                         offset=offset,
+                        visible_user_id=current_user.id if current_user is not None else None,
+                        public_only=current_user is None,
                     )
                     result_items = []
                     for lfv in lfv_items:
@@ -340,6 +345,7 @@ async def list_contents(
                 page_size=page_size,
                 score_fn=score_low_follower_viral,
                 visible_user_id=current_user.id if current_user is not None else None,
+                public_only=current_user is None,
             )
 
         # ── Standard SQL sort path ─────────────────────────────────────────
@@ -354,6 +360,7 @@ async def list_contents(
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
             visible_user_id=current_user.id if current_user is not None else None,
+            public_only=current_user is None,
             search_query=q,
         )
         payload = {
@@ -377,14 +384,16 @@ async def today_picks(
     category: str | None = Query(None, description="Filter by category"),
     time_range: str | None = Query(None, description="Time range: 24h, 48h, 7d"),
     limit: int | None = Query(None, ge=1, le=200, description="Limit returned items while preserving total"),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
-    """Top picks — curation_score adjusted by source weight, threshold 60."""
+    """Top picks visible to the current user (public pool plus own private sources)."""
     from app.services.today_picks import build_today_picks
 
     params = TodayPicksCacheParams(
         category=category,
         hours={"24h": 24, "7d": 168}.get(time_range or "", 48),
         limit=limit,
+        user_id=current_user.id if current_user is not None else None,
     )
     cached = get_cached_today_picks(params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
@@ -400,7 +409,10 @@ async def today_picks(
 
     try:
         async with async_session() as db:
-            payload = await build_today_picks(db, category=category, hours=params.hours, limit=params.limit)
+            build_kwargs = {"category": category, "hours": params.hours, "limit": params.limit}
+            if current_user is not None:
+                build_kwargs["owner_user_id"] = current_user.id
+            payload = await build_today_picks(db, **build_kwargs)
             content = set_cached_today_picks(params, payload)
             return Response(
                 content=content,
@@ -416,7 +428,7 @@ async def today_picks(
 
 
 @router.get("/today-count")
-async def today_count():
+async def today_count(current_user: User | None = Depends(get_optional_current_user)):
     """返回滚动 24 小时的内容总数 + 当日精选数。
 
     用于侧边栏 badge 计数。口径与首页「今日选题」和「当日精选」页面一致:
@@ -427,7 +439,7 @@ async def today_count():
 
     from app.services.json_cache import get_cached_json, set_cached_json
 
-    cache_key = "today_count:v2"
+    cache_key = f"today_count:v3:user={current_user.id if current_user is not None else 'public'}"
     cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
         return Response(
@@ -442,11 +454,20 @@ async def today_count():
     # 滚动 24h 内容数:与 /contents?hours=24 同口径
     try:
         async with async_session() as db:
+            content_visibility = (
+                ContentItem.owner_user_id.is_(None)
+                if current_user is None
+                else (
+                    (ContentItem.owner_user_id.is_(None))
+                    | (ContentItem.owner_user_id == current_user.id)
+                )
+            )
             r = await db.execute(
                 select(ContentItem.id).where(
                     ContentItem.status == "analyzed",
                     ContentItem.crawled_at >= cutoff,
                     ContentItem.duplicate_of.is_(None),
+                    content_visibility,
                 )
             )
             result["today_content"] = len(r.all())
@@ -613,6 +634,7 @@ async def get_content(
     content = await ContentRepo(db).get_detail(
         content_id,
         visible_user_id=current_user.id if current_user is not None else None,
+        public_only=current_user is None,
     )
     if not content:
         raise HTTPException(404, "Content not found")

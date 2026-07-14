@@ -16,6 +16,8 @@ class TodayPicksCacheParams:
     hours: int = 48
     category: str | None = None
     limit: int | None = None
+    # None = anonymous public pool; int = public pool plus this user's private content.
+    user_id: int | None = None
 
     @property
     def key(self) -> str:
@@ -24,6 +26,7 @@ class TodayPicksCacheParams:
             params["category"] = self.category
         if self.limit:
             params["limit"] = self.limit
+        params["user_id"] = "" if self.user_id is None else str(self.user_id)
         return TODAY_PICKS_CACHE_PREFIX + urlencode(params)
 
 

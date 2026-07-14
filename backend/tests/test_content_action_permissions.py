@@ -492,6 +492,17 @@ async def test_content_visibility_filter_excludes_other_users_private_content(mo
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # Anonymous: public pool only. Optional-auth endpoints must not treat
+        # a missing user as an internal "see all" caller.
+        resp_public = await client.get("/contents?page_size=10")
+        assert resp_public.status_code == 200
+        public_ids = {item["id"] for item in resp_public.json()["items"]}
+        assert 100 in public_ids
+        assert 200 not in public_ids
+
+        resp_public_detail = await client.get("/contents/200")
+        assert resp_public_detail.status_code == 404
+
         # User A: should see public + own private
         app.dependency_overrides[auth_api.get_optional_current_user] = lambda: user_a
         resp_a = await client.get("/contents?page_size=10")

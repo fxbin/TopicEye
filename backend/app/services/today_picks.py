@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,8 +19,6 @@ from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_item
 
 logger = logging.getLogger(__name__)
 
-# OLTP fallback 拉取上限：避免一次拉到几万条无分析记录
-_OLTP_FALLBACK_CANDIDATE_LIMIT = 200
 # 与 DuckDB query_today_picks 的 weight_bonus 默认值（duckdb_service.py）一致，
 # fallback 复刻 adjusted_curation_score 排序时使用。
 _OLTP_FALLBACK_WEIGHT_BONUS = 8
@@ -32,6 +30,7 @@ async def build_today_picks(
     category: str | None = None,
     hours: int = 48,
     limit: int | None = None,
+    owner_user_id: int | None = None,
 ) -> dict:
     """Return today-picks payload through DuckDB, with OLTP fallback.
 
@@ -46,13 +45,17 @@ async def build_today_picks(
     """
     duckdb_exc: Exception | None = None
     try:
-        rows = query_today_picks(
-            hours=hours,
-            category=category,
-            limit=limit,
+        query_kwargs = {
+            "hours": hours,
+            "category": category,
+            "limit": limit,
             # DuckDB supplies candidates; the unified scorer below is the only final gate.
-            curation_threshold=0,
-        )
+            "curation_threshold": 0,
+        }
+        if owner_user_id is not None:
+            query_kwargs["visible_user_id"] = owner_user_id
+            query_kwargs["public_only"] = False
+        rows = query_today_picks(**query_kwargs)
     except Exception as exc:
         duckdb_exc = exc
         logger.warning(
@@ -61,7 +64,13 @@ async def build_today_picks(
             exc_info=True,
         )
         try:
-            rows = await _build_today_picks_via_oltp(db, hours=hours, category=category, limit=limit)
+            rows = await _build_today_picks_via_oltp(
+                db,
+                hours=hours,
+                category=category,
+                limit=limit,
+                owner_user_id=owner_user_id,
+            )
         except Exception as oltp_exc:
             # OLTP 路径也挂了：记双错误，回退到空 payload（避免 5xx）
             logger.error(
@@ -98,6 +107,7 @@ async def _build_today_picks_via_oltp(
     hours: int,
     category: str | None,
     limit: int | None,
+    owner_user_id: int | None = None,
 ) -> list[dict]:
     """OLTP fallback：直接走 SQLAlchemy 拉 ContentItem + analyses，
     输出与 ``query_today_picks`` 一致的 row dict，便于 scoring 复用。
@@ -108,11 +118,10 @@ async def _build_today_picks_via_oltp(
     - duplicate_of：读 content_items 真实列，交由 _score_rows 按 IS NULL 剔除
     - feedback_score：复用 get_feedback_scores（latest-per-user → SUM，同 DuckDB CTE）
     - adjusted_curation_score：复刻 DuckDB 排序公式，保证候选顺序一致
-    - 一次拉 _OLTP_FALLBACK_CANDIDATE_LIMIT 条，由统一 scorer 决定最终入选
+    - 读取完整时间窗候选集，再由统一 scorer 决定最终入选；避免降级后因
+      任意截断而遗漏本应进入 P70 的内容
     """
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
-    fetch_limit = min(limit * 5, _OLTP_FALLBACK_CANDIDATE_LIMIT) if limit else _OLTP_FALLBACK_CANDIDATE_LIMIT
-
     risk_threshold = float(SCORING_CONFIG["risk_threshold"])
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
 
@@ -124,10 +133,18 @@ async def _build_today_picks_via_oltp(
         )
         .where(ContentItem.crawled_at >= cutoff)
         .order_by(ContentItem.crawled_at.desc())
-        .limit(fetch_limit)
     )
     if category:
         stmt = stmt.where(ContentItem.category == category)
+    if owner_user_id is None:
+        stmt = stmt.where(ContentItem.owner_user_id.is_(None))
+    else:
+        stmt = stmt.where(
+            or_(
+                ContentItem.owner_user_id.is_(None),
+                ContentItem.owner_user_id == owner_user_id,
+            )
+        )
     if ignored_ids:
         stmt = stmt.where(ContentItem.id.notin_(ignored_ids))
 
@@ -212,7 +229,7 @@ async def _build_today_picks_via_oltp(
                 "ai_tags": latest.tags,
                 "enrichment_status": latest.enrichment_status,
                 "enrichment": latest.enrichment,
-                "analysis_source_weight": None,  # OLTP 不存这个字段
+                "analysis_source_weight": latest.source_weight,
                 "source_weight_db": source_weight_db,
                 "feedback_score": feedback_score,
                 "adjusted_curation_score": adjusted_curation_score,
@@ -247,6 +264,12 @@ def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
 
 
 def _row_to_scoring_input(row: dict) -> ScoringInput:
+    def value_or_default(value, default):
+        return default if value is None else value
+
+    source_weight = row.get("analysis_source_weight")
+    if source_weight is None:
+        source_weight = row.get("source_weight")
     return ScoringInput(
         content_id=row["id"],
         title=row.get("title") or "",
@@ -255,18 +278,18 @@ def _row_to_scoring_input(row: dict) -> ScoringInput:
         source_name=row.get("source_name"),
         published_at=row.get("published_at"),
         crawled_at=row.get("crawled_at"),
-        curation_score=row.get("curation_score") or 0,
-        info_density=row.get("info_density") or 50,
-        actionability=row.get("actionability") or 50,
-        source_weight=row.get("analysis_source_weight") or row.get("source_weight") or 50,
-        creator_score=row.get("creator_score") or 0,
-        viral_score=row.get("viral_score") or 0,
-        freshness_score=row.get("freshness_score") or 0,
-        quality_score=row.get("quality_score") or 0,
-        hot_score=row.get("hot_score") or 0,
-        risk_score=row.get("risk_score") or 0,
-        source_weight_db=row.get("source_weight_db") or row.get("source_weight") or 3,
-        feedback_score=row.get("feedback_score") or 0,
+        curation_score=value_or_default(row.get("curation_score"), 0),
+        info_density=value_or_default(row.get("info_density"), 50),
+        actionability=value_or_default(row.get("actionability"), 50),
+        source_weight=value_or_default(source_weight, 50),
+        creator_score=value_or_default(row.get("creator_score"), 0),
+        viral_score=value_or_default(row.get("viral_score"), 0),
+        freshness_score=value_or_default(row.get("freshness_score"), 0),
+        quality_score=value_or_default(row.get("quality_score"), 0),
+        hot_score=value_or_default(row.get("hot_score"), 0),
+        risk_score=value_or_default(row.get("risk_score"), 0),
+        source_weight_db=value_or_default(row.get("source_weight_db"), 3),
+        feedback_score=value_or_default(row.get("feedback_score"), 0),
     )
 
 

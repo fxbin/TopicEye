@@ -1,11 +1,13 @@
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
 from app.api.v1 import contents as contents_api
+from app.api.v1 import auth as auth_api
 from app.repositories.content_repo import ContentRepo
 from app.services import today_picks
 from app.services.json_cache import invalidate_json_cache
@@ -273,7 +275,6 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     app = FastAPI()
     app.include_router(contents_api.router)
     transport = httpx.ASGITransport(app=app)
-
     calls = {"count": 0}
 
     async def fake_build_today_picks(db, *, category=None, hours=48, limit=None):
@@ -307,6 +308,64 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     assert failed.status_code == 503
     assert json.loads(failed.text)["detail"] == "DuckDB analytical layer unavailable"
     invalidate_json_cache()
+
+
+@pytest.mark.asyncio
+async def test_today_picks_cache_and_build_are_user_scoped(monkeypatch):
+    """Private-source picks must not reuse the anonymous or another user's cache."""
+    invalidate_json_cache()
+    monkeypatch.setattr(contents_api.settings, "READ_CACHE_TTL_SECONDS", 60)
+    monkeypatch.setattr(contents_api, "async_session", _failing_session_factory)
+
+    app = FastAPI()
+    app.include_router(contents_api.router)
+    transport = httpx.ASGITransport(app=app)
+    calls: list[int | None] = []
+
+    async def fake_build_today_picks(db, *, category=None, hours=48, limit=None, owner_user_id=None):
+        calls.append(owner_user_id)
+        return {
+            "items": [{"id": owner_user_id or 0}],
+            "total": 1,
+            "duplicates_hidden": 0,
+            "topics": [],
+            "page": 1,
+            "page_size": 1,
+        }
+
+    monkeypatch.setattr("app.services.today_picks.build_today_picks", fake_build_today_picks)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        public = await client.get("/contents/today-picks")
+        app.dependency_overrides[auth_api.get_optional_current_user] = lambda: SimpleNamespace(id=7)
+        user_first = await client.get("/contents/today-picks")
+        user_second = await client.get("/contents/today-picks")
+
+    assert public.json()["items"][0]["id"] == 0
+    assert user_first.json()["items"][0]["id"] == 7
+    assert user_first.headers["x-today-picks-cache"] == "MISS"
+    assert user_second.headers["x-today-picks-cache"].startswith("HIT")
+    assert calls == [None, 7]
+    invalidate_json_cache()
+
+
+def test_today_picks_scoring_input_preserves_zero_and_analysis_source_weight():
+    row = _duckdb_rows()[0]
+    row.update(
+        {
+            "info_density": 0,
+            "actionability": 0,
+            "analysis_source_weight": 0,
+            "freshness_score": 0,
+        }
+    )
+
+    scoring_input = today_picks._row_to_scoring_input(row)
+
+    assert scoring_input.info_density == 0
+    assert scoring_input.actionability == 0
+    assert scoring_input.source_weight == 0
+    assert scoring_input.freshness_score == 0
 
 
 @pytest.mark.asyncio

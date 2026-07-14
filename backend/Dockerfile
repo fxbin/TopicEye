@@ -11,6 +11,12 @@ RUN pip install --no-cache-dir "duckdb==${DUCKDB_VERSION}" && \
     python -c "import duckdb; con=duckdb.connect(':memory:'); con.execute('INSTALL postgres; LOAD postgres;')" && \
     rm -rf /root/.cache/pip
 
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=60 \
+    PIP_RETRIES=5 \
+    PIP_INDEX_URL=${PIP_INDEX_URL}
+
 # 2) 装剩余依赖（duckdb 已就位，pip 会跳过）
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \

@@ -59,8 +59,11 @@ def _has_title(items: list[dict], title: str) -> bool:
 def _store_items(bind, row_id: int, items: list[dict]) -> None:
     """Persist JSON with a timestamp expression supported by both OLTP backends."""
     now_sql = "CURRENT_TIMESTAMP" if bind.dialect.name == "sqlite" else "NOW()"
+    # SQLite accepts JSON as TEXT but CAST(... AS JSON) applies NUMERIC
+    # affinity and turns a JSON document into 0. PostgreSQL needs the cast.
+    items_sql = ":items" if bind.dialect.name == "sqlite" else "CAST(:items AS JSON)"
     bind.execute(
-        sa.text(f"UPDATE product_updates SET items = CAST(:items AS JSON), updated_at = {now_sql} WHERE id = :id"),
+        sa.text(f"UPDATE product_updates SET items = {items_sql}, updated_at = {now_sql} WHERE id = :id"),
         {"items": json.dumps(items, ensure_ascii=False), "id": row_id},
     )
 

@@ -13,6 +13,8 @@ from app.models.qimao import QimaoBook
 from app.models.favorite import FavoriteItem
 from app.models.user import User, UserSession
 from app.models.product_feedback import IssueFeedback, ProductUpdate
+from app.models.article_snapshot import ArticleSnapshot
+from app.models.article_reader_event import ArticleReaderEvent
 
 __all__ = [
     "Source",
@@ -33,4 +35,6 @@ __all__ = [
     "UserSession",
     "IssueFeedback",
     "ProductUpdate",
+    "ArticleSnapshot",
+    "ArticleReaderEvent",
 ]

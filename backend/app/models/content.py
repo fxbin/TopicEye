@@ -87,3 +87,8 @@ class ContentItem(Base):
         order_by="AiAnalysis.created_at, AiAnalysis.id",
     )
     topic: Mapped[TopicGroup | None] = relationship(back_populates="items", foreign_keys=[topic_id])
+    reader_snapshot: Mapped["ArticleSnapshot | None"] = relationship(
+        back_populates="content",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )

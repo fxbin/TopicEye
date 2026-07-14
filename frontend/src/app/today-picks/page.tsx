@@ -4,6 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'reac
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BarChart3,
+  BookOpen,
   ChevronDown,
   ChevronUp,
   Clock3,
@@ -783,6 +784,15 @@ function PickActions({
         >
           <Target size={13} /> 分析
         </button>
+      )}
+      {item.url && (
+        <a
+          href={`/contents/${item.id}/reader`}
+          onClick={(e) => e.stopPropagation()}
+          className={cx('inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1.5 text-[11px] font-bold no-underline transition', actionClass)}
+        >
+          <BookOpen size={13} /> 阅读
+        </a>
       )}
       {item.url && (
         <a

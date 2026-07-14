@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ExternalLink, Star } from 'lucide-react';
+import { BookOpen, ExternalLink, Star } from 'lucide-react';
 import { Button, Panel, cx } from '@/components/ui';
 import LevelBadge from '@/components/LevelBadge';
 import type { ContentItem, ContentAnalysis, RecommendLevel } from '@/types';
@@ -73,6 +73,16 @@ export default function TopicHeaderCard({
           <Star size={14} strokeWidth={2} fill={isFav ? '#FFFFFF' : 'none'} />
           {favoritePending ? '处理中' : isFav ? '已收藏' : '收藏选题'}
         </Button>
+
+        {item.url && (
+          <a
+            href={`/contents/${item.id}/reader`}
+            className={cx('inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm border border-primary-border bg-primary-light px-3 py-2 text-xs font-bold text-primary no-underline transition')}
+          >
+            <BookOpen size={13} strokeWidth={2} />
+            站内阅读
+          </a>
+        )}
 
         {item.url && (
           <a

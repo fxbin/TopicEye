@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowRight,
   BookmarkCheck,
+  BookOpen,
   Compass,
   ExternalLink,
   Filter,
@@ -211,6 +212,14 @@ function ContentCard({
         </div>
 
         <Toolbar>
+          {item.content.url && (
+            <a
+              href={`/contents/${item.content.id}/reader`}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1.5 text-xs font-black text-primary no-underline"
+            >
+              <BookOpen size={13} /> 阅读
+            </a>
+          )}
           {item.content.url && (
             <a
               href={item.content.url}

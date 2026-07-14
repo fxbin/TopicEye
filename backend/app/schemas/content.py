@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from typing import Optional, Any
 from pydantic import BaseModel, Field, field_serializer
 
@@ -55,6 +56,32 @@ class ContentMetricsResponse(BaseModel):
 
 class ContentDetailResponse(ContentResponse):
     metrics: list[ContentMetricsResponse] = []
+
+
+class ArticleReaderBlock(BaseModel):
+    """A safe semantic block extracted from publisher content."""
+
+    type: Literal["heading", "paragraph", "quote", "list_item"]
+    text: str
+    level: int | None = None
+
+
+class ArticleReaderResponse(BaseModel):
+    """A safe, text-only representation of a source article."""
+
+    content_id: int
+    canonical_url: str
+    title: str
+    byline: str | None = None
+    published_at: datetime | None = None
+    excerpt: str | None = None
+    text_content: str
+    content_blocks: list[ArticleReaderBlock] = []
+    reading_minutes: int
+    extraction_method: str
+    fetched_at: datetime
+    expires_at: datetime
+    cache_status: str
 
 
 class ContentListResponse(BaseModel):

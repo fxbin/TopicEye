@@ -5,7 +5,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
+import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
 import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
 import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
@@ -212,6 +212,11 @@ export const contentsApi = {
   /** 获取单条内容 */
   get(id: number): Promise<ContentItem> {
     return request(`/contents/${id}`);
+  },
+
+  /** 获取或按需生成安全的站内阅读快照。 */
+  reader(id: number, refresh = false): Promise<ArticleReaderSnapshot> {
+    return request(`/contents/${id}/reader${refresh ? '?refresh=true' : ''}`, { method: 'POST' });
   },
 
   /** 切换收藏状态 */

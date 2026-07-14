@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     # 慢站(Wired 等)会快速 fail 释放 worker,不让其拖到 sync 整体超时(120s)。
     # 调大可以更宽容但风险是 sync 任务被堵住影响其他 source。
     RSS_SCRAPER_TIMEOUT_SECONDS: float = 15.0
+    # User-triggered reader mode.  This is intentionally a narrow, public-page
+    # fetcher: no browser automation, cookies, proxies, or anti-bot bypass.
+    ARTICLE_READER_ENABLED: bool = True
+    ARTICLE_READER_FETCH_TIMEOUT_SECONDS: float = 12.0
+    ARTICLE_READER_TOTAL_TIMEOUT_SECONDS: float = 16.0
+    ARTICLE_READER_MAX_RESPONSE_BYTES: int = 1_500_000
+    ARTICLE_READER_MAX_TEXT_CHARS: int = 100_000
+    ARTICLE_READER_MAX_REDIRECTS: int = 3
+    ARTICLE_READER_SNAPSHOT_TTL_SECONDS: int = 86_400
+    ARTICLE_READER_ROBOTS_CACHE_SECONDS: int = 3_600
+    ARTICLE_READER_ALLOWED_HOSTS: str = ""
+    ARTICLE_READER_USER_AGENT: str = "TopicEyeReader/0.1 (+https://topiceye.local)"
     POST_SYNC_ANALYSIS_BATCH_SIZE: int = 10
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520
     POST_SYNC_MIN_REMAINING_SECONDS: int = 90

@@ -309,6 +309,17 @@ export function EditorialItem({
           </Button>
           {item.url && (
             <a
+              href={`/contents/${item.id}/reader`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary no-underline transition hover:border-primary"
+              title="在系统内阅读提取后的正文"
+            >
+              <BookOpen size={13} strokeWidth={2} />
+              阅读
+            </a>
+          )}
+          {item.url && (
+            <a
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"

@@ -174,6 +174,28 @@ export interface ContentMetrics {
   riskScore: number;
 }
 
+export interface ArticleReaderBlock {
+  type: 'heading' | 'paragraph' | 'quote' | 'list_item';
+  text: string;
+  level?: number | null;
+}
+
+export interface ArticleReaderSnapshot {
+  content_id: number;
+  canonical_url: string;
+  title: string;
+  byline?: string | null;
+  published_at?: string | null;
+  excerpt?: string | null;
+  text_content: string;
+  content_blocks?: ArticleReaderBlock[];
+  reading_minutes: number;
+  extraction_method: 'ingested' | 'http' | string;
+  fetched_at: string;
+  expires_at: string;
+  cache_status: 'hit' | 'miss' | string;
+}
+
 // ─── AI Analysis (后端实际模型) ───
 
 export interface ContentAnalysis {

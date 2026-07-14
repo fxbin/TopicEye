@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import app.models.analysis_job  # noqa: F401
+import app.models.article_reader_event  # noqa: F401
+import app.models.article_snapshot  # noqa: F401
 import app.models.category  # noqa: F401
 
 # Ensure all models are imported for table creation

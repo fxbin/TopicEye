@@ -26,6 +26,8 @@ if str(_BACKEND_DIR) not in sys.path:
 # so autogenerate sees the full schema and create_all parity holds).
 import app.models  # noqa: F401, E402  — triggers models/__init__.py
 import app.models.analysis_job  # noqa: F401, E402
+import app.models.article_reader_event  # noqa: F401, E402
+import app.models.article_snapshot  # noqa: F401, E402
 import app.models.category  # noqa: F401, E402
 import app.models.daily_report  # noqa: F401, E402
 import app.models.fanqie  # noqa: F401, E402

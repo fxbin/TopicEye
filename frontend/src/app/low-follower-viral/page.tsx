@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import {
   BarChart3,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -337,6 +338,15 @@ function ActionRow({
         >
           <Target size={13} /> 分析
         </Button>
+      )}
+      {item.url && (
+        <a
+          href={`/contents/${item.id}/reader`}
+          onClick={(event) => event.stopPropagation()}
+          className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1 text-[11px] font-extrabold text-primary no-underline transition hover:border-primary"
+        >
+          <BookOpen size={13} /> 阅读
+        </a>
       )}
       {item.url && (
         <a

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -23,7 +25,7 @@ from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.content_repo import ContentRepo
 from app.repositories.favorite_repo import FavoriteRepo
 from app.schemas.analysis import AiAnalysisResponse
-from app.schemas.content import ContentListResponse, ContentResponse
+from app.schemas.content import ArticleReaderResponse, ContentListResponse, ContentResponse
 from app.services.content_list_cache import (
     ContentListCacheParams,
     get_cached_content_list,
@@ -479,7 +481,10 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
         from app.services.today_picks import build_today_picks
 
         async with async_session() as db:
-            payload = await build_today_picks(db, category=None, hours=24)
+            build_kwargs = {"category": None, "hours": 24}
+            if current_user is not None:
+                build_kwargs["owner_user_id"] = current_user.id
+            payload = await build_today_picks(db, **build_kwargs)
             result["today_picks"] = payload.get("total", 0)
     except Exception:
         logger.warning("today_count picks query failed", exc_info=True)
@@ -623,6 +628,86 @@ async def enrich_top_items(
     if not ids:
         return {"message": "No items need enrichment", "processed": []}
     return {"processed": await enrich_batch(ids, db)}
+
+
+@router.post("/{content_id}/reader", response_model=ArticleReaderResponse)
+async def read_content_in_app(
+    content_id: int,
+    refresh: bool = Query(False, description="Force a new reader snapshot when the source permits it"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """Return a safe reader-mode snapshot for a visible content item.
+
+    The URL comes only from an existing content record; the reader does not
+    accept arbitrary URLs.  It serves extracted text (never third-party HTML),
+    applies outbound URL/redirect/size limits, and falls back to the source
+    site when a page is protected or not readerable.
+    """
+    from app.services.article_reader import (
+        ArticleReaderError,
+        as_utc,
+        blocks_from_text,
+        read_or_create_snapshot,
+        record_reader_event,
+    )
+
+    content = await ContentRepo(db).get_detail(
+        content_id,
+        visible_user_id=current_user.id if current_user is not None else None,
+        public_only=current_user is None,
+    )
+    if not content:
+        raise HTTPException(404, "Content not found")
+    started_at = perf_counter()
+    try:
+        try:
+            async with asyncio.timeout(settings.ARTICLE_READER_TOTAL_TIMEOUT_SECONDS):
+                snapshot, cache_status = await read_or_create_snapshot(db, content, refresh=refresh)
+        except TimeoutError as exc:
+            raise ArticleReaderError(
+                "reader_timeout",
+                "原文读取超时，请打开来源网站查看。",
+                504,
+            ) from exc
+    except ArticleReaderError as exc:
+        # Errors are committed before raising because the normal request
+        # dependency rolls the transaction back for HTTP exceptions.
+        try:
+            await record_reader_event(
+                db,
+                content_id=content.id,
+                outcome="failed",
+                error_code=exc.code,
+                duration_ms=round((perf_counter() - started_at) * 1000),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.warning("Unable to persist reader failure event for content %s", content.id, exc_info=True)
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message}) from exc
+    await record_reader_event(
+        db,
+        content_id=content.id,
+        outcome="cache_hit" if cache_status == "hit" else "ready",
+        extraction_method=snapshot.extraction_method,
+        duration_ms=round((perf_counter() - started_at) * 1000),
+    )
+    return ArticleReaderResponse(
+        content_id=content.id,
+        canonical_url=snapshot.canonical_url,
+        title=snapshot.title or content.title,
+        byline=snapshot.byline,
+        published_at=snapshot.published_at,
+        excerpt=snapshot.excerpt,
+        text_content=snapshot.text_content,
+        content_blocks=snapshot.content_blocks or blocks_from_text(snapshot.text_content),
+        reading_minutes=snapshot.reading_minutes,
+        extraction_method=snapshot.extraction_method,
+        fetched_at=as_utc(snapshot.fetched_at),
+        expires_at=as_utc(snapshot.expires_at),
+        cache_status=cache_status,
+    )
 
 
 @router.get("/{content_id}")

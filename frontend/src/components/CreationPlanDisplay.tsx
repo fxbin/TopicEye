@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Check, Clipboard, MessageSquare, MousePointer2, Music2, Paperclip, Pin, Video } from 'lucide-react';
+import { Check, Clipboard, Download, MessageSquare, MousePointer2, Music2, Paperclip, Pin, Video } from 'lucide-react';
 import { formatPlanText } from '@/lib/utils';
 import { Badge, Button, cx } from '@/components/ui';
 
@@ -42,6 +42,18 @@ interface CreationPlanDisplayProps {
   platform: string;
 }
 
+function exportPlanAsMarkdown(plan: Record<string, unknown>, platform: string) {
+  const title = platform ? `${platform} 创作计划` : '创作计划';
+  const content = `# ${title}\n\n${formatPlanText(plan)}`;
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = `${title}.md`;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
 export default function CreationPlanDisplay({ plan, platform }: CreationPlanDisplayProps) {
   const [copied, setCopied] = useState(false);
 
@@ -60,7 +72,7 @@ export default function CreationPlanDisplay({ plan, platform }: CreationPlanDisp
         <Button
           type="button"
           variant="secondary"
-          onClick={() => exportPlanAsMarkdown(plan as Record<string, any>, platform)}
+          onClick={() => exportPlanAsMarkdown(plan as Record<string, unknown>, platform)}
           className="!px-2 !py-1 text-[12px]"
         >
           <Download size={12} />

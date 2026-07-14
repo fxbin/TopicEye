@@ -50,6 +50,7 @@ const STATUS_LABELS: Record<ProductUpdateStatus, string> = {
 };
 
 interface DraftEntry {
+  title: string;
   kind: ProductUpdateKind;
   description: string;
 }
@@ -104,7 +105,7 @@ export default function AdminUpdatesPage() {
       status: item.status,
       target_date: toDateInput(item.target_date),
       shipped_at: toDateInput(item.shipped_at),
-      items: item.items.map((it) => ({ kind: it.kind, description: it.description })),
+      items: item.items.map((it) => ({ title: it.title, kind: it.kind, description: it.description })),
     });
     setShowCreate(true);
     setFormError(null);
@@ -117,7 +118,7 @@ export default function AdminUpdatesPage() {
   };
 
   const addItem = () => {
-    setDraft({ ...draft, items: [...draft.items, { kind: 'improvement', description: '' }] });
+    setDraft({ ...draft, items: [...draft.items, { title: '', kind: 'improvement', description: '' }] });
   };
 
   const removeItem = (idx: number) => {
@@ -140,8 +141,8 @@ export default function AdminUpdatesPage() {
       setFormError('至少添加一个更新项');
       return;
     }
-    if (draft.items.some((it) => !it.description.trim())) {
-      setFormError('所有更新项必须有描述');
+    if (draft.items.some((it) => !it.title.trim() || !it.description.trim())) {
+      setFormError('所有更新项必须填写标题和描述');
       return;
     }
     setSaving(true);
@@ -152,11 +153,10 @@ export default function AdminUpdatesPage() {
         status: draft.status,
         target_date: fromDateInput(draft.target_date),
         shipped_at: fromDateInput(draft.shipped_at),
-        items: draft.items.map((it, idx) => ({
-          id: 0,
+        items: draft.items.map((it) => ({
+          title: it.title.trim(),
           kind: it.kind,
           description: it.description.trim(),
-          order_index: idx,
         })),
       };
       if (editing) {
@@ -528,8 +528,16 @@ function UpdateEditor({
                       >
                         <Trash2 size={12} />
                       </Button>
-                    </div>
-                    <textarea
+                  </div>
+                  <input
+                    type="text"
+                    value={it.title}
+                    onChange={(e) => onUpdateItem(idx, { title: e.target.value })}
+                    maxLength={200}
+                    placeholder="更新项标题"
+                    className="mb-2 w-full rounded-sm border border-gray-200 bg-white px-2.5 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                  />
+                  <textarea
                       value={it.description}
                       onChange={(e) => onUpdateItem(idx, { description: e.target.value })}
                       rows={2}

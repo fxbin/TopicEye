@@ -137,7 +137,7 @@ def test_content_read_cache_invalidation_covers_content_derived_views():
     set_cached_json("stats:overview:7", {"total": 1})
     set_cached_json("stats:dashboard:7", {"kpi": {}})
     cache_payload(
-        (48, 160, 80),
+        (48, 160, 80, None),
         build_empty_payload(
             hours=48,
             analyzed_total=0,

@@ -17,6 +17,7 @@ from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
+from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_serialization import latest_analysis_from_item
 from app.services.digest_fallback import build_digest_fallback
 from app.services.llm import call_llm_json
@@ -230,11 +231,13 @@ async def _fetch_report_inputs(
 ) -> tuple[list[dict], list[dict]]:
     repo = ContentRepo(db)
     query_start, query_end = _local_window_to_utc_naive(window_start, window_end)
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids()
     items = list(
         await repo.list_for_report_window(
             window_start=query_start,
             window_end=query_end,
             visible_user_id=visible_user_id,
+            exclude_ids=ignored_ids,
         )
     )
     scoring_inputs, item_map, _ = await build_scoring_inputs(db, items)

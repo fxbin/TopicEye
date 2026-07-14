@@ -462,12 +462,16 @@ class ContentRepo(BaseRepository[ContentItem]):
         window_end: datetime,
         category: str | None = None,
         visible_user_id: int | None = None,
+        exclude_ids: set[int] | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch analyzed items in a precise report window for daily report snapshots.
 
         When ``visible_user_id`` is provided, restrict to public content
         (``owner_user_id IS NULL``) or content owned by that user. ``None``
         means no visibility filter (legacy / admin callers).
+
+        口径与 today-picks / DuckDB query_today_picks 对齐：剔除重复内容
+        (``duplicate_of IS NULL``) 与已忽略内容 (``exclude_ids``)。
         """
         from app.models.analysis import AiAnalysis
         from app.services.scoring_engine import CONFIG as SCORING_CONFIG
@@ -485,6 +489,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(self.model.crawled_at <= window_end)
             .where(AiAnalysis.risk_score <= risk_threshold)
             .where(AiAnalysis.curation_score.isnot(None))
+            .where(self.model.duplicate_of.is_(None))
         )
         if visible_user_id is not None:
             stmt = stmt.where(
@@ -493,6 +498,8 @@ class ContentRepo(BaseRepository[ContentItem]):
                     self.model.owner_user_id == visible_user_id,
                 )
             )
+        if exclude_ids:
+            stmt = stmt.where(self.model.id.notin_(exclude_ids))
         if category:
             stmt = stmt.where(self.model.category == category)
         result = await self.db.execute(stmt)
@@ -590,8 +597,13 @@ class ContentRepo(BaseRepository[ContentItem]):
         exclude_ids: set | None = None,
         exclude_source_types: set[str] | None = None,
         time_cutoff: datetime | None = None,
+        visible_user_id: int | None = None,
     ) -> int:
-        """Count items with analysis rows eligible for scoring diagnostics."""
+        """Count items with analysis rows eligible for scoring diagnostics.
+
+        ``visible_user_id`` 与 ``list_scoring_rows`` 同口径：非 None 时只计
+        公共池 + 该用户私有内容，保证漏斗计数与加载行口径一致。
+        """
         from app.models.analysis import AiAnalysis
 
         stmt = select(func.count(self.model.id)).where(
@@ -604,6 +616,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
+        if visible_user_id is not None:
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -614,8 +633,12 @@ class ContentRepo(BaseRepository[ContentItem]):
         exclude_ids: set | None = None,
         exclude_source_types: set[str] | None = None,
         time_cutoff: datetime | None = None,
+        visible_user_id: int | None = None,
     ) -> int:
-        """Count collected content in the same source scope as scoring diagnostics."""
+        """Count collected content in the same source scope as scoring diagnostics.
+
+        ``visible_user_id`` 与 ``count_for_scoring`` / ``list_scoring_rows`` 同口径。
+        """
         stmt = select(func.count(self.model.id))
 
         if exclude_ids:
@@ -624,6 +647,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
+        if visible_user_id is not None:
+            stmt = stmt.where(
+                or_(
+                    self.model.owner_user_id.is_(None),
+                    self.model.owner_user_id == visible_user_id,
+                )
+            )
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)

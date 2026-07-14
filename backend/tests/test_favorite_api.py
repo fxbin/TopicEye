@@ -151,7 +151,7 @@ async def test_favorites_api_create_state_list_and_cache_invalidation(favorites_
 
 def _prime_scoring_flow_cache() -> None:
     cache_payload(
-        (24, 160, 80),
+        (24, 160, 80, None),
         build_empty_payload(
             hours=24,
             analyzed_total=0,

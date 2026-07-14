@@ -482,7 +482,7 @@ async def scoring_flow(
     hours = hours or DEFAULT_SCORING_FLOW_HOURS
     limit = limit or DEFAULT_SCORING_FLOW_LIMIT
 
-    cached = get_cached_scoring_flow_json(hours=hours, limit=limit)
+    cached = get_cached_scoring_flow_json(hours=hours, limit=limit, visible_user_id=current_user.id)
     if cached:
         content, age_seconds = cached
         return Response(

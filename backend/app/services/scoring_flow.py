@@ -25,7 +25,13 @@ SCORING_FLOW_WARMUP_TARGETS = (
     (DEFAULT_SCORING_FLOW_HOURS, DEFAULT_SCORING_FLOW_LIMIT),
     (48, DEFAULT_SCORING_FLOW_LIMIT),
 )
-_CACHE: dict[tuple[int, int, int], tuple[float, dict[str, Any], bytes]] = {}
+# cache key: (hours, limit, sample_limit, visible_user_id) — visible_user_id 入 key，
+# 避免不同用户拿到彼此的漏斗（count 已按 owner 收敛，缓存必须分桶）。
+_CACHE: dict[tuple[int, int, int, int | None], tuple[float, dict[str, Any], bytes]] = {}
+
+
+def _cache_key(hours: int, limit: int, sample_limit: int, visible_user_id: int | None) -> tuple[int, int, int, int | None]:
+    return (hours, limit, sample_limit, visible_user_id)
 
 
 def get_cached_scoring_flow_json(
@@ -33,9 +39,10 @@ def get_cached_scoring_flow_json(
     hours: int,
     limit: int,
     sample_limit: int = 80,
+    visible_user_id: int | None = None,
 ) -> tuple[bytes, float] | None:
     """Return pre-serialized cached payload for hot scoring-flow requests."""
-    cached = _CACHE.get((hours, limit, sample_limit))
+    cached = _CACHE.get(_cache_key(hours, limit, sample_limit, visible_user_id))
     if not cached:
         return None
     cached_at, _payload, json_bytes = cached
@@ -56,7 +63,7 @@ async def build_scoring_flow_payload(
     visible_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Return scoring funnel stages, candidate samples, and mix pressure data."""
-    cache_key = (hours, limit, sample_limit)
+    cache_key = _cache_key(hours, limit, sample_limit, visible_user_id)
     cached = _CACHE.get(cache_key)
     if cached:
         return cached[1]
@@ -64,11 +71,14 @@ async def build_scoring_flow_payload(
     time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
     content_repo = ContentRepo(db)
-    window_counts = await build_window_counts(content_repo, ignored_ids, requested_hours=hours)
+    window_counts = await build_window_counts(
+        content_repo, ignored_ids, requested_hours=hours, visible_user_id=visible_user_id
+    )
     collected_window_counts = await build_collected_window_counts(
         content_repo,
         ignored_ids,
         requested_hours=hours,
+        visible_user_id=visible_user_id,
     )
     collected_window_total = next(
         (item["count"] for item in collected_window_counts if item["hours"] == hours),
@@ -78,6 +88,7 @@ async def build_scoring_flow_payload(
         collected_window_total = await content_repo.count_collected_for_scoring_window(
             exclude_ids=ignored_ids,
             time_cutoff=time_cutoff,
+            visible_user_id=visible_user_id,
         )
     window_total = next(
         (item["count"] for item in window_counts if item["hours"] == hours),
@@ -87,9 +98,12 @@ async def build_scoring_flow_payload(
         window_total = await content_repo.count_for_scoring(
             exclude_ids=ignored_ids,
             time_cutoff=time_cutoff,
+            visible_user_id=visible_user_id,
         )
     if window_total <= 0:
-        analyzed_total = await content_repo.count_for_scoring(exclude_ids=ignored_ids)
+        analyzed_total = await content_repo.count_for_scoring(
+            exclude_ids=ignored_ids, visible_user_id=visible_user_id
+        )
         payload = build_empty_payload(
             hours=hours,
             analyzed_total=analyzed_total,
@@ -158,6 +172,8 @@ async def build_window_counts(
     content_repo: ContentRepo,
     ignored_ids: list[int],
     requested_hours: int | None = None,
+    *,
+    visible_user_id: int | None = None,
 ) -> list[dict[str, int]]:
     """Count analyzed candidates for the debug window selector."""
     now = datetime.now(UTC)
@@ -166,6 +182,7 @@ async def build_window_counts(
         count = await content_repo.count_for_scoring(
             exclude_ids=ignored_ids,
             time_cutoff=now - timedelta(hours=hours),
+            visible_user_id=visible_user_id,
         )
         counts.append({"hours": hours, "count": count})
     return counts
@@ -175,6 +192,8 @@ async def build_collected_window_counts(
     content_repo: ContentRepo,
     ignored_ids: list[int],
     requested_hours: int | None = None,
+    *,
+    visible_user_id: int | None = None,
 ) -> list[dict[str, int]]:
     """Count collected items for explaining pre-analysis gaps."""
     now = datetime.now(UTC)
@@ -183,6 +202,7 @@ async def build_collected_window_counts(
         count = await content_repo.count_collected_for_scoring_window(
             exclude_ids=ignored_ids,
             time_cutoff=now - timedelta(hours=hours),
+            visible_user_id=visible_user_id,
         )
         counts.append({"hours": hours, "count": count})
     return counts
@@ -195,7 +215,9 @@ def debug_window_hours(requested_hours: int | None = None) -> tuple[int, ...]:
     return tuple(sorted({*DEBUG_WINDOW_HOURS, requested_hours}))
 
 
-def cache_payload(cache_key: tuple[int, int, int], payload: dict[str, Any]) -> dict[str, Any]:
+def cache_payload(
+    cache_key: tuple[int, int, int, int | None], payload: dict[str, Any]
+) -> dict[str, Any]:
     cold_payload = dict(payload)
     cold_payload["cache"] = {
         "hit": False,

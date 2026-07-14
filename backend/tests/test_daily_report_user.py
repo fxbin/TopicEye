@@ -129,8 +129,17 @@ async def test_fetch_report_inputs_passes_visible_user_id_to_repo():
             captured.update(kwargs)
             return []
 
+    class FakeIgnoredRepo:
+        def __init__(self, db):
+            pass
+
+        async def list_ignored_ids(self):
+            return set()
+
     orig_repo = daily_report_svc.ContentRepo
+    orig_ignored = daily_report_svc.IgnoredRepo
     daily_report_svc.ContentRepo = FakeContentRepo
+    daily_report_svc.IgnoredRepo = FakeIgnoredRepo
     try:
         from app.services import daily_report as dr
         from app.services.daily_report import _fetch_report_inputs
@@ -144,6 +153,7 @@ async def test_fetch_report_inputs_passes_visible_user_id_to_repo():
         assert captured.get("visible_user_id") == 42
     finally:
         daily_report_svc.ContentRepo = orig_repo
+        daily_report_svc.IgnoredRepo = orig_ignored
 
 
 @pytest.mark.asyncio

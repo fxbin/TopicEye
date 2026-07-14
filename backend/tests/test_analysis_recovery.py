@@ -1297,7 +1297,7 @@ async def test_analyze_batch_invalidates_scoring_cache_after_commit(monkeypatch)
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     cache_payload(
-        (24, 160, 80),
+        (24, 160, 80, None),
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1439,7 +1439,7 @@ async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     cache_payload(
-        (24, 160, 80),
+        (24, 160, 80, None),
         build_empty_payload(
             hours=24,
             analyzed_total=0,

@@ -255,7 +255,7 @@ def test_build_scoring_config_summary_exposes_readonly_thresholds():
 
 def test_scoring_flow_cache_can_be_invalidated():
     invalidate_scoring_flow_cache()
-    cache_key = (48, 160, 80)
+    cache_key = (48, 160, 80, None)
 
     cache_payload(
         cache_key,
@@ -276,7 +276,7 @@ def test_scoring_flow_cache_can_be_invalidated():
 
 def test_scoring_flow_cache_uses_explicit_invalidation():
     invalidate_scoring_flow_cache()
-    cache_key = (24, 160, 80)
+    cache_key = (24, 160, 80, None)
 
     cache_payload(
         cache_key,
@@ -335,7 +335,7 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
     async def fake_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
         calls["count"] += 1
         return cache_payload(
-            (hours, limit, 80),
+            (hours, limit, 80, visible_user_id),
             build_empty_payload(
                 hours=hours,
                 analyzed_total=0,
@@ -370,7 +370,7 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
 
     invalidate_scoring_flow_cache()
 
-    async def fail_build_scoring_flow_payload(db, *, hours, limit):
+    async def fail_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
         raise RuntimeError("scoring flow failed")
 
     monkeypatch.setattr(contents_api, "build_scoring_flow_payload", fail_build_scoring_flow_payload)

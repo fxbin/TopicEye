@@ -41,7 +41,12 @@ from app.services.scoring_flow import (
     build_scoring_flow_payload,
     get_cached_scoring_flow_json,
 )
-from app.services.today_picks_cache import TodayPicksCacheParams, get_cached_today_picks, set_cached_today_picks
+from app.services.today_picks_cache import (
+    TodayPicksCacheParams,
+    default_today_picks_cache_params,
+    get_cached_today_picks,
+    set_cached_today_picks,
+)
 
 router = APIRouter(prefix="/contents", tags=["contents"])
 
@@ -476,18 +481,37 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
     except Exception:
         logger.warning("today_count content query failed", exc_info=True)
 
-    # 当日精选数:复用 /today-picks 的 build_today_picks,拿到同样的 total
-    try:
-        from app.services.today_picks import build_today_picks
+    # 当日精选数: 公共池优先复用首页精选缓存，避免侧栏徽章和当日精选页
+    # 同时各自完整重算一次。未命中时只物化一条卡片，评分仍覆盖全量候选，
+    # 因而 total 与 /today-picks 保持一致。
+    cached_pick_payload: dict | None = None
+    if current_user is None:
+        cached_picks = get_cached_today_picks(
+            default_today_picks_cache_params(),
+            ttl_seconds=settings.READ_CACHE_TTL_SECONDS,
+        )
+        if cached_picks:
+            try:
+                parsed = json.loads(cached_picks[0])
+                if isinstance(parsed, dict):
+                    cached_pick_payload = parsed
+            except (TypeError, ValueError):
+                logger.warning("today_count cached today-picks payload could not be decoded")
 
-        async with async_session() as db:
-            build_kwargs = {"category": None, "hours": 24}
-            if current_user is not None:
-                build_kwargs["owner_user_id"] = current_user.id
-            payload = await build_today_picks(db, **build_kwargs)
-            result["today_picks"] = payload.get("total", 0)
-    except Exception:
-        logger.warning("today_count picks query failed", exc_info=True)
+    if cached_pick_payload is not None:
+        result["today_picks"] = cached_pick_payload.get("total", 0)
+    else:
+        try:
+            from app.services.today_picks import build_today_picks
+
+            async with async_session() as db:
+                build_kwargs = {"category": None, "hours": 24, "limit": 1}
+                if current_user is not None:
+                    build_kwargs["owner_user_id"] = current_user.id
+                payload = await build_today_picks(db, **build_kwargs)
+                result["today_picks"] = payload.get("total", 0)
+        except Exception:
+            logger.warning("today_count picks query failed", exc_info=True)
 
     payload = json.dumps(result, default=str)
     set_cached_json(cache_key, payload)

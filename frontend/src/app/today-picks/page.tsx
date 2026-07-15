@@ -69,7 +69,7 @@ export default function TodayPicksPageWrapper() {
 function TodayPicksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { toggleFavorite, currentUser } = useAppContext();
+  const { toggleFavorite, currentUser, reportTodayPicksTotal } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
@@ -128,6 +128,7 @@ function TodayPicksPage() {
       const res = await contentsApi.todayPicks(params);
       setItems(res.items || []);
       setTotal(res.total || 0);
+      reportTodayPicksTotal(res.total || 0);
       setTopics(res.topics || []);
       setDupCount(res.duplicates_hidden || 0);
     } catch (err) {
@@ -135,7 +136,7 @@ function TodayPicksPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadLimit, selectedCategory, selectedTimeRange]);
+  }, [loadLimit, reportTodayPicksTotal, selectedCategory, selectedTimeRange]);
 
   useEffect(() => { void fetchPicks(); }, [fetchPicks]);
 

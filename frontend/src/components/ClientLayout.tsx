@@ -28,6 +28,8 @@ interface AppContextType {
   topicCount: number;
   /** 首页等内容列表拿到 total 后回传，驱动侧边栏 badge 跟随时间筛选变化 */
   reportContentTotal: (total: number) => void;
+  /** 当日精选页拿到自身 total 后回传，避免侧栏再并发请求一次同口径统计。 */
+  reportTodayPicksTotal: (total: number) => void;
   isFavoriteTarget: (target: FavoriteTargetRef) => boolean;
   applyAuthSession: (session: AuthTokenResponse) => void;
   /** 同步更新 enabledFeatures（toggle 后调用，菜单/路由守卫实时刷新） */
@@ -49,6 +51,7 @@ const AppContext = createContext<AppContextType>({
   favoriteTargetPendingKeys: new Set(),
   topicCount: 0,
   reportContentTotal: () => {},
+  reportTodayPicksTotal: () => {},
   isFavoriteTarget: () => false,
   applyAuthSession: () => {},
   updateEnabledFeatures: () => {},
@@ -179,9 +182,14 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   const refreshCounts = useCallback(async () => {
     try {
+      // 当前页面会自行获取同口径的精选 total；跳过侧栏的重复重算，避免冷启动时
+      // 两个 DuckDB 全量评分查询互相阻塞首屏。
+      const isTodayPicksPage = pathname === '/today-picks';
       if (!currentUser) {
-        const counts = await contentsApi.todayCount();
-        setTodayPicksCount(counts.today_picks || 0);
+        if (!isTodayPicksPage) {
+          const counts = await contentsApi.todayCount();
+          setTodayPicksCount(counts.today_picks || 0);
+        }
         setSourceCount(0);
         setFavoriteTotal(0);
         setFavorites(new Set());
@@ -190,13 +198,13 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         return;
       }
       const [counts, sources, allFavorites] = await Promise.all([
-        contentsApi.todayCount(),
+        isTodayPicksPage ? Promise.resolve(null) : contentsApi.todayCount(),
         isAdmin(currentUser)
           ? sourcesApi.list({ page_size: 1 })
           : sourcesApi.listMine({ page_size: 1 }),
         fetchAllFavoriteItems(),
       ]);
-      setTodayPicksCount(counts.today_picks || 0);
+      if (counts) setTodayPicksCount(counts.today_picks || 0);
       setSourceCount(sources ? sources.total || sources.items?.length || 0 : 0);
       setFavoriteTotal(allFavorites.total || 0);
 
@@ -215,7 +223,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       setFavoriteTargetIds(targetIds);
       setFavorites(contentIds);
     } catch {}
-  }, [currentUser]);
+  }, [currentUser, pathname]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -472,6 +480,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         favoriteTargetPendingKeys,
         topicCount: contentCount,
         reportContentTotal: setContentCount,
+        reportTodayPicksTotal: setTodayPicksCount,
         isFavoriteTarget,
         applyAuthSession,
         updateEnabledFeatures,

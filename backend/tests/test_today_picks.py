@@ -10,7 +10,8 @@ from app.api.v1 import contents as contents_api
 from app.api.v1 import auth as auth_api
 from app.repositories.content_repo import ContentRepo
 from app.services import today_picks
-from app.services.json_cache import invalidate_json_cache
+from app.services.json_cache import invalidate_json_cache, set_cached_json
+from app.services.today_picks_cache import default_today_picks_cache_params
 from app.services.scoring_engine import ScoringInput, score_items
 
 
@@ -271,6 +272,8 @@ async def test_build_today_picks_lets_unified_scorer_decide_mid_risk_candidates(
 @pytest.mark.asyncio
 async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     invalidate_json_cache()
+
+
     monkeypatch.setattr(contents_api.settings, "READ_CACHE_TTL_SECONDS", 60)
     monkeypatch.setattr(contents_api, "async_session", _failing_session_factory)
 
@@ -309,6 +312,29 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
 
     assert failed.status_code == 503
     assert json.loads(failed.text)["detail"] == "DuckDB analytical layer unavailable"
+    invalidate_json_cache()
+
+
+@pytest.mark.asyncio
+async def test_today_count_reuses_default_today_picks_cache(monkeypatch):
+    invalidate_json_cache()
+    set_cached_json(default_today_picks_cache_params().key, {"total": 23})
+    monkeypatch.setattr(contents_api, "async_session", _failing_session_factory)
+
+    app = FastAPI()
+    app.include_router(contents_api.router)
+    transport = httpx.ASGITransport(app=app)
+
+    async def should_not_build_picks(*_args, **_kwargs):
+        raise AssertionError("today-count should reuse the warmed public picks cache")
+
+    monkeypatch.setattr("app.services.today_picks.build_today_picks", should_not_build_picks)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/contents/today-count")
+
+    assert response.status_code == 200
+    assert response.json()["today_picks"] == 23
     invalidate_json_cache()
 
 

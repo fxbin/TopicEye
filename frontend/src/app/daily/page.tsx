@@ -1017,19 +1017,8 @@ export default function DailyReportPage() {
               </div>
             </div>
           ) : report ? (
-            <ReportStatusPanel
-              icon={Inbox}
-              action={(
-                <ReportActionButton
-                  onClick={() => generateForDate(recoveryDate)}
-                  loading={generating && generatingDate === recoveryDate}
-                  icon={FileText}
-                >
-                  生成 {recoveryDate}
-                </ReportActionButton>
-              )}
-            >
-              今日暂无精选选题，点击生成
+            <ReportStatusPanel icon={Inbox}>
+              {report.overview || '今日暂未形成可推荐精选。'}
             </ReportStatusPanel>
           ) : (
             <ReportStatusPanel

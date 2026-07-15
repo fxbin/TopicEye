@@ -286,3 +286,46 @@ async def test_invalid_llm_daily_report_uses_editorial_fallback(monkeypatch):
     assert picks[0]["angles"]
     assert "lifecycle" not in picks[0]
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_daily_report_without_curated_items_is_done_without_background_recommendations(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    now = datetime(2026, 5, 27, 12, 0, 0)
+    background_item = {
+        "id": 7,
+        "title": "只可作为背景的素材",
+        "url": "https://example.com/background",
+        "category": "行业动态",
+        "source_name": "技术观察",
+        "curation_score": 48.0,
+        "summary": "这条素材只能帮助判断当天背景。",
+    }
+
+    async def fake_inputs(*_args, **_kwargs):
+        return [], [background_item]
+
+    async def should_not_call_llm(*_args, **_kwargs):
+        raise AssertionError("no curated items must not call the LLM")
+
+    monkeypatch.setattr(daily_report, "_local_now", lambda: now)
+    monkeypatch.setattr(daily_report, "_fetch_report_inputs", fake_inputs)
+    monkeypatch.setattr(daily_report, "call_llm_json", should_not_call_llm)
+
+    async with session_factory() as db:
+        report = await daily_report.generate_daily_report(
+            db,
+            target_date=date(2026, 5, 27),
+            edition="noon",
+            cutoff_at=now,
+        )
+
+    assert report.status == "DONE"
+    assert "暂未形成可推荐精选" in report.overview
+    assert json.loads(report.top_picks) == []
+    assert json.loads(report.source_item_ids) == []
+    await engine.dispose()

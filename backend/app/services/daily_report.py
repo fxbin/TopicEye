@@ -447,6 +447,22 @@ async def generate_daily_report(
         await db.commit()
         return report
 
+    # 日报的可推荐选题只能来自精选池。背景素材只用于帮助归纳当天脉络，
+    # 不能在精选为空时补位成日报推荐；否则会让“日报精选”的边界失真。
+    if not curated_items:
+        report.status = "DONE"
+        report.overview = "今日暂未形成可推荐精选。已分析素材会继续参与后续评分，达到精选门槛后再进入日报。"
+        report.takeaway = "今日暂无达到精选门槛的选题"
+        report.keywords = json.dumps([], ensure_ascii=False)
+        report.trends = json.dumps([], ensure_ascii=False)
+        report.top_picks = json.dumps([], ensure_ascii=False)
+        report.platform_tips = json.dumps({}, ensure_ascii=False)
+        report.topic_count = 0
+        report.source_item_ids = json.dumps([], ensure_ascii=False)
+        report.updated_at = _local_now()
+        await db.commit()
+        return report
+
     # 截断一次：prompt 展示列表与下方匹配逻辑共用同一份，保证 source_idx 一致。
     curated_for_prompt = curated_items[:50]
     curated_text = _format_items(curated_for_prompt, limit=50, selected=True)
@@ -473,15 +489,12 @@ async def generate_daily_report(
             max_tokens=4000,
         )
         overview = result.get("overview", "")
-        used_fallback = False
         if not overview or "raw_response" in result:
-            fallback_items = curated_items or background_items
             result = build_daily_editorial_fallback(
-                fallback_items,
+                curated_items,
                 label=f"{report_date} {_edition_label(normalized_edition)}",
             )
             overview = result.get("overview", "")
-            used_fallback = True
 
         report.overview = overview
         report.takeaway = result.get("takeaway", "")
@@ -491,7 +504,7 @@ async def generate_daily_report(
         raw_picks = result.get("top_picks", [])
         picks = []
         # source_idx 主匹配（精确），source_title 子串兜底，URL 末位兜底。
-        matchable_items = (curated_for_prompt or background_items[:50]) if used_fallback else curated_for_prompt
+        matchable_items = curated_for_prompt
         curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
         curated_by_title = {item["title"]: item for item in matchable_items}
         curated_by_url = {

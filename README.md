@@ -55,16 +55,20 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 - Python 3.12+ · Node.js 20+ · Git
 - **or** Docker + Docker Compose (easiest path)
 
-### Option A — Docker Compose (recommended)
+### Option A — Docker Compose (recommended for running the service)
 
 ```bash
 git clone https://github.com/fxbin/TopicEye.git
 cd TopicEye
-docker compose up -d
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 - Frontend: http://localhost:3000
 - Backend API docs: http://localhost:8000/docs
+
+> The default `docker-compose.yml` is deliberately a hot-reload development
+> setup. Use `docker compose up -d --build` there only while developing; it
+> runs `next dev` and is not the local deployment configuration.
 
 ### Option B — Local development
 

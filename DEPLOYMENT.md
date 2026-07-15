@@ -20,7 +20,7 @@ docker compose up -d --build
 ⚠️ **开发配置不要用于生产**——`--reload` 会因代码改动反复触发服务重启，
 杀正在跑的抓取任务（这是 TopicEye 历史上"不抓数据"故障的根因之一）。
 
-### 1.2 生产模式（推荐 4C4G+）
+### 1.2 稳定运行模式（推荐本地常驻与 4C4G+）
 
 ```bash
 docker compose -f docker-compose.prod.yml build
@@ -34,6 +34,10 @@ docker compose -f docker-compose.prod.yml up -d
 - `depends_on.condition: service_healthy` 启动顺序保证
 - `stop_grace_period: 45s`（> uvicorn 30s，确保优雅停机）
 - 内存限制：backend 1g + frontend 512m + postgres 512m ≈ 2g
+
+默认以 `APP_ENV=development` 保留既有本地密钥和加密数据，但仍使用无热重载的
+生产运行进程。对外部署时请在项目根目录 `.env` 中显式设置
+`APP_ENV=production`、`APP_SECRET_KEY` 和 `CORS_ORIGINS`；生产模式会拒绝默认密钥。
 
 ---
 

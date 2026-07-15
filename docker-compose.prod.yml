@@ -33,10 +33,18 @@ services:
     # 不 bind mount 源码（代码在镜像里）；只挂 data volume
     volumes:
       - backend-data:/app/data
+    # Keep local credentials out of the image. The file is optional so a fresh
+    # clone can still start with the defaults, while an existing installation
+    # retains its LLM/OAuth/runtime configuration after switching from dev.
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
-      - APP_ENV=production
+      # A local stable deployment can retain development-mode secrets. Public
+      # deployments must set APP_ENV=production and a non-default APP_SECRET_KEY.
+      - APP_ENV=${APP_ENV:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://topiceye:topiceye@postgres:5432/topiceye}
-      - CORS_ORIGINS=${CORS_ORIGINS}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - AUTO_CREATE_TABLES_ON_STARTUP=${AUTO_CREATE_TABLES_ON_STARTUP:-true}
       - CACHE_WARMUP_ENABLED=${CACHE_WARMUP_ENABLED:-true}
       - STARTUP_SEED_ENABLED=${STARTUP_SEED_ENABLED:-true}

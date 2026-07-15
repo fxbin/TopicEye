@@ -610,7 +610,7 @@ export default function DailyReportPage() {
             <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
             <div className="space-y-3">
-              {/* 头部摘要行：日期 + takeaway + 阅读时间 */}
+              {/* 主编判断：先给出日报主线，再进入分层选题。 */}
               <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
@@ -622,6 +622,12 @@ export default function DailyReportPage() {
                     <p className="text-sm font-bold leading-6 text-gray-800">
                       {report.takeaway || report.overview?.slice(0, 80) || '今日内容已完成分析。'}
                     </p>
+                    {report.overview && (
+                      <div className="mt-2.5 border-l-2 border-primary pl-3 text-[13px] leading-6 text-gray-600">
+                        <span className="mr-1.5 text-[11px] font-black text-primary">主编判断</span>
+                        {report.overview}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

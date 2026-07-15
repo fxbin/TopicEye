@@ -19,7 +19,7 @@ from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_serialization import latest_analysis_from_item
-from app.services.digest_fallback import build_digest_fallback
+from app.services.digest_fallback import build_daily_editorial_fallback
 from app.services.llm import call_llm_json
 from app.services.scoring_engine import score_items
 from app.services.scoring_inputs import build_scoring_inputs
@@ -473,10 +473,15 @@ async def generate_daily_report(
             max_tokens=4000,
         )
         overview = result.get("overview", "")
+        used_fallback = False
         if not overview or "raw_response" in result:
             fallback_items = curated_items or background_items
-            result = build_digest_fallback(fallback_items, label=f"{report_date} {_edition_label(normalized_edition)}")
+            result = build_daily_editorial_fallback(
+                fallback_items,
+                label=f"{report_date} {_edition_label(normalized_edition)}",
+            )
             overview = result.get("overview", "")
+            used_fallback = True
 
         report.overview = overview
         report.takeaway = result.get("takeaway", "")
@@ -486,10 +491,11 @@ async def generate_daily_report(
         raw_picks = result.get("top_picks", [])
         picks = []
         # source_idx 主匹配（精确），source_title 子串兜底，URL 末位兜底。
-        curated_by_idx = {i + 1: item for i, item in enumerate(curated_for_prompt)}
-        curated_by_title = {item["title"]: item for item in curated_for_prompt}
+        matchable_items = (curated_for_prompt or background_items[:50]) if used_fallback else curated_for_prompt
+        curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
+        curated_by_title = {item["title"]: item for item in matchable_items}
         curated_by_url = {
-            normalize_zhihu_url(item.get("url", "")): item for item in curated_for_prompt if item.get("url")
+            normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")
         }
         curated_titles = set(curated_by_title)
         selected_source_ids: list[int] = []
@@ -522,9 +528,12 @@ async def generate_daily_report(
                 # brief 字段白名单：过滤掉 LLM 残留的 feature 专属字段
                 pick = {k: v for k, v in pick.items() if k in _BRIEF_ALLOWED_FIELDS}
             else:
-                # feature：lifecycle 必须是合法枚举，越界值静默降级
+                # feature：生命周期没有足够依据时宁可不显示，也不伪造“上升期”。
                 lc = pick.get("lifecycle")
-                pick["lifecycle"] = lc if lc in _VALID_LIFECYCLE else "上升期"
+                if lc in _VALID_LIFECYCLE:
+                    pick["lifecycle"] = lc
+                else:
+                    pick.pop("lifecycle", None)
                 # angles 过滤问句 + 限 3 条
                 angles = pick.get("angles") or []
                 pick["angles"] = [

@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta, timezone, UTC
 
 import pytest
@@ -231,4 +232,57 @@ async def test_generate_daily_report_locks_existing_row_for_postgresql(monkeypat
 
     assert calls["for_update"] == 1
     assert report.status == "ERROR"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_invalid_llm_daily_report_uses_editorial_fallback(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    now = datetime(2026, 5, 27, 12, 0, 0)
+    item = {
+        "id": 1,
+        "title": "AI 视频工具开始争夺创作者工作流",
+        "url": "https://example.com/a",
+        "category": "产品更新",
+        "source_name": "技术观察",
+        "creator_score": 86.0,
+        "viral_score": 75.0,
+        "quality_score": 80.0,
+        "risk_score": 20.0,
+        "curation_score": 86.0,
+        "adjusted_score": 86.0,
+        "summary": "多家平台更新视频生成能力，重点面向短视频和营销素材。",
+        "recommendation": "适合拆解成创作者工具选型和实测对比。",
+    }
+
+    async def fake_inputs(*_args, **_kwargs):
+        return [item], [item]
+
+    async def invalid_llm(*_args, **_kwargs):
+        return {"raw_response": "not-json"}
+
+    monkeypatch.setattr(daily_report, "_local_now", lambda: now)
+    monkeypatch.setattr(daily_report, "_fetch_report_inputs", fake_inputs)
+    monkeypatch.setattr(daily_report, "call_llm_json", invalid_llm)
+
+    async with session_factory() as db:
+        report = await daily_report.generate_daily_report(
+            db,
+            target_date=date(2026, 5, 27),
+            edition="noon",
+            cutoff_at=now,
+        )
+
+    picks = json.loads(report.top_picks)
+    assert report.status == "DONE"
+    assert "今天先写" in report.overview
+    assert picks[0]["source_url"] == item["url"]
+    assert picks[0]["source_title"] == item["title"]
+    assert picks[0]["tier"] == "feature"
+    assert picks[0]["angles"]
+    assert "lifecycle" not in picks[0]
     await engine.dispose()

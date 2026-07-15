@@ -8,7 +8,10 @@ from app.services.json_cache import get_cached_json, invalidate_json_cache, set_
 
 
 TODAY_PICKS_CACHE_PREFIX = "contents:today-picks:"
-TODAY_PICKS_DEFAULT_CACHE_LABEL = "contents:today-picks:48"
+# The page opens on the rolling 24-hour window and requests the first 40 picks.
+# Keep the startup warmup key identical so the first visit can hit the cache.
+TODAY_PICKS_DEFAULT_CACHE_LABEL = "contents:today-picks:hours=24&limit=40"
+TODAY_PICKS_INITIAL_LIMIT = 40
 
 
 @dataclass(frozen=True)
@@ -31,7 +34,7 @@ class TodayPicksCacheParams:
 
 
 def default_today_picks_cache_params() -> TodayPicksCacheParams:
-    return TodayPicksCacheParams(hours=48)
+    return TodayPicksCacheParams(hours=24, limit=TODAY_PICKS_INITIAL_LIMIT)
 
 
 def get_cached_today_picks(params: TodayPicksCacheParams, *, ttl_seconds: float):

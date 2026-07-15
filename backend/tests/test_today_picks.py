@@ -213,6 +213,8 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     assert item["analysis"]["score_breakdown"]["quality_factor"] == expected["quality_factor"]
     assert item["analysis"]["score_breakdown"]["risk_factor"] == expected["risk_factor"]
     assert item["analysis"]["score_breakdown"]["time_decay"] == expected["time_decay"]
+    assert "raw_content" not in item
+    assert "analyses" not in item
 
 
 @pytest.mark.asyncio

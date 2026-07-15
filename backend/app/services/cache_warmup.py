@@ -177,7 +177,7 @@ async def warmup_today_picks(db) -> None:
     from app.services.today_picks import build_today_picks
 
     params = default_today_picks_cache_params()
-    payload = await build_today_picks(db, hours=params.hours)
+    payload = await build_today_picks(db, hours=params.hours, limit=params.limit)
     set_cached_today_picks(params, payload)
 
 

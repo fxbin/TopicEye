@@ -51,6 +51,8 @@ const TIME_RANGES = [
   { value: '7d', label: '7d' },
 ] as const;
 const DEFAULT_TIME_RANGE = '24h';
+const INITIAL_PICK_LIMIT = 40;
+const PICK_LOAD_STEP = 40;
 
 function normalizeTimeRange(value: string | null) {
   return TIME_RANGES.some((range) => range.value === value) ? value! : DEFAULT_TIME_RANGE;
@@ -74,6 +76,7 @@ function TodayPicksPage() {
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
   const [items, setItems] = useState<ContentItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [dupCount, setDupCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -94,6 +97,7 @@ function TodayPicksPage() {
 
   const setCategory = (cat: string) => {
     setSelectedCategory(cat);
+    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL(cat, selectedLevel, selectedTimeRange);
   };
   const setLevel = (level: string) => {
@@ -103,12 +107,14 @@ function TodayPicksPage() {
   };
   const setTimeRange = (tr: string) => {
     setSelectedTimeRange(tr);
+    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL(selectedCategory, selectedLevel, tr);
   };
   const clearFilters = () => {
     setSelectedCategory('');
     setSelectedLevel('');
     setSelectedTimeRange(DEFAULT_TIME_RANGE);
+    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL('', '', DEFAULT_TIME_RANGE);
   };
 
@@ -118,7 +124,7 @@ function TodayPicksPage() {
       const params: { category?: string; time_range?: string; limit?: number } = {};
       if (selectedCategory) params.category = selectedCategory;
       params.time_range = selectedTimeRange;
-      if (selectedTimeRange === '7d') params.limit = 80;
+      params.limit = selectedTimeRange === '7d' ? Math.max(loadLimit, 80) : loadLimit;
       const res = await contentsApi.todayPicks(params);
       setItems(res.items || []);
       setTotal(res.total || 0);
@@ -129,7 +135,7 @@ function TodayPicksPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, selectedTimeRange]);
+  }, [loadLimit, selectedCategory, selectedTimeRange]);
 
   useEffect(() => { void fetchPicks(); }, [fetchPicks]);
 
@@ -315,6 +321,18 @@ function TodayPicksPage() {
                   workflowPending={workflowPendingId === item.id}
                 />
               ))}
+            </div>
+          )}
+          {!loading && items.length < total && (
+            <div className="pb-10 text-center">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setLoadLimit((current) => current + PICK_LOAD_STEP)}
+              >
+                加载更多（还有 {total - items.length} 条）
+              </Button>
+              <div className="mt-2 text-[11px] text-gray-400">首屏优先呈现高分选题，按需继续展开。</div>
             </div>
           )}
         </main>

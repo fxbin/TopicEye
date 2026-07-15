@@ -18,7 +18,12 @@ from app.services.stats_cache import (
     invalidate_novel_platform_stats_cache,
     invalidate_stats_cache,
 )
-from app.services.today_picks_cache import TodayPicksCacheParams, invalidate_today_picks_cache
+from app.services.today_picks_cache import (
+    TODAY_PICKS_INITIAL_LIMIT,
+    TodayPicksCacheParams,
+    default_today_picks_cache_params,
+    invalidate_today_picks_cache,
+)
 from app.services.trending_cache import (
     TRENDING_CROSS_PLATFORM_CACHE_PREFIX,
     TRENDING_LIST_CACHE_PREFIX,
@@ -97,6 +102,14 @@ def test_today_picks_cache_key_and_invalidation():
     assert get_cached_json(key, ttl_seconds=10) is None
     assert get_cached_json("contents:list:example", ttl_seconds=10) is not None
     invalidate_json_cache()
+
+
+def test_today_picks_startup_cache_matches_default_screen_request():
+    params = default_today_picks_cache_params()
+
+    assert params.hours == 24
+    assert params.limit == TODAY_PICKS_INITIAL_LIMIT == 40
+    assert params.key == "contents:today-picks:hours=24&limit=40&user_id="
 
 
 def test_source_list_cache_key_and_invalidation():

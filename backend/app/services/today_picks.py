@@ -85,7 +85,14 @@ async def build_today_picks(
     if not scored_rows:
         return _empty_payload()
 
-    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in scored_rows]
+    # The scorer still sees the entire candidate pool (needed for percentile
+    # selection), while the response only materializes the requested first page.
+    # Previously all selected rows were converted into full content payloads and
+    # then truncated, making the default page transfer and render hundreds of
+    # cards even when the UI only needed its first screen.
+    total = len(scored_rows)
+    visible_rows = scored_rows[:limit] if limit else scored_rows
+    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
     try:
         topic_map = {topic["id"]: topic for topic in query_topics()}
     except Exception as exc:
@@ -96,8 +103,8 @@ async def build_today_picks(
     return _dedupe_and_pack(
         response_items,
         topic_map,
+        total=total,
         duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
-        limit=limit,
     )
 
 
@@ -343,7 +350,6 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "crawled_at": row.get("crawled_at"),
         "content_hash": row.get("content_hash"),
         "summary": row.get("summary"),
-        "raw_content": row.get("raw_content"),
         "cover_url": row.get("cover_url"),
         "category": row.get("category"),
         "tags": content_tags,
@@ -356,7 +362,6 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "duplicate_of": row.get("duplicate_of"),
         "similarity_score": row.get("similarity_score"),
         "analysis": analysis,
-        "analyses": [analysis],
     }
 
 
@@ -378,20 +383,16 @@ def _dedupe_and_pack(
     items: list[dict],
     topic_map: dict,
     *,
+    total: int,
     duplicates_hidden: int = 0,
-    limit: int | None = None,
 ) -> dict:
-    deduped = items
-    total = len(deduped)
-    if limit:
-        deduped = deduped[:limit]
-    topic_ids = {item.get("topic_id") for item in deduped if item.get("topic_id")}
+    topic_ids = {item.get("topic_id") for item in items if item.get("topic_id")}
     visible_topics = [topic for topic in topic_map.values() if topic["id"] in topic_ids]
     return {
-        "items": deduped,
+        "items": items,
         "total": total,
         "duplicates_hidden": duplicates_hidden,
         "topics": visible_topics,
         "page": 1,
-        "page_size": len(deduped),
+        "page_size": len(items),
     }

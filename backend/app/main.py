@@ -273,14 +273,17 @@ async def lifespan(app: FastAPI):
     # 即使 DuckDB 真的挂了,30s 后也会放弃,scheduler 仍能起来,_rescan_sources
     # 10 分钟一次的自愈也能跑。today_picks 在 DuckDB 不可用时走 commit 1a69db9
     # 加的 OLTP fallback 兜底。
-    available = await _init_duckdb_layer()
-    if available:
-        logger.info(
-            "DuckDB analytical layer initialized (ATTACH %s READ_ONLY)",
-            database_profile.backend,
-        )
+    if settings.DUCKDB_STARTUP_INIT_ENABLED:
+        available = await _init_duckdb_layer()
+        if available:
+            logger.info(
+                "DuckDB analytical layer initialized (ATTACH %s READ_ONLY)",
+                database_profile.backend,
+            )
+        else:
+            logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
     else:
-        logger.warning("DuckDB analytical layer not available — falling back to SQLAlchemy queries")
+        logger.info("DuckDB startup initialization skipped — SQLAlchemy fallback remains available")
 
     # Start the periodic scheduler
     if settings.SCHEDULER_ENABLED:

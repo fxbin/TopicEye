@@ -51,6 +51,7 @@ services:
       - DUCKDB_THREADS=${DUCKDB_THREADS:-2}
       - DUCKDB_MEMORY_LIMIT=${DUCKDB_MEMORY_LIMIT:-256MB}
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
+      - DUCKDB_STARTUP_INIT_ENABLED=${DUCKDB_STARTUP_INIT_ENABLED:-false}
       - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
     # 不 override command：用 Dockerfile CMD（uvicorn 无 --reload）
     depends_on:

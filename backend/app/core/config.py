@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     DUCKDB_THREADS: int = 2
     DUCKDB_MEMORY_LIMIT: str = "256MB"
     DUCKDB_EXTENSION_DIR: str = "./data/duckdb_extensions"
+    # PostgreSQL 的 DuckDB ATTACH 在大数据量下可能执行长时间 COPY；生产部署可
+    # 跳过启动期预热，优先保证 API 先可用（对应查询已有 SQLAlchemy 兜底）。
+    DUCKDB_STARTUP_INIT_ENABLED: bool = True
 
     # ── Alerting ──
     ALERT_WEBHOOK_URL: str = ""  # 飞书/钉钉/Slack incoming webhook URL

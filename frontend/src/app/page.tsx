@@ -46,12 +46,15 @@ import {
   formatTimelineDate,
 } from '@/lib/datetime';
 
+const INITIAL_CONTENT_LIMIT = 40;
+const CONTENT_LOAD_STEP = 40;
 
 export default function HomePage() {
   const router = useRouter();
   const { currentUser, toggleFavorite, refreshCounts, reportContentTotal } = useAppContext();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
+  const [contentLimit, setContentLimit] = useState(INITIAL_CONTENT_LIMIT);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +99,7 @@ export default function HomePage() {
         setLoading(true);
         setError(null);
         const res = await contentsApi.list({
-          page_size: 100,
+          page_size: contentLimit,
           hours: TIME_RANGE_HOURS[activeTimeRange],
           source_type: activeSourceType === '全部' ? undefined : activeSourceType,
           category: activeCategory === '全部' ? undefined : activeCategory,
@@ -128,7 +131,11 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery]);
+  }, [activeTimeRange, activeSourceType, activeCategory, contentLimit, searchQuery]);
+
+  const resetContentLimit = useCallback(() => {
+    setContentLimit(INITIAL_CONTENT_LIMIT);
+  }, []);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -260,7 +267,10 @@ export default function HomePage() {
           type="text"
           placeholder="搜索标题..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            resetContentLimit();
+            setSearchQuery(e.target.value);
+          }}
           className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-primary"
         />
       </div>
@@ -275,7 +285,10 @@ export default function HomePage() {
               <button
                 key={range}
                 type="button"
-                onClick={() => setActiveTimeRange(range)}
+                onClick={() => {
+                  resetContentLimit();
+                  setActiveTimeRange(range);
+                }}
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeTimeRange === range
@@ -296,7 +309,10 @@ export default function HomePage() {
               <button
                 key={type}
                 type="button"
-                onClick={() => setActiveSourceType(type)}
+                onClick={() => {
+                  resetContentLimit();
+                  setActiveSourceType(type);
+                }}
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeSourceType === type
@@ -321,6 +337,7 @@ export default function HomePage() {
               name={c}
               active={activeCategory === c}
               onClick={() => {
+                resetContentLimit();
                 setActiveCategory(c);
                 setActiveTag('全部');
               }}
@@ -406,6 +423,18 @@ export default function HomePage() {
               onStartWorkflow={handleStartWorkflow}
               workflowPendingId={workflowPendingId}
             />
+            {items.length < totalAvailable && (
+              <div className="mt-6 text-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setContentLimit((current) => current + CONTENT_LOAD_STEP)}
+                >
+                  加载更多（还有 {totalAvailable - items.length} 条）
+                </Button>
+                <div className="mt-2 text-[11px] text-gray-400">首屏优先展示最新内容，按需继续展开。</div>
+              </div>
+            )}
             {filtered.length === 0 && (
               <div className="py-[60px] text-center text-sm text-gray-400">
                 当前筛选条件下没有内容

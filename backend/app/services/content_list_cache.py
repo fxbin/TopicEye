@@ -9,7 +9,9 @@ from app.services.json_cache import get_cached_json, invalidate_json_cache, set_
 
 CONTENT_LIST_CACHE_PREFIX = "contents:list:"
 CACHEABLE_CONTENT_SORTS = {"created_at", "published_at", "crawled_at"}
-HOME_CONTENT_LIST_CACHE_LABEL = "contents:list:1:50:48"
+# Match the default home-screen request exactly so startup warmup is reusable.
+HOME_CONTENT_LIST_CACHE_LABEL = "contents:list:1:40:24"
+HOME_CONTENT_LIST_INITIAL_PAGE_SIZE = 40
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ class ContentListCacheParams:
 
 
 def home_content_list_cache_params() -> ContentListCacheParams:
-    return ContentListCacheParams(page=1, page_size=50, hours=48)
+    return ContentListCacheParams(page=1, page_size=HOME_CONTENT_LIST_INITIAL_PAGE_SIZE, hours=24)
 
 
 def get_cached_content_list(params: ContentListCacheParams, *, ttl_seconds: float):

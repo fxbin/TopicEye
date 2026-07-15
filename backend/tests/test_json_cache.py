@@ -1,7 +1,12 @@
 from datetime import datetime
 import time
 
-from app.services.content_list_cache import ContentListCacheParams, invalidate_content_list_cache
+from app.services.content_list_cache import (
+    HOME_CONTENT_LIST_INITIAL_PAGE_SIZE,
+    ContentListCacheParams,
+    home_content_list_cache_params,
+    invalidate_content_list_cache,
+)
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
 from app.services.llm.model_list_cache import MODEL_LIST_CACHE_KEY, invalidate_model_list_cache
@@ -84,6 +89,17 @@ def test_content_list_cache_key_and_invalidation():
     assert get_cached_json(key, ttl_seconds=10) is None
     assert get_cached_json("contents:favorites:list:1:20", ttl_seconds=10) is not None
     invalidate_json_cache()
+
+
+def test_home_content_list_startup_cache_matches_default_screen_request():
+    params = home_content_list_cache_params()
+
+    assert params.page == 1
+    assert params.page_size == HOME_CONTENT_LIST_INITIAL_PAGE_SIZE == 40
+    assert params.hours == 24
+    assert params.key == (
+        "contents:list:page=1&page_size=40&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&hours=24"
+    )
 
 
 def test_today_picks_cache_key_and_invalidation():

@@ -164,6 +164,21 @@ export default function ContentReaderPage() {
                   {snapshot.published_at && <span>{new Date(snapshot.published_at).toLocaleDateString('zh-CN')}</span>}
                   <span>{snapshot.byline || snapshot.published_at ? '·' : ''} 提取于 {timeAgo(snapshot.fetched_at)}</span>
                 </div>
+                <div className="mt-6 flex flex-col gap-3 rounded-lg border border-amber-border bg-amber-light/35 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2 text-gray-600">
+                    <FileWarning size={15} className="mt-0.5 shrink-0 text-amber" />
+                    <div>
+                      <span className="font-bold text-gray-700">文本快照</span>
+                      <span className="ml-1.5 text-gray-500">这是清洗后的文本快照，来源页面可能已经更新。</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 pl-[23px] sm:pl-0">
+                    <button type="button" onClick={() => void load(true)} disabled={refreshing} className="inline-flex items-center gap-1 border-0 bg-transparent p-0 text-xs font-bold text-primary disabled:opacity-50">
+                      <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> 更新快照
+                    </button>
+                    {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-teal no-underline">查看来源 <ExternalLink size={13} /></a>}
+                  </div>
+                </div>
                 {snapshot.excerpt && <p className="mt-7 border-l-[3px] border-primary pl-4 text-[15px] leading-7 text-[#6d665e] sm:text-[16px]">{snapshot.excerpt}</p>}
               </header>
 
@@ -179,15 +194,6 @@ export default function ContentReaderPage() {
               </section>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
-              <span>这是清洗后的文本快照，来源页面可能已经更新。</span>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => void load(true)} disabled={refreshing} className="inline-flex items-center gap-1 border-0 bg-transparent p-0 text-xs font-bold text-primary disabled:opacity-50">
-                  <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> 更新快照
-                </button>
-                {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-teal no-underline">查看来源 <ExternalLink size={13} /></a>}
-              </div>
-            </div>
           </article>
         )}
       </main>

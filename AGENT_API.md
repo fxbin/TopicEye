@@ -91,6 +91,55 @@ lfv = (viral*0.45 + creator*0.30 + quality*0.25) * obscure_factor * freshness_bo
 
 where `obscure_factor = max(0.05, 1 - source_weight/100)`. Use this to find content heating up **before** the source becomes popular.
 
+## Reading TopicEye data (skill endpoints)
+
+The scoring endpoints above rank **caller-supplied** items. The skill endpoints below let agents **read TopicEye's own curated output** — today's picks, daily report, and trends. All require the same Bearer token.
+
+### `GET /api/v1/skill/today-picks`
+
+Today's curated picks with full score breakdowns. This is the primary endpoint for "what's worth writing today?"
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `hours` | int | 48 | Look-back window (1–168) |
+| `limit` | int | 20 | Max items (1–100) |
+| `category` | string | — | Optional category filter (e.g. `AI`) |
+
+Returns the same shape as `GET /contents/today-picks`: `{items, total, duplicates_hidden, topics, page, page_size}`. Each `items[*].analysis` carries `adjusted_curation_score` (final ranking score) and `score_breakdown`.
+
+```bash
+curl "$BASE/api/v1/skill/today-picks?hours=48&limit=10" -H "Authorization: Bearer $TOKEN"
+```
+
+### `GET /api/v1/skill/daily-report`
+
+The daily report (edited curation summary). Omit `date` for today's latest snapshot.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `date` | string | today | `YYYY-MM-DD` |
+
+Returns `overview` (summary paragraph), `takeaway`, `top_picks`, `keywords`, `trends`. 404 if no report exists for the given date.
+
+```bash
+curl "$BASE/api/v1/skill/daily-report?date=2026-07-15" -H "Authorization: Bearer $TOKEN"
+```
+
+### `GET /api/v1/skill/trends`
+
+Merged topic trends + keyword cloud in one response.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `days` | int | 7 | Look-back days (1–30) |
+| `limit` | int | 50 | Max keywords (10–200) |
+
+Returns `{days, topics, keywords}`. Backed by the DuckDB analytical layer — returns 503 if unavailable.
+
+```bash
+curl "$BASE/api/v1/skill/trends?days=7" -H "Authorization: Bearer $TOKEN"
+```
+
 ## curl examples
 
 ```bash

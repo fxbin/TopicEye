@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
-import { integrationsApi, modelsApi } from '@/lib/api';
+import { integrationsApi, modelsApi, apiTokensApi } from '@/lib/api';
+import type { ApiTokenItem } from '@/lib/api';
 import type { LlmModelItem, LlmModelPresetCatalog, LlmModelPresetItem } from '@/lib/api';
 import type { IntegrationStatus, WeReadSyncResult } from '@/types';
 import { formatDateTime } from '@/lib/datetime';
@@ -142,6 +143,14 @@ export default function ProfilePage() {
     requests_per_minute: '',
     cooldown_seconds: '',
   });
+  const [apiTokens, setApiTokens] = useState<ApiTokenItem[]>([]);
+  const [loadingTokens, setLoadingTokens] = useState(true);
+  const [tokenName, setTokenName] = useState('');
+  const [creatingToken, setCreatingToken] = useState(false);
+  const [newTokenSecret, setNewTokenSecret] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [tokenNotice, setTokenNotice] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   const installCommand = status?.install_command || DEFAULT_INSTALL_COMMAND;
   const docsUrl = status?.docs_url || 'https://weread.qq.com/r/weread-skills';
@@ -239,6 +248,76 @@ export default function ProfilePage() {
   useEffect(() => {
     void loadAiConfig();
   }, [loadAiConfig]);
+
+  const loadTokens = useCallback(async () => {
+    if (!currentUser) {
+      setLoadingTokens(false);
+      return;
+    }
+    setLoadingTokens(true);
+    setTokenError(null);
+    try {
+      const result = await apiTokensApi.list();
+      setApiTokens(result.tokens);
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : '读取 API Token 失败');
+    } finally {
+      setLoadingTokens(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    void loadTokens();
+  }, [loadTokens]);
+
+  const handleCreateToken = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = tokenName.trim();
+    if (!name || creatingToken) return;
+    setCreatingToken(true);
+    setTokenError(null);
+    setTokenNotice(null);
+    setNewTokenSecret(null);
+    try {
+      const result = await apiTokensApi.create({ name });
+      setNewTokenSecret(result.token);
+      setTokenNotice(`Token「${name}」已创建，明文仅显示一次，请立即复制保存。`);
+      setTokenName('');
+      await loadTokens();
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : '创建 API Token 失败');
+    } finally {
+      setCreatingToken(false);
+    }
+  };
+
+  const handleRevokeToken = async (id: number, name: string) => {
+    if (revokingId || !confirm(`确定撤销 Token「${name}」？撤销后该 Token 立即失效。`)) return;
+    setRevokingId(id);
+    setTokenError(null);
+    try {
+      await apiTokensApi.revoke(id);
+      await loadTokens();
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : '撤销 Token 失败');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  const handleDeleteToken = async (id: number, name: string) => {
+    if (revokingId || !confirm(`确定删除 Token「${name}」？`)) return;
+    setRevokingId(id);
+    setTokenError(null);
+    try {
+      await apiTokensApi.remove(id);
+      await loadTokens();
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : '删除 Token 失败');
+    } finally {
+      setRevokingId(null);
+    }
+  };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -563,6 +642,158 @@ export default function ProfilePage() {
             )}
           </Panel>
         </div>
+
+        <Panel className="p-5">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <TerminalSquare size={18} className="text-primary" />
+                <h2 className="text-lg font-black text-gray-900">Agent 接入</h2>
+              </div>
+              <p className="text-sm leading-6 text-gray-500">
+                创建个人 API Token 供外部 Agent（ZCode / Claude 技能包、n8n、脚本）读取你的选题数据。
+                配合 <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">SKILL.md</code> 技能包，Agent 可在对话中自主查询今日精选、日报与趋势。
+              </p>
+            </div>
+            <Badge tone={apiTokens.length > 0 ? 'teal' : 'neutral'}>
+              {apiTokens.length > 0 ? `${apiTokens.length} 个 Token` : '未创建'}
+            </Badge>
+          </div>
+
+          {tokenError && (
+            <div className="mb-4 rounded-sm border border-red-light bg-red-light px-3 py-2 text-xs font-bold text-red">
+              {tokenError}
+            </div>
+          )}
+          {tokenNotice && (
+            <div className="mb-4 rounded-sm border border-teal bg-teal/10 px-3 py-2 text-xs font-bold text-teal">
+              {tokenNotice}
+            </div>
+          )}
+
+          {newTokenSecret && (
+            <div className="mb-4 rounded-sm border border-amber/40 bg-amber/10 p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-black text-amber">
+                <ShieldCheck size={14} />
+                新 Token 明文（仅显示一次，请立即复制）
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-white px-2 py-1.5 text-xs text-gray-800">{newTokenSecret}</code>
+                <Button
+                  type="button"
+                  className="shrink-0 px-2 py-1"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(newTokenSecret);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                >
+                  <Copy size={14} /> 复制
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleCreateToken} className="mb-5 grid gap-3 md:grid-cols-[1fr_auto]">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-black text-gray-500">Token 名称</span>
+              <input
+                value={tokenName}
+                onChange={(event) => setTokenName(event.target.value)}
+                className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light"
+                placeholder="如：我的 Agent / CI 脚本"
+                maxLength={100}
+              />
+            </label>
+            <div className="flex items-end">
+              <Button type="submit" disabled={!tokenName.trim() || creatingToken}>
+                {creatingToken ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                创建 Token
+              </Button>
+            </div>
+          </form>
+
+          <div className="mb-3 text-xs font-black text-gray-500">已创建的 Token</div>
+          {loadingTokens ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 size={14} className="animate-spin" /> 加载中…
+            </div>
+          ) : apiTokens.length === 0 ? (
+            <div className="rounded-sm border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-400">
+              还没有 API Token，创建一个让 Agent 开始读取你的选题数据。
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {apiTokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="flex flex-wrap items-center gap-3 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-bold text-gray-800">{token.name}</span>
+                      {token.revoked_at && (
+                        <Badge tone="red">已撤销</Badge>
+                      )}
+                      {!token.revoked_at && token.expires_at && new Date(token.expires_at) < new Date() && (
+                        <Badge tone="neutral">已过期</Badge>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      <code className="font-mono">{token.token_prefix}…</code>
+                      {' · '}创建 {formatTime(token.created_at)}
+                      {token.last_used_at ? ` · 最近使用 ${formatTime(token.last_used_at)}` : ' · 尚未使用'}
+                      {token.expires_at ? ` · 过期 ${formatTime(token.expires_at)}` : ''}
+                    </div>
+                  </div>
+                  {!token.revoked_at && (
+                    <Button
+                      type="button"
+                      className="shrink-0 px-2 py-1"
+                      variant="ghost"
+                      disabled={revokingId === token.id}
+                      onClick={() => handleRevokeToken(token.id, token.name)}
+                    >
+                      {revokingId === token.id ? <Loader2 size={14} className="animate-spin" /> : null}
+                      撤销
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    className="shrink-0 px-2 py-1"
+                    variant="ghost"
+                    disabled={revokingId === token.id}
+                    onClick={() => handleDeleteToken(token.id, token.name)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-5 rounded-sm border border-gray-200 bg-gray-50 p-3">
+            <div className="mb-2 text-xs font-black text-gray-500">Agent 调用示例（curl）</div>
+            <code className="block overflow-x-auto whitespace-pre rounded bg-white px-3 py-2 text-xs leading-5 text-gray-700">
+{`# 今日精选选题
+curl "$BASE/api/v1/skill/today-picks?hours=48&limit=10" \\
+  -H "Authorization: Bearer $TOKEN"
+
+# 日报
+curl "$BASE/api/v1/skill/daily-report" \\
+  -H "Authorization: Bearer $TOKEN"
+
+# 趋势
+curl "$BASE/api/v1/skill/trends?days=7" \\
+  -H "Authorization: Bearer $TOKEN"`}
+            </code>
+            <div className="mt-2 text-xs text-gray-400">
+              <code className="font-mono">$TOKEN</code> 替换为上方创建的 API Token，<code className="font-mono">$BASE</code> 替换为 TopicEye 地址。详见 <code className="font-mono">SKILL.md</code>。
+            </div>
+          </div>
+        </Panel>
 
         <Panel className="p-5">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">

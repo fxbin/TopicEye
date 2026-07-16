@@ -676,3 +676,40 @@ export const viralApi = {
     return request(`/contents${query}`);
   },
 };
+
+// ─── API Tokens (个人 API token，供外部 agent / 脚本调用) ───
+
+export interface ApiTokenItem {
+  id: number;
+  name: string;
+  token_prefix: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string | null;
+}
+
+export const apiTokensApi = {
+  /** 列出当前用户的所有 API token */
+  list(): Promise<{ count: number; tokens: ApiTokenItem[] }> {
+    return request('/me/api-tokens');
+  },
+
+  /** 创建 API token（明文 token 仅在响应中返回一次） */
+  create(data: { name: string; expires_at?: string }): Promise<{ token: string; record: ApiTokenItem }> {
+    return request('/me/api-tokens', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 撤销 API token */
+  revoke(id: number): Promise<{ success: boolean }> {
+    return request(`/me/api-tokens/${id}/revoke`, { method: 'POST' });
+  },
+
+  /** 删除 API token */
+  remove(id: number): Promise<void> {
+    return request(`/me/api-tokens/${id}`, { method: 'DELETE' });
+  },
+};

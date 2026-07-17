@@ -9,6 +9,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 apscheduler==3.10.4
 httpx==0.27.2
+aiosmtplib==5.1.2
 feedparser==6.0.11
 beautifulsoup4==4.12.3
 python-dotenv==1.0.1

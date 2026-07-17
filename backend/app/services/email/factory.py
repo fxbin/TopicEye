@@ -2,7 +2,7 @@
 
 根据管理员在后台配置的 email_provider_config 创建对应的 EmailProvider 实例。
 配置存储在 AppSetting 表的 email_provider_config key 中（JSON 格式），
-其中 api_key 字段使用 secret_store 加密存储。
+其中 api_key / smtp_password 字段使用 secret_store 加密存储。
 """
 # author: fxbin
 
@@ -17,12 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.app_setting import AppSetting
 from app.services.email.base import EmailProvider
 from app.services.email.brevo_provider import BrevoProvider
+from app.services.email.smtp_provider import SmtpProvider
 from app.services.secret_store import decrypt_secret
 
 logger = logging.getLogger(__name__)
 
+# Provider 名称常量
+PROVIDER_BREVO = "brevo"
+PROVIDER_SMTP = "smtp"
+
 # 默认 Provider 名称
-DEFAULT_PROVIDER_NAME = "brevo"
+DEFAULT_PROVIDER_NAME = PROVIDER_BREVO
 
 # 默认发件人显示名称
 DEFAULT_FROM_NAME = "TopicEye"
@@ -56,15 +61,35 @@ async def get_email_provider(db: AsyncSession) -> EmailProvider | None:
         return None
 
     provider_name = config.get("provider", DEFAULT_PROVIDER_NAME)
-    api_key = decrypt_secret(config.get("api_key"))
     from_email = config.get("from_email", "")
     from_name = config.get("from_name", DEFAULT_FROM_NAME)
 
-    if not api_key or not from_email:
+    if not from_email:
         return None
 
-    if provider_name == BrevoProvider.__name__.replace("Provider", "").lower():
+    if provider_name == PROVIDER_BREVO:
+        api_key = decrypt_secret(config.get("api_key"))
+        if not api_key:
+            return None
         return BrevoProvider(api_key=api_key, from_email=from_email, from_name=from_name)
+
+    if provider_name == PROVIDER_SMTP:
+        host = config.get("smtp_host", "")
+        port = config.get("smtp_port", 587)
+        username = config.get("smtp_username", "")
+        password = decrypt_secret(config.get("smtp_password"))
+        use_ssl = bool(config.get("smtp_use_ssl", False))
+        if not host or not username or not password:
+            return None
+        return SmtpProvider(
+            host=host,
+            port=int(port),
+            username=username,
+            password=password,
+            use_ssl=use_ssl,
+            from_email=from_email,
+            from_name=from_name,
+        )
 
     logger.warning("未知的邮件 Provider: %s", provider_name)
     return None

@@ -181,38 +181,50 @@ async def update_feature_flags(
 
 
 # 支持的邮件 Provider 列表，前端据此渲染下拉选项
-SUPPORTED_EMAIL_PROVIDERS = ["brevo"]
+SUPPORTED_EMAIL_PROVIDERS = ["brevo", "smtp"]
 
-# API Key 脱敏前缀长度
-_API_KEY_MASK_PREFIX = 6
+# API Key / SMTP 密码脱敏前缀长度
+_SECRET_MASK_PREFIX = 6
 
 
 class EmailProviderConfigResponse(BaseModel):
-    """邮件 Provider 配置响应。api_key 字段脱敏返回。"""
+    """邮件 Provider 配置响应。敏感字段脱敏返回。"""
 
     provider: str = "brevo"
     from_email: str = ""
     from_name: str = "TopicEye"
     api_key_configured: bool = False
     api_key_preview: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password_configured: bool = False
+    smtp_password_preview: str = ""
+    smtp_use_ssl: bool = False
     supported_providers: list[str] = []
 
 
 class EmailProviderConfigUpdateRequest(BaseModel):
     """邮件 Provider 配置更新请求。
 
-    api_key 为空字符串时保留原值（不修改），非空时覆盖。
+    api_key / smtp_password 为空字符串时保留原值（不修改），非空时覆盖。
+    SMTP 字段仅在 provider == 'smtp' 时生效。
     """
 
     provider: str = "brevo"
     from_email: str = ""
     from_name: str = "TopicEye"
     api_key: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_ssl: bool = False
 
 
 @router.get("/email-provider", response_model=EmailProviderConfigResponse)
 async def get_email_provider_config(db: AsyncSession = Depends(get_db)):
-    """获取当前邮件 Provider 配置。api_key 不返回明文，仅返回脱敏预览。"""
+    """获取当前邮件 Provider 配置。敏感字段（api_key / smtp_password）不返回明文，仅返回脱敏预览。"""
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == "email_provider_config")
     )
@@ -229,19 +241,27 @@ async def get_email_provider_config(db: AsyncSession = Depends(get_db)):
 
     from app.services.secret_store import decrypt_secret
 
-    api_key_raw = config.get("api_key", "")
-    api_key_plain = decrypt_secret(api_key_raw) if api_key_raw else ""
-    preview = ""
-    if api_key_plain:
-        mask_len = min(_API_KEY_MASK_PREFIX, len(api_key_plain))
-        preview = api_key_plain[:mask_len] + "****"
+    def _mask(plain: str) -> str:
+        if not plain:
+            return ""
+        mask_len = min(_SECRET_MASK_PREFIX, len(plain))
+        return plain[:mask_len] + "****"
+
+    api_key_plain = decrypt_secret(config.get("api_key", "")) or ""
+    smtp_password_plain = decrypt_secret(config.get("smtp_password", "")) or ""
 
     return EmailProviderConfigResponse(
         provider=config.get("provider", "brevo"),
         from_email=config.get("from_email", ""),
         from_name=config.get("from_name", "TopicEye"),
         api_key_configured=bool(api_key_plain),
-        api_key_preview=preview,
+        api_key_preview=_mask(api_key_plain),
+        smtp_host=config.get("smtp_host", ""),
+        smtp_port=int(config.get("smtp_port", 587)),
+        smtp_username=config.get("smtp_username", ""),
+        smtp_password_configured=bool(smtp_password_plain),
+        smtp_password_preview=_mask(smtp_password_plain),
+        smtp_use_ssl=bool(config.get("smtp_use_ssl", False)),
         supported_providers=SUPPORTED_EMAIL_PROVIDERS,
     )
 
@@ -253,8 +273,8 @@ async def update_email_provider_config(
 ):
     """更新邮件 Provider 配置。
 
-    api_key 为空时保留已存储的值（便于修改发件人而不重输 Key）；
-    非空时使用 secret_store 加密后覆盖存储。
+    敏感字段（api_key / smtp_password）为空时保留原值，非空时加密覆盖。
+    SMTP 专属字段仅在 provider == 'smtp' 时校验必填。
     """
     if payload.provider not in SUPPORTED_EMAIL_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"不支持的邮件 Provider: {payload.provider}")
@@ -262,9 +282,16 @@ async def update_email_provider_config(
     if not payload.from_email.strip():
         raise HTTPException(status_code=400, detail="发件人邮箱不能为空")
 
+    # SMTP 必填校验
+    if payload.provider == "smtp":
+        if not payload.smtp_host.strip():
+            raise HTTPException(status_code=400, detail="SMTP 服务器不能为空")
+        if not payload.smtp_username.strip():
+            raise HTTPException(status_code=400, detail="SMTP 用户名不能为空")
+
     from app.services.secret_store import encrypt_secret
 
-    # 读取现有配置（用于 api_key 保留逻辑）
+    # 读取现有配置（用于敏感字段保留逻辑）
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == "email_provider_config")
     )
@@ -276,17 +303,28 @@ async def update_email_provider_config(
         except json.JSONDecodeError:
             existing_config = {}
 
-    # api_key 处理：空值保留原值，非空值加密覆盖
-    if payload.api_key.strip():
-        api_key_stored = encrypt_secret(payload.api_key.strip())
-    else:
-        api_key_stored = existing_config.get("api_key", "")
+    # 敏感字段处理：空值保留原值，非空值加密覆盖
+    api_key_stored = (
+        encrypt_secret(payload.api_key.strip())
+        if payload.api_key.strip()
+        else existing_config.get("api_key", "")
+    )
+    smtp_password_stored = (
+        encrypt_secret(payload.smtp_password.strip())
+        if payload.smtp_password.strip()
+        else existing_config.get("smtp_password", "")
+    )
 
     new_config = {
         "provider": payload.provider,
         "from_email": payload.from_email.strip(),
         "from_name": payload.from_name.strip() or "TopicEye",
         "api_key": api_key_stored,
+        "smtp_host": payload.smtp_host.strip(),
+        "smtp_port": int(payload.smtp_port) if payload.smtp_port else 587,
+        "smtp_username": payload.smtp_username.strip(),
+        "smtp_password": smtp_password_stored,
+        "smtp_use_ssl": bool(payload.smtp_use_ssl),
     }
     raw_value = json.dumps(new_config, ensure_ascii=False)
 
@@ -298,7 +336,7 @@ async def update_email_provider_config(
             AppSetting(
                 key="email_provider_config",
                 value=raw_value,
-                description="邮件服务 Provider 配置（api_key 加密存储）",
+                description="邮件服务 Provider 配置（敏感字段加密存储）",
                 updated_at=datetime.now(UTC),
             )
         )

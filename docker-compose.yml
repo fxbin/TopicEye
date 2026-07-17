@@ -22,6 +22,8 @@ services:
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
       # macOS bind mount 下 inotify 不穿透，强制 watchfiles 轮询以启用热重载
       - WATCHFILES_FORCE_POLLING=true
+      # 微信读书 Skill API endpoint（服务端配置，用户只需在前端填 Key）
+      - WEREAD_SKILL_API_URL=${WEREAD_SKILL_API_URL:-}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
     restart: unless-stopped
 

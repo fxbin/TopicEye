@@ -24,8 +24,7 @@ import type { ApiTokenItem } from '@/lib/api';
 import type { IntegrationStatus, WeReadSyncResult } from '@/types';
 import { formatDateTime } from '@/lib/datetime';
 
-const DEFAULT_INSTALL_COMMAND = 'npx skills add Tencent/WeChatReading -g';
-const INSTALL_SCRIPT_COMMAND = 'npm run skills:install-weread';
+const DEFAULT_API_URL_PLACEHOLDER = 'https://weread.example.com/api';
 
 function formatTime(value?: string | null) {
   return value ? formatDateTime(value, true) : '尚未同步';
@@ -89,7 +88,6 @@ export default function ProfilePage() {
   const [tokenNotice, setTokenNotice] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
-  const installCommand = status?.install_command || DEFAULT_INSTALL_COMMAND;
   const docsUrl = status?.docs_url || 'https://weread.qq.com/r/weread-skills';
   const canSave = apiKey.trim().length >= 8 && !saving;
   const canSync = Boolean(status?.configured) && !syncing;
@@ -617,24 +615,6 @@ export TOPICEYE_API_TOKEN="${newTokenSecret || '<上方创建的 Token>'}"`}
           <div className="mt-3 rounded-sm border border-teal/30 bg-teal/5 px-3 py-2 text-xs leading-5 text-teal">
             <ShieldCheck size={13} className="mr-1 inline" />
             装好后，在 Agent 对话中直接问「今天有什么值得写的选题」「看看选题日报」即可，Agent 会自动调用 TopicEye 读取数据。
-          </div>
-        </Panel>
-
-        <Panel className="p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <TerminalSquare size={18} className="text-primary" />
-            <h2 className="text-lg font-black text-gray-900">Skill 安装</h2>
-          </div>
-          <p className="mb-4 max-w-[820px] text-sm leading-7 text-gray-500">
-            官方 Skill 需要用户在本机安装并获取 API Key。服务启动阶段不会自动执行全局安装，避免网络依赖和全局写入影响后端稳定性。
-          </p>
-          <div className="space-y-3">
-            <CommandRow label="官方命令" command={installCommand} />
-            <CommandRow label="前端脚本" command={INSTALL_SCRIPT_COMMAND} />
-          </div>
-          <div className="mt-4 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-6 text-gray-500">
-            后端同步入口通过环境变量 <span className="font-mono font-bold text-gray-700">WEREAD_SKILL_API_URL</span> 配置；
-            未配置时可以保存 Key，点击同步会记录明确错误。
           </div>
         </Panel>
       </div>

@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     # ── Rate limiting ──
     AUTH_LOGIN_ATTEMPTS_PER_MINUTE: int = 20
     AUTH_REGISTER_ATTEMPTS_PER_MINUTE: int = 10
+    AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE: int = 5
 
     # ── OAuth (Google / GitHub 登录) ──
     # 留空则该 provider 不启用。申请方式见 .env.example。

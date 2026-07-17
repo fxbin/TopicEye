@@ -9,6 +9,7 @@ class AuthRegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     display_name: str | None = Field(default=None, max_length=100)
+    verification_code: str = Field(min_length=4, max_length=10)
 
     @field_validator("email")
     @classmethod
@@ -24,6 +25,20 @@ class AuthRegisterRequest(BaseModel):
         from app.core.validators import validate_password_strength
 
         return validate_password_strength(value)
+
+
+class SendCodeRequest(BaseModel):
+    """发送邮箱验证码请求体。"""
+
+    email: str = Field(min_length=3, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or "." not in normalized.rsplit("@", 1)[-1]:
+            raise ValueError("Invalid email")
+        return normalized
 
 
 class AuthLoginRequest(BaseModel):

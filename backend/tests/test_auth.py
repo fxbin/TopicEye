@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, UTC
 
 import httpx
 import pytest
@@ -12,6 +14,7 @@ from app.api.v1 import auth as auth_api
 from app.api.v1.auth import get_current_user, login, logout, me, register
 from app.core.config import settings
 from app.core.database import Base
+from app.models.email_verification import EmailVerificationCode
 from app.models.user import User
 from app.schemas.auth import AuthLoginRequest, AuthRegisterRequest
 from app.services.auth_service import (
@@ -23,6 +26,27 @@ from app.services.auth_service import (
     revoke_token,
     verify_password,
 )
+
+# 测试用验证码常量
+_TEST_VERIFICATION_CODE = "123456"
+
+
+async def _seed_verification_code(db: AsyncSession, email: str, code: str) -> None:
+    """测试辅助：在内存 DB 中插入一条有效验证码记录，供 register 校验通过。
+
+    参数:
+        db: 数据库会话
+        email: 注册邮箱（未归一化，内部归一化）
+        code: 验证码明文
+    """
+    normalized = email.strip().lower()
+    record = EmailVerificationCode(
+        email=normalized,
+        code_hash=hashlib.sha256(code.encode("utf-8")).hexdigest(),
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    db.add(record)
+    await db.flush()
 
 
 class _FakeSessionLookupResult:
@@ -157,17 +181,33 @@ async def test_auth_route_functions_register_login_me_logout():
         await conn.run_sync(Base.metadata.create_all)
 
     async with session_factory() as db:
+        # 注册前需先 seed 一条有效验证码记录，register 会校验
+        await _seed_verification_code(db, "Route@Example.com", _TEST_VERIFICATION_CODE)
         registered = await register(
-            AuthRegisterRequest(email="Route@Example.com", password="Password123", display_name="Route User"),
+            AuthRegisterRequest(
+                email="Route@Example.com",
+                password="Password123",
+                display_name="Route User",
+                verification_code=_TEST_VERIFICATION_CODE,
+            ),
             db,
         )
         assert registered.user.email == "route@example.com"
         assert registered.user.role == "user"
         assert registered.token_type == "bearer"
 
+        # 重复注册：邮箱已存在，在验证码校验之前就 409 返回。
+        # verification_code 字段仍需传（schema min_length=4），但不会被实际校验。
         duplicate_error = None
         try:
-            await register(AuthRegisterRequest(email="route@example.com", password="Password123"), db)
+            await register(
+                AuthRegisterRequest(
+                    email="route@example.com",
+                    password="Password123",
+                    verification_code=_TEST_VERIFICATION_CODE,
+                ),
+                db,
+            )
         except HTTPException as exc:
             duplicate_error = exc
         assert duplicate_error is not None

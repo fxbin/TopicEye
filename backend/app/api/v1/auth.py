@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.dependencies import get_db
 from app.models.user import User
-from app.schemas.auth import AuthLoginRequest, AuthRegisterRequest, AuthTokenResponse, UserResponse
+from app.schemas.auth import (
+    AuthLoginRequest,
+    AuthRegisterRequest,
+    AuthTokenResponse,
+    SendCodeRequest,
+    UserResponse,
+)
 from app.services.auth_service import (
     authenticate_user,
     create_session,
@@ -19,6 +25,14 @@ from app.services.auth_service import (
     get_user_by_email,
     get_user_for_token,
     revoke_token,
+)
+from app.services.email_verification_service import (
+    CodeRateLimitedError,
+    EmailNotConfiguredError,
+    InvalidCodeError,
+    VerificationError,
+    send_verification_code,
+    verify_code,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -65,6 +79,14 @@ async def enforce_login_rate_limit(request: Request) -> None:
     )
 
 
+async def enforce_send_code_rate_limit(request: Request) -> None:
+    _enforce_auth_rate_limit(
+        request,
+        action="send_code",
+        max_attempts=settings.AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE,
+    )
+
+
 def _extract_bearer_token(authorization: str | None) -> str:
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authorization header")
@@ -105,6 +127,27 @@ async def get_current_admin_user(current_user: User = Depends(get_current_user))
 
 
 @router.post(
+    "/send-code",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(enforce_send_code_rate_limit)],
+)
+async def send_code(data: SendCodeRequest, db: AsyncSession = Depends(get_db)):
+    """发送邮箱验证码。注册前需先调用本接口获取验证码。
+
+    频率限制：同 IP 每分钟最多 AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE 次；
+    同邮箱 60 秒内只能发送一次（由 service 层校验）。
+    """
+    try:
+        await send_verification_code(db, data.email)
+    except CodeRateLimitedError:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试")
+    except EmailNotConfiguredError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员")
+    except VerificationError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.post(
     "/register",
     response_model=AuthTokenResponse,
     status_code=status.HTTP_201_CREATED,
@@ -114,6 +157,11 @@ async def register(data: AuthRegisterRequest, db: AsyncSession = Depends(get_db)
     existing = await get_user_by_email(db, data.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    try:
+        await verify_code(db, data.email, data.verification_code)
+    except InvalidCodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     try:
         user = await create_user(db, email=data.email, password=data.password, display_name=data.display_name)

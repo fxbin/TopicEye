@@ -11,8 +11,6 @@ from __future__ import annotations
 import logging
 from email.message import EmailMessage
 
-import aiosmtplib
-
 from app.services.email.base import EmailProvider, EmailSendError
 
 logger = logging.getLogger(__name__)
@@ -72,8 +70,15 @@ class SmtpProvider(EmailProvider):
             code: 6 位数字验证码
 
         异常:
-            EmailSendError: 连接或认证失败时抛出
+            EmailSendError: 依赖缺失、连接或认证失败时抛出
         """
+        # 延迟导入：aiosmtplib 仅在 SMTP 模式实际发送时需要，
+        # 避免未安装该依赖时影响 Brevo 模式与应用启动
+        try:
+            import aiosmtplib
+        except ImportError as exc:
+            raise EmailSendError("SMTP 依赖未安装，请执行 pip install aiosmtplib") from exc
+
         message = EmailMessage()
         message["Subject"] = _EMAIL_SUBJECT
         message["From"] = f"{self._from_name} <{self._from_email}>"

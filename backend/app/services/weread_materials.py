@@ -83,7 +83,16 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
     for raw in _collect_weread_items(payload):
         if not isinstance(raw, dict):
             continue
-        title = str(raw.get("title") or raw.get("book_title") or raw.get("bookTitle") or raw.get("name") or "").strip()
+        # gateway /user/notebooks 回包：每项含 bookId + book{title,author,cover} + noteCount/reviewCount
+        book = raw.get("book") if isinstance(raw.get("book"), dict) else {}
+        title = str(
+            book.get("title")
+            or raw.get("title")
+            or raw.get("book_title")
+            or raw.get("bookTitle")
+            or raw.get("name")
+            or ""
+        ).strip()
         note = str(
             raw.get("note")
             or raw.get("review")
@@ -94,41 +103,95 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
         ).strip()
         if not title and not note:
             continue
-        author = raw.get("author") or raw.get("book_author") or raw.get("bookAuthor")
+        author = book.get("author") or raw.get("author") or raw.get("book_author") or raw.get("bookAuthor")
+        # 构造可读的摘要：有笔记/划线数时拼一句统计
+        note_count = raw.get("noteCount")
+        review_count = raw.get("reviewCount")
+        progress = raw.get("readingProgress")
+        summary_parts: list[str] = []
+        if note:
+            summary_parts.append(note[:800])
+        if isinstance(note_count, int) and note_count > 0:
+            summary_parts.append(f"{note_count} 条划线")
+        if isinstance(review_count, int) and review_count > 0:
+            summary_parts.append(f"{review_count} 条想法")
+        if isinstance(progress, (int, float)) and progress:
+            summary_parts.append(f"阅读进度 {int(progress)}%")
+        summary = "，".join(summary_parts) if summary_parts else None
         entries.append(
             {
                 "title": title or note[:80],
                 "url": _entry_url(raw),
                 "author": str(author).strip() if author else None,
-                "summary": note[:1000],
+                "summary": summary,
                 "raw_content": note or title,
-                "cover_url": raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
+                "cover_url": book.get("cover") or raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
                 "published_at": datetime.now(UTC),
             }
         )
     return entries
 
 
+WEREAD_GATEWAY_URL = "https://i.weread.qq.com/api/agent/gateway"
+WEREAD_SKILL_VERSION = "1.0.4"
+
+
 async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[str, Any]]:
-    endpoint = str(settings.WEREAD_SKILL_API_URL or "").strip()
-    if not endpoint:
-        raise RuntimeError("微信读书 Skill API endpoint 未配置，请先接入真实 Skill 服务地址")
+    """直连微信读书 Agent Gateway 拉取用户的笔记/划线素材。
+
+    不再依赖外部中间层（WEREAD_SKILL_API_URL），后端直接调官方 gateway，
+    用用户的 API Key 认证。调 /user/notebooks 接口获取有笔记的书籍列表。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    headers = {
+        "Authorization": f"Bearer {stripped_key}",
+        "Content-Type": "application/json",
+    }
+    entries: list[dict[str, Any]] = []
+    last_sort: int | None = None
+    remaining = limit
 
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        response = await client.get(
-            endpoint,
-            headers={"Authorization": f"Bearer {api_key.strip()}"},
-            params={"limit": limit},
-        )
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            body = redact_weread_sync_error(response.text, api_key).strip()
-            detail = f"微信读书 Skill 返回 {response.status_code}"
-            if body:
-                detail = f"{detail}: {body[:300]}"
-            raise RuntimeError(detail) from exc
-        return normalize_weread_entries(response.json())
+        while remaining > 0:
+            batch_size = min(50, remaining)
+            body: dict[str, Any] = {
+                "api_name": "/user/notebooks",
+                "count": batch_size,
+                "skill_version": WEREAD_SKILL_VERSION,
+            }
+            if last_sort is not None:
+                body["lastSort"] = last_sort
+
+            try:
+                response = await client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                resp_body = redact_weread_sync_error(response.text, api_key).strip()
+                detail = f"微信读书接口返回 {response.status_code}"
+                if resp_body:
+                    detail = f"{detail}: {resp_body[:300]}"
+                raise RuntimeError(detail) from exc
+            except httpx.HTTPError as exc:
+                raise RuntimeError(f"无法连接微信读书服务: {exc}") from exc
+
+            payload = response.json()
+            page_entries = normalize_weread_entries(payload)
+            entries.extend(page_entries)
+            remaining -= len(page_entries)
+
+            # 游标分页：hasMore=1 且有 sort 值才继续翻页
+            has_more = payload.get("hasMore") if isinstance(payload, dict) else None
+            books = payload.get("books") if isinstance(payload, dict) else None
+            if has_more != 1 or not books:
+                break
+            last_sort = books[-1].get("sort")
+            if last_sort is None:
+                break
+
+    return entries
 
 
 async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:

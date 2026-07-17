@@ -158,7 +158,8 @@ def integration_status(integration: UserIntegration | None, provider: str) -> di
         "configured": bool(api_key),
         "api_key_hint": api_key_hint(api_key),
         "config": integration.config if integration and isinstance(integration.config, dict) else {},
-        "sync_endpoint_configured": bool(str(settings.WEREAD_SKILL_API_URL or "").strip()) if is_weread else False,
+        # 后端直连微信读书官方 gateway，不再需要外部 endpoint 配置
+        "sync_endpoint_configured": True if is_weread else False,
         "install_command": WEREAD_INSTALL_COMMAND if is_weread else None,
         "docs_url": WEREAD_DOCS_URL if is_weread else None,
         "last_sync_at": integration.last_sync_at if integration else None,

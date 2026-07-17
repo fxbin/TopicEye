@@ -99,7 +99,7 @@ async def test_weread_status_masks_api_key_and_reports_endpoint(monkeypatch):
         assert status["configured"] is True
         assert status["api_key_hint"] == "wr_s...7890"
         assert "wr_secret_1234567890" not in str(status)
-        assert status["sync_endpoint_configured"] is False
+        assert status["sync_endpoint_configured"] is True
         assert status["install_command"] == WEREAD_INSTALL_COMMAND
         stored = await get_user_integration(db, user_id=user.id, provider=WEREAD_PROVIDER)
         assert stored is not None
@@ -168,10 +168,10 @@ async def test_weread_fetch_http_error_uses_redacted_response_body(monkeypatch):
 
     class FakeResponse:
         status_code = 500
-        text = "Skill rejected Authorization: Bearer wr_secret_http_error_123456"
+        text = "Gateway rejected Authorization: Bearer wr_secret_http_error_123456"
 
         def raise_for_status(self):
-            request = httpx.Request("GET", "http://testserver/weread")
+            request = httpx.Request("POST", "https://i.weread.qq.com/api/agent/gateway")
             response = httpx.Response(self.status_code, request=request, text=self.text)
             raise httpx.HTTPStatusError("boom", request=request, response=response)
 
@@ -188,19 +188,18 @@ async def test_weread_fetch_http_error_uses_redacted_response_body(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-        async def get(self, endpoint, *, headers, params):
-            assert endpoint == "http://127.0.0.1:9999/weread"
+        async def post(self, url, *, headers, json):
+            assert url == weread_materials.WEREAD_GATEWAY_URL
             assert headers["Authorization"] == f"Bearer {api_key}"
-            assert params == {"limit": 1}
+            assert json["api_name"] == "/user/notebooks"
             return FakeResponse()
 
-    monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", "http://127.0.0.1:9999/weread")
     monkeypatch.setattr(weread_materials.httpx, "AsyncClient", FakeClient)
 
     with pytest.raises(RuntimeError) as error:
         await weread_materials.fetch_weread_materials(api_key, limit=1)
 
-    assert "微信读书 Skill 返回 500" in str(error.value)
+    assert "微信读书接口返回 500" in str(error.value)
     assert api_key not in str(error.value)
     assert "Bearer ***" in str(error.value)
 
@@ -277,8 +276,12 @@ async def test_weread_integration_is_scoped_to_current_user(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_weread_sync_without_endpoint_returns_actionable_error(monkeypatch):
-    monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", None)
+async def test_weread_sync_gateway_error_persists_and_key_change_resets(monkeypatch):
+    """同步失败时错误状态持久化；换 Key 后状态重置。"""
+    async def failed_sync(db, integration, *, user_id, api_key, limit=50):
+        raise RuntimeError("无法连接微信读书服务: connection refused")
+
+    monkeypatch.setattr("app.api.v1.integrations.sync_weread_materials", failed_sync)
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -300,11 +303,11 @@ async def test_weread_sync_without_endpoint_returns_actionable_error(monkeypatch
 
         assert error is not None
         assert error.status_code == 502
-        assert "微信读书 Skill API endpoint 未配置" in str(error.detail)
+        assert "无法连接微信读书服务" in str(error.detail)
 
         status = await get_weread_integration(user, db)
         assert status["last_sync_status"] == "error"
-        assert "endpoint 未配置" in status["last_sync_error"]
+        assert "无法连接微信读书服务" in status["last_sync_error"]
 
         refreshed = await update_weread_integration(
             IntegrationUpdateRequest(api_key="wr_secret_replaced_123456"),
@@ -368,6 +371,12 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
 ):
     monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", None)
 
+    # mock gateway 直连失败（不再依赖 endpoint 配置）
+    async def failing_fetch(api_key, *, limit=50):
+        raise RuntimeError("无法连接微信读书服务: connection refused")
+
+    monkeypatch.setattr("app.services.weread_materials.fetch_weread_materials", failing_fetch)
+
     registered = await weread_http_client.post(
         "/auth/register",
         json={
@@ -390,12 +399,12 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
 
     failed = await weread_http_client.post("/integrations/weread/sync?limit=1", headers=headers)
     assert failed.status_code == 502
-    assert "endpoint 未配置" in failed.json()["detail"]
+    assert "无法连接微信读书服务" in failed.json()["detail"]
 
     errored = await weread_http_client.get("/integrations/weread", headers=headers)
     assert errored.status_code == 200
     assert errored.json()["last_sync_status"] == "error"
-    assert "endpoint 未配置" in errored.json()["last_sync_error"]
+    assert "无法连接微信读书服务" in errored.json()["last_sync_error"]
 
     replaced = await weread_http_client.put(
         "/integrations/weread",

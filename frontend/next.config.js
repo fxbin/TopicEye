@@ -9,6 +9,14 @@ const nextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // macOS Docker bind mount 下 inotify 不穿透，强制 webpack 轮询以启用 HMR
+  webpack: (config) => {
+    config.watchOptions = {
+      poll: 1000,
+      aggregateTimeout: 300,
+    };
+    return config;
+  },
   async rewrites() {
     return [
       {

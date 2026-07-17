@@ -25,6 +25,7 @@ import {
 import { Panel, cx } from '@/components/ui';
 import { dailyReportApi } from '@/lib/api';
 import Sparkline, { SparklineData } from '@/components/Sparkline';
+import { AutoLink } from '@/components/AutoLink';
 import {
   CurrentPeriodButton,
   PlatformHeading,
@@ -65,6 +66,7 @@ interface DailyReportData {
     category?: string;
     source_idx?: number;
     source_title?: string;
+    source_title_zh?: string;
     editorial_title?: string;
     tier?: 'feature' | 'brief';
   }> | null;
@@ -157,6 +159,27 @@ function parseJson(val: unknown) {
  */
 function pickKey(pick: { source_title?: string; title?: string }): string {
   return pick.source_title || pick.title || '';
+}
+
+/**
+ * 判断原文标题是否主要为英文（含 CJK 字符少、Latin 字母多）。
+ * 用于决定是否展示"中/英"切换按钮。
+ */
+function isEnglishTitle(title?: string): boolean {
+  if (!title) return false;
+  const cjk = (title.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latin = (title.match(/[a-zA-Z]/g) || []).length;
+  return latin > 0 && cjk < latin * 0.3;
+}
+
+/**
+ * 返回展示用的原文标题：默认中文翻译，可切换英文原文。
+ * - showOriginal=true → 英文原文
+ * - showOriginal=false → 中文翻译（无翻译时回退原文）
+ */
+function displaySourceTitle(pick: { source_title?: string; source_title_zh?: string }, showOriginal: boolean): string {
+  if (showOriginal) return pick.source_title || '';
+  return pick.source_title_zh || pick.source_title || '';
 }
 
 type MarkAction = 'write' | 'watch' | 'skip';
@@ -426,7 +449,7 @@ export default function DailyReportPage() {
       title: string; reason: string; score?: number; platforms?: string[];
       source_url?: string; angles?: string[]; pitfall?: string;
       lifecycle?: string; time_window?: string; category?: string;
-      source_idx?: number; source_title?: string; editorial_title?: string;
+      source_idx?: number; source_title?: string; source_title_zh?: string; editorial_title?: string;
       tier?: 'feature' | 'brief';
     }>
     : [];
@@ -435,6 +458,8 @@ export default function DailyReportPage() {
     : [];
   const recoveryDate = report?.report_date || selectedDate || todayStr;
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
+  // 原文标题展示语言：默认中文翻译，可切换英文原文
+  const [showOriginalLang, setShowOriginalLang] = useState(false);
 
 
   const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -716,9 +741,20 @@ export default function DailyReportPage() {
                                     </a>
                                   )}
                                 </div>
-                                {/* 原文标题（对照锚点，editorial_title 改写后让读者回溯原文） */}
+                                {/* 原文标题（默认中文翻译，可切换英文原文） */}
                                 {pick.source_title && pick.source_title !== pick.title && (
-                                  <div className="mt-0.5 truncate text-[11px] text-gray-400">原文：{pick.source_title}</div>
+                                  <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-400">
+                                    <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+                                    {isEnglishTitle(pick.source_title) && pick.source_title_zh && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setShowOriginalLang(!showOriginalLang); }}
+                                        className="shrink-0 rounded border border-gray-200 px-1 text-[10px] text-gray-400 hover:text-gray-600"
+                                      >
+                                        {showOriginalLang ? '中' : 'EN'}
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                                 {/* 元数据行：lifecycle + 平台 + 时窗（不挤 sparkline） */}
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -754,8 +790,23 @@ export default function DailyReportPage() {
                             {/* 展开后的决策卡 */}
                             {isExpanded && (
                               <div className="border-t border-gray-100 px-3 pb-3 pt-2 sm:px-4">
+                                {/* 原文标题（展开态补回，让创作者决定写不写时能核对原文） */}
+                                {pick.source_title && pick.source_title !== pick.title && (
+                                  <div className="mb-2 flex items-center gap-1 text-[11px] text-gray-400">
+                                    <span className="break-all">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+                                    {isEnglishTitle(pick.source_title) && pick.source_title_zh && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setShowOriginalLang(!showOriginalLang); }}
+                                        className="shrink-0 rounded border border-gray-200 px-1 text-[10px] text-gray-400 hover:text-gray-600"
+                                      >
+                                        {showOriginalLang ? '中' : 'EN'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                                 {/* 推荐理由 */}
-                                <div className="mb-3 text-[13px] leading-6 text-gray-600">{pick.reason}</div>
+                                <div className="mb-3 text-[13px] leading-6 text-gray-600"><AutoLink text={pick.reason} /></div>
 
                                 {/* 创作角度 */}
                                 {pick.angles && pick.angles.length > 0 && (
@@ -777,14 +828,14 @@ export default function DailyReportPage() {
                                 {pick.pitfall && (
                                   <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2">
                                     <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber" />
-                                    <span className="text-[12px] leading-5 text-gray-600">{pick.pitfall}</span>
+                                    <span className="text-[12px] leading-5 text-gray-600"><AutoLink text={pick.pitfall} /></span>
                                   </div>
                                 )}
 
                                 {/* 操作按钮 */}
                                 <div className="flex items-center gap-2">
                                   <a
-                                    href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+                                    href={`/plan?title=${encodeURIComponent(displaySourceTitle(pick, false))}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
                                     className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90"
                                   >
                                     <FileText size={13} /> 写这个
@@ -875,7 +926,22 @@ export default function DailyReportPage() {
                                     </a>
                                   )}
                                 </div>
-                                <div className="mt-0.5 text-[11px] text-gray-500">{pick.reason}</div>
+                                <div className="mt-0.5 text-[11px] text-gray-500"><AutoLink text={pick.reason} /></div>
+                                {/* 原文标题（英文时默认中文翻译，可切换） */}
+                                {pick.source_title && pick.source_title !== pick.title && isEnglishTitle(pick.source_title) && (
+                                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
+                                    <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+                                    {pick.source_title_zh && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setShowOriginalLang(!showOriginalLang); }}
+                                        className="shrink-0 rounded border border-gray-200 px-1 text-[9px] text-gray-400 hover:text-gray-600"
+                                      >
+                                        {showOriginalLang ? '中' : 'EN'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                                 {(pick.platforms ?? []).length > 0 && (
                                   <div className="mt-1 flex flex-wrap items-center gap-1">
                                     {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
@@ -891,7 +957,7 @@ export default function DailyReportPage() {
                             {isExpanded && (
                               <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 sm:px-4">
                                 <a
-                                  href={`/plan?title=${encodeURIComponent(pick.title)}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+                                  href={`/plan?title=${encodeURIComponent(displaySourceTitle(pick, false))}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
                                   className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:opacity-90"
                                 >
                                   <FileText size={12} /> 写这个

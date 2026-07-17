@@ -93,6 +93,26 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+  # ── Frontend unit tests + coverage gate ──
+  # 覆盖率门禁限定在 src/lib 的纯逻辑模块（阈值见 frontend/vitest.config.ts）。
+  # 与后端 lint 同理走渐进式：先在核心逻辑立稳基线，新增测试后再逐步扩面、抬阈值。
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Test with coverage
+        run: npm run test:coverage
+
   # ── Lint: ruff（针对本次改动的 Python 文件做阻断式检查）──
   # 渐进式门禁：只检查 PR 中变更的文件，避免一次性清理 700+ 历史告警。
   # 历史 lint 问题在单独的清理分支处理。main 的 push 用 HEAD^ 做基线。

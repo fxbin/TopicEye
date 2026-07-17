@@ -36,7 +36,7 @@ GENERATING_STALE_AFTER = timedelta(minutes=10)
 # 后端兜底校验常量（不信任 LLM 输出的枚举/字段约束）
 _VALID_LIFECYCLE = {"上升期", "见顶", "退潮"}
 _BRIEF_ALLOWED_FIELDS = {
-    "source_idx", "source_title", "editorial_title", "title",
+    "source_idx", "source_title", "source_title_zh", "editorial_title", "title",
     "tier", "category", "reason", "platforms", "source_url", "score",
 }
 
@@ -49,6 +49,7 @@ SYSTEM_PROMPT = """你是 TopicEye 的资深内容主编，为内容创作者编
 
 ## 防幻觉硬规则
 - top_picks 只能从「精选内容」中选。source_idx 必须是精选内容列表里真实存在的序号；source_title 必须逐字复制该序号对应素材的标题原文，不得改写。
+- source_title_zh：若 source_title 是英文，给出其中文翻译（产品名/技术术语保留英文原名，如"OpenAI 发布 GPT-5.6"）；若 source_title 本身是中文，填空字符串""。翻译要准确简洁，不加解释。
 - editorial_title 是展示用的观点化标题，可以改写，但必须包含原文中的核心实体或关键数字，让读者能对应回原文。
 - source_url 字段留空字符串即可，系统会根据 source_idx 自动填入正确链接，你不要自己写 URL。
 - overview / reason / angles 中的每个事实，必须能在精选内容或候选背景中找到依据；找不到依据的字段填 null，禁止编造。
@@ -82,6 +83,7 @@ REPORT_PROMPT = """## 日报窗口
     {{
       "source_idx": 1,
       "source_title": "逐字复制精选内容中序号1的标题原文",
+      "source_title_zh": "英文标题的中文翻译；中文标题填空字符串",
       "editorial_title": "观点化展示标题",
       "tier": "feature",
       "category": "模型发布",
@@ -96,6 +98,7 @@ REPORT_PROMPT = """## 日报窗口
     {{
       "source_idx": 5,
       "source_title": "逐字复制精选内容中序号5的标题原文",
+      "source_title_zh": "英文标题的中文翻译；中文标题填空字符串",
       "editorial_title": "速览标题：一句话事实+价值点",
       "tier": "brief",
       "category": "产品更新",

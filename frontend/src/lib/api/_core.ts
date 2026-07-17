@@ -104,7 +104,17 @@ export async function request<T>(
     },
   };
 
-  const response = await fetch(url, config);
+  let response: Response;
+  try {
+    response = await fetch(url, config);
+  } catch (err) {
+    // 网络层失败（后端不可达/重启中）：抛出带标记的错误，调用方可据此保留登录态
+    const networkErr = new Error(
+      err instanceof Error ? err.message : 'Network request failed'
+    ) as Error & { isNetworkError?: boolean };
+    networkErr.isNetworkError = true;
+    throw networkErr;
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
@@ -118,7 +128,14 @@ export async function request<T>(
     }
     const detail = formatApiErrorDetail(error.detail);
     const message = typeof error.message === 'string' ? error.message : undefined;
-    throw new Error(detail || message || `API Error: ${response.status}`);
+    const apiErr = new Error(detail || message || `API Error: ${response.status}`) as Error & {
+      status?: number;
+      isAuthError?: boolean;
+    };
+    apiErr.status = response.status;
+    // 401/403 = token 无效或过期，调用方应清登录态；其他状态码（500/502/503）不应登出
+    apiErr.isAuthError = response.status === 401 || response.status === 403;
+    throw apiErr;
   }
 
   if (response.status === 204) {

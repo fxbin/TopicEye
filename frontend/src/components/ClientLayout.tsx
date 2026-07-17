@@ -259,9 +259,14 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       try {
         const user = await authApi.me();
         if (!cancelled) setCurrentUser(user);
-      } catch {
-        setAuthToken(null);
-        if (!cancelled) setCurrentUser(null);
+      } catch (err) {
+        // 仅在 token 真正无效（401/403）时登出；
+        // 网络错误（后端重启中）或 5xx 保留 token，避免热更新期间被误登出。
+        const isAuthFail = err instanceof Error && (err as Error & { isAuthError?: boolean }).isAuthError;
+        if (isAuthFail) {
+          setAuthToken(null);
+          if (!cancelled) setCurrentUser(null);
+        }
       } finally {
         if (!cancelled) setAuthLoading(false);
       }

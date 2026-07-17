@@ -9,22 +9,33 @@ import type { IssueFeedbackItem, IssueFeedbackListResponse, IssueFeedbackSeverit
 import type { JobStatsByJobKey, JobStatsResponse, RSSHubInstance, StatsCategoryItem, StatsDashboard, StatsNovelPlatform, StatsOverview, StatsSourceItem, StatsTrendItem } from '@/types/stats';
 import type { TrendKeywordItem, TrendPoint } from '@/types/trends';
 
-/** 邮件 Provider 配置响应（api_key 脱敏） */
+/** 邮件 Provider 配置响应（api_key / smtp_password 脱敏） */
 export interface EmailProviderConfig {
   provider: string;
   from_email: string;
   from_name: string;
   api_key_configured: boolean;
   api_key_preview: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password_configured: boolean;
+  smtp_password_preview: string;
+  smtp_use_ssl: boolean;
   supported_providers: string[];
 }
 
-/** 邮件 Provider 配置更新请求。api_key 为空时保留原值 */
+/** 邮件 Provider 配置更新请求。api_key / smtp_password 为空时保留原值 */
 export interface EmailProviderConfigUpdate {
   provider: string;
   from_email: string;
   from_name: string;
   api_key: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_use_ssl: boolean;
 }
 
 // ─── Settings API ───

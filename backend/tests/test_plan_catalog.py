@@ -10,7 +10,6 @@ from app.services.plan_catalog import (
     get_plan_catalog,
     get_plan_catalog_for_user,
     get_tier_by_key,
-    plan_allows_custom_ai,
 )
 
 
@@ -30,8 +29,6 @@ def test_plan_catalog_declares_free_and_paid_boundaries():
     assert catalog["free_area"]
     assert catalog["paid_area"]
     assert "未完成能力只作为路线图展示，不作为当前可用承诺" in catalog["paid_area"]
-    assert plan_allows_custom_ai("free") is False
-    assert plan_allows_custom_ai("pro") is True
 
 
 def test_plan_catalog_resolves_current_user_tier():

@@ -359,6 +359,12 @@ app.add_middleware(RateLimitMiddleware)
 # Mount v1 API routes
 app.include_router(v1_router)
 
+# Agent Skills discovery protocol — public, mounted at root (not under /api/v1)
+# so `npx skills add https://<host>` can find /.well-known/agent-skills/index.json
+from app.api.agent_skills import router as agent_skills_router  # noqa: E402
+
+app.include_router(agent_skills_router)
+
 
 # ── Global exception handlers ─────────────────────────────────────────
 

@@ -651,8 +651,8 @@ export default function ProfilePage() {
                 <h2 className="text-lg font-black text-gray-900">Agent 接入</h2>
               </div>
               <p className="text-sm leading-6 text-gray-500">
-                创建个人 API Token 供外部 Agent（ZCode / Claude 技能包、n8n、脚本）读取你的选题数据。
-                配合 <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">SKILL.md</code> 技能包，Agent 可在对话中自主查询今日精选、日报与趋势。
+                安装 TopicEye 的读取 skill，让外部 Agent（ZCode / Claude）在对话中自主查询今日精选、日报与趋势。
+                先创建一个 API Token，再按下方命令安装 skill 并配置环境变量。
               </p>
             </div>
             <Badge tone={apiTokens.length > 0 ? 'teal' : 'neutral'}>
@@ -774,24 +774,38 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <div className="mt-5 rounded-sm border border-gray-200 bg-gray-50 p-3">
-            <div className="mb-2 text-xs font-black text-gray-500">Agent 调用示例（curl）</div>
-            <code className="block overflow-x-auto whitespace-pre rounded bg-white px-3 py-2 text-xs leading-5 text-gray-700">
-{`# 今日精选选题
-curl "$BASE/api/v1/skill/today-picks?hours=48&limit=10" \\
-  -H "Authorization: Bearer $TOKEN"
-
-# 日报
-curl "$BASE/api/v1/skill/daily-report" \\
-  -H "Authorization: Bearer $TOKEN"
-
-# 趋势
-curl "$BASE/api/v1/skill/trends?days=7" \\
-  -H "Authorization: Bearer $TOKEN"`}
-            </code>
-            <div className="mt-2 text-xs text-gray-400">
-              <code className="font-mono">$TOKEN</code> 替换为上方创建的 API Token，<code className="font-mono">$BASE</code> 替换为 TopicEye 地址。详见 <code className="font-mono">SKILL.md</code>。
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="rounded-sm border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-black text-gray-500">
+                <TerminalSquare size={14} />
+                1. 安装 skill
+              </div>
+              <code className="block overflow-x-auto whitespace-pre rounded bg-white px-3 py-2 text-xs leading-5 text-gray-700">
+{`npx skills add ${typeof window !== 'undefined' ? window.location.origin : '$TOPICEYE_HOST'} -g`}
+              </code>
+              <div className="mt-2 text-xs text-gray-400">
+                在你的 Agent 环境（ZCode / Claude 所在机器）执行一次即可。TopicEye 会通过标准协议自动暴露 skill。
+              </div>
             </div>
+
+            <div className="rounded-sm border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-black text-gray-500">
+                <KeyRound size={14} />
+                2. 配置环境变量
+              </div>
+              <code className="block overflow-x-auto whitespace-pre rounded bg-white px-3 py-2 text-xs leading-5 text-gray-700">
+{`export TOPICEYE_API_URL="${typeof window !== 'undefined' ? window.location.origin : ''}"
+export TOPICEYE_API_TOKEN="${newTokenSecret || '<上方创建的 Token>'}"`}
+              </code>
+              <div className="mt-2 text-xs text-gray-400">
+                写入 shell 配置（<code className="font-mono">~/.zshrc</code> / <code className="font-mono">~/.bashrc</code>）后重启 Agent。Token 即上方创建的个人 API Token。
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-sm border border-teal/30 bg-teal/5 px-3 py-2 text-xs leading-5 text-teal">
+            <ShieldCheck size={13} className="mr-1 inline" />
+            装好后，在 Agent 对话中直接问「今天有什么值得写的选题」「看看选题日报」即可，Agent 会自动调用 TopicEye 读取数据。
           </div>
         </Panel>
 

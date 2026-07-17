@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, LockKeyhole, Mail, Radar, UserRound } from 'lucide-react';
+import { ArrowRight, KeyRound, LockKeyhole, Mail, Radar, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { authApi } from '@/lib/api';
 import { Badge, Button, Panel, cx } from '@/components/ui';
@@ -40,6 +40,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [codeCountdown, setCodeCountdown] = useState(0);
+  const [sendingCode, setSendingCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
@@ -51,6 +54,13 @@ export default function LoginPage() {
       .catch(() => { /* 未配置或后端不可用，静默隐藏按钮 */ });
   }, []);
 
+  // 验证码倒计时
+  useEffect(() => {
+    if (codeCountdown <= 0) return;
+    const timer = setTimeout(() => setCodeCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [codeCountdown]);
+
   const enabledOauth = (['google', 'github'] as const).filter((p) => oauthProviders.includes(p));
 
   const handleOauthLogin = (provider: 'google' | 'github') => {
@@ -58,11 +68,26 @@ export default function LoginPage() {
     window.location.href = authApi.oauthLoginUrl(provider);
   };
 
+  const handleSendCode = async () => {
+    if (!email.trim() || codeCountdown > 0 || sendingCode) return;
+    setSendingCode(true);
+    setError(null);
+    try {
+      await authApi.sendCode(email.trim());
+      setCodeCountdown(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '验证码发送失败');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const canSubmit = useMemo(() => {
     if (!email.trim() || !password) return false;
     if (mode === 'register' && password.length < 8) return false;
+    if (mode === 'register' && !verificationCode.trim()) return false;
     return true;
-  }, [email, password, mode]);
+  }, [email, password, mode, verificationCode]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -77,6 +102,7 @@ export default function LoginPage() {
             email: email.trim(),
             password,
             display_name: displayName.trim() || null,
+            verification_code: verificationCode.trim(),
           });
       applyAuthSession(session);
       router.push('/');
@@ -184,6 +210,33 @@ export default function LoginPage() {
                 />
               </div>
             </label>
+
+            {mode === 'register' && (
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-black text-gray-500">邮箱验证码</span>
+                <div className="flex gap-2">
+                  <div className="flex flex-1 items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
+                    <KeyRound size={15} className="shrink-0 text-gray-400" />
+                    <input
+                      value={verificationCode}
+                      onChange={(event) => setVerificationCode(event.target.value)}
+                      className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
+                      placeholder="6 位验证码"
+                      maxLength={10}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSendCode}
+                    disabled={!email.trim() || codeCountdown > 0 || sendingCode}
+                    className="shrink-0"
+                  >
+                    {sendingCode ? '发送中...' : codeCountdown > 0 ? `${codeCountdown}s` : '发送验证码'}
+                  </Button>
+                </div>
+              </label>
+            )}
 
             {error && (
               <div className="rounded-sm border border-red-light bg-red-light px-3 py-2 text-xs font-bold text-red">

@@ -177,10 +177,18 @@ export { getAuthToken, setAuthToken, formatApiErrorDetail, FAVORITE_STATE_BATCH_
 // ─── Auth API ───
 
 export const authApi = {
-  register(data: { email: string; password: string; display_name?: string | null }): Promise<AuthTokenResponse> {
+  register(data: { email: string; password: string; display_name?: string | null; verification_code: string }): Promise<AuthTokenResponse> {
     return request('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  /** 发送邮箱验证码（注册前调用）。成功返回 204。 */
+  sendCode(email: string): Promise<void> {
+    return request('/auth/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
     });
   },
 

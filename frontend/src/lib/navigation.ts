@@ -15,6 +15,7 @@ import {
   Newspaper,
   RadioTower,
   Search,
+  Settings,
   Star,
   TrendingUp,
   type LucideIcon,
@@ -93,6 +94,7 @@ export const NAV_SPACES: NavSpace[] = [
     items: [
       { id: 'sources', label: '信源管理', href: '/sources', icon: RadioTower, access: 'admin', countKey: 'sources' },
       { id: 'model-eval', label: 'AI 引擎', href: '/model-eval', icon: BrainCircuit, access: 'admin' },
+      { id: 'system-settings', label: '系统设置', href: '/admin/settings', icon: Settings, access: 'admin' },
       { id: 'changelog-mgmt', label: '发版记录', href: '/admin/updates', icon: Rocket, access: 'admin' },
       { id: 'feedback-mgmt', label: '反馈工作台', href: '/feedback', icon: MessageSquareWarning, access: 'admin' },
     ],

@@ -9,6 +9,24 @@ import type { IssueFeedbackItem, IssueFeedbackListResponse, IssueFeedbackSeverit
 import type { JobStatsByJobKey, JobStatsResponse, RSSHubInstance, StatsCategoryItem, StatsDashboard, StatsNovelPlatform, StatsOverview, StatsSourceItem, StatsTrendItem } from '@/types/stats';
 import type { TrendKeywordItem, TrendPoint } from '@/types/trends';
 
+/** 邮件 Provider 配置响应（api_key 脱敏） */
+export interface EmailProviderConfig {
+  provider: string;
+  from_email: string;
+  from_name: string;
+  api_key_configured: boolean;
+  api_key_preview: string;
+  supported_providers: string[];
+}
+
+/** 邮件 Provider 配置更新请求。api_key 为空时保留原值 */
+export interface EmailProviderConfigUpdate {
+  provider: string;
+  from_email: string;
+  from_name: string;
+  api_key: string;
+}
+
 // ─── Settings API ───
 
 export const settingsApi = {
@@ -37,6 +55,20 @@ export const settingsApi = {
       body: JSON.stringify({ flags }),
     });
   },
+
+  /** 获取邮件 Provider 配置（api_key 脱敏） */
+  getEmailProvider(): Promise<EmailProviderConfig> {
+    return request('/settings/email-provider');
+  },
+
+  /** 更新邮件 Provider 配置。api_key 为空时保留原值 */
+  updateEmailProvider(data: EmailProviderConfigUpdate): Promise<{ updated: boolean }> {
+    return request('/settings/email-provider', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
 };
 
 // ─── Stats / Dashboard API ───

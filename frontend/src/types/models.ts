@@ -67,12 +67,6 @@ export interface LlmModelPresetCatalog {
   help: Record<string, string>;
 }
 
-export interface MyLlmModelsResponse {
-  models: LlmModelItem[];
-  total: number;
-  custom_ai_allowed: boolean;
-}
-
 export type LlmModelCreatePayload = Partial<LlmModelItem> & {
   api_key?: string;
   preset_key?: string;

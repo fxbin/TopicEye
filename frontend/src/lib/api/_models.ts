@@ -4,16 +4,13 @@
  */
 
 import { request } from './_core';
-import type { EvalResult, EvalRun, LlmModelCreatePayload, LlmModelItem, LlmModelPresetCatalog, LlmModelPresetItem, ModelUsageSummary, MyLlmModelsResponse } from '@/types/models';
+import type { EvalResult, EvalRun, LlmModelCreatePayload, LlmModelItem, LlmModelPresetCatalog, LlmModelPresetItem, ModelUsageSummary } from '@/types/models';
 
 // ─── LLM Models API ───
 
 export const modelsApi = {
   list(): Promise<{ models: LlmModelItem[]; total: number }> {
     return request('/models');
-  },
-  mine(): Promise<MyLlmModelsResponse> {
-    return request('/models/me');
   },
   presets(): Promise<LlmModelPresetCatalog> {
     return request('/models/presets');
@@ -29,15 +26,6 @@ export const modelsApi = {
   },
   delete(id: number): Promise<{ message: string }> {
     return request(`/models/${id}`, { method: 'DELETE' });
-  },
-  createMine(data: LlmModelCreatePayload): Promise<{ id: number; name: string; message: string }> {
-    return request('/models/me', { method: 'POST', body: JSON.stringify(data) });
-  },
-  updateMine(id: number, data: Partial<LlmModelItem> & { api_key?: string }): Promise<{ message: string }> {
-    return request(`/models/me/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-  },
-  deleteMine(id: number): Promise<{ message: string }> {
-    return request(`/models/me/${id}`, { method: 'DELETE' });
   },
   test(id: number): Promise<{ status: string; model_name: string; response?: string; error?: string; duration_ms: number; tokens_input?: number; tokens_output?: number; cache_read_tokens?: number; cache_creation_tokens?: number }> {
     return request(`/models/${id}/test`, { method: 'POST' });

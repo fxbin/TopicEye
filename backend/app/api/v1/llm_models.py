@@ -47,7 +47,6 @@ from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm.model_pricing import is_free_model, normalized_model_pricing
 from app.services.llm.presets import apply_model_preset, list_model_presets
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
-from app.services.plan_catalog import plan_allows_custom_ai
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -346,11 +345,6 @@ def _model_payload(m: LlmModel) -> dict:
     }
 
 
-def _ensure_custom_ai_allowed(user: User) -> None:
-    if not plan_allows_custom_ai(user.plan):
-        raise HTTPException(status_code=403, detail="自定义 AI 配置仅对付费用户开放")
-
-
 def _materialize_create_request(req: ModelCreateRequest) -> ModelCreateRequest:
     payload = req.model_dump(exclude_unset=True)
     preset_key = payload.pop("preset_key", req.preset_key)
@@ -470,90 +464,9 @@ async def create_model(req: ModelCreateRequest, db: AsyncSession = Depends(get_d
     return await _retry_write_and_invalidate_models(db, _create)
 
 
-@router.get("/me")
-async def list_my_models(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(LlmModel)
-        .where(LlmModel.owner_user_id == current_user.id)
-        .order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
-    )
-    models = result.scalars().all()
-    return {
-        "models": [_model_payload(m) for m in models],
-        "total": len(models),
-        "custom_ai_allowed": plan_allows_custom_ai(current_user.plan),
-    }
-
-
-@router.post("/me")
-async def create_my_model(
-    req: ModelCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _ensure_custom_ai_allowed(current_user)
-
-    async def _create():
-        model = _new_model_from_request(req, owner_user_id=current_user.id, scope="user")
-        db.add(model)
-        await db.flush()
-        return {"id": model.id, "name": model.name, "message": "自定义 AI 配置创建成功"}
-
-    return await _retry_write_and_invalidate_models(db, _create)
-
-
 @router.get("/presets")
 async def get_model_presets(_current_user: User = Depends(get_current_user)):
     return list_model_presets()
-
-
-@router.put("/me/{model_id}")
-async def update_my_model(
-    model_id: int,
-    req: ModelUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _ensure_custom_ai_allowed(current_user)
-
-    async def _update():
-        result = await db.execute(
-            select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id == current_user.id)
-        )
-        model = result.scalar_one_or_none()
-        if not model:
-            raise HTTPException(404, f"Model {model_id} not found")
-        _apply_model_request(model, req)
-        model.scope = "user"
-        model.owner_user_id = current_user.id
-        await db.flush()
-        return {"message": f"自定义 AI {model.name} 更新成功"}
-
-    return await _retry_write_and_invalidate_models(db, _update)
-
-
-@router.delete("/me/{model_id}")
-async def delete_my_model(
-    model_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    async def _delete():
-        result = await db.execute(
-            select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id == current_user.id)
-        )
-        model = result.scalar_one_or_none()
-        if not model:
-            raise HTTPException(404, f"Model {model_id} not found")
-        name = model.name
-        await db.delete(model)
-        await db.flush()
-        return {"message": f"自定义 AI {name} 已删除"}
-
-    return await _retry_write_and_invalidate_models(db, _delete)
 
 
 @router.get("/usage/summary")

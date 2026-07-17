@@ -118,7 +118,7 @@ async def generate_creation_plan(
     # 3. Call LLM
     try:
         plan = await asyncio.wait_for(
-            call_llm_json(messages, scene="creation_plan", user_id=user_id),
+            call_llm_json(messages, scene="creation_plan"),
             timeout=settings.CREATION_PLAN_TIMEOUT_SECONDS,
         )
         plan = _validate_creation_plan(plan, platform)
@@ -185,11 +185,11 @@ async def _persist_creation_plan(
     plan: dict,
     error: str | None,
 ) -> None:
-    """将创作方案持久化到 creation_plans 表（用户匿名时 user_id=NULL）。"""
+    """将创作方案持久化到 creation_plans 表（按用户隔离历史）。"""
     from app.models.creation import CreationPlan
 
     record = CreationPlan(
-        user_id=user_id,  # None 表示匿名（plan_allows_custom_ai=False 时）
+        user_id=user_id,  # 归属当前用户，用于创作历史隔离
         content_id=content_id,
         platform=platform,
         platform_name=platform_name,

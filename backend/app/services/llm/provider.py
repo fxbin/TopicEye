@@ -84,9 +84,7 @@ async def invalidate_model_cache() -> None:
     """Force the next LLM call to reload model settings from the database."""
     async with _model_cache._lock:
         _model_cache._route_models = []
-        _model_cache._user_route_models = {}
         _model_cache._last_refresh = 0.0
-        _model_cache._user_last_refresh = {}
     reset_model_rate_limiters()
     _failover.reset()
 
@@ -96,7 +94,6 @@ async def call_llm_with_metadata(
     temperature: float = 0.3,
     max_tokens: int = 2000,
     scene: str = "general",
-    user_id: int | None = None,
     routing_group: str = "default",
 ) -> tuple[str, dict[str, Any]]:
     """Call LLM with automatic ordered failover and return the selected route metadata."""
@@ -125,7 +122,6 @@ async def call_llm_with_metadata(
             temperature,
             max_tokens,
             scene,
-            user_id,
             routing_group,
         )
         await breaker.record_success()
@@ -151,11 +147,10 @@ async def _call_llm_with_metadata_inner(
     temperature: float = 0.3,
     max_tokens: int = 2000,
     scene: str = "general",
-    user_id: int | None = None,
     routing_group: str = "default",
 ) -> tuple[str, dict[str, Any]]:
     """Call LLM with automatic ordered failover and return the selected route metadata."""
-    db_models = await _model_cache.get_route_models(routing_group, user_id=user_id)
+    db_models = await _model_cache.get_route_models(routing_group)
     candidates = [_candidate_from_db_model(m, temperature, max_tokens) for m in db_models]
 
     skipped: list[dict[str, Any]] = []
@@ -247,7 +242,6 @@ async def call_llm(
     temperature: float = 0.3,
     max_tokens: int = 2000,
     scene: str = "general",
-    user_id: int | None = None,
     routing_group: str = "default",
 ) -> str:
     """Call LLM with automatic ordered failover."""
@@ -256,7 +250,6 @@ async def call_llm(
         temperature=temperature,
         max_tokens=max_tokens,
         scene=scene,
-        user_id=user_id,
         routing_group=routing_group,
     )
     return response
@@ -267,7 +260,6 @@ async def call_llm_json_with_metadata(
     temperature: float = 0.2,
     max_tokens: int = 2000,
     scene: str = "general",
-    user_id: int | None = None,
     routing_group: str = "default",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Call LLM, parse JSON response, and return selected route metadata."""
@@ -280,7 +272,6 @@ async def call_llm_json_with_metadata(
             temperature=temperature,
             max_tokens=max_tokens,
             scene=scene,
-            user_id=user_id,
             routing_group=routing_group,
         )
 
@@ -321,7 +312,6 @@ async def call_llm_json(
     temperature: float = 0.2,
     max_tokens: int = 2000,
     scene: str = "general",
-    user_id: int | None = None,
     routing_group: str = "default",
 ) -> dict[str, Any]:
     """Call LLM and parse JSON response."""
@@ -330,7 +320,6 @@ async def call_llm_json(
         temperature=temperature,
         max_tokens=max_tokens,
         scene=scene,
-        user_id=user_id,
         routing_group=routing_group,
     )
     return result

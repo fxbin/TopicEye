@@ -146,10 +146,6 @@ def get_plan_catalog_for_user(plan_key: str | None = None) -> dict[str, Any]:
     }
 
 
-def plan_allows_custom_ai(plan_key: str | None) -> bool:
-    return get_tier_by_key(plan_key)["key"] in {"pro", "studio", "enterprise"}
-
-
 def plan_allows_private_source(plan_key: str | None) -> bool:
     """Whether the plan tier permits creating user-owned (private) sources."""
     return get_tier_by_key(plan_key)["key"] in {"pro", "studio", "enterprise"}

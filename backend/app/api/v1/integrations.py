@@ -79,7 +79,7 @@ async def sync_weread(
         raise HTTPException(status_code=409, detail="微信读书素材正在同步中，请稍后再试")
 
     try:
-        result = await sync_weread_materials(db, claimed, api_key=api_key, limit=limit)
+        result = await sync_weread_materials(db, claimed, user_id=current_user.id, api_key=api_key, limit=limit)
     except RuntimeError as exc:
         if claimed.last_sync_status == "syncing":
             await mark_user_integration_sync_error(db, claimed, message=redact_weread_sync_error(str(exc), api_key))

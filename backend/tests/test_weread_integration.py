@@ -464,7 +464,7 @@ async def test_weread_sync_failure_persists_redacted_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_weread_sync_unknown_error_is_redacted_at_api_boundary(monkeypatch):
-    async def failed_sync(db, integration, *, api_key: str, limit: int = 50):
+    async def failed_sync(db, integration, *, user_id: int, api_key: str, limit: int = 50):
         assert api_key == "wr_secret_boundary_123456"
         raise ValueError("raw failure Authorization: Bearer wr_secret_boundary_123456 token=wr_secret_boundary_123456")
 

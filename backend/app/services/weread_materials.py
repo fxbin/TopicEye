@@ -131,8 +131,14 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[
         return normalize_weread_entries(response.json())
 
 
-async def ensure_weread_source(db: AsyncSession) -> Source:
-    result = await db.execute(select(Source).where(Source.url == WEREAD_SOURCE_URL))
+async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:
+    """确保用户拥有自己的微信读书 Source（按 owner_user_id 隔离，不共用公共池）。"""
+    result = await db.execute(
+        select(Source).where(
+            Source.url == WEREAD_SOURCE_URL,
+            Source.owner_user_id == user_id,
+        )
+    )
     source = result.scalar_one_or_none()
     if source:
         return source
@@ -146,6 +152,8 @@ async def ensure_weread_source(db: AsyncSession) -> Source:
         weight=4,
         status=SourceStatus.ACTIVE,
         enabled=True,
+        owner_user_id=user_id,
+        scope="user",
     )
     db.add(source)
     await db.flush()
@@ -157,6 +165,7 @@ async def sync_weread_materials(
     db: AsyncSession,
     integration: UserIntegration,
     *,
+    user_id: int,
     api_key: str | None = None,
     limit: int = 50,
 ) -> dict[str, int | str]:
@@ -168,7 +177,7 @@ async def sync_weread_materials(
     if not resolved_api_key:
         raise ValueError("微信读书 API Key 未配置")
 
-    source = await ensure_weread_source(db)
+    source = await ensure_weread_source(db, user_id=user_id)
     fetched = new = duplicates = 0
     now = datetime.now(UTC)
     try:
@@ -176,7 +185,13 @@ async def sync_weread_materials(
         fetched = len(entries)
         for entry in entries:
             content_hash = build_hash(str(entry.get("title") or "") + str(entry.get("url") or ""))
-            exists = await db.scalar(select(ContentItem.id).where(ContentItem.content_hash == content_hash))
+            # 去重按 owner_user_id 隔离：不同用户的同名笔记不算重复
+            exists = await db.scalar(
+                select(ContentItem.id).where(
+                    ContentItem.content_hash == content_hash,
+                    ContentItem.owner_user_id == user_id,
+                )
+            )
             if exists:
                 duplicates += 1
                 continue
@@ -188,6 +203,7 @@ async def sync_weread_materials(
                     source_name=source.name,
                     source_type=SourceType.API.value,
                     platform="微信读书",
+                    owner_user_id=user_id,
                     author=entry.get("author"),
                     published_at=entry.get("published_at") or now,
                     content_hash=content_hash,

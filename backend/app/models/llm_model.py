@@ -19,7 +19,6 @@ from sqlalchemy import (
     Float,
     Index,
     JSON,
-    ForeignKey,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,10 +29,6 @@ class LlmModel(Base):
     __tablename__ = "llm_models"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
-    )
-    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="显示名称，如 GLM-5.1")
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False, comment="litellm provider: openai / custom_zhipu …"
@@ -74,7 +69,6 @@ class LlmModel(Base):
     __table_args__ = (
         Index("ix_llm_models_enabled", "enabled"),
         Index("ix_llm_models_route", "routing_group", "routing_priority"),
-        Index("ix_llm_models_owner_route", "owner_user_id", "routing_group", "routing_priority"),
     )
 
     def __repr__(self) -> str:

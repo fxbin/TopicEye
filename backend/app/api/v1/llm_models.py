@@ -316,8 +316,6 @@ def _model_payload(m: LlmModel) -> dict:
     pricing = normalized_model_pricing(m)
     return {
         "id": m.id,
-        "owner_user_id": m.owner_user_id,
-        "scope": m.scope,
         "name": m.name,
         "provider": m.provider,
         "model_id": m.model_id,
@@ -380,12 +378,7 @@ def _apply_model_request(model: LlmModel, req: ModelCreateRequest | ModelUpdateR
         model.extra_params = _pricing_extra_params(model.extra_params, 0.0)
 
 
-def _new_model_from_request(
-    req: ModelCreateRequest,
-    *,
-    owner_user_id: int | None = None,
-    scope: str = "system",
-) -> LlmModel:
+def _new_model_from_request(req: ModelCreateRequest) -> LlmModel:
     req = _materialize_create_request(req)
     cost_per_1k_input = _model_cost_input(req)
     cost_per_1k_output = _model_cost_output(req)
@@ -395,8 +388,6 @@ def _new_model_from_request(
         cost_per_1k_output = 0.0
         cache_hit_price = 0.0
     return LlmModel(
-        owner_user_id=owner_user_id,
-        scope=scope,
         name=req.name,
         provider=req.provider,
         model_id=req.model_id,
@@ -435,7 +426,6 @@ async def list_models(db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(
         select(LlmModel)
-        .where(LlmModel.owner_user_id.is_(None))
         .order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
     )
     models = result.scalars().all()
@@ -619,7 +609,7 @@ async def update_model(model_id: int, req: ModelUpdateRequest, db: AsyncSession 
     """Update an existing model configuration."""
 
     async def _update():
-        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id.is_(None)))
+        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
             raise HTTPException(404, f"Model {model_id} not found")
@@ -636,7 +626,7 @@ async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a model configuration."""
 
     async def _delete():
-        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id.is_(None)))
+        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
             raise HTTPException(404, f"Model {model_id} not found")
@@ -653,7 +643,7 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Test a model by sending a simple prompt."""
     from litellm import completion
 
-    result = await db.execute(select(LlmModel).where(LlmModel.id == model_id, LlmModel.owner_user_id.is_(None)))
+    result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
     model = result.scalar_one_or_none()
     if not model:
         raise HTTPException(404, f"Model {model_id} not found")

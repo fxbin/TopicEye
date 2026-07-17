@@ -285,7 +285,6 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
         select(LlmModel).where(
             LlmModel.id.in_(req.model_ids),
             LlmModel.enabled == True,
-            LlmModel.owner_user_id.is_(None),
         )
     )
     models = [_model_snapshot(model) for model in result.scalars().all()]

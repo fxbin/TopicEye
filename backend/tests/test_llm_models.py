@@ -290,7 +290,7 @@ async def test_evaluation_run_executes_models_with_bounded_concurrency(llm_model
             )
         )
         await db.commit()
-        result = await db.execute(select(LlmModel.id).where(LlmModel.owner_user_id.is_(None)).order_by(LlmModel.id))
+        result = await db.execute(select(LlmModel.id).order_by(LlmModel.id))
         model_ids = [row[0] for row in result.all()]
 
     active = 0

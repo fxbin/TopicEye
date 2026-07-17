@@ -39,7 +39,7 @@ class ModelConfigCache:
             async with async_session() as session:
                 result = await session.execute(
                     select(LlmModel)
-                    .where(LlmModel.enabled == True, LlmModel.owner_user_id.is_(None))
+                    .where(LlmModel.enabled == True)
                     .order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
                 )
                 models = result.scalars().all()

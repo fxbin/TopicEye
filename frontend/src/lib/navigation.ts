@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   Bookmark,
+  Library,
   Rocket,
   BrainCircuit,
   CalendarDays,
@@ -78,6 +79,7 @@ export const NAV_SPACES: NavSpace[] = [
       { id: 'favorites', label: '收藏夹', href: '/favorites', icon: Bookmark, access: 'user', countKey: 'favorites' },
       { id: 'algorithm', label: '算法流程', href: '/algorithm', icon: GitBranch, access: 'user' },
       { id: 'fanqie', label: '网文雷达', href: '/novel', icon: BookOpen, access: 'user', feature: 'webnovel_module' },
+      { id: 'weread', label: '微信读书', href: '/weread', icon: Library, access: 'user' },
     ],
   },
   {

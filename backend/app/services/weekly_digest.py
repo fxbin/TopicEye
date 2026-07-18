@@ -16,7 +16,6 @@ from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locke
 from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
 from app.services.digest_base import (
-    DIGEST_GENERATING_STALE_AFTER,  # noqa: F401 — re-exported for tests
     apply_llm_result,
     commit_digest_error,
     is_active_generating,
@@ -33,14 +32,6 @@ from app.services.llm import call_llm_json
 from app.services.llm.prompts.weekly_digest import WEEKLY_DIGEST_PROMPT
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now() -> datetime:
-    """Delegate to ``app.core.time.utc_now``.
-
-    Kept as a thin wrapper so tests can monkeypatch this module's clock.
-    """
-    return utc_now()
 
 
 def _get_week_range(reference_date: date | None = None) -> tuple[str, str, str, str]:
@@ -99,7 +90,7 @@ async def generate_weekly_digest(
     d = reference_date or date.today()
     last_week_date = d - timedelta(days=7)
     week_key, week_label, week_start, week_end = _get_week_range(last_week_date)
-    now = _utc_now()
+    now = utc_now()
 
     async def _claim_generation() -> tuple[WeeklyDigest, bool]:
         if database_profile.is_sqlite:
@@ -135,7 +126,7 @@ async def generate_weekly_digest(
                 digest = existing.scalar_one()
                 if digest.status == "DONE":
                     return digest, False
-                if _is_active_generating(digest, _utc_now()):
+                if _is_active_generating(digest, utc_now()):
                     return digest, False
                 digest.status = "GENERATING"
                 await db.flush()
@@ -215,7 +206,7 @@ async def generate_weekly_digest(
         digest.overview = overview
         apply_llm_result(digest, result)
         digest.status = "DONE"
-        digest.updated_at = _utc_now()
+        digest.updated_at = utc_now()
         await db.commit()
         logger.info("Weekly digest generated: %s (%s)", week_key, week_label)
         # 通知：周刊生成成功

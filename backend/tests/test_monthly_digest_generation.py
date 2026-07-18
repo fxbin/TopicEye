@@ -8,7 +8,8 @@ from sqlalchemy.sql.selectable import Select
 from app.core.database import Base
 from app.models.monthly_digest import MonthlyDigest
 from app.services import monthly_digest
-from app.services.monthly_digest import DIGEST_GENERATING_STALE_AFTER, generate_monthly_digest
+from app.services.digest_base import DIGEST_GENERATING_STALE_AFTER
+from app.services.monthly_digest import generate_monthly_digest
 
 
 @pytest.mark.asyncio
@@ -19,7 +20,7 @@ async def test_generate_monthly_digest_returns_active_generating_without_fetch(m
         await conn.run_sync(Base.metadata.create_all)
 
     now = datetime(2026, 6, 8, 12, 0, 0)
-    monkeypatch.setattr(monthly_digest, "_utc_now", lambda: now)
+    monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
 
     async def fail_fetch(*_args, **_kwargs):
         raise AssertionError("active GENERATING digest should not fetch inputs")
@@ -52,7 +53,7 @@ async def test_generate_monthly_digest_reclaims_stale_generating(monkeypatch):
         await conn.run_sync(Base.metadata.create_all)
 
     now = datetime(2026, 6, 8, 12, 0, 0)
-    monkeypatch.setattr(monthly_digest, "_utc_now", lambda: now)
+    monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
 
     async def fake_fetch(*_args, **_kwargs):
         return []
@@ -87,7 +88,7 @@ async def test_generate_monthly_digest_retries_sqlite_claim_lock(monkeypatch):
 
     now = datetime(2026, 6, 8, 12, 0, 0)
     calls = {"begin": 0}
-    monkeypatch.setattr(monthly_digest, "_utc_now", lambda: now)
+    monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
 
     async def flaky_begin_immediate(_db):
         calls["begin"] += 1
@@ -124,7 +125,7 @@ async def test_generate_monthly_digest_locks_existing_row_for_postgresql(monkeyp
 
     now = datetime(2026, 6, 8, 12, 0, 0)
     calls = {"for_update": 0}
-    monkeypatch.setattr(monthly_digest, "_utc_now", lambda: now)
+    monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
 
     class FakeProfile:
         is_sqlite = False

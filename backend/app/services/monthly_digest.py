@@ -17,7 +17,6 @@ from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locke
 from app.core.time import utc_now
 from app.models.monthly_digest import MonthlyDigest
 from app.services.digest_base import (
-    DIGEST_GENERATING_STALE_AFTER,  # noqa: F401 — re-exported for tests
     apply_llm_result,
     commit_digest_error,
     is_active_generating,
@@ -34,14 +33,6 @@ from app.services.llm import call_llm_json
 from app.services.llm.prompts.monthly_digest import MONTHLY_DIGEST_PROMPT
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now() -> datetime:
-    """Delegate to ``app.core.time.utc_now``.
-
-    Kept as a thin wrapper so tests can monkeypatch this module's clock.
-    """
-    return utc_now()
 
 
 def _get_month_range(reference_date: date | None = None) -> tuple[str, str, str, str]:
@@ -77,7 +68,7 @@ async def generate_monthly_digest(
     """
     target_date = _previous_month(reference_date) if use_previous_month else (reference_date or date.today())
     month_key, month_label, month_start, month_end = _get_month_range(target_date)
-    now = _utc_now()
+    now = utc_now()
 
     async def _claim_generation() -> tuple[MonthlyDigest, bool]:
         if database_profile.is_sqlite:
@@ -113,7 +104,7 @@ async def generate_monthly_digest(
                 digest = existing.scalar_one()
                 if digest.status == "DONE":
                     return digest, False
-                if _is_active_generating(digest, _utc_now()):
+                if _is_active_generating(digest, utc_now()):
                     return digest, False
                 digest.status = "GENERATING"
                 await db.flush()
@@ -182,7 +173,7 @@ async def generate_monthly_digest(
         digest.overview = overview
         apply_llm_result(digest, result)
         digest.status = "DONE"
-        digest.updated_at = _utc_now()
+        digest.updated_at = utc_now()
         await db.commit()
         logger.info("Monthly digest generated: %s (%s)", month_key, month_label)
         await push_digest_notification("success", "monthly_digest", "AI月刊生成完成", f"{month_label} 已生成")

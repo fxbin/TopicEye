@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
-_MIN_READER_TEXT_CHARS = 160
+_MIN_READER_TEXT_CHARS = 60
 _WORDS_PER_MINUTE = 300  # Chinese characters or space-delimited words: deliberately conservative.
 _BLOCK_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote")
 

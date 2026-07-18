@@ -4,7 +4,6 @@ Weekly Digest service — generate AI-powered weekly curated newsletter.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date, datetime, timedelta
 
@@ -16,6 +15,13 @@ from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
+from app.services.digest_base import (
+    DIGEST_GENERATING_STALE_AFTER,  # noqa: F401 — re-exported for tests
+    apply_llm_result,
+    commit_digest_error,
+    is_active_generating,
+    push_digest_notification,
+)
 from app.services.digest_context import (
     build_category_stats,
     build_category_text,
@@ -27,7 +33,6 @@ from app.services.llm import call_llm_json
 from app.services.llm.prompts.weekly_digest import WEEKLY_DIGEST_PROMPT
 
 logger = logging.getLogger(__name__)
-DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)
 
 
 def _utc_now() -> datetime:
@@ -71,10 +76,7 @@ def _build_category_stats(items: list[dict]) -> dict:
 
 
 def _is_active_generating(digest: WeeklyDigest, now: datetime) -> bool:
-    if digest.status != "GENERATING":
-        return False
-    generated_at = digest.updated_at or digest.created_at or now
-    return now - generated_at < DIGEST_GENERATING_STALE_AFTER
+    return is_active_generating(digest, now)
 
 
 async def generate_weekly_digest(
@@ -211,36 +213,14 @@ async def generate_weekly_digest(
             overview = result.get("overview", "")
 
         digest.overview = overview
-        digest.takeaway = result.get("takeaway", "")
-        digest.keywords = json.dumps(result.get("keywords", []), ensure_ascii=False)
-        digest.trends = json.dumps(result.get("trends", []), ensure_ascii=False)
-        digest.top_picks = json.dumps(result.get("top_picks", []), ensure_ascii=False)
-        digest.category_summary = json.dumps(result.get("category_summary", {}), ensure_ascii=False)
-        digest.platform_tips = json.dumps(result.get("platform_tips", {}), ensure_ascii=False)
-        digest.topic_clusters = json.dumps(result.get("topic_clusters", []), ensure_ascii=False)
-        digest.action_items = json.dumps(result.get("action_items", []), ensure_ascii=False)
+        apply_llm_result(digest, result)
         digest.status = "DONE"
         digest.updated_at = _utc_now()
         await db.commit()
         logger.info("Weekly digest generated: %s (%s)", week_key, week_label)
         # 通知：周刊生成成功
-        try:
-            from app.services.notification_service import push_notification
-
-            await push_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
-        except Exception:
-            logger.warning("weekly_digest success notification failed", exc_info=True)
+        await push_digest_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
     except Exception as e:
-        digest.status = "ERROR"
-        digest.overview = f"生成失败: {str(e)[:200]}"
-        await db.commit()
-        logger.error("Weekly digest generation failed for %s: %s", week_key, e)
-        # 通知：周刊生成失败
-        try:
-            from app.services.notification_service import push_notification
-
-            await push_notification("error", "weekly_digest", "AI周刊生成失败", str(e)[:200])
-        except Exception:
-            logger.warning("weekly_digest failure notification failed", exc_info=True)
+        await commit_digest_error(digest, e, "周刊", week_key, db)
 
     return digest

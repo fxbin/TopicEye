@@ -61,7 +61,7 @@ class ContentDetailResponse(ContentResponse):
 class ArticleReaderBlock(BaseModel):
     """A safe semantic block extracted from publisher content."""
 
-    type: Literal["heading", "paragraph", "quote", "list_item"]
+    type: Literal["heading", "paragraph", "quote", "list_item", "code"]
     text: str
     level: int | None = None
 

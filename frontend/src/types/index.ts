@@ -175,7 +175,7 @@ export interface ContentMetrics {
 }
 
 export interface ArticleReaderBlock {
-  type: 'heading' | 'paragraph' | 'quote' | 'list_item';
+  type: 'heading' | 'paragraph' | 'quote' | 'list_item' | 'code';
   text: string;
   level?: number | null;
 }

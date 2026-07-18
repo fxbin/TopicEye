@@ -265,6 +265,15 @@ def _extract_semantic_blocks(root: BeautifulSoup) -> list[dict[str, str | int]]:
                 "text": text,
                 "level": min(4, int(node.name[1])),
             }
+        elif node.name in ("pre", "code"):
+            # 代码块：用空分隔符提取（不在标签边界插换行），保留代码原始换行
+            code_text = node.get_text("", strip=False)
+            # 规范化：行首尾去空、行内连续空格压缩、多余空行合并
+            lines = [re.sub(r"[ \t]+", " ", line).strip() for line in code_text.splitlines()]
+            code_text = "\n".join(lines).strip()
+            # 连续空行压缩为单个
+            code_text = re.sub(r"\n{3,}", "\n\n", code_text)
+            block = {"type": "code", "text": code_text}
         elif node.name == "blockquote":
             block = {"type": "quote", "text": text}
         elif node.name == "li":

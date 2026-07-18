@@ -56,6 +56,14 @@ function ReaderBody({ blocks }: { blocks: ArticleReaderBlock[] }) {
       );
       return;
     }
+    if (block.type === 'code') {
+      rendered.push(
+        <pre key={index} className="my-7 overflow-x-auto rounded-lg border border-gray-200 bg-[#1e1e2e] p-4 text-[13px] leading-relaxed text-[#cdd6f4]">
+          <code className="font-mono whitespace-pre">{block.text}</code>
+        </pre>,
+      );
+      return;
+    }
     rendered.push(<p key={index} className="mb-7 last:mb-0">{block.text}</p>);
   });
   flushList('list-final');

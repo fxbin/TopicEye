@@ -17,9 +17,11 @@
  */
 
 import type { LlmModelPresetCatalog, LlmModelPresetItem } from '@/lib/api';
+import type { Tone } from '@/components/ui';
+
+export type { Tone };
 
 export type Tab = 'models' | 'evaluate' | 'usage' | 'history';
-export type Tone = 'primary' | 'teal' | 'amber' | 'purple' | 'red' | 'neutral';
 
 export type ProviderPreset = {
   label: string;

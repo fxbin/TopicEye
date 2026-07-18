@@ -12,7 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { statsJobsApi, type JobStatsByJobKey, type JobStatsResponse } from '@/lib/api';
@@ -25,9 +25,7 @@ const DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 90, label: '90 天' },
 ];
 
-type BadgeTone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
-
-const STATUS_TONE: Record<string, BadgeTone> = {
+const STATUS_TONE: Record<string, Tone> = {
   SUCCESS: 'teal',
   FAILED: 'red',
   TIMEOUT: 'amber',
@@ -53,13 +51,13 @@ function formatDuration(ms: number | null | undefined): string {
   return `${(minutes / 60).toFixed(1)}h`;
 }
 
-function successTone(rate: number): BadgeTone {
+function successTone(rate: number): Tone {
   if (rate >= 0.95) return 'teal';
   if (rate >= 0.8) return 'amber';
   return 'red';
 }
 
-function lastStatusTone(status: string | null | undefined): BadgeTone {
+function lastStatusTone(status: string | null | undefined): Tone {
   if (!status) return 'neutral';
   return STATUS_TONE[status] || 'neutral';
 }
@@ -296,7 +294,7 @@ function KpiCard({
   label: string;
   value: string;
   hint?: string;
-  tone?: BadgeTone;
+  tone?: Tone;
 }) {
   return (
     <div className="rounded-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">

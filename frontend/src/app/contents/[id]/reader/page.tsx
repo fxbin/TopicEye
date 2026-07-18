@@ -7,6 +7,7 @@ import { Button, Panel } from '@/components/ui';
 import { contentsApi } from '@/lib/api';
 import type { ArticleReaderBlock, ArticleReaderSnapshot, ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
+import { AutoLink } from '@/components/AutoLink';
 
 function legacyBlocks(text: string): ArticleReaderBlock[] {
   const paragraphGroups = text
@@ -51,7 +52,7 @@ function ReaderBody({ blocks }: { blocks: ArticleReaderBlock[] }) {
     if (block.type === 'quote') {
       rendered.push(
         <blockquote key={index} className="my-9 border-l-[3px] border-primary bg-[#fff7ef] px-5 py-4 text-[16px] leading-8 text-[#625c54] sm:text-[17px]">
-          {block.text}
+          <AutoLink text={block.text} />
         </blockquote>,
       );
       return;
@@ -64,7 +65,7 @@ function ReaderBody({ blocks }: { blocks: ArticleReaderBlock[] }) {
       );
       return;
     }
-    rendered.push(<p key={index} className="mb-7 last:mb-0">{block.text}</p>);
+    rendered.push(<p key={index} className="mb-7 last:mb-0"><AutoLink text={block.text} /></p>);
   });
   flushList('list-final');
   return <>{rendered}</>;

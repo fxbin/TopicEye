@@ -92,6 +92,26 @@ export const LEVEL_CONFIG_CLASSES: Record<string, { bg: string; color: string; b
   '信号不足':   { bg: 'bg-gray-50',      color: 'text-gray-400',  border: 'border-gray-200',        dot: 'bg-gray-300' },
 };
 
+/**
+ * 通用图表色板（10 色，无重复）。
+ *
+ * 供 stats / trends / algorithm 等图表场景使用。
+ * 各页若有特化配色需求（如 stats 的 BAR_COLORS 只有 8 色且含重复），
+ * 可保留本地版本；通用场景应优先用 CHART_COLORS。
+ */
+export const CHART_COLORS: readonly string[] = [
+  '#FF6B35', // primary orange
+  '#00C9A7', // teal
+  '#3B82F6', // blue
+  '#D97706', // amber
+  '#10B981', // green
+  '#EF4444', // red
+  '#8B5CF6', // purple
+  '#06B6D4', // cyan
+  '#64748B', // slate
+  '#EC4899', // pink
+];
+
 /** 分类列表 */
 export const CATEGORIES = ['全部', 'AI', '职场', '商业', '教育', '自媒体', '科技', '生活', '产品'] as const;
 export type Category = (typeof CATEGORIES)[number];

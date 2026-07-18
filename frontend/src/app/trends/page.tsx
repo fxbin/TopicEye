@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Metric, Panel, PanelTitle, cx } from '@/components/ui';
+import { CHART_COLORS } from '@/lib/design-tokens';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { trendsApi, type TrendPoint, type TrendKeywordItem as KeywordItem } from '@/lib/api';
@@ -36,18 +37,9 @@ interface TopicSeries {
   topItems: { title: string; url: string; score: number }[];
 }
 
-const COLORS = [
-  '#FF6B35',
-  '#00C9A7',
-  '#3B82F6',
-  '#D97706',
-  '#10B981',
-  '#EF4444',
-  '#8B5CF6',
-  '#06B6D4',
-  '#64748B',
-  '#EC4899',
-];
+// 色板统一引用 @/lib/design-tokens 的 CHART_COLORS（10 色无重复）。
+// 历史本地常量 COLORS 已删除，改用 CHART_COLORS 别名保持调用方不变。
+const COLORS = CHART_COLORS;
 
 function Sparkline({
   data,

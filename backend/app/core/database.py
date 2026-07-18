@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
-from app.config import settings
+from app.core.config import settings
 from app.core.db_backend import create_database_profile, sqlalchemy_connect_args
 import logging
 

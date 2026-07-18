@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.core.config import settings
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import async_session
 from app.core.dependencies import get_db

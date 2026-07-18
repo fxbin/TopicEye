@@ -40,6 +40,25 @@ class ContentRepo(BaseRepository[ContentItem]):
     def __init__(self, db: AsyncSession):
         super().__init__(db)
 
+    # ── Visibility helper ─────────────────────────────────────────
+
+    def _visibility_clauses(
+        self,
+        visible_user_id: int | None,
+        public_only: bool = False,
+    ) -> list:
+        """Return WHERE clause(s) for ADR 0001 content visibility.
+
+        - ``public_only=True``    → ``[owner_user_id IS NULL]``
+        - ``visible_user_id`` set → ``[OR(owner_user_id IS NULL, owner_user_id == visible_user_id)]``
+        - neither set             → ``[]`` (no filter, internal/batch callers)
+        """
+        if public_only:
+            return [self.model.owner_user_id.is_(None)]
+        if visible_user_id is not None:
+            return [or_(self.model.owner_user_id.is_(None), self.model.owner_user_id == visible_user_id)]
+        return []
+
     # ── Lookup helpers ─────────────────────────────────────────────
 
     async def get_by_url(self, url: str) -> ContentItem | None:
@@ -302,22 +321,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         stmt = select(self.model).options(selectinload(self.model.analyses))
         count_stmt = select(func.count()).select_from(self.model)
-        if public_only:
-            stmt = stmt.where(self.model.owner_user_id.is_(None))
-            count_stmt = count_stmt.where(self.model.owner_user_id.is_(None))
-        elif visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
-            count_stmt = count_stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id, public_only):
+            stmt = stmt.where(clause)
+            count_stmt = count_stmt.where(clause)
 
         if filters:
             for field, value in filters.items():
@@ -390,15 +396,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             .options(selectinload(self.model.analyses))
             .where(self.model.id == id)
         )
-        if public_only:
-            stmt = stmt.where(self.model.owner_user_id.is_(None))
-        elif visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id, public_only):
+            stmt = stmt.where(clause)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -450,13 +449,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
         if category:
             stmt = stmt.where(self.model.category == category)
-        if visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id):
+            stmt = stmt.where(clause)
         result = await self.db.execute(stmt)
         return result.scalars().unique().all()
 
@@ -496,13 +490,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(AiAnalysis.curation_score.isnot(None))
             .where(self.model.duplicate_of.is_(None))
         )
-        if visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id):
+            stmt = stmt.where(clause)
         if exclude_ids:
             stmt = stmt.where(self.model.id.notin_(exclude_ids))
         if category:
@@ -575,22 +564,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         if time_cutoff:
             count_stmt = count_stmt.where(self.model.crawled_at >= time_cutoff)
             data_stmt = data_stmt.where(self.model.crawled_at >= time_cutoff)
-        if public_only:
-            count_stmt = count_stmt.where(self.model.owner_user_id.is_(None))
-            data_stmt = data_stmt.where(self.model.owner_user_id.is_(None))
-        elif visible_user_id is not None:
-            count_stmt = count_stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
-            data_stmt = data_stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id, public_only):
+            count_stmt = count_stmt.where(clause)
+            data_stmt = data_stmt.where(clause)
 
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
@@ -625,13 +601,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        if visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id):
+            stmt = stmt.where(clause)
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -656,13 +627,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        if visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id):
+            stmt = stmt.where(clause)
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -723,13 +689,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
         if time_cutoff:
             stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        if visible_user_id is not None:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_user_id.is_(None),
-                    self.model.owner_user_id == visible_user_id,
-                )
-            )
+        for clause in self._visibility_clauses(visible_user_id):
+            stmt = stmt.where(clause)
 
         stmt = stmt.order_by(self.model.crawled_at.desc()).limit(limit)
         result = await self.db.execute(stmt)

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import async_session
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.models.user import User
 from app.models.source import Source, SourceType, SourceStatus

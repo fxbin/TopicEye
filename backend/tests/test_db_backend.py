@@ -10,11 +10,11 @@ from app.core.db_backend import (
     duckdb_attach_sql,
     duckdb_extension_name,
     ensure_aware_utc,
-    now_naive_utc,
     redact_database_secrets,
     sqlite_domain_urls,
     sync_database_url,
 )
+from app.core.time import naive_utc_now
 
 
 def test_sqlite_profile_and_duckdb_attach_sql(tmp_path):
@@ -142,14 +142,14 @@ def test_database_profile_rejects_unsupported_backend():
 # 起因:content_repo.py 的 list_pending_or_stale 等函数用 datetime.now(UTC) 当
 # SQL bind param,SQLite + aiosqlite 拒收 aware datetime,导致 scheduler 分析
 # job 每次都抛 TypeError,间接导致 today_picks 永远空(无新内容入库)。
-# 修复:统一用 now_naive_utc() 做 SQL bind,DB 读出用 ensure_aware_utc() 做
+# 修复:统一用 naive_utc_now() 做 SQL bind,DB 读出用 ensure_aware_utc() 做
 # Python 层比较。下列测试钉死这两个 helper 的契约。
 
 
-def test_now_naive_utc_is_naive_and_close_to_now():
-    """now_naive_utc 必须返回 naive datetime(无 tzinfo),且贴近 wall clock now()。"""
+def test_naive_utc_now_is_naive_and_close_to_now():
+    """naive_utc_now 必须返回 naive datetime(无 tzinfo),且贴近 wall clock now()。"""
     before = datetime.now(UTC).replace(tzinfo=None)
-    out = now_naive_utc()
+    out = naive_utc_now()
     after = datetime.now(UTC).replace(tzinfo=None)
 
     assert out.tzinfo is None, "SQL bind param 必须 naive,aiosqlite 拒收 aware"
@@ -157,10 +157,10 @@ def test_now_naive_utc_is_naive_and_close_to_now():
     assert before - timedelta(seconds=1) <= out <= after + timedelta(seconds=1)
 
 
-def test_now_naive_utc_does_not_leak_local_timezone():
-    """跨时区机器(开发机 vs 腾讯云 UTC)值应一致。now_naive_utc 是 UTC 时刻
+def test_naive_utc_now_does_not_leak_local_timezone():
+    """跨时区机器(开发机 vs 腾讯云 UTC)值应一致。naive_utc_now 是 UTC 时刻
     去掉 tzinfo,不是 wall clock 本地时间。"""
-    naive = now_naive_utc()
+    naive = naive_utc_now()
     aware_utc = datetime.now(UTC)
 
     # naive 与 aware_utc 去掉 tzinfo 后差值应 < 1 秒(同一时刻)
@@ -191,9 +191,9 @@ def test_ensure_aware_utc_aware_converts_to_utc():
     assert out.hour == 12, "20:00 +08:00 应当转 12:00 UTC"
 
 
-def test_ensure_aware_utc_round_trip_with_now_naive_utc():
+def test_ensure_aware_utc_round_trip_with_naive_utc_now():
     """最常用场景:DB 读出 naive(假设 UTC)→ ensure_aware_utc → 与 now(UTC) 比较不抛错。"""
-    t = now_naive_utc()
+    t = naive_utc_now()
     aware = ensure_aware_utc(t)
     # 不应该抛 TypeError
     assert (aware - datetime.now(UTC)) < timedelta(seconds=1)
@@ -221,7 +221,7 @@ async def test_content_repo_list_pending_or_stale_works_on_sqlite_with_naive_cut
                 url="https://x/1",
                 source_id=1,
                 source_type="RSS",
-                crawled_at=now_naive_utc() - timedelta(hours=2),
+                crawled_at=naive_utc_now() - timedelta(hours=2),
                 category="AI",
                 status=ContentStatus.PENDING,
             )

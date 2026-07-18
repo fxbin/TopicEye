@@ -16,7 +16,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.core.oauth import ENABLED_PROVIDERS, oauth
 from app.services.auth_service import (
     OAuthAccountConflictError,

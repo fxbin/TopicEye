@@ -17,7 +17,7 @@ import app.services.content_pipeline as content_pipeline
 from app.api.v1.auth import get_current_admin_user
 from app.api.v1.sources import create_source, router as sources_router, update_source
 from app.core.database import Base
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.models.source import Source, SourceStatus, SourceType
 from app.repositories.source_repo import SourceRepository
 from app.schemas.source import SourceCreate, SourceUpdate

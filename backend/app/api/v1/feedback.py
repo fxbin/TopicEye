@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.api.v1.auth import get_current_user
 from app.core.database import database_profile
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.core.sqlite_retry import begin_immediate_for_sqlite, is_sqlite_locked, retry_sqlite_locked
 from app.models.feedback import (
     UserFeedback,

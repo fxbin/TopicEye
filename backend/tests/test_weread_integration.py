@@ -22,7 +22,7 @@ from app.api.v1.integrations import (
 )
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings
 from app.core.database import Base
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.models.content import ContentItem
 from app.models.source import Source, SourceStatus
 from app.models.user_integration import UserIntegration

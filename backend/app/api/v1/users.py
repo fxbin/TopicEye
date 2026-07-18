@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import database_profile
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.core.validators import validate_password_strength
 from app.models.user import User, UserOAuthAccount

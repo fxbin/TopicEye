@@ -304,25 +304,6 @@ def ensure_aware_utc(dt: datetime | None) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def now_naive_utc() -> datetime:
-    """等价 datetime.now(UTC).replace(tzinfo=None).
-
-    专供 SQLAlchemy where 子句的 bind param 用：
-    - aiosqlite 拒收 aware datetime 作为绑定参数
-    - PG asyncpg 在 session 设 UTC 时按 UTC 解释 naive
-
-    用法：stmt.where(Model.col <= now_naive_utc() - timedelta(...))
-    不要混用 ensure_aware_utc / now_naive_utc 在同一行代码里。
-
-    .. deprecated::
-        新代码请从 ``app.core.time`` 导入 ``naive_utc_now``。
-        本函数保留为向后兼容 re-export。
-    """
-    from app.core.time import naive_utc_now
-
-    return naive_utc_now()
-
-
 def ensure_naive_utc(dt: datetime | None) -> datetime | None:
     """把 datetime 转 naive UTC, 用于 SQL 查询参数.
 

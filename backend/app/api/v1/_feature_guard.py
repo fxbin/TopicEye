@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.models.app_setting import get_feature_flag_async
 
 

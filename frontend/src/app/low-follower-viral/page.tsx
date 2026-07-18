@@ -22,7 +22,8 @@ import { viralApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import CategoryChip from '@/components/CategoryChip';
 import AnalysisPanel from '@/components/AnalysisPanel';
-import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { Pagination } from '@/components/Pagination';
+import { Badge, Button, Panel, PanelTitle, Toolbar, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
@@ -156,7 +157,7 @@ export default function LowFollowerViralPage() {
           )}
 
           {!loading && totalPages > 1 && (
-            <Pagination page={page} totalPages={totalPages} onPage={setPage} />
+            <Pagination page={page} totalPages={totalPages} onPage={setPage} summary={<span>第 <b className="font-mono">{page}</b> / <b className="font-mono">{totalPages}</b> 页</span>} />
           )}
         </main>
 
@@ -419,82 +420,6 @@ function SignalPanel({ items }: { items: ContentItem[] }) {
         LFV 越高，说明内容在低权威来源中越可能完成了异常传播。
       </div>
     </Panel>
-  );
-}
-
-function Pagination({
-  page,
-  totalPages,
-  onPage,
-}: {
-  page: number;
-  totalPages: number;
-  onPage: (updater: number | ((page: number) => number)) => void;
-}) {
-  const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
-    if (totalPages <= 5) return index + 1;
-    if (page <= 3) return index + 1;
-    if (page >= totalPages - 2) return totalPages - 4 + index;
-    return page - 2 + index;
-  });
-
-  return (
-    <div className="mt-6 flex items-center justify-between gap-3">
-      <PageButton disabled={page === 1} onClick={() => onPage((current) => Math.max(1, current - 1))}>
-        <ChevronLeft size={14} /> 上一页
-      </PageButton>
-      <div className="flex gap-1">
-        {pageNumbers.map((pageNumber) => (
-          <button
-            key={pageNumber}
-            type="button"
-            onClick={() => onPage(pageNumber)}
-            className={cx(
-              'h-8 w-8 rounded-sm border text-[13px] transition',
-              page === pageNumber
-                ? 'border-primary-border bg-primary font-black text-white'
-                : 'border-gray-200 bg-white font-bold text-gray-600 hover:border-primary-border hover:text-primary',
-            )}
-          >
-            {pageNumber}
-          </button>
-        ))}
-      </div>
-      <PageButton disabled={page === totalPages} onClick={() => onPage((current) => Math.min(totalPages, current + 1))}>
-        下一页 <ChevronRight size={14} />
-      </PageButton>
-    </div>
-  );
-}
-
-function PageButton({
-  disabled,
-  onClick,
-  children,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      variant="secondary"
-      className={cx('px-3.5 py-2 text-[13px]', disabled && 'cursor-not-allowed bg-gray-50 text-gray-300')}
-    >
-      {children}
-    </Button>
-  );
-}
-
-function PanelTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return (
-    <div className="mb-3 flex items-center gap-2">
-      <Icon size={15} className="text-primary" strokeWidth={2.2} />
-      <span className="text-sm font-black text-gray-900">{title}</span>
-    </div>
   );
 }
 

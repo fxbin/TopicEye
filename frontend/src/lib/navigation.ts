@@ -95,18 +95,18 @@ export const NAV_SPACES: NavSpace[] = [
     id: 'manage',
     label: '管理',
     items: [
-      { id: 'sources', label: '信源管理', href: '/sources', icon: RadioTower, access: 'admin', countKey: 'sources' },
+      { id: 'sources', label: '信源管理', href: '/admin/sources', icon: RadioTower, access: 'admin', countKey: 'sources' },
       { id: 'users', label: '用户管理', href: '/admin/users', icon: Users, access: 'admin' },
-      { id: 'model-eval', label: 'AI 引擎', href: '/model-eval', icon: BrainCircuit, access: 'admin' },
+      { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit, access: 'admin' },
       { id: 'system-settings', label: '系统设置', href: '/admin/settings', icon: Settings, access: 'admin' },
       { id: 'changelog-mgmt', label: '发版记录', href: '/admin/updates', icon: Rocket, access: 'admin' },
-      { id: 'feedback-mgmt', label: '反馈工作台', href: '/feedback', icon: MessageSquareWarning, access: 'admin' },
+      { id: 'feedback-mgmt', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning, access: 'admin' },
     ],
   },
 ];
 
 const EXTRA_USER_ONLY_PATHS = ['/profile'];
-const EXTRA_ADMIN_ONLY_PATHS = ['/contents', '/mother-topics/config', '/admin/updates'];
+const EXTRA_ADMIN_ONLY_PATHS = ['/admin/contents', '/admin/mother-topics', '/admin/updates'];
 
 // 显式声明的公开路径（未登录可访问）。OAuth 回调页必须在此列，
 // 否则未登录态进来会被路由守卫踢去 /login，丢失 URL fragment 里的 token。

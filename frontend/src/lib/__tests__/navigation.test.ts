@@ -57,7 +57,7 @@ describe('canAccessNavItem', () => {
 describe('requiredAccessForPath', () => {
   it('按路径归类访问级别', () => {
     expect(requiredAccessForPath('/login')).toBe('public');
-    expect(requiredAccessForPath('/sources')).toBe('admin');
+    expect(requiredAccessForPath('/admin/sources')).toBe('admin');
     expect(requiredAccessForPath('/daily')).toBe('user');
     expect(requiredAccessForPath('/some-unknown-path')).toBe('public');
   });
@@ -76,8 +76,8 @@ describe('canAccessPath', () => {
   });
 
   it('admin 路径仅管理员可进', () => {
-    expect(canAccessPath('/sources', normalUser)).toBe(false);
-    expect(canAccessPath('/sources', adminUser)).toBe(true);
+    expect(canAccessPath('/admin/sources', normalUser)).toBe(false);
+    expect(canAccessPath('/admin/sources', adminUser)).toBe(true);
   });
 
   it('feature 未开启的路径被守卫拦截', () => {
@@ -86,8 +86,8 @@ describe('canAccessPath', () => {
   });
 
   it('子路径按前缀匹配（/sources/xxx 视为 /sources）', () => {
-    expect(canAccessPath('/sources/123', adminUser)).toBe(true);
-    expect(canAccessPath('/sources/123', normalUser)).toBe(false);
+    expect(canAccessPath('/admin/sources/123', adminUser)).toBe(true);
+    expect(canAccessPath('/admin/sources/123', normalUser)).toBe(false);
   });
 });
 
@@ -114,8 +114,8 @@ describe('visibleNavSpaces', () => {
 
 describe('派生路径集合', () => {
   it('ADMIN_ONLY_PATHS / USER_ONLY_PATHS 覆盖关键路径', () => {
-    expect(ADMIN_ONLY_PATHS).toContain('/contents');
-    expect(ADMIN_ONLY_PATHS).toContain('/model-eval');
+    expect(ADMIN_ONLY_PATHS).toContain('/admin/contents');
+    expect(ADMIN_ONLY_PATHS).toContain('/admin/model-eval');
     expect(USER_ONLY_PATHS).toContain('/profile');
     expect(USER_ONLY_PATHS).toContain('/daily');
   });

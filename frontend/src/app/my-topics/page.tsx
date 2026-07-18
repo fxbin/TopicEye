@@ -334,7 +334,7 @@ export default function MyTopicsPage() {
             </p>
           </div>
           <a
-            href="/mother-topics/config"
+            href="/admin/mother-topics"
             className="inline-flex min-h-9 items-center gap-1.5 rounded-sm bg-primary px-3 py-2 text-xs font-black text-white no-underline hover:bg-primary-hover"
           >
             <Settings2 size={14} /> 配置母题
@@ -444,7 +444,7 @@ export default function MyTopicsPage() {
                 <div className="mt-3 text-sm font-black text-gray-700">没有符合条件的母题候选</div>
                 <div className="mt-1.5 text-xs text-gray-400">降低匹配阈值，或去配置页补充关键词。</div>
                 <a
-                  href="/mother-topics/config"
+                  href="/admin/mother-topics"
                   className="mt-3.5 inline-flex items-center gap-1.5 text-xs font-black text-primary no-underline"
                 >
                   调整母题配置 <ArrowRight size={13} />
@@ -473,7 +473,7 @@ export default function MyTopicsPage() {
               </div>
             </div>
             <a
-              href="/mother-topics/config"
+              href="/admin/mother-topics"
               className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-teal-border bg-white px-3 py-2 text-xs font-black text-teal no-underline"
             >
               去配置 <ArrowRight size={13} />

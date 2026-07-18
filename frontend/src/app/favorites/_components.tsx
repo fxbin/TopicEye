@@ -465,7 +465,7 @@ export function FavoriteCard({
         )}
         {item.target_type === 'source' && (
           <a
-            href="/sources"
+            href="/admin/sources"
             className="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-200 bg-white px-2 text-xs font-bold text-gray-500 hover:text-primary"
           >
             <Layers3 size={13} />

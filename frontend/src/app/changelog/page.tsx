@@ -323,7 +323,7 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
             )}
             <p className="mt-2 text-[11px] text-gray-500">
               显示最近 10 条。需要查看完整历史请到{' '}
-              <a href="/feedback" className="text-orange hover:underline">反馈工作台</a>。
+              <a href="/admin/feedback" className="text-orange hover:underline">反馈工作台</a>。
             </p>
           </div>
         </div>
@@ -474,7 +474,7 @@ export default function ChangelogPage() {
 
         <p className="pt-2 text-center text-[12px] text-gray-500">
           反馈对话框只展示最近 10 条 ·{' '}
-          <a href="/feedback" className="text-orange hover:underline">
+          <a href="/admin/feedback" className="text-orange hover:underline">
             完整反馈工作台（管理员视图、状态机等）&rarr;
           </a>
         </p>

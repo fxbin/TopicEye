@@ -164,6 +164,15 @@ async def _run_post_sync_pipeline_once() -> None:
             logger.info("Scheduler: clustering skipped because another run holds the lease")
     except Exception:
         logger.exception("Scheduler: clustering failed")
+
+    # 批量分析+聚类完成后刷新 stats 缓存（不再在单条内容增删时失效）
+    try:
+        from app.services.stats_cache import invalidate_stats_cache
+        invalidate_stats_cache()
+        logger.info("Scheduler: stats cache invalidated after post-sync pipeline")
+    except Exception:
+        logger.warning("Scheduler: failed to invalidate stats cache", exc_info=True)
+
     try:
         async with app.scheduler.async_session() as db:
             from app.services.trends import snapshot_daily_trends

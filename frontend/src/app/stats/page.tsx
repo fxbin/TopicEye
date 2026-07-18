@@ -574,10 +574,37 @@ export default function StatsPage() {
         </Panel>
 
         {loading && (
-          <LoadingState label="加载中…" minHeight="120px" />
+          <div className="space-y-3.5">
+            {/* KPI 骨架 */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,170px),1fr))] gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <Panel key={i} className="px-5 py-4">
+                  <div className="mb-2 h-3 w-16 animate-pulse rounded bg-gray-200" />
+                  <div className="h-7 w-24 animate-pulse rounded bg-gray-200" />
+                </Panel>
+              ))}
+            </div>
+            {/* 图表骨架 */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] gap-3.5">
+              {[1, 2].map(i => (
+                <Panel key={i} className="px-5 py-4.5">
+                  <div className="mb-4 h-4 w-20 animate-pulse rounded bg-gray-200" />
+                  <div className="space-y-2.5">
+                    {[1, 2, 3, 4, 5].map(j => (
+                      <div key={j} className="flex items-center gap-2.5">
+                        <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
+                        <div className="h-3 flex-1 animate-pulse rounded bg-gray-100" />
+                        <div className="h-3 w-10 animate-pulse rounded bg-gray-100" />
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              ))}
+            </div>
+          </div>
         )}
 
-        {error && (
+        {error && !loading && (
           <div className="mb-5">
             <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
           </div>

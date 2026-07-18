@@ -43,7 +43,9 @@ def _stats_cache_key(name: str, *, days: int | None = None) -> str:
 
 
 def _cached_response(cache_key: str) -> Response | None:
-    cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
+    # stats 是聚合统计，用更长的 TTL（5 分钟），不随单条内容增删失效。
+    # 采集/分析不再触发 invalidate_stats_cache，靠 TTL 自然过期 + 定时任务后显式刷新。
+    cached = get_cached_json(cache_key, ttl_seconds=300.0)
     if not cached:
         return None
     content, age_seconds = cached

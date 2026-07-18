@@ -77,6 +77,8 @@ class ArticleReaderResponse(BaseModel):
     excerpt: str | None = None
     text_content: str
     content_blocks: list[ArticleReaderBlock] = []
+    text_content_zh: str | None = None
+    content_blocks_zh: list[ArticleReaderBlock] | None = None
     reading_minutes: int
     extraction_method: str
     fetched_at: datetime

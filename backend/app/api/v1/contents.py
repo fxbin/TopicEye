@@ -726,11 +726,55 @@ async def read_content_in_app(
         excerpt=snapshot.excerpt,
         text_content=snapshot.text_content,
         content_blocks=snapshot.content_blocks or blocks_from_text(snapshot.text_content),
+        text_content_zh=snapshot.text_content_zh,
+        content_blocks_zh=snapshot.content_blocks_zh,
         reading_minutes=snapshot.reading_minutes,
         extraction_method=snapshot.extraction_method,
         fetched_at=as_utc(snapshot.fetched_at),
         expires_at=as_utc(snapshot.expires_at),
         cache_status=cache_status,
+    )
+
+
+
+@router.post("/{content_id}/reader/translate", response_model=ArticleReaderResponse)
+async def translate_reader_content(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """翻译站内阅读正文为中文。已有缓存直接返回，否则调 LLM 翻译并落库。"""
+    from app.services.article_reader import translate_snapshot
+
+    content = await ContentRepo(db).get_detail(
+        content_id,
+        visible_user_id=current_user.id if current_user is not None else None,
+        public_only=current_user is None,
+    )
+    if not content:
+        raise HTTPException(404, "Content not found")
+
+    try:
+        snapshot = await translate_snapshot(db, content)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"翻译失败: {exc}") from exc
+
+    return ArticleReaderResponse(
+        content_id=content.id,
+        canonical_url=snapshot.canonical_url,
+        title=snapshot.title or content.title,
+        byline=snapshot.byline,
+        published_at=snapshot.published_at,
+        excerpt=snapshot.excerpt,
+        text_content=snapshot.text_content,
+        content_blocks=snapshot.content_blocks or blocks_from_text(snapshot.text_content),
+        text_content_zh=snapshot.text_content_zh,
+        content_blocks_zh=snapshot.content_blocks_zh,
+        reading_minutes=snapshot.reading_minutes,
+        extraction_method=snapshot.extraction_method,
+        fetched_at=snapshot.fetched_at,
+        expires_at=snapshot.expires_at,
+        cache_status="translated",
     )
 
 

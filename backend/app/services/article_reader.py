@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import ipaddress
 import logging
 import re
@@ -446,6 +447,82 @@ async def _fetch_remote_article(
 
 def _snapshot_is_fresh(snapshot: ArticleSnapshot, now: datetime) -> bool:
     return snapshot.fetch_status == "ready" and as_utc(snapshot.expires_at) > now
+
+
+def _is_chinese_text(text: str, sample_size: int = 500) -> bool:
+    """判断文本是否主要为中文（CJK 字符占比 > 30%）。"""
+    sample = text[:sample_size]
+    cjk = sum(1 for c in sample if "\u4e00" <= c <= "\u9fff")
+    latin = sum(1 for c in sample if c.isascii() and c.isalpha())
+    return cjk > 0 and cjk / max(cjk + latin, 1) > 0.3
+
+
+async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleSnapshot:
+    """翻译 snapshot 正文为中文。已有缓存直接返回；原文已中文则标记跳过。"""
+    snapshot = await db.get(ArticleSnapshot, content.id)
+    if snapshot is None:
+        raise RuntimeError("正文快照不存在，请先打开原文阅读")
+
+    # 已有翻译缓存 → 直接返回
+    if snapshot.text_content_zh:
+        return snapshot
+
+    # 原文已是中文 → 标记跳过（用原文填 zh 字段，前端切换时两者相同）
+    if _is_chinese_text(snapshot.text_content):
+        snapshot.text_content_zh = snapshot.text_content
+        snapshot.content_blocks_zh = snapshot.content_blocks
+        await db.commit()
+        return snapshot
+
+    # 调 LLM 翻译 content_blocks（保留结构）
+    from app.services.llm.provider import call_llm_json
+
+    original_blocks = snapshot.content_blocks or []
+    if not original_blocks:
+        # fallback：翻译纯文本
+        result = await call_llm_json(
+            [
+                {"role": "system", "content": "你是专业翻译。把英文翻译成流畅的中文，保留技术术语和专有名词原文。只输出译文，不要解释。"},
+                {"role": "user", "content": snapshot.text_content[:8000]},
+            ],
+            scene="reader_translate",
+            temperature=0.3,
+            max_tokens=6000,
+        )
+        translated_text = result.get("translation") or result.get("text") or result.get("raw_response") or ""
+        # call_llm_json 返回的不是 JSON 而是纯文本时的兜底
+        if not translated_text and "raw_response" not in result:
+            translated_text = str(result)
+        snapshot.text_content_zh = translated_text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+    else:
+        # 逐块翻译，保留 block 结构
+        blocks_for_llm = [{"i": i, "type": b.get("type"), "text": b.get("text", "")} for i, b in enumerate(original_blocks) if b.get("text")]
+        result = await call_llm_json(
+            [
+                {"role": "system", "content": "你是专业翻译。把英文 block 数组翻译成中文，保留 type/level 结构。技术术语和专有名词保留英文原文。输出 JSON 数组 [{\"i\":0,\"text\":\"中文\"},...]。只输出 JSON。"},
+                {"role": "user", "content": json.dumps(blocks_for_llm, ensure_ascii=False)[:8000]},
+            ],
+            scene="reader_translate",
+            temperature=0.3,
+            max_tokens=6000,
+        )
+        translated_blocks = []
+        if isinstance(result, list):
+            trans_map = {item.get("i"): item.get("text", "") for item in result if isinstance(item, dict)}
+        elif isinstance(result, dict) and "translations" in result:
+            trans_map = {item.get("i"): item.get("text", "") for item in result["translations"] if isinstance(item, dict)}
+        else:
+            trans_map = {}
+        for i, b in enumerate(original_blocks):
+            tb = dict(b)
+            if i in trans_map and trans_map[i]:
+                tb["text"] = trans_map[i]
+            translated_blocks.append(tb)
+        snapshot.content_blocks_zh = translated_blocks
+        snapshot.text_content_zh = "\n\n".join(str(b.get("text", "")) for b in translated_blocks)
+
+    await db.commit()
+    return snapshot
 
 
 async def read_or_create_snapshot(

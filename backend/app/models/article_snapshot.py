@@ -37,6 +37,9 @@ class ArticleSnapshot(Base):
     # headings, quotes and lists without ever rendering publisher HTML.
     content_blocks: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # 中文翻译缓存（首次翻译后落库，空表示未翻译或原文已是中文）
+    text_content_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_blocks_zh: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     reading_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

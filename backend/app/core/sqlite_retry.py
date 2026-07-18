@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Optional, TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import database_profile
-
-T = TypeVar("T")
 
 
 def is_sqlite_locked(exc: BaseException) -> bool:

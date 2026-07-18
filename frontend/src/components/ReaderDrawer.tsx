@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, ExternalLink, FileWarning, RefreshCw, X } from 'lucide-react';
+import { BookOpen, ExternalLink, FileWarning, Languages, Loader2, RefreshCw, X } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import type { ArticleReaderBlock, ArticleReaderSnapshot, ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
@@ -85,12 +85,15 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
   const [snapshot, setSnapshot] = useState<ArticleReaderSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [showZh, setShowZh] = useState(true); // 默认中文（有翻译时）
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (id: number, refresh = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
+    setShowZh(true);
     try {
       const item = await contentsApi.get(id);
       setContent(item);
@@ -120,10 +123,43 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [contentId, onClose]);
 
-  const body = useMemo(
-    () => snapshot?.content_blocks?.length ? snapshot.content_blocks : legacyBlocks(snapshot?.text_content || ''),
-    [snapshot],
-  );
+  const hasZh = Boolean(snapshot?.content_blocks_zh?.length || snapshot?.text_content_zh);
+  const isOriginalZh = hasZh && snapshot?.text_content_zh === snapshot?.text_content;
+
+  const handleTranslate = useCallback(async () => {
+    if (!contentId || translating) return;
+    setTranslating(true);
+    try {
+      const result = await contentsApi.translateReader(contentId);
+      setSnapshot(result);
+      setShowZh(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '翻译失败');
+    } finally {
+      setTranslating(false);
+    }
+  }, [contentId, translating]);
+
+  // 切换中/英；无翻译时自动触发翻译
+  const toggleLang = useCallback(() => {
+    if (showZh) {
+      setShowZh(false);
+    } else if (hasZh) {
+      setShowZh(true);
+    } else {
+      void handleTranslate();
+    }
+  }, [showZh, hasZh, handleTranslate]);
+
+  const body = useMemo(() => {
+    if (!snapshot) return [];
+    const useZh = showZh && hasZh;
+    const blocks = useZh
+      ? (snapshot.content_blocks_zh?.length ? snapshot.content_blocks_zh : legacyBlocks(snapshot.text_content_zh || ''))
+      : (snapshot.content_blocks?.length ? snapshot.content_blocks : legacyBlocks(snapshot.text_content));
+    return blocks;
+  }, [snapshot, showZh, hasZh]);
+
   const sourceUrl = content?.url || snapshot?.canonical_url;
   const isOpen = contentId !== null;
 
@@ -151,6 +187,22 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
             <BookOpen size={14} className="text-primary" /> 站内阅读
           </span>
           <div className="flex items-center gap-3">
+            {snapshot && !isOriginalZh && (
+              <button
+                type="button"
+                onClick={toggleLang}
+                disabled={translating}
+                className={cx(
+                  'inline-flex items-center gap-1 text-xs font-bold transition',
+                  translating ? 'text-gray-300' : 'text-gray-500 hover:text-primary',
+                )}
+                title={hasZh ? '切换中/英文' : '翻译为中文'}
+              >
+                {translating
+                  ? <><Loader2 size={12} className="animate-spin" /> 翻译中</>
+                  : <><Languages size={13} /> {showZh && hasZh ? '原文' : '中文'}</>}
+              </button>
+            )}
             {sourceUrl && (
               <a
                 href={sourceUrl}

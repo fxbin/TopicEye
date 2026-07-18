@@ -219,6 +219,11 @@ export const contentsApi = {
     return request(`/contents/${id}/reader${refresh ? '?refresh=true' : ''}`, { method: 'POST' });
   },
 
+  /** 翻译站内阅读正文为中文（已有缓存直接返回） */
+  translateReader(id: number): Promise<ArticleReaderSnapshot> {
+    return request(`/contents/${id}/reader/translate`, { method: 'POST' });
+  },
+
   /** 切换收藏状态 */
   toggleFavorite(id: number): Promise<{ is_favorited: boolean; favorite_id?: number | null }> {
     return request(`/contents/${id}/favorite`, { method: 'POST' });

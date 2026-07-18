@@ -189,6 +189,8 @@ export interface ArticleReaderSnapshot {
   excerpt?: string | null;
   text_content: string;
   content_blocks?: ArticleReaderBlock[];
+  text_content_zh?: string | null;
+  content_blocks_zh?: ArticleReaderBlock[] | null;
   reading_minutes: number;
   extraction_method: 'ingested' | 'http' | string;
   fetched_at: string;

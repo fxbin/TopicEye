@@ -77,6 +77,21 @@ export const LEVEL_CONFIG: Record<string, { bg: string; color: string; border: s
   '信号不足':   { bg: T.gray50,       color: T.gray400, border: T.gray200,       dot: T.gray300 },
 };
 
+/**
+ * 推荐等级配置（Tailwind class 格式）。
+ *
+ * 从 hex 版 LEVEL_CONFIG 派生的 class 版，供 LevelBadge / today-picks 等
+ * 用 Tailwind class 渲染的场景使用。字段名与 hex 版一致（bg/color/border/dot）。
+ */
+export const LEVEL_CONFIG_CLASSES: Record<string, { bg: string; color: string; border: string; dot: string }> = {
+  '强烈建议写': { bg: 'bg-primary-light', color: 'text-primary',   border: 'border-primary-border', dot: 'bg-primary' },
+  '值得观察':   { bg: 'bg-teal-light',    color: 'text-teal',      border: 'border-teal-border',    dot: 'bg-teal' },
+  '适合深挖':   { bg: 'bg-purple-light',  color: 'text-purple',    border: 'border-purple-border',  dot: 'bg-purple' },
+  '适合蹭热点': { bg: 'bg-amber-light',   color: 'text-amber',     border: 'border-amber-border',   dot: 'bg-amber' },
+  '不建议追':   { bg: 'bg-gray-100',     color: 'text-gray-500',  border: 'border-gray-300',        dot: 'bg-gray-400' },
+  '信号不足':   { bg: 'bg-gray-50',      color: 'text-gray-400',  border: 'border-gray-200',        dot: 'bg-gray-300' },
+};
+
 /** 分类列表 */
 export const CATEGORIES = ['全部', 'AI', '职场', '商业', '教育', '自媒体', '科技', '生活', '产品'] as const;
 export type Category = (typeof CATEGORIES)[number];

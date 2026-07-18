@@ -10,7 +10,7 @@ Admin 用户管理 API。
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -18,9 +18,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, is_admin
-from app.core.database import database_profile
 from app.core.database import get_db
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
+from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.core.validators import validate_password_strength
 from app.models.user import User, UserOAuthAccount
 from app.services.auth_service import hash_password, revoke_all_user_sessions
@@ -35,16 +34,7 @@ router = APIRouter(
 _ALLOWED_PLAN_VALUES = {"free", "pro"}
 
 
-# ── 事务模板（与 llm_models.py 的 _retry_write 保持一致）─────────────
-
-
-async def _retry_write(db: AsyncSession, operation):
-    async def _wrapped():
-        if database_profile.is_sqlite and not db.in_transaction():
-            await begin_immediate_for_sqlite(db)
-        return await operation()
-
-    return await retry_sqlite_locked(_wrapped, on_retry=db.rollback)
+# _retry_write 现在从 app.core.sqlite_retry 导入（retry_write_transaction 别名）
 
 
 # ── 响应 / 请求模型 ──────────────────────────────────────────────────

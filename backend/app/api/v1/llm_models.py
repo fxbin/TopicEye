@@ -32,8 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.config import settings
-from app.core.database import async_session, database_profile, get_db  # noqa: F401 — async_session 保留供测试 monkeypatch
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
+from app.core.database import async_session, get_db  # noqa: F401 — async_session 保留供测试 monkeypatch
+from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.models.llm_model import LlmCallLog, LlmModel
 from app.models.user import User
 from app.services.llm.model_list_cache import (
@@ -262,15 +262,6 @@ class ModelUpdateRequest(BaseModel):
         if value is None:
             return None
         return _normalize_optional_config_value(value) or "default"
-
-
-async def _retry_write(db: AsyncSession, operation):
-    async def _wrapped():
-        if database_profile.is_sqlite and not db.in_transaction():
-            await begin_immediate_for_sqlite(db)
-        return await operation()
-
-    return await retry_sqlite_locked(_wrapped, on_retry=db.rollback)
 
 
 async def _retry_write_and_invalidate_models(db: AsyncSession, operation):

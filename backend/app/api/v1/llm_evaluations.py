@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.config import settings
-from app.core.database import async_session, database_profile, get_db
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
+from app.core.database import async_session, get_db
+from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.models.llm_model import LlmModel, ModelEvaluation
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
@@ -41,16 +41,7 @@ from app.api.v1.llm_models import (
 )
 
 
-# ─── SQLite 重试写入 (内联,避免跨模块依赖 llm_models._retry_write) ──
-
-async def _retry_write(db: AsyncSession, operation):
-    async def _wrapped():
-        if database_profile.is_sqlite and not db.in_transaction():
-            await begin_immediate_for_sqlite(db)
-        return await operation()
-
-    return await retry_sqlite_locked(_wrapped, on_retry=db.rollback)
-
+# _retry_write 现在从 app.core.sqlite_retry 导入（retry_write_transaction 别名）
 
 router = APIRouter(prefix="/models", tags=["models"])
 

@@ -207,6 +207,14 @@ export const authApi = {
     return request('/auth/logout', { method: 'POST' });
   },
 
+  /** 用户自助修改密码（校验旧密码，成功后撤销其他设备会话）。 */
+  changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
+    return request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    });
+  },
+
   /** OAuth 登录入口 URL。前端用 window.location.href 整页跳转，
    *  后端 302 到 provider 授权页，回调后再 302 回 /oauth/callback（token 走 fragment）。 */
   oauthLoginUrl(provider: 'google' | 'github'): string {
@@ -292,3 +300,5 @@ export { trendingApi } from './api/_trending';
 export { motherTopicsApi } from './api/_mother-topics';
 export { fanqieApi, webnovelReportsApi, qimaoApi, zhihuApi } from './api/_mother-topics';
 export { modelsApi } from './api/_models';
+export { usersApi } from './api/_users';
+export type { UserListItem, UserListResponse, UserUpdatePayload } from '@/types/users';

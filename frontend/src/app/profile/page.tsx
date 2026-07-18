@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
-import { integrationsApi, apiTokensApi } from '@/lib/api';
+import { integrationsApi, apiTokensApi, authApi } from '@/lib/api';
 import type { ApiTokenItem } from '@/lib/api';
 import type { IntegrationStatus, WeReadSyncResult } from '@/types';
 import { formatDateTime } from '@/lib/datetime';
@@ -87,6 +87,11 @@ export default function ProfilePage() {
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [tokenNotice, setTokenNotice] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  // 自助改密
+  const [pwForm, setPwForm] = useState({ old: '', next: '', confirm: '' });
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwNotice, setPwNotice] = useState<string | null>(null);
+  const [pwError, setPwError] = useState<string | null>(null);
 
   const docsUrl = status?.docs_url || 'https://weread.qq.com/r/weread-skills';
   const canSave = apiKey.trim().length >= 8 && !saving;
@@ -189,6 +194,29 @@ export default function ProfilePage() {
       setTokenError(err instanceof Error ? err.message : '删除 Token 失败');
     } finally {
       setRevokingId(null);
+    }
+  };
+
+  const canSavePw =
+    pwForm.old.length >= 1 &&
+    pwForm.next.length >= 8 &&
+    pwForm.next === pwForm.confirm &&
+    !savingPw;
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canSavePw) return;
+    setSavingPw(true);
+    setPwNotice(null);
+    setPwError(null);
+    try {
+      const res = await authApi.changePassword(pwForm.old, pwForm.next);
+      setPwNotice(res.message || '密码修改成功');
+      setPwForm({ old: '', next: '', confirm: '' });
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : '密码修改失败');
+    } finally {
+      setSavingPw(false);
     }
   };
 
@@ -329,6 +357,61 @@ export default function ProfilePage() {
                 <span className="font-bold text-gray-800">{formatTime(currentUser.created_at)}</span>
               </div>
             </div>
+          </Panel>
+
+          <Panel className="p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <KeyRound size={18} className="text-primary" />
+              <h2 className="text-lg font-black text-gray-900">账号安全</h2>
+            </div>
+            <p className="mb-4 max-w-[560px] text-sm leading-6 text-gray-500">
+              修改密码需验证旧密码。修改成功后，其他设备的登录状态会立即失效，当前设备保持登录。
+            </p>
+            <form onSubmit={handleChangePassword} className="max-w-[420px] space-y-3">
+              <div>
+                <label className="mb-1 block text-[12px] font-bold text-gray-600">旧密码</label>
+                <input
+                  type="password"
+                  value={pwForm.old}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, old: e.target.value }))}
+                  autoComplete="current-password"
+                  className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
+                <input
+                  type="password"
+                  value={pwForm.next}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, next: e.target.value }))}
+                  autoComplete="new-password"
+                  className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[12px] font-bold text-gray-600">确认新密码</label>
+                <input
+                  type="password"
+                  value={pwForm.confirm}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, confirm: e.target.value }))}
+                  autoComplete="new-password"
+                  className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                />
+                {pwForm.confirm && pwForm.next !== pwForm.confirm && (
+                  <p className="mt-1 text-[11px] text-red-600">两次输入的新密码不一致</p>
+                )}
+              </div>
+              {pwError && (
+                <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{pwError}</div>
+              )}
+              {pwNotice && (
+                <div className="rounded-sm border border-teal-200 bg-teal-50 px-3 py-2 text-[12px] text-teal-700">{pwNotice}</div>
+              )}
+              <Button type="submit" variant="primary" disabled={!canSavePw} className="h-9">
+                {savingPw ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                修改密码
+              </Button>
+            </form>
           </Panel>
 
           <Panel className="p-5">

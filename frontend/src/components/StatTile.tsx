@@ -65,7 +65,7 @@ export function StatTile({
       <div
         className={cx(
           'font-mono text-2xl font-black leading-none',
-          colorClass ?? (tone && tone !== 'neutral' ? toneClass.text : 'text-gray-900'),
+          tone && tone !== 'neutral' ? toneClass.text : 'text-gray-900',
         )}
       >
         {value}

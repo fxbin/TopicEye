@@ -6,8 +6,8 @@
  * 9 个展示组件：
  * - WebnovelItemRow      网文榜单行（额外信息密度展示）
  * - TrendBadge           趋势方向徽章（up/down/new/stable）
- * - PanelTitle           面板标题（图标 + 标题 + hint）
- * - StatTile             统计数字块
+ * - PanelTitle           面板标题（re-export 自 @/components/ui）
+ * - StatTile             统计数字块（re-export 自 @/components/StatTile）
  * - ResonanceBadge       跨平台共鸣度徽章
  * - SourceMiniItem       单平台在跨平台聚类中的迷你链接
  * - AnglePanel           AI 角度推荐面板（含 fetchAngles 状态）
@@ -30,6 +30,9 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Panel, cx } from '@/components/ui';
+// PanelTitle / StatTile 已收敛到公共组件层，此处 re-export 保持调用方 import 路径不变。
+export { PanelTitle } from '@/components/ui';
+export { StatTile } from '@/components/StatTile';
 import {
   trendingApi,
   type CrossPlatformCluster,
@@ -117,53 +120,6 @@ export function TrendBadge({ trend }: { trend: string | null }) {
     <span className={cx('inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-black', c.className)}>
       <Icon size={11} strokeWidth={2.2} fill={c.fill} />
     </span>
-  );
-}
-
-export function PanelTitle({
-  icon: Icon,
-  title,
-  hint,
-}: {
-  icon: LucideIcon;
-  title: string;
-  hint?: string;
-}) {
-  return (
-    <div className="mb-3 flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <Icon size={15} className="text-primary" strokeWidth={2.2} />
-        <span className="text-[13px] font-black text-gray-900">{title}</span>
-      </div>
-      {hint && <span className="whitespace-nowrap text-[11px] text-gray-400">{hint}</span>}
-    </div>
-  );
-}
-
-export function StatTile({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  colorClass,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string | number;
-  hint: string;
-  colorClass: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-sm border border-gray-200 bg-gray-50 px-3.5 py-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Icon size={14} className={colorClass} strokeWidth={2.2} />
-        <span className="text-[11px] font-black text-gray-500">{label}</span>
-      </div>
-      <div className="font-mono text-[25px] font-black leading-none text-gray-900">
-        {value}
-      </div>
-      <div className="mt-1.5 text-[10.5px] text-gray-400">{hint}</div>
-    </div>
   );
 }
 

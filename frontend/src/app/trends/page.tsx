@@ -17,7 +17,7 @@ import {
   Target,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Badge, Button, Metric, Panel, cx } from '@/components/ui';
+import { Badge, Button, Metric, Panel, PanelTitle, cx } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { trendsApi, type TrendPoint, type TrendKeywordItem as KeywordItem } from '@/lib/api';
@@ -229,15 +229,6 @@ function KeywordBoard({ keywords }: { keywords: KeywordItem[] }) {
           </Panel>
         );
       })}
-    </div>
-  );
-}
-
-function PanelTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return (
-    <div className="mb-3 flex items-center gap-1.5">
-      <Icon size={15} className="text-primary" strokeWidth={2.2} />
-      <span className="text-sm font-black text-gray-900">{title}</span>
     </div>
   );
 }

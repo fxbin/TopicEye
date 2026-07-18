@@ -26,7 +26,7 @@ import { contentsApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Button, Panel, PanelTitle, Segmented, FilterLabel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
@@ -863,54 +863,8 @@ function PickActions({
   );
 }
 
-function Segmented({
-  values,
-  active,
-  onChange,
-}: {
-  values: readonly { value: string; label: string }[];
-  active: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="grid gap-1 rounded-sm bg-gray-100 p-1" style={{ gridTemplateColumns: `repeat(${values.length}, 1fr)` }}>
-      {values.map((item) => {
-        const selected = active === item.value;
-        return (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => onChange(item.value)}
-            className={cx(
-              'rounded-xs border border-transparent py-1.5 text-[11px] transition',
-              selected ? 'bg-white font-black text-primary shadow-sm' : 'bg-transparent font-bold text-gray-500 hover:text-gray-800',
-            )}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function PanelTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return (
-    <div className="mb-3.5 flex items-center gap-2">
-      <Icon size={15} className="text-primary" strokeWidth={2.2} />
-      <span className="text-sm font-black text-gray-900">{title}</span>
-    </div>
-  );
-}
-
-function FilterLabel({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
-  return (
-    <div className="mb-2 flex items-center gap-1.5 text-[11px] font-black text-gray-500">
-      <Icon size={12} strokeWidth={2.2} />
-      {children}
-    </div>
-  );
-}
+// 注：Segmented / PanelTitle / FilterLabel 已收敛到 @/components/ui 公共版，本地定义删除。
+// OverviewStrip 是页面特化统计条布局，保留本地不动。
 
 function TopicToggle({
   onClick,

@@ -24,7 +24,7 @@ class AnalysisJob:
     content_ids: list[int]
     skipped_inflight_ids: list[int] = field(default_factory=list)
     status: str = "QUEUED"
-    queued_at: datetime = field(default_factory=datetime.utcnow)
+    queued_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
     analyzed_ids: list[int] = field(default_factory=list)

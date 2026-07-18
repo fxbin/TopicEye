@@ -28,6 +28,7 @@ import AnalysisPanel from '@/components/AnalysisPanel';
 import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
+import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 import { getRecommendLevelLabel, getTagColor, timeAgo } from '@/lib/utils';
 import { getRecommendationReason } from '@/lib/recommendation';
@@ -81,6 +82,7 @@ function TodayPicksPage() {
   const [dupCount, setDupCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState<(ContentAnalysis & { _content_id?: number }) | null>(null);
+  const [readerContentId, setReaderContentId] = useState<number | null>(null);
   const [groupByTopic, setGroupByTopic] = useState(true);
   const [expandedTopics, setExpandedTopics] = useState<Set<number>>(new Set());
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
@@ -279,6 +281,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
+              onRead={setReaderContentId}
               workflowPending={workflowPendingId === leadItem.id}
             />
           )}
@@ -306,6 +309,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
+              onRead={setReaderContentId}
               workflowPendingId={workflowPendingId}
             />
           ) : (
@@ -319,6 +323,7 @@ function TodayPicksPage() {
                   onFav={handleFav}
                   onOpen={setSelectedAnalysis}
                   onStartWorkflow={handleStartWorkflow}
+                  onRead={setReaderContentId}
                   workflowPending={workflowPendingId === item.id}
                 />
               ))}
@@ -354,6 +359,8 @@ function TodayPicksPage() {
       </div>
 
       {selectedAnalysis && <AnalysisPanel analysis={selectedAnalysis} onClose={() => setSelectedAnalysis(null)} />}
+
+      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </div>
   );
 }
@@ -407,6 +414,7 @@ function LeadPick({
   onFav,
   onOpen,
   onStartWorkflow,
+  onRead,
   workflowPending,
 }: {
   item: ContentItem;
@@ -414,6 +422,7 @@ function LeadPick({
   onFav: (id: number) => void;
   onOpen: (a: ContentAnalysis & { _content_id?: number }) => void;
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  onRead: (id: number) => void;
   workflowPending: boolean;
 }) {
   const analysis = getAnalysis(item);
@@ -451,6 +460,7 @@ function LeadPick({
             onFav={onFav}
             onOpen={onOpen}
             onStartWorkflow={onStartWorkflow}
+            onRead={onRead}
             workflowPending={workflowPending}
           />
         </div>
@@ -586,6 +596,7 @@ function TopicBoard({
   onFav,
   onOpen,
   onStartWorkflow,
+  onRead,
   workflowPendingId,
 }: {
   topics: TopicInfo[];
@@ -597,6 +608,7 @@ function TopicBoard({
   onFav: (id: number) => void;
   onOpen: (a: ContentAnalysis & { _content_id?: number }) => void;
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  onRead: (id: number) => void;
   workflowPendingId: number | null;
 }) {
   return (
@@ -632,6 +644,7 @@ function TopicBoard({
                   onFav={onFav}
                   onOpen={onOpen}
                   onStartWorkflow={onStartWorkflow}
+                  onRead={onRead}
                   workflowPending={workflowPendingId === item.id}
                   flush
                 />
@@ -659,6 +672,7 @@ function TopicBoard({
                 onFav={onFav}
                 onOpen={onOpen}
                 onStartWorkflow={onStartWorkflow}
+                onRead={onRead}
                 workflowPending={workflowPendingId === item.id}
               />
             ))}
@@ -676,6 +690,7 @@ function PickCard({
   onFav,
   onOpen,
   onStartWorkflow,
+  onRead,
   workflowPending,
   flush = false,
 }: {
@@ -685,6 +700,7 @@ function PickCard({
   onFav: (id: number) => void;
   onOpen: (a: ContentAnalysis & { _content_id?: number }) => void;
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  onRead: (id: number) => void;
   workflowPending: boolean;
   flush?: boolean;
 }) {
@@ -735,6 +751,7 @@ function PickCard({
           onFav={onFav}
           onOpen={onOpen}
           onStartWorkflow={onStartWorkflow}
+          onRead={onRead}
           workflowPending={workflowPending}
         />
         {showBreakdown && breakdown && (
@@ -771,6 +788,7 @@ function PickActions({
   onFav,
   onOpen,
   onStartWorkflow,
+  onRead,
   workflowPending,
   dark = false,
 }: {
@@ -780,6 +798,7 @@ function PickActions({
   onFav: (id: number) => void;
   onOpen: (a: ContentAnalysis & { _content_id?: number }) => void;
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  onRead: (id: number) => void;
   workflowPending: boolean;
   dark?: boolean;
 }) {
@@ -805,13 +824,13 @@ function PickActions({
         </button>
       )}
       {item.url && (
-        <a
-          href={`/contents/${item.id}/reader`}
-          onClick={(e) => e.stopPropagation()}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRead(item.id); }}
           className={cx('inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1.5 text-[11px] font-bold no-underline transition', actionClass)}
         >
           <BookOpen size={13} /> 阅读
-        </a>
+        </button>
       )}
       {item.url && (
         <a

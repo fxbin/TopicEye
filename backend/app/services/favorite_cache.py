@@ -1,35 +1,40 @@
+"""Favorite cache helpers — delegates to json_cache to avoid duplicate cache state.
+
+Previously this module maintained its own ``_CACHE`` dict, duplicating
+``json_cache.py``.  Now it wraps ``json_cache`` with a ``favorites:`` prefix
+and a fixed 10-second TTL.
+"""
+
 from __future__ import annotations
 
-from datetime import datetime
-import json
-import time
-from typing import Any, Optional
+from typing import Any
 
+from app.services.json_cache import (
+    get_cached_json as _get_cached_json,
+    invalidate_json_cache,
+    set_cached_json as _set_cached_json,
+)
 
-_CACHE_TTL_SECONDS = 10.0
-_CACHE: dict[str, tuple[float, bytes]] = {}
+FAVORITE_CACHE_TTL_SECONDS = 10.0
+FAVORITE_CACHE_PREFIX = "favorites:"
 
 
 def get_cached_json(cache_key: str) -> tuple[bytes, float] | None:
-    cached = _CACHE.get(cache_key)
-    if not cached:
-        return None
-    cached_at, content = cached
-    age_seconds = time.monotonic() - cached_at
-    if age_seconds > _CACHE_TTL_SECONDS:
-        _CACHE.pop(cache_key, None)
-        return None
-    return content, age_seconds
+    """Read from the shared json_cache with favorite TTL (10 s)."""
+    return _get_cached_json(FAVORITE_CACHE_PREFIX + cache_key, ttl_seconds=FAVORITE_CACHE_TTL_SECONDS)
 
 
 def set_cached_json(cache_key: str, payload: dict[str, Any]) -> bytes:
-    content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=_json_default).encode("utf-8")
-    _CACHE[cache_key] = (time.monotonic(), content)
-    return content
+    """Write to the shared json_cache under the favorites prefix."""
+    return _set_cached_json(FAVORITE_CACHE_PREFIX + cache_key, payload)
 
 
 def invalidate_favorite_cache() -> None:
-    _CACHE.clear()
+    """Invalidate all favorite cache entries."""
+    invalidate_json_cache(FAVORITE_CACHE_PREFIX)
+
+
+# ── Serialization helpers (business logic, not cache) ──────────
 
 
 def favorite_to_dict(item: Any) -> dict[str, Any]:
@@ -56,11 +61,3 @@ def favorite_to_dict(item: Any) -> dict[str, Any]:
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
-
-
-def _json_default(value: Any) -> str:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if hasattr(value, "value"):
-        return value.value
-    return str(value)

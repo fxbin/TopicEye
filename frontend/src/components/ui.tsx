@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(' ');
@@ -69,6 +70,15 @@ export function Button({
 
 type BadgeTone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
 
+/**
+ * 统一色调类型别名。
+ *
+ * 历史上 `ui.tsx` 用 `BadgeTone`，而 `changelog` / `feedback` / `model-eval`
+ * 各自又定义了同值的 `Tone`。这里把 `Tone` 提为公共别名，调用方统一用
+ * `import { Tone } from '@/components/ui'`，避免多处重复定义。
+ */
+export type Tone = BadgeTone;
+
 export function Badge({
   children,
   className,
@@ -113,5 +123,127 @@ export function Metric({
       </div>
       <div className={cx('font-mono text-2xl font-black leading-none', colorClass)}>{value}</div>
     </Panel>
+  );
+}
+
+// ─── PanelTitle ─────────────────────────────────────────────────────
+// 统一收敛此前散落在 stats / trends / today-picks / low-follower-viral /
+// trending 等 5+ 处的 PanelTitle 实现。签名取并集：icon + title + hint? + className?。
+// 各页迁移时若字号有微差（如 trending 用 text-[13px]，其余用 text-sm），
+// 统一以 text-sm 为规范；如需保留原字号可传 className 覆盖。
+
+export function PanelTitle({
+  icon: Icon,
+  title,
+  hint,
+  className,
+}: {
+  icon: LucideIcon;
+  title: string;
+  hint?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cx('mb-3 flex items-center justify-between gap-3', className)}>
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon size={15} className="text-primary" strokeWidth={2.2} />
+        <span className="text-sm font-black text-gray-900">{title}</span>
+      </div>
+      {hint && <span className="whitespace-nowrap text-[11px] text-gray-400">{hint}</span>}
+    </div>
+  );
+}
+
+// ─── Surface ─────────────────────────────────────────────────────────
+// 统一收敛 stats / feedback / model-eval 三处 Surface 实现。
+// 规范签名：Panel 容器 + 图标 + 标题 + hint 头部 + children。
+// 采用 model-eval 版作为基准（最简洁、自包含）。
+
+export function Surface({
+  icon: Icon,
+  title,
+  hint,
+  children,
+  className,
+}: {
+  icon: LucideIcon;
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Panel className={cx('p-4.5 sm:p-5', className)}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />
+          <span className="truncate text-sm font-black text-gray-900">{title}</span>
+        </div>
+        {hint && <span className="shrink-0 text-[11px] text-gray-400">{hint}</span>}
+      </div>
+      {children}
+    </Panel>
+  );
+}
+
+// ─── Segmented ───────────────────────────────────────────────────────
+// 从 today-picks/page.tsx 抽出的分段选择器。泛型 <T> 保证 value 类型安全。
+// trends/page.tsx ControlPanel 内联的分段按钮迁移时改用本组件。
+
+export function Segmented<T extends string>({
+  values,
+  active,
+  onChange,
+  className,
+}: {
+  values: readonly { value: T; label: string }[];
+  active: T;
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx('grid gap-1 rounded-sm bg-gray-100 p-1', className)}
+      style={{ gridTemplateColumns: `repeat(${values.length}, 1fr)` }}
+    >
+      {values.map((item) => {
+        const selected = active === item.value;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => onChange(item.value)}
+            className={cx(
+              'rounded-xs border border-transparent py-1.5 text-[11px] transition',
+              selected
+                ? 'bg-white font-black text-primary shadow-sm'
+                : 'bg-transparent font-bold text-gray-500 hover:text-gray-800',
+            )}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── FilterLabel ──────────────────────────────────────────────────────
+// 从 today-picks/page.tsx 抽出的筛选项标签（图标 + 文本）。
+
+export function FilterLabel({
+  icon: Icon,
+  children,
+  className,
+}: {
+  icon: LucideIcon;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cx('mb-2 flex items-center gap-1.5 text-[11px] font-black text-gray-500', className)}>
+      <Icon size={12} strokeWidth={2.2} />
+      {children}
+    </div>
   );
 }

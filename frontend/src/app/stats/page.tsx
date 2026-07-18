@@ -209,52 +209,43 @@ function scoreColor(score: number): string {
   return '#F59E0B'; // 浅黄
 }
 
-/** 中位数计算 */
-function median(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
+const TOP_N_CATEGORY = 10;
+// 蓝海定义：低量（≤100条）且高分（≥75）且非噪音（≥5条，过滤 1-2 条的分类标签错误）
+const BLUE_OCEAN_MAX_COUNT = 100;
+const BLUE_OCEAN_MIN_SCORE = 75;
+const BLUE_OCEAN_MIN_COUNT = 5;
 
 function CategoryDistribution({ categories }: { categories: StatsCategoryItem[] }) {
+  const [showAll, setShowAll] = useState(false);
   if (!categories || categories.length === 0) {
     return <div className="py-3 text-[13px] text-gray-400">暂无数据</div>;
   }
 
   const total = categories.reduce((s, c) => s + c.content_count, 0) || 1;
   const sorted = [...categories].sort((a, b) => b.content_count - a.content_count);
+  const top = sorted.slice(0, TOP_N_CATEGORY);
+  const tail = sorted.slice(TOP_N_CATEGORY);
+  const visible = showAll ? sorted : top;
+  const tailCount = tail.length;
+  const tailTotal = tail.reduce((s, c) => s + c.content_count, 0);
+  const tailPct = ((tailTotal / total) * 100).toFixed(1);
 
-  // 散点图参数
-  const scored = categories.filter(c => c.avg_score > 0);
-  const counts = categories.map(c => c.content_count);
-  const scores = scored.map(c => c.avg_score);
-  const countMedian = median(counts);
-  const scoreMedian = median(scores) || 70;
-  const maxCount = Math.max(...counts, 1);
-  const useLog = maxCount / Math.min(...counts.filter(c => c > 0), 1) > 10;
+  // 迷你条用 √count 归一（视觉辅助，真实值在右侧数字里）——避免 AI 极端离群值压扁其他条
+  const sqrtMax = Math.sqrt(sorted[0]?.content_count || 1);
 
-  // SVG 坐标系
-  const W = 340, H = 240, PAD = { l: 36, r: 12, t: 16, b: 28 };
-  const plotW = W - PAD.l - PAD.r;
-  const plotH = H - PAD.t - PAD.b;
-
-  const xScale = (count: number) => {
-    const v = useLog ? Math.log1p(count) : count;
-    const max = useLog ? Math.log1p(maxCount) : maxCount;
-    return PAD.l + (v / max) * plotW;
-  };
-  const yScale = (score: number) => PAD.t + (1 - Math.min(score, 100) / 100) * plotH;
-
-  // 哪些点要标文字（蓝海 + Top3数量 + Top3均分）
-  const top3Count = new Set(sorted.slice(0, 3).map(c => c.category));
-  const top3Score = new Set([...scored].sort((a, b) => b.avg_score - a.avg_score).slice(0, 3).map(c => c.category));
+  // 蓝海：低量高分，主动捞出升到独立区
+  const blueOcean = sorted
+    .filter(c => c.content_count >= BLUE_OCEAN_MIN_COUNT
+              && c.content_count <= BLUE_OCEAN_MAX_COUNT
+              && c.avg_score >= BLUE_OCEAN_MIN_SCORE)
+    .sort((a, b) => b.avg_score - a.avg_score)
+    .slice(0, 4);
 
   return (
     <div>
-      {/* 比例概览条（前5 + 其他） */}
+      {/* ① 概览条（Top5 彩色 + 灰色其他）——回答「内容集中在哪」 */}
       <div className="mb-3 flex h-[14px] overflow-hidden rounded">
-        {sorted.slice(0, 5).map((c) => {
+        {top.slice(0, 5).map((c) => {
           const pct = (c.content_count / total) * 100;
           if (pct < 0.5) return null;
           return (
@@ -266,77 +257,68 @@ function CategoryDistribution({ categories }: { categories: StatsCategoryItem[] 
             />
           );
         })}
-        {sorted.length > 5 && (
+        {tail.length > 0 && (
           <div
-            className="bg-gray-200"
-            style={{ width: `${(sorted.slice(5).reduce((s, c) => s + c.content_count, 0) / total) * 100}%` }}
+            className="transition-[width] duration-300 bg-gray-200"
+            style={{ width: `${(tailTotal / total) * 100}%` }}
+            title={`其他 ${tailCount} 个分类: ${tailTotal} (${tailPct}%)`}
           />
         )}
       </div>
 
-      {/* 散点图：X=数量(log)，Y=均分，左上=蓝海 */}
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 260 }}>
-        {/* 蓝海象限背景（左上） */}
-        <rect
-          x={PAD.l} y={PAD.t}
-          width={Math.max(0, xScale(countMedian) - PAD.l)}
-          height={Math.max(0, yScale(scoreMedian) - PAD.t)}
-          fill="rgba(5,150,105,0.06)"
-        />
-
-        {/* 中位数阈值线 */}
-        <line x1={xScale(countMedian)} y1={PAD.t} x2={xScale(countMedian)} y2={H - PAD.b}
-          stroke="#D1D5DB" strokeWidth={1} strokeDasharray="3 3" />
-        <line x1={PAD.l} y1={yScale(scoreMedian)} x2={W - PAD.r} y2={yScale(scoreMedian)}
-          stroke="#D1D5DB" strokeWidth={1} strokeDasharray="3 3" />
-
-        {/* 象限角标 */}
-        <text x={PAD.l + 4} y={PAD.t + 12} fontSize={9} fill="#059669" fontWeight="bold">蓝海·小而精</text>
-        <text x={W - PAD.r - 52} y={PAD.t + 12} fontSize={9} fill="#6B7280">核心优势</text>
-        <text x={PAD.l + 4} y={H - PAD.b - 4} fontSize={9} fill="#9CA3AF">边缘·待观察</text>
-        <text x={W - PAD.r - 52} y={H - PAD.b - 4} fontSize={9} fill="#9CA3AF">量大质弱</text>
-
-        {/* 坐标轴标签 */}
-        <text x={PAD.l} y={H - 6} fontSize={9} fill="#9CA3AF">→ 数量{useLog ? '(log)' : ''}</text>
-        <text x={4} y={PAD.t + 8} fontSize={9} fill="#9CA3AF">均分</text>
-
-        {/* 数据点 */}
-        {categories.map((c) => {
-          const cx = xScale(c.content_count);
-          const cy = yScale(c.avg_score || 0);
-          const isBlueOcean = c.content_count <= countMedian && c.avg_score >= scoreMedian;
-          const showLabel = isBlueOcean || top3Count.has(c.category) || top3Score.has(c.category);
-          const r = isBlueOcean ? 6 : 4.5;
-          const labelOffsetY = showLabel ? -9 : 0;
-          return (
-            <g key={c.category}>
-              <circle cx={cx} cy={cy} r={r}
-                fill={scoreColor(c.avg_score)}
-                stroke={isBlueOcean ? '#059669' : 'none'}
-                strokeWidth={isBlueOcean ? 1.5 : 0}
-                opacity={0.85}
-              >
-                <title>{`${c.category}: ${c.content_count}条 · 均分${c.avg_score || '-'}${isBlueOcean ? ' · 蓝海' : ''}`}</title>
-              </circle>
-              {showLabel && (
-                <text x={cx + r + 2} y={cy + labelOffsetY} fontSize={9} fill="#6B7280">
-                  {c.category.length > 5 ? c.category.slice(0, 4) + '…' : c.category}
-                </text>
+      {/* ② 主流赛道 Top10 表——回答「谁大、谁卷」 */}
+      <div className="flex flex-col gap-1.5">
+        {visible.map((c) => (
+          <div key={c.category} className="flex items-center gap-2">
+            <div className="w-16 shrink-0 truncate text-right text-[12px] font-medium text-gray-700" title={c.category}>
+              {c.category}
+            </div>
+            <div className="min-w-0 flex-1">
+              <MiniBar value={Math.sqrt(c.content_count)} max={sqrtMax} color={scoreColor(c.avg_score)} height={13} />
+            </div>
+            <div className="w-20 shrink-0 text-right font-mono text-[11px] text-gray-600">
+              {c.content_count.toLocaleString()}
+              {c.avg_score > 0 && (
+                <span className="ml-1" style={{ color: scoreColor(c.avg_score) }}>·{c.avg_score}</span>
               )}
-            </g>
-          );
-        })}
-      </svg>
-
-      <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-gray-400">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#059669' }} /> 蓝海（低量高分）
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-full border border-[#059669]" style={{ background: 'rgba(5,150,105,0.3)' }} /> 高分
-        </span>
-        <span>· 点色=均分色阶 · hover 看明细</span>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* ③ 蓝海机会——回答「有没有小而美方向」 */}
+      <div className="mt-3">
+        <div className="mb-1.5 text-[11px] font-medium text-teal">🌊 蓝海机会 · 低量高分</div>
+        {blueOcean.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {blueOcean.map((c) => (
+              <span
+                key={c.category}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                style={{ border: '1px solid rgba(5,150,105,0.35)', background: 'rgba(5,150,105,0.06)' }}
+                title={`${c.category}: ${c.content_count}条 · 均分${c.avg_score}`}
+              >
+                <span className="font-medium text-gray-800">{c.category}</span>
+                <span className="text-gray-400">{c.content_count}条</span>
+                <span className="font-mono font-semibold" style={{ color: scoreColor(c.avg_score) }}>{c.avg_score}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-400">暂无明显蓝海分类</div>
+        )}
+      </div>
+
+      {/* ④ 长尾折叠——给刨根究底的人保留入口，不污染主视图 */}
+      {tailCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(v => !v)}
+          className="mt-3 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-[11px] font-medium text-gray-500 transition hover:border-primary-border hover:text-primary"
+        >
+          {showAll ? '收起' : `展开全部 ${categories.length} 个（尾部 ${tailCount} 类占 ${tailPct}%）`}
+        </button>
+      )}
     </div>
   );
 }
@@ -788,7 +770,7 @@ export default function StatsPage() {
               </Surface>
 
               {/* C. 分类分布 */}
-              <Surface title="分类分布" icon={Layers3} hint={`${categories.length} 个分类 · 柱色=均分`}>
+              <Surface title="分类分布" icon={Layers3} hint={`${categories.length} 个分类 · Top10 + 蓝海`}>
                 <CategoryDistribution categories={categories} />
               </Surface>
             </div>

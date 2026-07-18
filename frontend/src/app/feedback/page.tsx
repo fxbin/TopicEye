@@ -16,7 +16,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { Badge, Button, Panel, Toolbar, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import {
@@ -29,57 +29,20 @@ import {
   type ProductUpdateStatus,
 } from '@/lib/api';
 import { formatDateTime as formatTime, formatDate } from '@/lib/datetime';
+import {
+  ISSUE_STATUS_LABELS,
+  ISSUE_STATUS_TONES,
+  SEVERITY_LABELS,
+  SEVERITY_TONES,
+  UPDATE_KIND_LABELS,
+  UPDATE_STATUS_LABELS,
+  UPDATE_STATUS_TONES,
+} from '@/lib/product-feedback-labels';
 
-type Tone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
+// 注：Tone 类型与 product-feedback 标签映射已收敛到公共模块：
+// - Tone ← @/components/ui
+// - 标签映射 ← @/lib/product-feedback-labels（修复 R9 值冲突）
 
-const ISSUE_STATUS_LABELS: Record<IssueFeedbackStatus, string> = {
-  open: '待处理',
-  triaged: '已确认',
-  in_progress: '处理中',
-  fixed: '已修复',
-  closed: '已关闭',
-};
-
-const ISSUE_STATUS_TONES: Record<IssueFeedbackStatus, Tone> = {
-  open: 'amber',
-  triaged: 'primary',
-  in_progress: 'purple',
-  fixed: 'teal',
-  closed: 'neutral',
-};
-
-const SEVERITY_LABELS: Record<IssueFeedbackSeverity, string> = {
-  low: '低',
-  medium: '中',
-  high: '高',
-  critical: '严重',
-};
-
-const SEVERITY_TONES: Record<IssueFeedbackSeverity, Tone> = {
-  low: 'neutral',
-  medium: 'primary',
-  high: 'amber',
-  critical: 'red',
-};
-
-const UPDATE_KIND_LABELS: Record<ProductUpdateKind, string> = {
-  roadmap: '路线',
-  release: '版本',
-  fix: '修复',
-  improvement: '优化',
-};
-
-const UPDATE_STATUS_LABELS: Record<ProductUpdateStatus, string> = {
-  planned: '计划中',
-  in_progress: '推进中',
-  shipped: '已发布',
-};
-
-const UPDATE_STATUS_TONES: Record<ProductUpdateStatus, Tone> = {
-  planned: 'neutral',
-  in_progress: 'primary',
-  shipped: 'teal',
-};
 
 const AREA_OPTIONS = [
   { value: 'analysis', label: 'AI 分析' },

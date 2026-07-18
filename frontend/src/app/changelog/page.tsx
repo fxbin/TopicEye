@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import {
@@ -26,8 +26,20 @@ import {
   type ProductUpdateStatus,
 } from '@/lib/api';
 import { timeAgoShort as formatRelative } from '@/lib/datetime';
+import {
+  ISSUE_STATUS_LABELS,
+  ISSUE_STATUS_TONES,
+  SEVERITY_LABELS,
+  SEVERITY_TONES,
+  UPDATE_KIND_LABELS,
+  UPDATE_KIND_TONES,
+  UPDATE_STATUS_LABELS,
+  UPDATE_STATUS_TONES,
+} from '@/lib/product-feedback-labels';
 
-type Tone = 'neutral' | 'primary' | 'teal' | 'amber' | 'purple' | 'red';
+// 注：Tone 类型与 product-feedback 标签映射已收敛到公共模块：
+// - Tone ← @/components/ui
+// - 标签映射 ← @/lib/product-feedback-labels（修复 R9 值冲突）
 
 // ── Helpers (display formatters) ────────────────────────────────────────
 
@@ -37,62 +49,6 @@ function formatDate(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '-';
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
-const UPDATE_KIND_TONES: Record<ProductUpdateKind, Tone> = {
-  release: 'teal',
-  improvement: 'primary',
-  fix: 'purple',
-  roadmap: 'amber',
-};
-
-const UPDATE_KIND_LABELS: Record<ProductUpdateKind, string> = {
-  release: '发布',
-  improvement: '改进',
-  fix: '修复',
-  roadmap: '规划',
-};
-
-const UPDATE_STATUS_TONES: Record<ProductUpdateStatus, Tone> = {
-  planned: 'amber',
-  in_progress: 'primary',
-  shipped: 'teal',
-};
-
-const UPDATE_STATUS_LABELS: Record<ProductUpdateStatus, string> = {
-  planned: '已规划',
-  in_progress: '进行中',
-  shipped: '已发布',
-};
-
-const ISSUE_STATUS_TONES: Record<IssueFeedbackStatus, Tone> = {
-  open: 'amber',
-  triaged: 'primary',
-  in_progress: 'purple',
-  fixed: 'teal',
-  closed: 'neutral',
-};
-
-const ISSUE_STATUS_LABELS: Record<IssueFeedbackStatus, string> = {
-  open: '待处理',
-  triaged: '已确认',
-  in_progress: '处理中',
-  fixed: '已修复',
-  closed: '已关闭',
-};
-
-const SEVERITY_LABELS: Record<IssueFeedbackSeverity, string> = {
-  low: '低',
-  medium: '中',
-  high: '高',
-  critical: '严重',
-};
-
-const SEVERITY_TONES: Record<IssueFeedbackSeverity, Tone> = {
-  low: 'neutral',
-  medium: 'primary',
-  high: 'red',
-  critical: 'red',
-};
 
 // ── Update timeline (发版记录) ──────────────────────────────────────────
 

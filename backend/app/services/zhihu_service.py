@@ -18,6 +18,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from app.core.http_retry import retry_async
+
 from app.core.database import async_session, database_profile
 from app.models.zhihu import ZhihuAlbum, ZhihuCategory
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
@@ -195,7 +197,7 @@ async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: str | None
     """调用知乎榜单 API。返回 album item 列表。
 
     容器内 IPv6 走不通 (happy eyeballs 失败), 强制 IPv4.
-    加 2 次重试, 避免单次抽风漏抓某个组合 (历史问题: 1515+monthly_hottest 曾因此缺失).
+    加 3 次重试, 避免单次抽风漏抓某个组合 (历史问题: 1515+monthly_hottest 曾因此缺失).
     """
     params = {
         "study_type": "album",
@@ -210,22 +212,25 @@ async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: str | None
 
     # 强制 IPv4: 容器内 happy eyeballs 走 IPv6 会失败 (跟 qimao scraper 同根因)
     transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
-    last_err = None
-    for attempt in range(3):
-        try:
-            async with httpx.AsyncClient(transport=transport, timeout=12.0) as client:
-                resp = await client.get(API_BASE, params=params, headers=HEADERS)
-                if resp.status_code == 200:
-                    d = resp.json()
-                    return d.get("data", []) or []
-                logger.warning(f"Zhihu API status={resp.status_code} (attempt {attempt + 1})")
-                last_err = f"HTTP {resp.status_code}"
-        except Exception as e:
-            logger.warning(f"Zhihu API error (attempt {attempt + 1}): {e}")
-            last_err = str(e)
-        await asyncio.sleep(0.5 * (attempt + 1))
-    logger.error(f"Zhihu API 给 up sort={sort_type} cat={category_id} 全部失败: {last_err}")
-    return []
+
+    async def _fetch() -> list:
+        async with httpx.AsyncClient(transport=transport, timeout=12.0) as client:
+            resp = await client.get(API_BASE, params=params, headers=HEADERS)
+            if resp.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"HTTP {resp.status_code}", request=resp.request, response=resp,
+                )
+            d = resp.json()
+            return d.get("data", []) or []
+
+    result = await retry_async(
+        _fetch, attempts=3, base_delay=0.5,
+        context=f"Zhihu API sort={sort_type} cat={category_id}",
+    )
+    if result is None:
+        logger.error(f"Zhihu API 给 up sort={sort_type} cat={category_id} 全部失败")
+        return []
+    return result
 
 
 def _extract_array(html: str, key: str) -> list:

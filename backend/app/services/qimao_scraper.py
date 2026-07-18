@@ -32,6 +32,8 @@ from typing import Optional
 import httpx
 from py_mini_racer import MiniRacer
 
+from app.core.http_retry import retry_http_get
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.qimao.com/paihang"
@@ -117,15 +119,10 @@ def _parse_list_data_from_html(html: str) -> list[dict] | None:
 
 async def _fetch_html(client: httpx.AsyncClient, url: str) -> str | None:
     """带 3 次重试的 GET HTML."""
-    for i in range(3):
-        try:
-            resp = await client.get(url, headers=HEADERS, timeout=20)
-            resp.raise_for_status()
-            return resp.text
-        except Exception as e:
-            logger.warning(f"七猫 GET {url} attempt {i + 1} 失败: {e}")
-            await asyncio.sleep(0.5 * (i + 1))
-    return None
+    resp = await retry_http_get(
+        client, url, headers=HEADERS, timeout=20, attempts=3, base_delay=0.5, context=f"七猫 GET {url}",
+    )
+    return resp.text if resp else None
 
 
 async def fetch_list_data(channel: str, rank_type: str) -> list[dict] | None:

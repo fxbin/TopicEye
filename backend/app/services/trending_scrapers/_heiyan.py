@@ -25,6 +25,8 @@ from typing import List, Optional, Set
 import httpx
 from . import BaseTrendingScraper, register_trending, TrendingEntry
 
+from app.core.http_retry import retry_async
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,21 +149,19 @@ class HeiyanTrending(BaseTrendingScraper):
         context: str = "",
         attempts: int = 3,
     ) -> dict | None:
-        for i in range(attempts):
-            try:
-                resp = await client.get(url, headers=self.HEADERS, timeout=20)
-                resp.raise_for_status()
-                payload = resp.json()
-            except Exception as exc:
-                logger.warning("heiyan %s attempt %d failed: %s", context, i + 1, exc)
-                await asyncio.sleep(0.3 * (i + 1))
-                continue
+        async def _fetch() -> dict:
+            resp = await client.get(url, headers=self.HEADERS, timeout=20)
+            resp.raise_for_status()
+            payload = resp.json()
             if not (payload.get("success") and payload.get("code") == 1):
-                logger.warning("heiyan %s: code=%s msg=%s", context, payload.get("code"), payload.get("message"))
-                await asyncio.sleep(0.3 * (i + 1))
-                continue
+                raise ValueError(
+                    f"heiyan {context}: code={payload.get('code')} msg={payload.get('message')}"
+                )
             return payload
-        return None
+
+        return await retry_async(
+            _fetch, attempts=attempts, base_delay=0.3, context=f"heiyan {context}",
+        )
 
     # ── Entry builder ─────────────────────────────────────────────
     def _build_entry(

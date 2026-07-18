@@ -26,7 +26,6 @@ from app.schemas.source import (
 )
 from app.repositories.source_repo import SourceRepository
 from app.services.content_pipeline import ingest_from_source
-from app.scheduler import _request_post_sync_pipeline
 from app.api.v1._importers import (  # noqa: F401 — SourceBatchImportItem + _parse_source_batch re-exported for backward compat
     SourceBatchImportItem,
     SourceBatchImportRequest,
@@ -425,6 +424,8 @@ async def sync_my_source(
     if source.status == SourceStatus.ERROR or source.sync_error:
         await db.commit()
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")
+    from app._post_sync_pipeline import _request_post_sync_pipeline
+
     _request_post_sync_pipeline(stats)
     return SyncResultResponse(
         fetched=stats["fetched"],
@@ -652,6 +653,8 @@ async def sync_source(source_id: int, db: AsyncSession = Depends(get_db)):
     if source.status == SourceStatus.ERROR or source.sync_error:
         await db.commit()
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")
+    from app._post_sync_pipeline import _request_post_sync_pipeline
+
     _request_post_sync_pipeline(stats)
     return SyncResultResponse(
         fetched=stats["fetched"],

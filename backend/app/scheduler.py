@@ -32,16 +32,13 @@ from app.repositories.source_repo import SourceRepository
 from app.services.analysis import analyze_batch_concurrent
 from app.services.content_pipeline import ingest_from_source
 from app.services.job_tracker import track_job
-# Post-sync pipeline functions are extracted to a separate module for module size.
-# Re-export here so existing `from app.scheduler import _request_post_sync_pipeline` keeps working.
+# Post-sync pipeline functions live in app._post_sync_pipeline.
+# Only import what scheduler.py itself calls; external callers should import
+# from app._post_sync_pipeline directly.
 from app._post_sync_pipeline import (
-    _request_post_sync_pipeline,  # noqa: F401 — re-export
-    _clear_post_sync_task,  # noqa: F401
-    _run_post_sync_pipeline,  # noqa: F401
-    _run_post_sync_pipeline_once,  # noqa: F401
-    _drain_pending_analysis,  # noqa: F401
-    _release_inflight_analysis_claims,  # noqa: F401
-    _get_post_sync_lock,  # noqa: F401
+    _drain_pending_analysis,
+    _request_post_sync_pipeline,
+    _run_post_sync_pipeline,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,7 +46,6 @@ logger = logging.getLogger(__name__)
 # Semaphore to limit concurrent DB write tasks — SQLite single-writer constraint.
 _sync_semaphore: asyncio.Semaphore | None = None
 _sync_semaphore_limit: int | None = None
-# _post_sync_lock / _post_sync_task / _post_sync_rerun_requested 已外迁到 app._post_sync_pipeline
 
 
 def _positive_int(value: object, default: int) -> int:
@@ -83,13 +79,6 @@ def _get_semaphore() -> asyncio.Semaphore:
         _sync_semaphore = asyncio.Semaphore(limit)
         _sync_semaphore_limit = limit
     return _sync_semaphore
-
-
-def _get_post_sync_lock() -> asyncio.Lock:
-    global _post_sync_lock
-    if _post_sync_lock is None:
-        _post_sync_lock = asyncio.Lock()
-    return _post_sync_lock
 
 
 scheduler = AsyncIOScheduler(

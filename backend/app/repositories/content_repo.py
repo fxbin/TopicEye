@@ -432,12 +432,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         (``owner_user_id IS NULL``) or content owned by that user. ``None``
         means no visibility filter (batch/internal callers).
         """
-        from datetime import datetime as dt, timedelta
-
         from app.models.analysis import AiAnalysis
         from app.services.scoring_engine import CONFIG as SCORING_CONFIG
 
-        cutoff = dt.utcnow() - timedelta(hours=hours)
+        cutoff = now_naive_utc() - timedelta(hours=hours)
         risk_threshold = float(SCORING_CONFIG["risk_threshold"])
         latest_analysis_id = self._latest_analysis_id_subquery(AiAnalysis)
         stmt = (

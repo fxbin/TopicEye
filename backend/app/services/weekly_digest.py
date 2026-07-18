@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
+from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
 from app.services.digest_context import (
     build_category_stats,
@@ -30,7 +31,11 @@ DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)
 
 
 def _utc_now() -> datetime:
-    return datetime.now(UTC)
+    """Delegate to ``app.core.time.utc_now``.
+
+    Kept as a thin wrapper so tests can monkeypatch this module's clock.
+    """
+    return utc_now()
 
 
 def _get_week_range(reference_date: date | None = None) -> tuple[str, str, str, str]:

@@ -313,8 +313,14 @@ def now_naive_utc() -> datetime:
 
     用法：stmt.where(Model.col <= now_naive_utc() - timedelta(...))
     不要混用 ensure_aware_utc / now_naive_utc 在同一行代码里。
+
+    .. deprecated::
+        新代码请从 ``app.core.time`` 导入 ``naive_utc_now``。
+        本函数保留为向后兼容 re-export。
     """
-    return datetime.now(UTC).replace(tzinfo=None)
+    from app.core.time import naive_utc_now
+
+    return naive_utc_now()
 
 
 def ensure_naive_utc(dt: datetime | None) -> datetime | None:

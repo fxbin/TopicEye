@@ -26,7 +26,7 @@ export function AutoLink({ text, className }: { text?: string | null; className?
               href={part}
               target="_blank"
               rel="noopener noreferrer"
-              className={className ?? 'text-primary underline-offset-2 hover:underline break-all'}
+              className={className ?? 'font-medium text-blue-600 underline decoration-blue-300 underline-offset-2 hover:text-blue-700 hover:decoration-blue-500 break-all'}
             >
               {part}
             </a>

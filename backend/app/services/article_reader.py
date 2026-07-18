@@ -459,7 +459,9 @@ def _is_chinese_text(text: str, sample_size: int = 500) -> bool:
 
 async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleSnapshot:
     """翻译 snapshot 正文为中文。已有缓存直接返回；原文已中文则标记跳过。"""
-    snapshot = await db.get(ArticleSnapshot, content.id)
+    snapshot = await db.scalar(
+        select(ArticleSnapshot).where(ArticleSnapshot.content_id == content.id)
+    )
     if snapshot is None:
         raise RuntimeError("正文快照不存在，请先打开原文阅读")
 

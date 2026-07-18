@@ -1,4 +1,5 @@
 import type { BackendSource } from '@/components/SourceRow';
+import { formatDateTime as formatDateTimeStr } from '@/lib/datetime';
 
 export type SyncBoardKey = 'running' | 'due' | 'waiting' | 'fresh' | 'error' | 'paused';
 
@@ -62,15 +63,13 @@ export function formatDuration(minutes: number): string {
   return restHours ? `${days} 天 ${restHours} 小时` : `${days} 天`;
 }
 
+/**
+ * 格式化同步时间。统一委托到 @/lib/datetime.formatDateTime。
+ * 接收 Date 对象，内部转 ISO 字符串后调用公共版；空值返回 '-'。
+ * 历史本地版返回 '未记录'，统一后规范为 '-'。
+ */
 export function formatDateTime(date: Date | null): string {
-  if (!date) return '未记录';
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  return formatDateTimeStr(date ? date.toISOString() : null);
 }
 
 export function inferSyncBoardKey(source: BackendSource, syncingIds: Set<number>, now: Date): SyncBoardKey {

@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import {
@@ -365,7 +365,7 @@ export default function AdminUpdatesPage() {
   );
 }
 
-function StatTile({ label, value, tone }: { label: string; value: number; tone: 'neutral' | 'teal' | 'primary' | 'amber' }) {
+function StatTile({ label, value, tone }: { label: string; value: number; tone: Tone }) {
   return (
     <div className="rounded-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
       <div className="mb-1 text-[12px] text-gray-500">{label}</div>

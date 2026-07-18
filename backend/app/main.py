@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
@@ -161,6 +162,38 @@ def ensure_runtime_secret_safety() -> None:
         raise RuntimeError("APP_ENV=production requires INTEGRATION_SECRET_KEY or a custom APP_SECRET_KEY")
 
 
+async def _run_seed_step(
+    name: str,
+    *,
+    enabled: bool,
+    run: Callable[[], Awaitable[None]],
+    skip_reason: str | None = None,
+) -> None:
+    """Run one idempotent startup seed step with uniform error handling.
+
+    Each seed step is an async callable that owns its session + commit. The
+    helper centralises the ``enabled`` gate, skip log wording, and exception →
+    warning downgrade so lifespan stays readable.
+
+    Args:
+        name: Human-readable step name used in logs (e.g. ``"Admin account"``).
+        enabled: Whether config allows this step to run.
+        run: Async callable performing the seed (import + session + commit).
+        skip_reason: Optional reason when ``enabled`` is False; overrides the
+            default ``"skipped by config"`` wording.
+    """
+    if not enabled:
+        if skip_reason:
+            logger.info("%s seed skipped: %s", name, skip_reason)
+        else:
+            logger.info("%s seed skipped by config", name)
+        return
+    try:
+        await run()
+    except Exception as e:  # noqa: BLE001 — seed steps must never block startup
+        logger.warning("%s seed skipped: %s", name, e)
+
+
 # NOTE: The former ``ensure_*_schema`` helpers (~730 lines of hand-written
 # SQLite migration DDL) and ``ensure_sqlite_upgrade_schema`` have been replaced
 # by Alembic. See ``alembic/`` and ``app/core/migrations.py``. Schema upgrades
@@ -202,68 +235,71 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Slow query listener setup failed (non-fatal): %s", exc)
 
+    # ── Seed steps (idempotent; failures downgrade to warning, never block startup) ──
     admin_email = (settings.ADMIN_EMAIL or "").strip()
     admin_password = settings.ADMIN_PASSWORD or ""
-    if settings.ADMIN_SEED_ENABLED and admin_email and admin_password:
-        try:
-            from app.services.auth_service import ensure_admin_user
+    admin_enabled = bool(settings.ADMIN_SEED_ENABLED and admin_email and admin_password)
+    admin_skip_reason = (
+        "ADMIN_EMAIL and ADMIN_PASSWORD are not configured"
+        if settings.ADMIN_SEED_ENABLED and not admin_enabled
+        else None
+    )
 
-            async with async_session() as admin_db:
-                admin = await ensure_admin_user(
-                    admin_db,
-                    email=admin_email,
-                    password=admin_password,
-                    display_name=settings.ADMIN_DISPLAY_NAME,
-                )
-                await admin_db.commit()
-                logger.info("Admin account ready: %s", admin.email)
-        except Exception as e:
-            logger.warning("Admin account seed skipped: %s", e)
-    elif settings.ADMIN_SEED_ENABLED:
-        logger.info("Admin account seed skipped: ADMIN_EMAIL and ADMIN_PASSWORD are not configured")
-    else:
-        logger.info("Admin account seed skipped by config")
+    async def _seed_admin() -> None:
+        from app.services.auth_service import ensure_admin_user
+
+        async with async_session() as admin_db:
+            admin = await ensure_admin_user(
+                admin_db,
+                email=admin_email,
+                password=admin_password,
+                display_name=settings.ADMIN_DISPLAY_NAME,
+            )
+            await admin_db.commit()
+            logger.info("Admin account ready: %s", admin.email)
+
+    await _run_seed_step(
+        "Admin account",
+        enabled=admin_enabled,
+        run=_seed_admin,
+        skip_reason=admin_skip_reason,
+    )
+
+    seed_enabled = bool(settings.STARTUP_SEED_ENABLED)
 
     # Seed categories from hardcoded defaults (no-op if already seeded)
-    if settings.STARTUP_SEED_ENABLED:
-        try:
-            from app.services.classifier import seed_categories
+    async def _seed_categories() -> None:
+        from app.services.classifier import seed_categories
 
-            async with async_session() as seed_db:
-                await seed_categories(seed_db)
-                await seed_db.commit()
-        except Exception as e:
-            logger.warning("Category seed skipped: %s", e)
-    else:
-        logger.info("Category seed skipped by config")
+        async with async_session() as seed_db:
+            await seed_categories(seed_db)
+            await seed_db.commit()
+
+    await _run_seed_step("Category", enabled=seed_enabled, run=_seed_categories)
 
     # Seed mother topics (4 content pillars for 大痴小乙)
-    if settings.STARTUP_SEED_ENABLED:
-        try:
-            from app.services.mother_topic_seed import seed_mother_topics
+    async def _seed_mother_topics() -> None:
+        from app.services.mother_topic_seed import seed_mother_topics
 
-            async with async_session() as seed_db:
-                added = await seed_mother_topics()
-                await seed_db.commit()
-                logger.info("Mother topics seeded (%d new)", added)
-        except Exception as e:
-            logger.warning("Mother topic seed skipped: %s", e)
-    else:
-        logger.info("Mother topic seed skipped by config")
+        # seed_mother_topics() opens its own session internally; the outer
+        # session exists only to mirror the historical commit boundary.
+        async with async_session() as seed_db:
+            added = await seed_mother_topics()
+            await seed_db.commit()
+            logger.info("Mother topics seeded (%d new)", added)
+
+    await _run_seed_step("Mother topic", enabled=seed_enabled, run=_seed_mother_topics)
 
     # Seed default content sources (idempotent, no-op for existing URLs)
-    if settings.STARTUP_SEED_ENABLED:
-        try:
-            from app.services.source_seed import seed_default_sources
+    async def _seed_default_sources() -> None:
+        from app.services.source_seed import seed_default_sources
 
-            async with async_session() as seed_db:
-                added = await seed_default_sources(seed_db)
-                await seed_db.commit()
-                logger.info("Default sources seeded (%d new)", added)
-        except Exception as e:
-            logger.warning("Default source seed skipped: %s", e)
-    else:
-        logger.info("Default source seed skipped by config")
+        async with async_session() as seed_db:
+            added = await seed_default_sources(seed_db)
+            await seed_db.commit()
+            logger.info("Default sources seeded (%d new)", added)
+
+    await _run_seed_step("Default source", enabled=seed_enabled, run=_seed_default_sources)
 
     # Initialize DuckDB analytical layer (in-memory + ATTACH SQLite/Postgres)
     # 关键:analytics.available 是同步 @property,内部要执行 INSTALL/LOAD 扩展 +

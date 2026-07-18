@@ -14,7 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import { Badge, Button, Panel, PanelTitle, Surface, cx } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import {
@@ -63,46 +63,11 @@ function MiniBar({ value, max, color, height = 8 }: { value: number; max: number
   );
 }
 
-function PanelTitle({
-  icon: Icon,
-  title,
-  hint,
-}: {
-  icon: LucideIcon;
-  title: string;
-  hint?: string;
-}) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <Icon size={16} className="text-primary" strokeWidth={2.2} />
-        <span className="text-sm font-black text-gray-900">{title}</span>
-      </div>
-      {hint && <span className="whitespace-nowrap text-[11px] text-gray-400">{hint}</span>}
-    </div>
-  );
-}
+// 注：PanelTitle 与 Surface 已收敛到 @/components/ui 公共版，本地定义删除。
+// 历史本地版 Surface 用 PanelTitle 内部组合 + px-5 py-4.5 padding，
+// 公共版用 p-4.5 sm:p-5 + 自包含 header，视觉差异可接受。
 
-function Surface({
-  title,
-  icon,
-  hint,
-  children,
-  className,
-}: {
-  title: string;
-  icon: LucideIcon;
-  hint?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Panel className={cx('px-5 py-4.5', className)}>
-      <PanelTitle icon={icon} title={title} hint={hint} />
-      {children}
-    </Panel>
-  );
-}
+
 
 function HorizontalBarChart({
   items,

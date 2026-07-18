@@ -30,35 +30,22 @@ import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
-import { getRecommendLevelLabel, getTagColor, timeAgo } from '@/lib/utils';
-import { getRecommendationReason } from '@/lib/recommendation';
+import { getRecommendLevelLabel, getTagColor, timeAgo } from '@/lib/utils';import { getRecommendationReason } from '@/lib/recommendation';
 import { startContentWorkflow } from '@/lib/workflow';
 import type { ContentAnalysis, ContentItem, TopicInfo } from '@/types';
-
-const CATEGORIES = ['全部', 'AI', '职场', '商业', '教育', '自媒体', '科技', '生活', '产品'] as const;
-const RECOMMEND_LEVELS = ['强烈建议写', '值得观察', '适合深挖', '适合蹭热点', '不建议追', '信号不足'] as const;
-const LEVEL_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  强烈建议写: { bg: 'bg-primary-light', text: 'text-primary', border: 'border-primary-border', dot: 'bg-primary' },
-  值得观察: { bg: 'bg-teal-light', text: 'text-teal', border: 'border-teal-border', dot: 'bg-teal' },
-  适合深挖: { bg: 'bg-purple-light', text: 'text-purple', border: 'border-purple-border', dot: 'bg-purple' },
-  适合蹭热点: { bg: 'bg-amber-light', text: 'text-amber', border: 'border-amber-border', dot: 'bg-amber' },
-  不建议追: { bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-300', dot: 'bg-gray-400' },
-  信号不足: { bg: 'bg-gray-50', text: 'text-gray-400', border: 'border-gray-200', dot: 'bg-gray-300' },
-};
-
-const TIME_RANGES = [
-  { value: '24h', label: '24h' },
-  { value: '48h', label: '48h' },
-  { value: '7d', label: '7d' },
-] as const;
-const DEFAULT_TIME_RANGE = '24h';
-const INITIAL_PICK_LIMIT = 40;
-const PICK_LOAD_STEP = 40;
-
-function normalizeTimeRange(value: string | null) {
-  return TIME_RANGES.some((range) => range.value === value) ? value! : DEFAULT_TIME_RANGE;
-}
-
+import {
+  CATEGORIES,
+  RECOMMEND_LEVELS,
+  LEVEL_CONFIG,
+  TIME_RANGES,
+  DEFAULT_TIME_RANGE,
+  INITIAL_PICK_LIMIT,
+  PICK_LOAD_STEP,
+  normalizeTimeRange,
+  getAnalysis,
+  scoreOf,
+  tagsOf,
+} from './_today-picks-utils';
 export default function TodayPicksPageWrapper() {
   return (
     <Suspense fallback={<div className="p-20 text-center text-sm text-gray-400">加载中...</div>}>
@@ -515,7 +502,7 @@ function FilterPanel({
                   onClick={() => onLevel(level)}
                   className={cx(
                     'flex w-full items-center gap-2 rounded-sm border px-2.5 py-2 text-left text-xs transition',
-                    active ? `${cfg.bg} ${cfg.text} ${cfg.border} font-black` : 'border-gray-200 bg-white font-semibold text-gray-600 hover:border-gray-300',
+                    active ? `${cfg.bg} ${cfg.color} ${cfg.border} font-black` : 'border-gray-200 bg-white font-semibold text-gray-600 hover:border-gray-300',
                   )}
                 >
                   <span className={cx('h-2 w-2 rounded-full', cfg.dot)} />
@@ -959,18 +946,4 @@ function SectionHeading({ title, count }: { title: string; count: number }) {
   );
 }
 
-function getAnalysis(item: ContentItem): ContentAnalysis | undefined {
-  return item.analysis || item.analyses?.[0];
-}
-
-function scoreOf(item: ContentItem): number {
-  const analysis = getAnalysis(item);
-  return analysis?.adjusted_curation_score || analysis?.curation_score || 0;
-}
-
-function tagsOf(analysis?: ContentAnalysis | null): string[] {
-  const rawTags = analysis?.tags as string | string[] | null | undefined;
-  if (Array.isArray(rawTags)) return rawTags;
-  if (typeof rawTags === 'string' && rawTags) return rawTags.split(',').map((tag) => tag.trim()).filter(Boolean);
-  return [];
-}
+// 注：getAnalysis / scoreOf / tagsOf 已移至 ./_today-picks-utils。

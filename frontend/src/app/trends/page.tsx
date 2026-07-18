@@ -41,6 +41,10 @@ interface TopicSeries {
 // 历史本地常量 COLORS 已删除，改用 CHART_COLORS 别名保持调用方不变。
 const COLORS = CHART_COLORS;
 
+// 注：本本地 Sparkline 接收 number[]（纯几何渲染），与 @/components/Sparkline.tsx
+// 的公共版（接收 SparklineData，含 baseline/keywords/total 富数据渲染）API 不兼容。
+// 两者服务不同场景：此处只需简单折线，公共版用于富信息趋势卡。
+// 强行统一会引入不必要的参数适配，故保留并行。N9 决策：不合并。
 function Sparkline({
   data,
   color = '#FF6B35',

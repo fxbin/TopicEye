@@ -27,6 +27,12 @@ export const emptyForm: FormState = {
   enabled: true,
 };
 
+// 注：此处 CATEGORIES 不含「全部」（8 项），与 @/lib/design-tokens.CATEGORIES（9 项含「全部」）有差异。
+// 原因：信源表单是创建/编辑场景，不需要「全部」选项；design-tokens 版用于筛选/展示场景。
+// 若后续信源也需要「全部」过滤，应改 import design-tokens 版。
+// 注：此处 CATEGORIES 不含「全部」（8 项），与 @/lib/design-tokens.CATEGORIES（9 项含「全部」）有差异。
+// 原因：信源表单是创建/编辑场景，不需要「全部」选项；design-tokens 版用于筛选/展示场景。
+// 若后续信源也需要「全部」过滤，应改 import design-tokens 版。
 export const CATEGORIES = ['AI', '商业', '科技', '教育', '自媒体', '生活', '职场', '产品'];
 // 对齐后端 SourceType 枚举 + 已注册的 scraper（见 backend/app/services/scrapers/__init__.py）
 export const SOURCE_TYPES = [

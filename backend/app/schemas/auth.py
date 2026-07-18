@@ -71,3 +71,17 @@ class AuthTokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: datetime
     user: UserResponse
+
+
+class ChangePasswordRequest(BaseModel):
+    """用户自助改密请求体。"""
+
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        from app.core.validators import validate_password_strength
+
+        return validate_password_strength(value)

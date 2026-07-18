@@ -15,11 +15,13 @@ from app.schemas.auth import (
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthTokenResponse,
+    ChangePasswordRequest,
     SendCodeRequest,
     UserResponse,
 )
 from app.services.auth_service import (
     authenticate_user,
+    change_password,
     create_session,
     create_user,
     get_user_by_email,
@@ -194,3 +196,27 @@ async def logout(
     token = _extract_bearer_token(authorization)
     await revoke_token(db, token)
     return {"logged_out": True}
+
+
+@router.post("/change-password")
+async def change_my_password(
+    data: ChangePasswordRequest,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户自助修改密码。
+
+    校验旧密码后才允许修改；成功后撤销该用户其他设备的登录会话，
+    当前调用方的 session 保留（keep_token）。
+    """
+    token = _extract_bearer_token(authorization)
+    user = await get_user_for_token(db, token)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    try:
+        await change_password(db, user, data.old_password, data.new_password, keep_token=token)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    await db.commit()
+    return {"message": "密码修改成功，其他设备的登录状态已失效"}

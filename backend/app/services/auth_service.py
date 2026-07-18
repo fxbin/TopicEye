@@ -8,7 +8,7 @@ import os
 import secrets
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sqlite_retry import retry_sqlite_locked
@@ -333,6 +333,48 @@ async def revoke_token(db: AsyncSession, token: str) -> bool:
     session.revoked_at = datetime.now(UTC)
     await db.flush()
     return True
+
+
+async def revoke_all_user_sessions(db: AsyncSession, user_id: int, *, keep_token: str | None = None) -> int:
+    """撤销该用户所有未过期的活跃 session。
+
+    用于管理员重置密码 / 用户自助改密后强制其他设备下线。
+    keep_token 指定时，保留当前调用方的 session（自助改密场景保留自己）。
+
+    返回被撤销的 session 数（flush 后即生效，调用方负责 commit）。
+    """
+    conditions = [
+        UserSession.user_id == user_id,
+        UserSession.revoked_at.is_(None),
+    ]
+    if keep_token is not None:
+        conditions.append(UserSession.token_hash != hash_token(keep_token))
+    result = await db.execute(
+        update(UserSession).where(*conditions).values(revoked_at=datetime.now(UTC))
+    )
+    return int(result.rowcount or 0)
+
+
+async def change_password(
+    db: AsyncSession,
+    user: User,
+    old_password: str,
+    new_password: str,
+    *,
+    keep_token: str | None = None,
+) -> None:
+    """用户自助改密：校验旧密码 → 写新密码 → 撤销其他 session。
+
+    旧密码校验失败抛 ValueError，由调用方转 400。
+    """
+    if not user.password_hash or not verify_password(old_password, user.password_hash):
+        raise ValueError("旧密码不正确")
+    # 留给 endpoint 层做 schema 级强度校验，这里防御性兜底
+    if len(new_password) < 8:
+        raise ValueError("新密码至少 8 位")
+    user.password_hash = hash_password(new_password)
+    await db.flush()
+    await revoke_all_user_sessions(db, user.id, keep_token=keep_token)
 
 
 # ── User API tokens (脚本/CI 场景) ───────────────────────────────────

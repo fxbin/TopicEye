@@ -10,10 +10,10 @@ from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1._db_write import write_with_503_low_latency
 from app.api.v1.auth import (
     get_current_admin_user,
     get_current_user,
@@ -22,8 +22,7 @@ from app.api.v1.auth import (
     require_admin_view,
 )
 from app.core.config import settings
-from app.core.database import async_session, database_profile, get_db
-from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
+from app.core.database import async_session, get_db
 from app.models.content import ContentItem
 from app.models.favorite import FavoriteTargetType
 from app.models.user import User
@@ -61,35 +60,6 @@ _SCORING_BATCH_SIZE = 500
 _TREND_SOURCE_TYPES = {"DouyinHot"}
 
 logger = logging.getLogger(__name__)
-
-
-class _LowLatencyBusyTimeout:
-    """临时调低 SQLite busy_timeout（批量写时快速返回 503），退出时还原。
-
-    上下文管理器避免重复样板：三个 favorite 端点共用同一套逻辑。
-    非 SQLite 后端为 no-op。
-    """
-
-    def __init__(self, db: AsyncSession):
-        self._db = db
-        self._active = False
-
-    async def __aenter__(self) -> _LowLatencyBusyTimeout:
-        if database_profile.is_sqlite:
-            try:
-                await self._db.execute(text(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_BATCH_MS}"))
-                self._active = True
-            except Exception:
-                await self._db.rollback()
-        return self
-
-    async def __aexit__(self, *exc_info) -> None:
-        if self._active:
-            try:
-                await self._db.execute(text(f"PRAGMA busy_timeout={settings.SQLITE_BUSY_TIMEOUT_MS}"))
-            except Exception:
-                await self._db.rollback()
-            self._active = False
 
 
 def _empty_list_response(page: int, page_size: int) -> dict:
@@ -837,14 +807,7 @@ async def toggle_favorite(
         await db.flush()
         return favorite_id
 
-    try:
-        async with _LowLatencyBusyTimeout(db):
-            favorite_id = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
-    except OperationalError as exc:
-        await db.rollback()
-        if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
-        raise
+    favorite_id = await write_with_503_low_latency(db, _write)
     return {"is_favorited": next_value, "favorite_id": favorite_id}
 
 
@@ -867,14 +830,7 @@ async def ignore_content(
         await db.flush()
         return ignored_item
 
-    try:
-        async with _LowLatencyBusyTimeout(db):
-            ignored = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
-    except OperationalError as exc:
-        await db.rollback()
-        if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
-        raise
+    ignored = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
 
@@ -891,13 +847,6 @@ async def unignore_content(
     async def _write():
         return await IgnoredRepo(db).unignore(content_id)
 
-    try:
-        async with _LowLatencyBusyTimeout(db):
-            removed = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
-    except OperationalError as exc:
-        await db.rollback()
-        if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试") from exc
-        raise
+    removed = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": False, "removed": removed}

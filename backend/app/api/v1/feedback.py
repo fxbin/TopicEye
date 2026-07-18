@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select, func
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError
 
+from app.api.v1._db_write import write_with_503
 from app.api.v1.auth import get_current_user
 from app.core.database import database_profile
 from app.core.database import get_db
-from app.core.sqlite_retry import begin_immediate_for_sqlite, is_sqlite_locked, retry_sqlite_locked
+from app.core.sqlite_retry import begin_immediate_for_sqlite
 from app.models.feedback import (
     UserFeedback,
     FeedbackType,
@@ -107,13 +108,7 @@ async def submit_feedback(
             await db.rollback()
             return await _write_feedback(data, db, current_user, fb_type)
 
-    try:
-        feedback = await retry_sqlite_locked(_write, attempts=3, base_delay=0.1, on_retry=db.rollback)
-    except OperationalError as exc:
-        await db.rollback()
-        if is_sqlite_locked(exc):
-            raise HTTPException(status_code=503, detail="数据库繁忙，请稍后重试")
-        raise
+    feedback = await write_with_503(db, _write)
     invalidate_content_read_caches()
     return feedback
 

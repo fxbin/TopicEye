@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from 'lucide-react';
+import { BookOpen, ExternalLink, RefreshCw } from 'lucide-react';
 import { contentsApi, integrationsApi } from '@/lib/api';
 import { Panel, cx } from '@/components/ui';
+import { Pagination } from '@/components/Pagination';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import type { ContentItem } from '@/types';
@@ -161,33 +162,12 @@ export default function WeReadPage() {
 
         {/* 分页 */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className={cx(
-                'grid h-8 w-8 place-items-center rounded border',
-                page <= 1 ? 'border-gray-100 text-gray-200' : 'border-gray-200 text-gray-500 hover:text-primary',
-              )}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold text-gray-500">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className={cx(
-                'grid h-8 w-8 place-items-center rounded border',
-                page >= totalPages ? 'border-gray-100 text-gray-200' : 'border-gray-200 text-gray-500 hover:text-primary',
-              )}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPage={setPage}
+            summary={<span className="text-xs font-bold text-gray-500">{page} / {totalPages}</span>}
+          />
         )}
       </div>
     </div>

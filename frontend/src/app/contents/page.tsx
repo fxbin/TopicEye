@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { Pagination } from '@/components/Pagination';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import type { ContentItem } from '@/types';
@@ -83,14 +84,6 @@ export default function ContentsPage() {
   const handleCategoryChange = (cat: string) => {
     setCategory(cat);
     setPage(1);
-  };
-
-  const handlePrev = () => {
-    if (page > 1) setPage(page - 1);
-  };
-
-  const handleNext = () => {
-    if (page < totalPages) setPage(page + 1);
   };
 
   return (
@@ -182,33 +175,16 @@ export default function ContentsPage() {
 
       {/* Pagination */}
       {!loading && total > 0 && (
-        <div className="mt-4 flex items-center justify-between gap-3 text-[13px] text-gray-500">
-          <span>
-            第 <b className="font-mono">{page}</b> / <b className="font-mono">{totalPages}</b> 页，共 {total} 条
-          </span>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              onClick={handlePrev}
-              disabled={page <= 1}
-              variant="secondary"
-              className={cx('min-h-0 px-4 py-1.5 text-[13px] font-medium', page <= 1 && 'cursor-not-allowed bg-gray-100 text-gray-300')}
-            >
-              <ChevronLeft size={14} strokeWidth={2} />
-              上一页
-            </Button>
-            <Button
-              type="button"
-              onClick={handleNext}
-              disabled={page >= totalPages}
-              variant="secondary"
-              className={cx('min-h-0 px-4 py-1.5 text-[13px] font-medium', page >= totalPages && 'cursor-not-allowed bg-gray-100 text-gray-300')}
-            >
-              下一页
-              <ChevronRight size={14} strokeWidth={2} />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPage={setPage}
+          summary={
+            <>
+              第 <b className="font-mono">{page}</b> / <b className="font-mono">{totalPages}</b> 页，共 {total} 条
+            </>
+          }
+        />
       )}
     </div>
   );

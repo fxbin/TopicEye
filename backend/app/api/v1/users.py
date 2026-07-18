@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_admin_user
+from app.api.v1.auth import get_current_admin_user, is_admin
 from app.core.database import database_profile
 from app.core.database import get_db
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
@@ -212,8 +212,8 @@ async def update_user(
 
         # 封禁或降级 admin 前，确保还剩至少一个活跃 admin
         will_lose_admin = (
-            (req.is_active is False and target.role == "admin")
-            or (req.role == "user" and target.role == "admin")
+            (req.is_active is False and is_admin(target))
+            or (req.role == "user" and is_admin(target))
         )
         if will_lose_admin:
             await _assert_not_last_admin(db, target)

@@ -14,7 +14,13 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_admin_user, get_current_user, get_optional_current_user
+from app.api.v1.auth import (
+    get_current_admin_user,
+    get_current_user,
+    get_optional_current_user,
+    is_admin,
+    require_admin_view,
+)
 from app.core.config import settings
 from app.core.database import async_session, database_profile, get_db
 from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
@@ -84,19 +90,6 @@ class _LowLatencyBusyTimeout:
             except Exception:
                 await self._db.rollback()
             self._active = False
-
-
-def _is_admin(user: User | None) -> bool:
-    return bool(user and user.role == "admin")
-
-
-def _require_admin_view(admin_view: bool, user: User | None) -> None:
-    if not admin_view:
-        return
-    if user is None:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    if not _is_admin(user):
-        raise HTTPException(status_code=403, detail="Admin privileges required")
 
 
 def _empty_list_response(page: int, page_size: int) -> dict:
@@ -191,8 +184,8 @@ async def list_contents(
 
     from app.repositories.ignored_repo import IgnoredRepo
 
-    _require_admin_view(admin_view, current_user)
-    include_raw_content = _is_admin(current_user)
+    require_admin_view(admin_view, current_user)
+    include_raw_content = is_admin(current_user)
 
     cache_params = ContentListCacheParams(
         page=page,
@@ -792,7 +785,7 @@ async def get_content(
     if not content:
         raise HTTPException(404, "Content not found")
     d = ContentResponse.model_validate(content).model_dump()
-    if not _is_admin(current_user):
+    if not is_admin(current_user):
         d["raw_content"] = None
     a = latest_analysis_from_item(content)
     if a:

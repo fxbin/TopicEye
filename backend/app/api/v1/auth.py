@@ -128,6 +128,31 @@ async def get_current_admin_user(current_user: User = Depends(get_current_user))
     return current_user
 
 
+def is_admin(user: User | None) -> bool:
+    """Return True when *user* is non-null and holds the ``admin`` role.
+
+    Shared by endpoints that need a non-Dependency admin check (e.g. optional
+    auth + ``admin_view`` query flag). For strict admin-only endpoints prefer
+    ``Depends(get_current_admin_user)``.
+    """
+    return bool(user and user.role == "admin")
+
+
+def require_admin_view(admin_view: bool, user: User | None) -> None:
+    """Enforce the ``admin_view`` query flag contract.
+
+    - ``admin_view=False`` → no-op (any caller, including anonymous).
+    - ``admin_view=True`` without auth → 401.
+    - ``admin_view=True`` with a non-admin user → 403.
+    """
+    if not admin_view:
+        return
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authorization header")
+    if not is_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+
+
 @router.post(
     "/send-code",
     status_code=status.HTTP_204_NO_CONTENT,

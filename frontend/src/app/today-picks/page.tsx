@@ -30,6 +30,7 @@ import { Badge, Button, Panel, PanelTitle, Segmented, FilterLabel, cx } from '@/
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
+import { useFetch } from '@/hooks/useFetch';
 import { getRecommendLevelLabel, getTagColor, timeAgo } from '@/lib/utils';import { getRecommendationReason } from '@/lib/recommendation';
 import { startContentWorkflow } from '@/lib/workflow';
 import type { ContentAnalysis, ContentItem, TopicInfo } from '@/types';
@@ -62,12 +63,7 @@ function TodayPicksPage() {
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
-  const [items, setItems] = useState<ContentItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
-  const [topics, setTopics] = useState<TopicInfo[]>([]);
-  const [dupCount, setDupCount] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState<(ContentAnalysis & { _content_id?: number }) | null>(null);
   const [readerContentId, setReaderContentId] = useState<number | null>(null);
   const [groupByTopic, setGroupByTopic] = useState(true);
@@ -107,27 +103,25 @@ function TodayPicksPage() {
     updateURL('', '', DEFAULT_TIME_RANGE);
   };
 
-  const fetchPicks = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params: { category?: string; time_range?: string; limit?: number } = {};
-      if (selectedCategory) params.category = selectedCategory;
-      params.time_range = selectedTimeRange;
-      params.limit = selectedTimeRange === '7d' ? Math.max(loadLimit, 80) : loadLimit;
-      const res = await contentsApi.todayPicks(params);
-      setItems(res.items || []);
-      setTotal(res.total || 0);
-      reportTodayPicksTotal(res.total || 0);
-      setTopics(res.topics || []);
-      setDupCount(res.duplicates_hidden || 0);
-    } catch (err) {
-      console.error('Failed to fetch today picks:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadLimit, reportTodayPicksTotal, selectedCategory, selectedTimeRange]);
+  // 数据获取：从手写 useEffect+fetch 迁移到 useFetch（含竞态保护、enabled、refetch）。
+  const fetchPicks = useCallback(() => {
+    const params: { category?: string; time_range?: string; limit?: number } = {};
+    if (selectedCategory) params.category = selectedCategory;
+    params.time_range = selectedTimeRange;
+    params.limit = selectedTimeRange === '7d' ? Math.max(loadLimit, 80) : loadLimit;
+    return contentsApi.todayPicks(params);
+  }, [loadLimit, selectedCategory, selectedTimeRange]);
 
-  useEffect(() => { void fetchPicks(); }, [fetchPicks]);
+  const { data, loading } = useFetch(fetchPicks, [loadLimit, selectedCategory, selectedTimeRange]);
+
+  // 从 data 派生各状态
+  const items = data?.items || [];
+  const total = data?.total || 0;
+  const topics = data?.topics || [];
+  const dupCount = data?.duplicates_hidden || 0;
+
+  // 副作用：上报当日精选总数到全局 context（原在 fetchPicks 内同步调用）。
+  useEffect(() => { reportTodayPicksTotal(total); }, [reportTodayPicksTotal, total]);
 
   const filteredItems = useMemo(() => {
     if (!selectedLevel) return items;

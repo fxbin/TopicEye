@@ -13,7 +13,7 @@ import { timeAgo } from '@/lib/datetime';
 
 // ─── Helpers ──
 
-const STATUS_TONE: Record<string, 'neutral' | 'teal' | 'red'> = {
+const CONTENT_STATUS_TONE: Record<string, 'neutral' | 'teal' | 'red'> = {
   pending: 'neutral',
   analyzed: 'teal',
   error: 'red',
@@ -194,7 +194,7 @@ export default function ContentsPage() {
 
 function ContentRow({ item }: { item: ContentItem }) {
   const statusKey = item.status || 'pending';
-  const statusTone = STATUS_TONE[statusKey] || STATUS_TONE.pending;
+  const statusTone = CONTENT_STATUS_TONE[statusKey] || CONTENT_STATUS_TONE.pending;
   const sourceTypeColor = SOURCE_TYPE_COLOR_MAP[item.source_type] || { bg: '#F3F4F6', color: '#6B7280' };
   const statusLabel: Record<string, string> = {
     pending: '待处理',

@@ -25,7 +25,7 @@ const DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 90, label: '90 天' },
 ];
 
-const STATUS_TONE: Record<string, Tone> = {
+const JOB_STATUS_TONE: Record<string, Tone> = {
   SUCCESS: 'teal',
   FAILED: 'red',
   TIMEOUT: 'amber',
@@ -59,7 +59,7 @@ function successTone(rate: number): Tone {
 
 function lastStatusTone(status: string | null | undefined): Tone {
   if (!status) return 'neutral';
-  return STATUS_TONE[status] || 'neutral';
+  return JOB_STATUS_TONE[status] || 'neutral';
 }
 
 export default function JobStatsPage() {
@@ -167,7 +167,7 @@ export default function JobStatsPage() {
             {data.by_status.map((row) => (
               <div key={row.status} className="flex items-center gap-3">
                 <span className="w-20 text-[12px] text-gray-600">
-                  <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
+                  <Badge tone={JOB_STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
                 </span>
                 <div className="h-5 flex-1 overflow-hidden rounded-sm bg-gray-100">
                   <div
@@ -259,7 +259,7 @@ export default function JobStatsPage() {
                 <div className="mb-1 flex items-center justify-between text-[12px]">
                   <span className="font-mono text-gray-700">{row.job_key}</span>
                   <span className="flex items-center gap-2 text-gray-500">
-                    <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
+                    <Badge tone={JOB_STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
                     <Clock className="h-3 w-3" />
                     {formatRelativeTime(row.started_at)}
                     <span>· {formatDuration(row.duration_ms)}</span>

@@ -199,6 +199,93 @@ function formatDayKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+/** avg_score → 顺序色阶（浅黄→中绿→深绿），高分=深绿 */
+function scoreColor(score: number): string {
+  if (!score || score <= 0) return '#E5E7EB'; // 灰=无数据
+  if (score >= 85) return '#065F46'; // 深绿
+  if (score >= 78) return '#059669'; // 中绿
+  if (score >= 70) return '#65A30D'; // 黄绿
+  if (score >= 60) return '#D97706'; // 琥珀
+  return '#F59E0B'; // 浅黄
+}
+
+const TOP_N_CATEGORY = 15;
+
+function CategoryDistribution({ categories }: { categories: StatsCategoryItem[] }) {
+  const [showAll, setShowAll] = useState(false);
+  if (!categories || categories.length === 0) {
+    return <div className="py-3 text-[13px] text-gray-400">暂无数据</div>;
+  }
+
+  const total = categories.reduce((s, c) => s + c.content_count, 0) || 1;
+  const sorted = [...categories].sort((a, b) => b.content_count - a.content_count);
+  const top = sorted.slice(0, TOP_N_CATEGORY);
+  const tail = sorted.slice(TOP_N_CATEGORY);
+  const visible = showAll ? sorted : top;
+  const tailCount = tail.length;
+  const tailTotal = tail.reduce((s, c) => s + c.content_count, 0);
+  const tailPct = ((tailTotal / total) * 100).toFixed(1);
+  const maxVal = sorted[0]?.content_count || 1;
+
+  return (
+    <div>
+      {/* 比例概览条（前5 + 其他） */}
+      <div className="mb-3 flex h-[16px] overflow-hidden rounded">
+        {top.slice(0, 5).map((c, i) => {
+          const pct = (c.content_count / total) * 100;
+          if (pct < 0.5) return null;
+          return (
+            <div
+              key={c.category}
+              className="transition-[width] duration-300"
+              style={{ width: `${pct}%`, background: scoreColor(c.avg_score) }}
+              title={`${c.category}: ${c.content_count} (${pct.toFixed(1)}%) · 均分${c.avg_score || '-'}`}
+            />
+          );
+        })}
+        {tail.length > 0 && (
+          <div
+            className="transition-[width] duration-300 bg-gray-200"
+            style={{ width: `${(tailTotal / total) * 100}%` }}
+            title={`其他 ${tailCount} 个分类: ${tailTotal} (${tailPct}%)`}
+          />
+        )}
+      </div>
+
+      {/* Top-N / 全量柱状图（柱长=数量，柱色=均分） */}
+      <div className="flex flex-col gap-2">
+        {visible.map((c) => (
+          <div key={c.category} className="flex items-center gap-2">
+            <div className="w-16 shrink-0 truncate text-right text-[12px] font-medium text-gray-700" title={c.category}>
+              {c.category}
+            </div>
+            <div className="min-w-0 flex-1">
+              <MiniBar value={c.content_count} max={maxVal} color={scoreColor(c.avg_score)} height={13} />
+            </div>
+            <div className="w-20 shrink-0 text-right font-mono text-[11px] text-gray-600">
+              {c.content_count}
+              {c.avg_score > 0 && (
+                <span className="ml-1" style={{ color: scoreColor(c.avg_score) }}>·{c.avg_score}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 长尾折叠 */}
+      {tailCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(v => !v)}
+          className="mt-3 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-[11px] font-medium text-gray-500 transition hover:border-primary-border hover:text-primary"
+        >
+          {showAll ? '收起' : `展开全部 ${categories.length} 个（尾部 ${tailCount} 类占 ${tailPct}%）`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function formatShortDate(dateKey: string) {
   const date = new Date(`${dateKey}T00:00:00`);
   return `${date.getMonth() + 1}/${date.getDate()}`;
@@ -619,17 +706,8 @@ export default function StatsPage() {
               </Surface>
 
               {/* C. 分类分布 */}
-              <Surface title="分类分布" icon={Layers3} hint={`${categories.length} 个分类`}>
-                <HorizontalBarChart
-                  items={categories.map(c => ({
-                    category: c.category,
-                    content_count: c.content_count,
-                    extra: c.avg_score > 0 ? `均分${c.avg_score}` : '',
-                  }))}
-                  valueKey="content_count"
-                  labelKey="category"
-                  extraKey="extra"
-                />
+              <Surface title="分类分布" icon={Layers3} hint={`${categories.length} 个分类 · 柱色=均分`}>
+                <CategoryDistribution categories={categories} />
               </Surface>
             </div>
           </>

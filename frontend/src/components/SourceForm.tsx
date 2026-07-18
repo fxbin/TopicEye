@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { cx } from '@/components/ui';
+import { FieldLabel } from '@/components/form';
 import { sourcesApi } from '@/lib/api';
 
 export interface FormState {
@@ -46,19 +47,13 @@ interface SourceFormProps {
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="mb-1.5 block text-[13px] font-bold text-gray-700">{children}</label>;
-}
-
 const inputClass = 'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light';
 
 export default function SourceForm({ form, setForm }: SourceFormProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <FieldLabel>
-          信源名称 <span className="text-red">*</span>
-        </FieldLabel>
+        <FieldLabel required>信源名称</FieldLabel>
         <input
           type="text"
           placeholder="例：量子位"

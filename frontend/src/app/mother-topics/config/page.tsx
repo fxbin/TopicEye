@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Settings } from 'lucide-react';
 import { motherTopicsApi, type MotherTopic } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar } from '@/components/ui';
+import { FieldLabel } from '@/components/form';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 
@@ -211,10 +212,6 @@ function TopicCard({
       )}
     </Panel>
   );
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="mb-1 block text-xs font-semibold text-gray-700">{children}</label>;
 }
 
 /* ── Main Page ── */

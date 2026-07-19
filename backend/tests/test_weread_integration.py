@@ -182,19 +182,19 @@ async def test_weread_fetch_http_error_uses_redacted_response_body(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        async def __aenter__(self):
+        def __enter__(self):
             return self
 
-        async def __aexit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type, exc, tb):
             return False
 
-        async def post(self, url, *, headers, json):
+        def post(self, url, *, headers, json):
             assert url == weread_materials.WEREAD_GATEWAY_URL
             assert headers["Authorization"] == f"Bearer {api_key}"
             assert json["api_name"] == "/user/notebooks"
             return FakeResponse()
 
-    monkeypatch.setattr(weread_materials.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(weread_materials.httpx, "Client", FakeClient)
 
     with pytest.raises(RuntimeError) as error:
         await weread_materials.fetch_weread_materials(api_key, limit=1)

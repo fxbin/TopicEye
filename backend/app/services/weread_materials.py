@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone, UTC
 import re
 from typing import Any, Dict, Optional, Union
@@ -141,6 +142,11 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[
 
     不再依赖外部中间层（WEREAD_SKILL_API_URL），后端直接调官方 gateway，
     用用户的 API Key 认证。调 /user/notebooks 接口获取有笔记的书籍列表。
+
+    Note: 使用同步 httpx.Client + asyncio.to_thread 而非 httpx.AsyncClient。
+    原因：httpx 0.27.2 + httpcore 1.0.9 + OpenSSL 3.5.x 在异步模式下 TLS
+    握手会失败（httpcore.ConnectError），同步模式正常。weread 同步是低频
+    I/O 操作，同步阻塞在线程池中可接受。
     """
     stripped_key = (api_key or "").strip()
     if not stripped_key:
@@ -150,48 +156,52 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[
         "Authorization": f"Bearer {stripped_key}",
         "Content-Type": "application/json",
     }
-    entries: list[dict[str, Any]] = []
-    last_sort: int | None = None
-    remaining = limit
 
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        while remaining > 0:
-            batch_size = min(50, remaining)
-            body: dict[str, Any] = {
-                "api_name": "/user/notebooks",
-                "count": batch_size,
-                "skill_version": WEREAD_SKILL_VERSION,
-            }
-            if last_sort is not None:
-                body["lastSort"] = last_sort
+    def _do_fetch() -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        last_sort: int | None = None
+        remaining = limit
 
-            try:
-                response = await client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                resp_body = redact_weread_sync_error(response.text, api_key).strip()
-                detail = f"微信读书接口返回 {response.status_code}"
-                if resp_body:
-                    detail = f"{detail}: {resp_body[:300]}"
-                raise RuntimeError(detail) from exc
-            except httpx.HTTPError as exc:
-                raise RuntimeError(f"无法连接微信读书服务: {exc}") from exc
+        with httpx.Client(timeout=30, follow_redirects=True) as client:
+            while remaining > 0:
+                batch_size = min(50, remaining)
+                body: dict[str, Any] = {
+                    "api_name": "/user/notebooks",
+                    "count": batch_size,
+                    "skill_version": WEREAD_SKILL_VERSION,
+                }
+                if last_sort is not None:
+                    body["lastSort"] = last_sort
 
-            payload = response.json()
-            page_entries = normalize_weread_entries(payload)
-            entries.extend(page_entries)
-            remaining -= len(page_entries)
+                try:
+                    response = client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    resp_body = redact_weread_sync_error(response.text, api_key).strip()
+                    detail = f"微信读书接口返回 {response.status_code}"
+                    if resp_body:
+                        detail = f"{detail}: {resp_body[:300]}"
+                    raise RuntimeError(detail) from exc
+                except httpx.HTTPError as exc:
+                    raise RuntimeError(f"无法连接微信读书服务: {exc}") from exc
 
-            # 游标分页：hasMore=1 且有 sort 值才继续翻页
-            has_more = payload.get("hasMore") if isinstance(payload, dict) else None
-            books = payload.get("books") if isinstance(payload, dict) else None
-            if has_more != 1 or not books:
-                break
-            last_sort = books[-1].get("sort")
-            if last_sort is None:
-                break
+                payload = response.json()
+                page_entries = normalize_weread_entries(payload)
+                entries.extend(page_entries)
+                remaining -= len(page_entries)
 
-    return entries
+                # 游标分页：hasMore=1 且有 sort 值才继续翻页
+                has_more = payload.get("hasMore") if isinstance(payload, dict) else None
+                books = payload.get("books") if isinstance(payload, dict) else None
+                if has_more != 1 or not books:
+                    break
+                last_sort = books[-1].get("sort")
+                if last_sort is None:
+                    break
+
+        return entries
+
+    return await asyncio.to_thread(_do_fetch)
 
 
 async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:

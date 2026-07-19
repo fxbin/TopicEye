@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Server, Settings } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Server, Settings, Webhook } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
-import type { EmailProviderConfig } from '@/lib/api/_analytics';
+import type { EmailProviderConfig, NotificationWebhookConfig } from '@/lib/api/_analytics';
 import { Badge, Button, Panel } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { LoadingState } from '@/components/StateView';
@@ -55,18 +55,33 @@ export default function AdminSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // 通知推送 webhook 状态
+  const [webhookConfig, setWebhookConfig] = useState<NotificationWebhookConfig | null>(null);
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookNote, setWebhookNote] = useState('');
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookNotice, setWebhookNotice] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+
   useEffect(() => {
-    settingsApi
-      .getEmailProvider()
-      .then((data) => {
-        setConfig(data);
-        setProvider(data.provider);
-        setFromEmail(data.from_email);
-        setFromName(data.from_name);
-        setSmtpHost(data.smtp_host);
-        setSmtpPort(data.smtp_port || 587);
-        setSmtpUsername(data.smtp_username);
-        setSmtpUseSsl(data.smtp_use_ssl);
+    Promise.all([
+      settingsApi.getEmailProvider(),
+      settingsApi.getNotificationWebhook(),
+    ])
+      .then(([emailData, webhookData]) => {
+        setConfig(emailData);
+        setProvider(emailData.provider);
+        setFromEmail(emailData.from_email);
+        setFromName(emailData.from_name);
+        setSmtpHost(emailData.smtp_host);
+        setSmtpPort(emailData.smtp_port || 587);
+        setSmtpUsername(emailData.smtp_username);
+        setSmtpUseSsl(emailData.smtp_use_ssl);
+
+        setWebhookConfig(webhookData);
+        setWebhookEnabled(webhookData.enabled);
+        setWebhookNote(webhookData.note);
       })
       .catch(() => setError('加载配置失败'))
       .finally(() => setLoading(false));
@@ -113,6 +128,29 @@ export default function AdminSettingsPage() {
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    setWebhookSaving(true);
+    setWebhookError(null);
+    setWebhookNotice(null);
+    try {
+      await settingsApi.updateNotificationWebhook({
+        enabled: webhookEnabled,
+        webhook_url: webhookUrl,
+        note: webhookNote,
+      });
+      setWebhookUrl('');
+      setWebhookNotice('保存成功');
+      const fresh = await settingsApi.getNotificationWebhook();
+      setWebhookConfig(fresh);
+      setWebhookEnabled(fresh.enabled);
+      setWebhookNote(fresh.note);
+    } catch (err) {
+      setWebhookError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setWebhookSaving(false);
     }
   };
 
@@ -323,6 +361,94 @@ export default function AdminSettingsPage() {
             {notes.map((note) => (
               <li key={note}>{note}</li>
             ))}
+          </ul>
+        </Panel>
+
+        {/* ── 通知推送 webhook ── */}
+        <Panel className="p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Webhook size={16} className="text-gray-500" />
+              <h2 className="text-base font-black text-gray-900">通知推送</h2>
+            </div>
+            {webhookConfig?.webhook_url_configured ? (
+              <Badge tone={webhookConfig.enabled ? 'teal' : 'neutral'}>
+                <CheckCircle2 size={12} className="mr-1" />
+                {webhookConfig.enabled ? '已启用' : '已配置·未启用'}
+              </Badge>
+            ) : (
+              <Badge tone="amber">未配置</Badge>
+            )}
+          </div>
+
+          <p className="mb-4 text-xs text-gray-500">
+            将信源抓取失败等运营通知推送到飞书 / 钉钉 / Slack 群机器人。webhook URL 含 token，加密存储。
+          </p>
+
+          {/* 启用开关 */}
+          <label className="flex cursor-pointer items-center gap-2 pb-4 text-sm font-black text-gray-700">
+            <input
+              type="checkbox"
+              checked={webhookEnabled}
+              onChange={(e) => setWebhookEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            启用推送
+          </label>
+
+          {/* Webhook URL */}
+          <label className="mt-2 block">
+            <span className="mb-1.5 block text-xs font-black text-gray-500">Webhook URL</span>
+            <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
+              <Webhook size={15} className="shrink-0 text-gray-400" />
+              <input
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                type="password"
+                placeholder={
+                  webhookConfig?.webhook_url_configured
+                    ? `已配置（${webhookConfig.webhook_url_preview}****）留空不修改`
+                    : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
+                }
+                className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
+              />
+            </div>
+          </label>
+
+          {/* 备注 */}
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-xs font-black text-gray-500">备注（可选）</span>
+            <input
+              value={webhookNote}
+              onChange={(e) => setWebhookNote(e.target.value)}
+              placeholder="如：运营告警群"
+              className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
+            />
+          </label>
+
+          {webhookError && (
+            <AdminNoticeBanner tone="red" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>
+          )}
+          {webhookNotice && (
+            <AdminNoticeBanner tone="teal" onClose={() => setWebhookNotice(null)}>{webhookNotice}</AdminNoticeBanner>
+          )}
+
+          <div className="mt-5 flex justify-end">
+            <Button variant="primary" onClick={handleSaveWebhook} disabled={webhookSaving}>
+              {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+              {webhookSaving ? '保存中...' : '保存配置'}
+            </Button>
+          </div>
+        </Panel>
+
+        <Panel className="p-5">
+          <h3 className="mb-2 text-sm font-black text-gray-700">通知推送说明</h3>
+          <ul className="space-y-1.5 text-xs text-gray-500">
+            <li>支持飞书 / 钉钉 / Slack 群机器人 incoming webhook</li>
+            <li>webhook URL 含 token，以加密方式存储，不会明文保存</li>
+            <li>当前推送场景：信源连续抓取失败告警（1 小时内同事件去重）</li>
+            <li>环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，与配置独立）</li>
+            <li>高级推送（卡片消息、日报、精选内容）规划中</li>
           </ul>
         </Panel>
     </AdminPageShell>

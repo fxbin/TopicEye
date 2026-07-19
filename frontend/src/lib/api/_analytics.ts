@@ -38,6 +38,21 @@ export interface EmailProviderConfigUpdate {
   smtp_use_ssl: boolean;
 }
 
+/** 通知推送 webhook 配置响应（webhook_url 脱敏） */
+export interface NotificationWebhookConfig {
+  enabled: boolean;
+  webhook_url_configured: boolean;
+  webhook_url_preview: string;
+  note: string;
+}
+
+/** 通知推送 webhook 配置更新请求。webhook_url 为空时保留原值 */
+export interface NotificationWebhookConfigUpdate {
+  enabled: boolean;
+  webhook_url: string;
+  note: string;
+}
+
 // ─── Settings API ───
 
 export const settingsApi = {
@@ -75,6 +90,19 @@ export const settingsApi = {
   /** 更新邮件 Provider 配置。api_key 为空时保留原值 */
   updateEmailProvider(data: EmailProviderConfigUpdate): Promise<{ updated: boolean }> {
     return request('/settings/email-provider', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 获取通知推送 webhook 配置（webhook_url 脱敏） */
+  getNotificationWebhook(): Promise<NotificationWebhookConfig> {
+    return request('/settings/notification-webhook');
+  },
+
+  /** 更新通知推送 webhook 配置。webhook_url 为空时保留原值 */
+  updateNotificationWebhook(data: NotificationWebhookConfigUpdate): Promise<{ updated: boolean }> {
+    return request('/settings/notification-webhook', {
       method: 'PUT',
       body: JSON.stringify(data),
     });

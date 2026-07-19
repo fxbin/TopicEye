@@ -343,3 +343,137 @@ async def update_email_provider_config(
 
     await db.commit()
     return {"updated": True}
+
+
+# ── Notification webhook (通知推送 / 飞书·钉钉·Slack) ────────────────────
+#
+# 用于运营通知推送（信源失败告警等）。webhook URL 含 token，按半敏感字段处理：
+# 加密存储（secret_store），GET 返回脱敏预览 + configured 标志，PUT 时空值保留原值。
+# 高级推送能力（卡片消息、日报、精选内容）为后续阶段，当前仅做配置入口。
+
+
+class NotificationWebhookConfigResponse(BaseModel):
+    """通知推送 webhook 配置响应。webhook_url 脱敏返回。"""
+
+    enabled: bool = False
+    webhook_url_configured: bool = False
+    webhook_url_preview: str = ""
+    note: str = ""
+
+
+class NotificationWebhookConfigUpdateRequest(BaseModel):
+    """通知推送 webhook 配置更新请求。
+
+    webhook_url 为空字符串时保留原值（不修改），非空时覆盖。
+    传空字符串且原值存在时不会清空——如需清空请传显式空 URL 后禁用 enabled。
+    """
+
+    enabled: bool = False
+    webhook_url: str = ""
+    note: str = ""
+
+
+def _validate_webhook_url(value: str) -> str:
+    """校验 webhook URL：必须 http/https 且有 netloc。"""
+    url = value.strip()
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    if scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError(f"Invalid webhook URL: {value}")
+    return url
+
+
+@router.get("/notification-webhook", response_model=NotificationWebhookConfigResponse)
+async def get_notification_webhook_config(db: AsyncSession = Depends(get_db)):
+    """获取当前通知推送 webhook 配置。webhook_url 不返回明文，仅返回脱敏预览。"""
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == "notification_webhook_config")
+    )
+    row = result.scalar_one_or_none()
+
+    if not row or not row.value:
+        return NotificationWebhookConfigResponse()
+
+    try:
+        config = json.loads(row.value)
+    except json.JSONDecodeError:
+        logger.warning("notification_webhook_config JSON 损坏，返回默认配置")
+        return NotificationWebhookConfigResponse()
+
+    from app.services.secret_store import decrypt_secret
+
+    webhook_plain = decrypt_secret(config.get("webhook_url", "")) or ""
+
+    def _mask(plain: str) -> str:
+        if not plain:
+            return ""
+        # 保留 scheme + host 前缀，路径/token 用 **** 遮蔽
+        parts = urlsplit(plain)
+        host = parts.netloc or ""
+        preview_host = host[: _SECRET_MASK_PREFIX] if host else ""
+        return f"{parts.scheme}://{preview_host}****"
+
+    return NotificationWebhookConfigResponse(
+        enabled=bool(config.get("enabled", False)),
+        webhook_url_configured=bool(webhook_plain),
+        webhook_url_preview=_mask(webhook_plain),
+        note=config.get("note", ""),
+    )
+
+
+@router.put("/notification-webhook")
+async def update_notification_webhook_config(
+    payload: NotificationWebhookConfigUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """更新通知推送 webhook 配置。
+
+    webhook_url 为空时保留原值，非空时校验并加密覆盖。
+    """
+    from app.services.secret_store import encrypt_secret
+
+    # 读取现有配置（用于 webhook_url 保留逻辑）
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == "notification_webhook_config")
+    )
+    existing = result.scalar_one_or_none()
+    existing_config: dict = {}
+    if existing and existing.value:
+        try:
+            existing_config = json.loads(existing.value)
+        except json.JSONDecodeError:
+            existing_config = {}
+
+    # webhook_url 处理：空值保留原值，非空值校验+加密覆盖
+    new_url_raw = payload.webhook_url.strip()
+    if new_url_raw:
+        try:
+            validated_url = _validate_webhook_url(new_url_raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        webhook_url_stored = encrypt_secret(validated_url) or ""
+    else:
+        webhook_url_stored = existing_config.get("webhook_url", "")
+
+    new_config = {
+        "enabled": bool(payload.enabled),
+        "webhook_url": webhook_url_stored,
+        "note": payload.note.strip(),
+    }
+    raw_value = json.dumps(new_config, ensure_ascii=False)
+
+    if existing:
+        existing.value = raw_value
+        existing.updated_at = datetime.now(UTC)
+    else:
+        db.add(
+            AppSetting(
+                key="notification_webhook_config",
+                value=raw_value,
+                description="通知推送 webhook 配置（webhook_url 加密存储）",
+                updated_at=datetime.now(UTC),
+            )
+        )
+
+    await db.commit()
+    return {"updated": True}

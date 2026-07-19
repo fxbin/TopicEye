@@ -42,9 +42,9 @@ describe('canAccessNavItem', () => {
   });
 
   it('admin 项仅管理员可见', () => {
-    const sources = itemById('sources');
-    expect(canAccessNavItem(sources, normalUser)).toBe(false);
-    expect(canAccessNavItem(sources, adminUser)).toBe(true);
+    const adminConsole = itemById('admin-console');
+    expect(canAccessNavItem(adminConsole, normalUser)).toBe(false);
+    expect(canAccessNavItem(adminConsole, adminUser)).toBe(true);
   });
 
   it('feature 未开启时即便是管理员也不可见', () => {
@@ -76,8 +76,8 @@ describe('canAccessPath', () => {
   });
 
   it('admin 路径仅管理员可进', () => {
-    expect(canAccessPath('/admin/sources', normalUser)).toBe(false);
-    expect(canAccessPath('/admin/sources', adminUser)).toBe(true);
+    expect(canAccessPath('/admin', normalUser)).toBe(false);
+    expect(canAccessPath('/admin', adminUser)).toBe(true);
   });
 
   it('feature 未开启的路径被守卫拦截', () => {
@@ -85,7 +85,7 @@ describe('canAccessPath', () => {
     expect(canAccessPath('/novel', normalUser, { webnovel_module: true })).toBe(true);
   });
 
-  it('子路径按前缀匹配（/sources/xxx 视为 /sources）', () => {
+  it('子路径按前缀匹配（/admin/sources/xxx 视为 /admin/sources）', () => {
     expect(canAccessPath('/admin/sources/123', adminUser)).toBe(true);
     expect(canAccessPath('/admin/sources/123', normalUser)).toBe(false);
   });

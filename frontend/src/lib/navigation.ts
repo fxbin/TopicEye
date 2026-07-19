@@ -17,6 +17,7 @@ import {
   RadioTower,
   Search,
   Settings,
+  ShieldCheck,
   Star,
   TrendingUp,
   Users,
@@ -95,18 +96,23 @@ export const NAV_SPACES: NavSpace[] = [
     id: 'manage',
     label: '管理',
     items: [
-      { id: 'sources', label: '信源管理', href: '/admin/sources', icon: RadioTower, access: 'admin', countKey: 'sources' },
-      { id: 'users', label: '用户管理', href: '/admin/users', icon: Users, access: 'admin' },
-      { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit, access: 'admin' },
-      { id: 'system-settings', label: '系统设置', href: '/admin/settings', icon: Settings, access: 'admin' },
-      { id: 'changelog-mgmt', label: '发版记录', href: '/admin/updates', icon: Rocket, access: 'admin' },
-      { id: 'feedback-mgmt', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning, access: 'admin' },
+      { id: 'admin-console', label: '管理后台', href: '/admin', icon: ShieldCheck, access: 'admin' },
     ],
   },
 ];
 
 const EXTRA_USER_ONLY_PATHS = ['/profile'];
-const EXTRA_ADMIN_ONLY_PATHS = ['/admin/contents', '/admin/mother-topics', '/admin/updates'];
+// admin 子路径虽被 /admin 前缀匹配覆盖，但显式列出保持安全冗余
+const EXTRA_ADMIN_ONLY_PATHS = [
+  '/admin/contents',
+  '/admin/mother-topics',
+  '/admin/updates',
+  '/admin/sources',
+  '/admin/model-eval',
+  '/admin/feedback',
+  '/admin/settings',
+  '/admin/users',
+];
 
 // 显式声明的公开路径（未登录可访问）。OAuth 回调页必须在此列，
 // 否则未登录态进来会被路由守卫踢去 /login，丢失 URL fragment 里的 token。

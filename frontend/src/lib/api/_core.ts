@@ -25,6 +25,9 @@ function formatDetailItem(item: unknown): string | undefined {
   if (typeof item !== 'object') return String(item);
 
   const record = item as Record<string, unknown>;
+  // 空对象不序列化为 "{}"，交给上层 fallback 到其他字段
+  if (Object.keys(record).length === 0) return undefined;
+
   const message = record.msg || record.message || record.detail;
   const loc = Array.isArray(record.loc) ? record.loc.join('.') : undefined;
 
@@ -118,7 +121,7 @@ export async function request<T>(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    let error: { detail?: unknown; message?: string } = { message: response.statusText };
+    let error: { detail?: unknown; message?: string; error?: string } = { message: response.statusText };
     if (errorText) {
       try {
         error = JSON.parse(errorText);
@@ -127,8 +130,10 @@ export async function request<T>(
       }
     }
     const detail = formatApiErrorDetail(error.detail);
+    // 后端可能用 message 或 error 字段返回错误描述
     const message = typeof error.message === 'string' ? error.message : undefined;
-    const apiErr = new Error(detail || message || `API Error: ${response.status}`) as Error & {
+    const errorField = typeof error.error === 'string' ? error.error : undefined;
+    const apiErr = new Error(detail || message || errorField || `API Error: ${response.status}`) as Error & {
       status?: number;
       isAuthError?: boolean;
     };

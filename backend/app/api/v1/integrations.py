@@ -59,7 +59,7 @@ async def delete_weread_integration(
 
 @router.post("/weread/sync", response_model=WeReadSyncResponse)
 async def sync_weread(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(0, ge=0, le=1000, description="最大拉取条数，0=全量同步"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

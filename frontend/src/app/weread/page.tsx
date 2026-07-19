@@ -30,7 +30,7 @@ export default function WeReadPage() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const result = await integrationsApi.syncWeRead(50);
+      const result = await integrationsApi.syncWeRead();
       setSyncMsg(`同步完成：新 ${result.new} 条，重复 ${result.duplicates} 条，共获取 ${result.fetched} 条`);
       refetch();
     } catch (err) {

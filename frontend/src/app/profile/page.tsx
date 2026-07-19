@@ -278,7 +278,7 @@ export default function ProfilePage() {
     setNotice(null);
     setSyncResult(null);
     try {
-      const result = await integrationsApi.syncWeRead(50);
+      const result = await integrationsApi.syncWeRead();
       setSyncResult(result);
       setNotice(result.message);
       refreshCounts();

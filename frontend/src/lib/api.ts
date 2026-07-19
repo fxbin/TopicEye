@@ -284,7 +284,7 @@ export const integrationsApi = {
     return request('/integrations/weread', { method: 'DELETE' });
   },
 
-  syncWeRead(limit = 50): Promise<WeReadSyncResult> {
+  syncWeRead(limit = 0): Promise<WeReadSyncResult> {
     return request(`/integrations/weread/sync?limit=${limit}`, { method: 'POST' });
   },
 };

@@ -205,6 +205,107 @@ async def test_weread_fetch_http_error_uses_redacted_response_body(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_weread_fetch_full_sync_paginates_until_no_more(monkeypatch):
+    """limit=0（全量同步）时持续翻页直到 hasMore != 1。"""
+    call_count = {"n": 0}
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+            self.status_code = 200
+            self.text = ""
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, *, headers, json):
+            assert url == weread_materials.WEREAD_GATEWAY_URL
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return FakeResponse({
+                    "books": [
+                        {"title": f"书{i}", "sort": i, "bookId": f"b{i}"}
+                        for i in range(1, 4)
+                    ],
+                    "hasMore": 1,
+                })
+            return FakeResponse({
+                "books": [
+                    {"title": f"书{i}", "sort": i, "bookId": f"b{i}"}
+                    for i in range(4, 6)
+                ],
+                "hasMore": 0,
+            })
+
+    monkeypatch.setattr(weread_materials.httpx, "Client", FakeClient)
+
+    entries = await weread_materials.fetch_weread_materials("wr_test_key_123456", limit=0)
+
+    assert call_count["n"] == 2
+    assert len(entries) == 5
+    assert [e["title"] for e in entries] == ["书1", "书2", "书3", "书4", "书5"]
+
+
+@pytest.mark.asyncio
+async def test_weread_fetch_limit_caps_total_entries(monkeypatch):
+    """limit > 0 时截断到指定条数。"""
+    call_count = {"n": 0}
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+            self.status_code = 200
+            self.text = ""
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, *, headers, json):
+            call_count["n"] += 1
+            n = call_count["n"]
+            return FakeResponse({
+                "books": [
+                    {"title": f"页{n}-{i}", "sort": n * 10 + i, "bookId": f"b{n}-{i}"}
+                    for i in range(3)
+                ],
+                "hasMore": 1,
+            })
+
+    monkeypatch.setattr(weread_materials.httpx, "Client", FakeClient)
+
+    entries = await weread_materials.fetch_weread_materials("wr_test_key_123456", limit=5)
+
+    assert len(entries) == 5
+    assert call_count["n"] == 2
+
+
+@pytest.mark.asyncio
 async def test_weread_integration_delete_clears_configuration(monkeypatch):
     monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", "http://127.0.0.1:9999/weread")
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -278,7 +379,7 @@ async def test_weread_integration_is_scoped_to_current_user(monkeypatch):
 @pytest.mark.asyncio
 async def test_weread_sync_gateway_error_persists_and_key_change_resets(monkeypatch):
     """同步失败时错误状态持久化；换 Key 后状态重置。"""
-    async def failed_sync(db, integration, *, user_id, api_key, limit=50):
+    async def failed_sync(db, integration, *, user_id, api_key, limit=0):
         raise RuntimeError("无法连接微信读书服务: connection refused")
 
     monkeypatch.setattr("app.api.v1.integrations.sync_weread_materials", failed_sync)
@@ -324,7 +425,7 @@ async def test_weread_sync_gateway_error_persists_and_key_change_resets(monkeypa
 
 @pytest.mark.asyncio
 async def test_weread_sync_rejects_active_user_lease(monkeypatch):
-    async def fail_fetch(api_key: str, *, limit: int = 50):
+    async def fail_fetch(api_key: str, *, limit: int = 0):
         raise AssertionError("active weread sync lease should skip remote fetch")
 
     monkeypatch.setattr(weread_materials, "fetch_weread_materials", fail_fetch)
@@ -372,7 +473,7 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
     monkeypatch.setattr(settings, "WEREAD_SKILL_API_URL", None)
 
     # mock gateway 直连失败（不再依赖 endpoint 配置）
-    async def failing_fetch(api_key, *, limit=50):
+    async def failing_fetch(api_key, *, limit=0):
         raise RuntimeError("无法连接微信读书服务: connection refused")
 
     monkeypatch.setattr("app.services.weread_materials.fetch_weread_materials", failing_fetch)
@@ -427,7 +528,7 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
 
 @pytest.mark.asyncio
 async def test_weread_sync_failure_persists_redacted_error(monkeypatch):
-    async def failed_fetch(api_key: str, *, limit: int = 50):
+    async def failed_fetch(api_key: str, *, limit: int = 0):
         assert api_key == "wr_secret_leaky_123456"
         raise RuntimeError("Skill rejected Authorization: Bearer wr_secret_leaky_123456 token=wr_secret_leaky_123456")
 
@@ -473,7 +574,7 @@ async def test_weread_sync_failure_persists_redacted_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_weread_sync_unknown_error_is_redacted_at_api_boundary(monkeypatch):
-    async def failed_sync(db, integration, *, user_id: int, api_key: str, limit: int = 50):
+    async def failed_sync(db, integration, *, user_id: int, api_key: str, limit: int = 0):
         assert api_key == "wr_secret_boundary_123456"
         raise ValueError("raw failure Authorization: Bearer wr_secret_boundary_123456 token=wr_secret_boundary_123456")
 
@@ -509,7 +610,7 @@ async def test_weread_sync_unknown_error_is_redacted_at_api_boundary(monkeypatch
 
 @pytest.mark.asyncio
 async def test_weread_sync_imports_materials_and_deduplicates(monkeypatch):
-    async def fake_fetch(api_key: str, *, limit: int = 50):
+    async def fake_fetch(api_key: str, *, limit: int = 0):
         assert api_key == "wr_secret_sync_123456"
         assert limit == 2
         return [
@@ -533,7 +634,7 @@ async def test_weread_sync_imports_materials_and_deduplicates(monkeypatch):
     monkeypatch.setattr(weread_materials, "fetch_weread_materials", fake_fetch)
     post_sync_requests = []
     monkeypatch.setattr(
-        "app.scheduler._request_post_sync_pipeline",
+        "app._post_sync_pipeline._request_post_sync_pipeline",
         lambda stats: post_sync_requests.append(stats) or True,
     )
     invalidate_source_list_cache()

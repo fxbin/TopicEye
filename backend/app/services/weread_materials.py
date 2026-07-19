@@ -135,13 +135,20 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
 
 WEREAD_GATEWAY_URL = "https://i.weread.qq.com/api/agent/gateway"
 WEREAD_SKILL_VERSION = "1.0.4"
+WEREAD_FETCH_BATCH_SIZE = 50
+WEREAD_FETCH_MAX_PAGES = 100  # 安全上限：100 页 × 50 条/页 = 5000 条
 
 
-async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[str, Any]]:
+async def fetch_weread_materials(api_key: str, *, limit: int = 0) -> list[dict[str, Any]]:
     """直连微信读书 Agent Gateway 拉取用户的笔记/划线素材。
 
     不再依赖外部中间层（WEREAD_SKILL_API_URL），后端直接调官方 gateway，
     用用户的 API Key 认证。调 /user/notebooks 接口获取有笔记的书籍列表。
+
+    Args:
+        api_key: 微信读书 API Key。
+        limit: 最大拉取条数。``0`` 表示全量同步——持续翻页直到
+            ``hasMore != 1`` 为止。安全上限 5000 条（100 页 × 50 条/页）。
 
     Note: 使用同步 httpx.Client + asyncio.to_thread 而非 httpx.AsyncClient。
     原因：httpx 0.27.2 + httpcore 1.0.9 + OpenSSL 3.5.x 在异步模式下 TLS
@@ -160,11 +167,14 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[
     def _do_fetch() -> list[dict[str, Any]]:
         entries: list[dict[str, Any]] = []
         last_sort: int | None = None
-        remaining = limit
 
         with httpx.Client(timeout=30, follow_redirects=True) as client:
-            while remaining > 0:
-                batch_size = min(50, remaining)
+            for _page in range(WEREAD_FETCH_MAX_PAGES):
+                batch_size = (
+                    WEREAD_FETCH_BATCH_SIZE
+                    if limit <= 0 or limit >= WEREAD_FETCH_BATCH_SIZE
+                    else limit
+                )
                 body: dict[str, Any] = {
                     "api_name": "/user/notebooks",
                     "count": batch_size,
@@ -188,7 +198,10 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 50) -> list[dict[
                 payload = response.json()
                 page_entries = normalize_weread_entries(payload)
                 entries.extend(page_entries)
-                remaining -= len(page_entries)
+
+                # limit > 0 时截断到指定条数
+                if limit > 0 and len(entries) >= limit:
+                    return entries[:limit]
 
                 # 游标分页：hasMore=1 且有 sort 值才继续翻页
                 has_more = payload.get("hasMore") if isinstance(payload, dict) else None
@@ -240,7 +253,7 @@ async def sync_weread_materials(
     *,
     user_id: int,
     api_key: str | None = None,
-    limit: int = 50,
+    limit: int = 0,
 ) -> dict[str, int | str]:
     if integration.provider != WEREAD_PROVIDER:
         raise ValueError("微信读书 API Key 未配置")

@@ -305,7 +305,7 @@ export default function HomePage() {
           {/* Source type */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-gray-500">来源</span>
-            {['全部', 'RSS', 'RSSHub', '公众号', '网站', 'Reddit', 'Zhihu'].map((type) => (
+            {['全部', 'RSS', 'RSSHub', '网站', 'Reddit', 'Zhihu'].map((type) => (
               <button
                 key={type}
                 type="button"

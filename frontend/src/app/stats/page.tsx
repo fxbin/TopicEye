@@ -36,8 +36,6 @@ const SOURCE_TYPE_COLOR: Record<string, string> = {
   api: '#FF6B35',
   reddit: '#D97706',
   zhihu: '#2563EB',
-  公众号: '#E11D48',
-  小红书: '#EC4899',
   unknown: '#9CA3AF',
 };
 

@@ -333,7 +333,6 @@ const TYPE_COLORS: Record<string, string> = {
   RSS: 'border-purple-border bg-purple-light text-purple',
   RSSHub: 'border-teal-border bg-teal-light text-teal',
   API: 'border-primary-border bg-primary-light text-primary',
-  公众号: 'border-red-border bg-red-light text-red',
   网站: 'border-amber-border bg-amber-light text-amber',
 };
 

@@ -36,7 +36,7 @@ export const emptyForm: FormState = {
 export const CATEGORIES = ['AI', '商业', '科技', '教育', '自媒体', '生活', '职场', '产品'];
 // 对齐后端 SourceType 枚举 + 已注册的 scraper（见 backend/app/services/scrapers/__init__.py）
 export const SOURCE_TYPES = [
-  'RSS', 'RSSHub', 'Reddit', 'API', '网站', '自定义',
+  'RSS', 'RSSHub', 'Reddit', 'API', '网站',
   'YouTube', 'Podcast', 'Newsletter', 'X', 'TwitterRSS', 'Zhihu',
 ];
 export const SOURCE_INTERVAL_OPTIONS = [

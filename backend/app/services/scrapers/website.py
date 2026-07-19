@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 @register_scraper("网站")
-@register_scraper("自定义")
 class WebsiteScraper(BaseScraper):
     """Fetch a single web page and extract content."""
 

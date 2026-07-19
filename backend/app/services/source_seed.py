@@ -32,7 +32,6 @@ def _source_type(value: Any) -> SourceType:
         "REDDIT": SourceType.REDDIT,
         "TWITTER_RSS": SourceType.TWITTER_RSS,
         "RSSHUB": SourceType.RSSHub,
-        "WECHAT": SourceType.WECHAT,
         "WEBSITE": SourceType.WEBSITE,
         "ZHIHU": SourceType.ZHIHU,
         "DOUYIN_HOT": SourceType.DOUYIN_HOT,

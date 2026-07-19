@@ -33,8 +33,6 @@ export function sourceTypeLabel(type: string): string {
     Zhihu: '知乎',
     DouyinHot: '抖音热榜',
     网站: '网站',
-    公众号: '公众号',
-    自定义: '自定义',
   };
   return map[type] || type;
 }

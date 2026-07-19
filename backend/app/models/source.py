@@ -13,18 +13,14 @@ class SourceType(enum.StrEnum):
     RSSHub = "RSSHub"
     REDDIT = "Reddit"
     WEBSITE = "网站"
-    WECHAT = "公众号"
-    XIAOHONGSHU = "小红书"
     X = "X"
     TWITTER_RSS = "TwitterRSS"
     YOUTUBE = "YouTube"
     PODCAST = "Podcast"
     NEWSLETTER = "Newsletter"
     ZHIHU = "Zhihu"
-    BILIBILI = "B站"
     DOUYIN_HOT = "DouyinHot"
     API = "API"
-    CUSTOM = "自定义"
 
 
 class SourceStatus(enum.StrEnum):

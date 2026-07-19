@@ -579,6 +579,39 @@ async def generate_daily_report(
             )
         except Exception:
             logger.warning("daily_report success notification failed", exc_info=True)
+
+        # webhook 卡片推送（失败不阻塞日报生成）
+        try:
+            from app.services.alerting import send_alert
+
+            # 构造卡片内容：overview 摘要 + top 3 picks
+            overview_text = (report.overview or "")[:200]
+            top3_lines: list[str] = []
+            for i, pick in enumerate(picks[:3], start=1):
+                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+                tier = pick.get("tier", "")
+                tier_tag = f" `[{tier}]`" if tier else ""
+                top3_lines.append(f"**{i}. {title}**{tier_tag}")
+
+            card_content_parts = [overview_text]
+            if top3_lines:
+                card_content_parts.append("\n---\n**今日精选 Top 3：**\n" + "\n".join(top3_lines))
+            if report.topic_count > 3:
+                card_content_parts.append(f"\n…共 {report.topic_count} 个选题")
+
+            card_content = "\n".join(card_content_parts)
+            card_link = f"/daily?date={report_date}"
+
+            await send_alert(
+                title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
+                message=f"日报生成完成，共 {report.topic_count} 个选题",
+                alert_key=f"daily_report:{report_date}:{normalized_edition}",
+                severity="info",
+                event_type="daily_report",
+                card={"content": card_content, "link": card_link},
+            )
+        except Exception:
+            logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)
     except Exception as exc:
         report.status = "ERROR"
         report.overview = f"生成失败: {str(exc)[:200]}"

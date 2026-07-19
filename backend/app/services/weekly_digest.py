@@ -211,6 +211,38 @@ async def generate_weekly_digest(
         logger.info("Weekly digest generated: %s (%s)", week_key, week_label)
         # 通知：周刊生成成功
         await push_digest_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
+
+        # webhook 卡片推送（失败不阻塞周报生成）
+        try:
+            from app.services.alerting import send_alert
+
+            # 构造卡片内容：overview 摘要 + top 3 picks
+            overview_text = (digest.overview or "")[:200]
+            top_picks_raw = json.loads(digest.top_picks or "[]")
+            top3_lines: list[str] = []
+            for i, pick in enumerate(top_picks_raw[:3], start=1):
+                title = pick.get("title") or f"选题 {i}"
+                category = pick.get("category", "")
+                cat_tag = f" `[{category}]`" if category else ""
+                top3_lines.append(f"**{i}. {title}**{cat_tag}")
+
+            card_content_parts = [overview_text]
+            if top3_lines:
+                card_content_parts.append("\n---\n**本周精选 Top 3：**\n" + "\n".join(top3_lines))
+
+            card_content = "\n".join(card_content_parts)
+            card_link = "/weekly"
+
+            await send_alert(
+                title=f"📚 AI 周刊 · {week_label}",
+                message=f"周报生成完成：{week_label}",
+                alert_key=f"weekly_digest:{week_key}",
+                severity="info",
+                event_type="weekly_digest",
+                card={"content": card_content, "link": card_link},
+            )
+        except Exception:
+            logger.warning("weekly_digest webhook push failed (non-fatal)", exc_info=True)
     except Exception as e:
         await commit_digest_error(digest, e, "周刊", week_key, db)
 

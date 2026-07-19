@@ -61,6 +61,8 @@ export default function AdminSettingsPage() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookNote, setWebhookNote] = useState('');
   const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<string | null>(null);
   const [webhookNotice, setWebhookNotice] = useState<string | null>(null);
   const [webhookError, setWebhookError] = useState<string | null>(null);
 
@@ -151,6 +153,28 @@ export default function AdminSettingsPage() {
       setWebhookError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setWebhookSaving(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    setWebhookTesting(true);
+    setWebhookError(null);
+    setWebhookTestResult(null);
+    try {
+      const result = await settingsApi.testNotificationWebhook();
+      if (result.error) {
+        setWebhookTestResult(`❌ ${result.error}`);
+      } else if (result.sent > 0) {
+        const detailLines = result.details.map((d) => `  • ${d.url_preview}: ${d.ok ? '✅' : '❌'} ${d.status}`).join('\n');
+        setWebhookTestResult(`✅ 发送成功 ${result.sent} 条${result.failed > 0 ? `，失败 ${result.failed} 条` : ''}\n${detailLines}`);
+      } else {
+        const detailLines = result.details.map((d) => `  • ${d.url_preview}: ❌ ${d.status}`).join('\n');
+        setWebhookTestResult(`❌ 全部失败（${result.failed} 条）\n${detailLines}`);
+      }
+    } catch (err) {
+      setWebhookError(err instanceof Error ? err.message : '测试发送失败');
+    } finally {
+      setWebhookTesting(false);
     }
   };
 
@@ -432,8 +456,21 @@ export default function AdminSettingsPage() {
           {webhookNotice && (
             <AdminNoticeBanner tone="teal" onClose={() => setWebhookNotice(null)}>{webhookNotice}</AdminNoticeBanner>
           )}
+          {webhookTestResult && (
+            <AdminNoticeBanner tone="teal" onClose={() => setWebhookTestResult(null)}>
+              <pre className="whitespace-pre-wrap font-sans text-xs">{webhookTestResult}</pre>
+            </AdminNoticeBanner>
+          )}
 
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              onClick={handleTestWebhook}
+              disabled={webhookTesting || !webhookConfig?.webhook_url_configured}
+            >
+              {webhookTesting ? <Loader2 size={14} className="animate-spin" /> : null}
+              {webhookTesting ? '发送中...' : '发送测试'}
+            </Button>
             <Button variant="primary" onClick={handleSaveWebhook} disabled={webhookSaving}>
               {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
               {webhookSaving ? '保存中...' : '保存配置'}

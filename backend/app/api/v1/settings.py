@@ -477,3 +477,16 @@ async def update_notification_webhook_config(
 
     await db.commit()
     return {"updated": True}
+
+
+@router.post("/notification-webhook/test")
+async def test_notification_webhook():
+    """发送测试消息到当前配置的所有 webhook，用于验证配置可达性。
+
+    不需要请求体——直接读当前 DB 配置 + env，发一条测试消息。
+    返回每个 webhook 的发送结果（成功/失败 + 状态码）。
+    """
+    from app.services.alerting import send_test_message
+
+    result = await send_test_message()
+    return result

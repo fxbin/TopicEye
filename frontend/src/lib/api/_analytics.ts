@@ -108,6 +108,16 @@ export const settingsApi = {
     });
   },
 
+  /** 发送测试消息到当前配置的 webhook，验证可达性 */
+  testNotificationWebhook(): Promise<{
+    sent: number;
+    failed: number;
+    details: Array<{ url_preview: string; ok: boolean; status: string }>;
+    error?: string;
+  }> {
+    return request('/settings/notification-webhook/test', { method: 'POST' });
+  },
+
 };
 
 // ─── Stats / Dashboard API ───

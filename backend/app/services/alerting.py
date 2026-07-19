@@ -149,6 +149,44 @@ async def send_alert(
     return any_sent
 
 
+async def send_test_message() -> dict:
+    """发送测试消息到所有已配置的 webhook，用于配置验证。
+
+    Returns:
+        {"sent": int, "failed": int, "details": [{"url_preview": str, "ok": bool, "status": str}]}
+    """
+    webhook_urls = await _resolve_webhook_urls()
+    if not webhook_urls:
+        return {"sent": 0, "failed": 0, "details": [], "error": "未配置 webhook"}
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    text = f"✅ [TEST] TopicEye 通知推送测试\n这是一条测试消息，确认 webhook 配置生效。\n\n_{ts}_"
+
+    details: list[dict] = []
+    sent = 0
+    failed = 0
+    async with httpx.AsyncClient(timeout=10) as client:
+        for webhook_url in webhook_urls:
+            # URL 预览：scheme + host 前缀，token 遮蔽
+            parts = webhook_url.split("/")
+            preview = "/".join(parts[:3]) + "/****" if len(parts) > 3 else "****"
+            payload = _build_payload(webhook_url, text)
+            try:
+                resp = await client.post(webhook_url, json=payload)
+                ok = resp.status_code < 300
+                if ok:
+                    sent += 1
+                    status = f"HTTP {resp.status_code}"
+                else:
+                    failed += 1
+                    status = f"HTTP {resp.status_code}: {resp.text[:120]}"
+                details.append({"url_preview": preview, "ok": ok, "status": status})
+            except Exception as exc:
+                failed += 1
+                details.append({"url_preview": preview, "ok": False, "status": f"异常: {exc}"})
+    return {"sent": sent, "failed": failed, "details": details}
+
+
 async def alert_source_failures(failed_sources: list[dict]) -> None:
     """source 连续失败告警。
 

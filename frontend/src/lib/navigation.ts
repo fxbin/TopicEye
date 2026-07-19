@@ -4,7 +4,6 @@ import {
   Bookmark,
   Library,
   Rocket,
-  BrainCircuit,
   CalendarDays,
   ClipboardList,
   Crosshair,
@@ -12,15 +11,12 @@ import {
   Gem,
   GitBranch,
   Lightbulb,
-  MessageSquareWarning,
   Newspaper,
   RadioTower,
   Search,
-  Settings,
   ShieldCheck,
   Star,
   TrendingUp,
-  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { AuthUser } from '@/types';

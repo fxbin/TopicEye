@@ -245,11 +245,11 @@ export default function MotherTopicsConfigPage() {
           <h1 className="mb-1 text-[22px] font-bold text-gray-900">
             <span className="inline-flex items-center gap-2">
               <Settings size={20} className="text-primary" strokeWidth={2.1} />
-              母题配置
+              系统母题模板库
             </span>
           </h1>
           <p className="m-0 text-[13px] text-gray-500">
-            配置你的公众号内容支柱，调整关键词以精准匹配你的写作方向
+            维护系统级母题模板，所有用户可见且只读。用户会 fork 一份副本到自己的母题进行个性化配置。
           </p>
         </div>
         <Button

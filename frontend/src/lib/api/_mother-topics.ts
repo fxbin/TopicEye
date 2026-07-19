@@ -48,6 +48,11 @@ export const motherTopicsApi = {
     return request(`/mother-topics/${id}`, { method: 'DELETE' });
   },
 
+  /** Fork 系统模板到当前用户名下（幂等，首次访问 /my-topics 时懒触发） */
+  forkDefaults(): Promise<{ forked: number; skipped: number; message: string }> {
+    return request('/mother-topics/fork-defaults', { method: 'POST' });
+  },
+
   /** 对内容按母题打分 */
   score(data: {
     title: string;

@@ -82,6 +82,7 @@ export interface MotherTopic {
   target_reader: string | null;
   is_active: boolean;
   display_order: number;
+  owner_user_id: number | null;
   created_at: string | null;
   updated_at: string | null;
 }

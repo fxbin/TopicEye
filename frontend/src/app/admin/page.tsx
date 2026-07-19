@@ -29,7 +29,7 @@ const DASHBOARD_CARDS: AdminDashboardCard[] = [
   { id: 'contents', label: '内容管理', href: '/admin/contents', icon: Newspaper, description: '查看与维护内容池、原文快照与增强状态' },
   { id: 'users', label: '用户管理', href: '/admin/users', icon: Users, description: '管理用户角色、套餐、封禁与密码重置' },
   { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit, description: '配置与评测 LLM 模型、查看用量与效果' },
-  { id: 'mother-topics', label: '母题配置', href: '/admin/mother-topics', icon: BookOpen, description: '维护母题库与关键词映射规则' },
+  { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen, description: '维护系统级母题模板库，用户可 fork 后个性化配置' },
   { id: 'updates', label: '发版记录', href: '/admin/updates', icon: Rocket, description: '管理版本发布记录与路线图' },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning, description: '查看与处理用户反馈、追踪修复状态' },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings, description: '邮件服务、功能开关等全局配置' },

@@ -21,6 +21,7 @@ import { LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { motherTopicsApi, contentsApi, type MotherTopic, type ContentItem } from '@/lib/api';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
+import { useEffect, useRef } from 'react';
 
 interface TopicScore {
   name: string;
@@ -282,6 +283,25 @@ export default function MyTopicsPage() {
     return { topics: topicList, scored };
   }, []);
 
+  // 首次进入时懒触发 fork：如果用户还没有自己的母题，fork 一份系统模板
+  const forkTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (forkTriggeredRef.current) return;
+    forkTriggeredRef.current = true;
+    (async () => {
+      try {
+        const ts = await motherTopicsApi.list(true);
+        const hasOwn = ts.some(t => t.owner_user_id !== null);
+        if (!hasOwn) {
+          await motherTopicsApi.forkDefaults();
+          refetch();
+        }
+      } catch {
+        // fork 失败不阻塞页面——用户仍能看到系统模板的打分结果
+      }
+    })();
+  }, [refetch]);
+
   const topics = data?.topics ?? [];
   const allScored = data?.scored ?? [];
 
@@ -334,7 +354,7 @@ export default function MyTopicsPage() {
             </p>
           </div>
           <a
-            href="/admin/mother-topics"
+            href="/my-topics/config"
             className="inline-flex min-h-9 items-center gap-1.5 rounded-sm bg-primary px-3 py-2 text-xs font-black text-white no-underline hover:bg-primary-hover"
           >
             <Settings2 size={14} /> 配置母题
@@ -444,7 +464,7 @@ export default function MyTopicsPage() {
                 <div className="mt-3 text-sm font-black text-gray-700">没有符合条件的母题候选</div>
                 <div className="mt-1.5 text-xs text-gray-400">降低匹配阈值，或去配置页补充关键词。</div>
                 <a
-                  href="/admin/mother-topics"
+                  href="/my-topics/config"
                   className="mt-3.5 inline-flex items-center gap-1.5 text-xs font-black text-primary no-underline"
                 >
                   调整母题配置 <ArrowRight size={13} />
@@ -473,7 +493,7 @@ export default function MyTopicsPage() {
               </div>
             </div>
             <a
-              href="/admin/mother-topics"
+              href="/my-topics/config"
               className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-teal-border bg-white px-3 py-2 text-xs font-black text-teal no-underline"
             >
               去配置 <ArrowRight size={13} />

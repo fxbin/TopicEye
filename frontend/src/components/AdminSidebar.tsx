@@ -35,7 +35,7 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { id: 'contents', label: '内容管理', href: '/admin/contents', icon: Newspaper },
   { id: 'users', label: '用户管理', href: '/admin/users', icon: Users },
   { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit },
-  { id: 'mother-topics', label: '母题配置', href: '/admin/mother-topics', icon: BookOpen },
+  { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen },
   { id: 'updates', label: '发版记录', href: '/admin/updates', icon: Rocket },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings },

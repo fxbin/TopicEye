@@ -43,6 +43,7 @@ export interface NotificationWebhookConfig {
   enabled: boolean;
   webhook_url_configured: boolean;
   webhook_url_preview: string;
+  event_types: string[];
   note: string;
 }
 
@@ -50,8 +51,17 @@ export interface NotificationWebhookConfig {
 export interface NotificationWebhookConfigUpdate {
   enabled: boolean;
   webhook_url: string;
+  event_types: string[];
   note: string;
 }
+
+/** 通知推送事件类型选项 */
+export const NOTIFICATION_EVENT_TYPES: Array<{ value: string; label: string; desc: string }> = [
+  { value: 'source_failure', label: '信源失败告警', desc: '信源连续抓取失败时推送' },
+  { value: 'daily_report', label: '日报生成完成', desc: '每日午间/晚间/复盘日报生成后推送' },
+  { value: 'weekly_digest', label: '周报生成完成', desc: '每周一周报生成后推送' },
+  { value: 'test', label: '测试发送', desc: '点击「发送测试」按钮时推送' },
+];
 
 // ─── Settings API ───
 

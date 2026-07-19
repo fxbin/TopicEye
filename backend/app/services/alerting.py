@@ -27,16 +27,36 @@ logger = logging.getLogger(__name__)
 _LAST_SENT: dict[str, float] = {}
 _DEDUP_WINDOW_SECONDS = 3600  # 1 小时内同 key 不重复发
 
+# ── 事件类型枚举 ──
+# source_failure: 信源连续抓取失败告警（默认场景）
+# daily_report: 日报生成完成推送
+# weekly_digest: 周报生成完成推送
+# test: 测试发送（POST /settings/notification-webhook/test）
+EVENT_TYPES = {"source_failure", "daily_report", "weekly_digest", "test"}
+# 默认事件类型（配置未指定 event_types 时回退）
+DEFAULT_EVENT_TYPES = ["source_failure"]
 
-async def _resolve_webhook_urls() -> list[str]:
-    """收集所有应发送的 webhook URL。
 
-    优先级：DB 配置（enabled=True）+ 环境变量（向后兼容）。
+def _event_types_match(cfg_event_types: list[str] | None, event_type: str) -> bool:
+    """判断 DB 配置的 event_types 是否包含当前事件。
+
+    配置未指定或为空时回退到 DEFAULT_EVENT_TYPES。
+    env 通道不参与事件过滤（向后兼容，env 永远收所有告警）。
+    """
+    if not cfg_event_types:
+        cfg_event_types = DEFAULT_EVENT_TYPES
+    return event_type in cfg_event_types
+
+
+async def _resolve_webhook_urls(event_type: str = "source_failure") -> list[str]:
+    """收集所有应发送的 webhook URL（按事件类型过滤）。
+
+    优先级：DB 配置（enabled=True 且 event_types 包含当前事件）+ 环境变量（向后兼容，不过滤）。
     DB 读取失败时静默 fallback 到 env only（告警链路不能因 DB 异常而中断）。
     """
     urls: list[str] = []
 
-    # 1. DB 配置（运营通道）
+    # 1. DB 配置（运营通道，按事件类型过滤）
     try:
         import json
 
@@ -56,7 +76,7 @@ async def _resolve_webhook_urls() -> list[str]:
                     cfg = json.loads(row.value)
                 except json.JSONDecodeError:
                     cfg = {}
-                if cfg.get("enabled"):
+                if cfg.get("enabled") and _event_types_match(cfg.get("event_types"), event_type):
                     plain = decrypt_secret(cfg.get("webhook_url", "")) or ""
                     if plain:
                         urls.append(plain)
@@ -64,7 +84,7 @@ async def _resolve_webhook_urls() -> list[str]:
         # DB 异常不能阻塞告警
         logger.warning("读取 notification_webhook_config 失败（non-fatal）: %s", exc)
 
-    # 2. 环境变量（运维通道，向后兼容）
+    # 2. 环境变量（运维通道，向后兼容，不参与事件过滤）
     env_url = getattr(settings, "ALERT_WEBHOOK_URL", None) or ""
     if env_url:
         urls.append(env_url)
@@ -98,6 +118,7 @@ async def send_alert(
     message: str,
     alert_key: str,
     severity: str = "warning",
+    event_type: str = "source_failure",
 ) -> bool:
     """发送告警到外部 webhook。
 
@@ -107,12 +128,18 @@ async def send_alert(
     message : 告警详情
     alert_key : 去重 key（同 key 在 _DEDUP_WINDOW 内只发一次）
     severity : info / warning / error
+    event_type : 事件类型，用于按用户配置过滤推送通道
+        - source_failure（默认）: 信源连续抓取失败
+        - daily_report: 日报生成完成
+        - weekly_digest: 周报生成完成
+        - test: 测试发送
+        env 通道（ALERT_WEBHOOK_URL）不参与过滤，永远收所有告警。
 
     Returns: True 如果发送成功或跳过（去重/未配置），False 如果所有 webhook 发送失败。
     """
     import time
 
-    webhook_urls = await _resolve_webhook_urls()
+    webhook_urls = await _resolve_webhook_urls(event_type=event_type)
     if not webhook_urls:
         return False  # 未配置 webhook，静默跳过
 
@@ -155,7 +182,7 @@ async def send_test_message() -> dict:
     Returns:
         {"sent": int, "failed": int, "details": [{"url_preview": str, "ok": bool, "status": str}]}
     """
-    webhook_urls = await _resolve_webhook_urls()
+    webhook_urls = await _resolve_webhook_urls(event_type="test")
     if not webhook_urls:
         return {"sent": 0, "failed": 0, "details": [], "error": "未配置 webhook"}
 

@@ -5,6 +5,7 @@ import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Server, Settings, 
 import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
 import type { EmailProviderConfig, NotificationWebhookConfig } from '@/lib/api/_analytics';
+import { NOTIFICATION_EVENT_TYPES } from '@/lib/api/_analytics';
 import { Badge, Button, Panel } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { LoadingState } from '@/components/StateView';
@@ -59,6 +60,7 @@ export default function AdminSettingsPage() {
   const [webhookConfig, setWebhookConfig] = useState<NotificationWebhookConfig | null>(null);
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEventTypes, setWebhookEventTypes] = useState<string[]>(['source_failure']);
   const [webhookNote, setWebhookNote] = useState('');
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookTesting, setWebhookTesting] = useState(false);
@@ -83,6 +85,7 @@ export default function AdminSettingsPage() {
 
         setWebhookConfig(webhookData);
         setWebhookEnabled(webhookData.enabled);
+        setWebhookEventTypes(webhookData.event_types?.length ? webhookData.event_types : ['source_failure']);
         setWebhookNote(webhookData.note);
       })
       .catch(() => setError('加载配置失败'))
@@ -141,6 +144,7 @@ export default function AdminSettingsPage() {
       await settingsApi.updateNotificationWebhook({
         enabled: webhookEnabled,
         webhook_url: webhookUrl,
+        event_types: webhookEventTypes,
         note: webhookNote,
       });
       setWebhookUrl('');
@@ -148,6 +152,7 @@ export default function AdminSettingsPage() {
       const fresh = await settingsApi.getNotificationWebhook();
       setWebhookConfig(fresh);
       setWebhookEnabled(fresh.enabled);
+      setWebhookEventTypes(fresh.event_types?.length ? fresh.event_types : ['source_failure']);
       setWebhookNote(fresh.note);
     } catch (err) {
       setWebhookError(err instanceof Error ? err.message : '保存失败');
@@ -419,6 +424,42 @@ export default function AdminSettingsPage() {
             />
             启用推送
           </label>
+
+          {/* 推送事件类型 */}
+          <div className="pb-4">
+            <span className="mb-2 block text-xs font-black text-gray-500">推送事件类型</span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {NOTIFICATION_EVENT_TYPES.map((et) => {
+                const checked = webhookEventTypes.includes(et.value);
+                return (
+                  <label
+                    key={et.value}
+                    className="flex cursor-pointer items-start gap-2 rounded-sm border border-gray-200 px-3 py-2 text-xs hover:border-primary-border"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setWebhookEventTypes([...webhookEventTypes, et.value]);
+                        } else {
+                          setWebhookEventTypes(webhookEventTypes.filter((v) => v !== et.value));
+                        }
+                      }}
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                    />
+                    <div>
+                      <div className="font-black text-gray-700">{et.label}</div>
+                      <div className="text-gray-400">{et.desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 通道不参与过滤，永远收所有告警。
+            </p>
+          </div>
 
           {/* Webhook URL */}
           <label className="mt-2 block">

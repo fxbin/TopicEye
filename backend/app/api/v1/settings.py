@@ -358,6 +358,7 @@ class NotificationWebhookConfigResponse(BaseModel):
     enabled: bool = False
     webhook_url_configured: bool = False
     webhook_url_preview: str = ""
+    event_types: list[str] = []
     note: str = ""
 
 
@@ -366,10 +367,12 @@ class NotificationWebhookConfigUpdateRequest(BaseModel):
 
     webhook_url 为空字符串时保留原值（不修改），非空时覆盖。
     传空字符串且原值存在时不会清空——如需清空请传显式空 URL 后禁用 enabled。
+    event_types 为空列表时回退到默认 ["source_failure"]。
     """
 
     enabled: bool = False
     webhook_url: str = ""
+    event_types: list[str] = []
     note: str = ""
 
 
@@ -417,6 +420,7 @@ async def get_notification_webhook_config(db: AsyncSession = Depends(get_db)):
         enabled=bool(config.get("enabled", False)),
         webhook_url_configured=bool(webhook_plain),
         webhook_url_preview=_mask(webhook_plain),
+        event_types=config.get("event_types") or ["source_failure"],
         note=config.get("note", ""),
     )
 
@@ -455,9 +459,18 @@ async def update_notification_webhook_config(
     else:
         webhook_url_stored = existing_config.get("webhook_url", "")
 
+    # event_types 处理：过滤非法值，空列表回退默认
+    from app.services.alerting import DEFAULT_EVENT_TYPES, EVENT_TYPES
+
+    raw_event_types = payload.event_types or []
+    event_types = [et for et in raw_event_types if et in EVENT_TYPES]
+    if not event_types:
+        event_types = list(DEFAULT_EVENT_TYPES)
+
     new_config = {
         "enabled": bool(payload.enabled),
         "webhook_url": webhook_url_stored,
+        "event_types": event_types,
         "note": payload.note.strip(),
     }
     raw_value = json.dumps(new_config, ensure_ascii=False)

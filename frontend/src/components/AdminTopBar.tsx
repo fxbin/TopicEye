@@ -12,7 +12,7 @@ const ADMIN_PAGE_LABELS: Record<string, string> = {
   '/admin/contents': '内容管理',
   '/admin/users': '用户管理',
   '/admin/model-eval': 'AI 引擎',
-  '/admin/mother-topics': '母题配置',
+  '/admin/mother-topics': '系统母题模板库',
   '/admin/updates': '发版记录',
   '/admin/feedback': '反馈工作台',
   '/admin/settings': '系统设置',

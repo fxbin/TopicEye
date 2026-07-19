@@ -9,13 +9,16 @@ import {
   KeyRound,
   Ban,
   CheckCircle2,
-  X,
+  Users,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel } from '@/components/ui';
 import { usersApi } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
 import { formatDateTime } from '@/lib/datetime';
+import { AdminPageShell, AdminPageHeader, AdminNoticeBanner, AdminModal, AdminModalFooter } from '@/components/admin-ui';
+import { LoadingState, EmptyState } from '@/components/StateView';
+import { Pagination } from '@/components/Pagination';
 
 const PAGE_SIZE = 20;
 
@@ -142,54 +145,37 @@ export default function UsersAdminPage() {
   if (!currentUser) return null;
   if (authLoading) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page">
-        <Loader2 size={20} className="animate-spin text-gray-400" />
-      </div>
+      <AdminPageShell>
+        <LoadingState label="加载中…" minHeight="200px" panel />
+      </AdminPageShell>
     );
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[1100px] space-y-5 pb-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-[26px] font-black text-gray-900">
-              <ShieldCheck size={22} className="text-primary" />
-              用户管理
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">管理账号角色、套餐、状态与密码</p>
-          </div>
-          <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading} className="shrink-0">
+    <>
+    <AdminPageShell maxWidth={1100}>
+      <AdminPageHeader
+        title="用户管理"
+        icon={ShieldCheck}
+        description="管理账号角色、套餐、状态与密码"
+        actions={
+          <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             刷新
           </Button>
-        </div>
+        }
+      />
 
-        {(notice || error) && (
-          <div
-            className={`rounded-sm border px-3 py-2 text-[13px] ${
-              error
-                ? 'border-red-200 bg-red-50 text-red-700'
-                : 'border-teal-200 bg-teal-50 text-teal-700'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span>{error || notice}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setNotice(null);
-                  setError(null);
-                }}
-                className="shrink-0 text-current/70 hover:text-current"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-        )}
+      {(notice || error) && (
+        <AdminNoticeBanner
+          tone={error ? 'red' : 'teal'}
+          onClose={() => { setNotice(null); setError(null); }}
+        >
+          {error || notice}
+        </AdminNoticeBanner>
+      )}
 
         {/* 搜索 + 筛选 */}
         <Panel className="p-4">
@@ -243,11 +229,13 @@ export default function UsersAdminPage() {
         {/* 用户表格 */}
         <Panel className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={20} className="animate-spin text-gray-400" />
-            </div>
+            <LoadingState label="加载中…" minHeight="200px" panel={false} />
           ) : items.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-400">没有匹配的用户</div>
+            <EmptyState
+              icon={Users}
+              title="没有匹配的用户"
+              minHeight="160px"
+            />
           ) : (
             <div className="overflow-x-auto">
               {/* 表头 */}
@@ -346,101 +334,50 @@ export default function UsersAdminPage() {
 
           {/* 分页 */}
           {total > PAGE_SIZE && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-[13px] text-gray-500">
-              <span>
-                第 {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, total)} 条，共 {total} 条
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                  className="min-h-8 px-3.5 py-1.5 text-[13px] disabled:cursor-not-allowed"
-                >
-                  上一页
-                </Button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
-                  .map((p, idx, arr) => {
-                    const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
-                    return (
-                      <React.Fragment key={p}>
-                        {showEllipsis && <span className="px-1 py-1.5 text-gray-400">…</span>}
-                        <Button
-                          type="button"
-                          variant={p === page ? 'primary' : 'secondary'}
-                          onClick={() => setPage(p)}
-                          disabled={p === page}
-                          className="min-h-8 px-3 py-1.5 text-[13px]"
-                        >
-                          {p}
-                        </Button>
-                      </React.Fragment>
-                    );
-                  })}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                  className="min-h-8 px-3.5 py-1.5 text-[13px] disabled:cursor-not-allowed"
-                >
-                  下一页
-                </Button>
-              </div>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                onPage={setPage}
+                summary={<>第 {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, total)} 条，共 {total} 条</>}
+              />
             </div>
           )}
         </Panel>
-      </div>
+      </AdminPageShell>
 
       {/* 重置密码 Modal */}
       {resetTarget && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-4">
-          <Panel className="w-full max-w-md p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-base font-black text-gray-900">
-                <KeyRound size={16} className="text-primary" />
-                重置密码
-              </h3>
-              <button
-                type="button"
-                onClick={() => setResetTarget(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={18} />
-              </button>
+        <AdminModal title="重置密码" onClose={() => setResetTarget(null)}>
+          <p className="mb-4 text-[13px] leading-6 text-gray-500">
+            为用户 <span className="font-bold text-gray-700">{resetTarget.email}</span> 设定新密码。
+            重置后该用户的所有登录会话将立即失效，需用新密码重新登录。
+          </p>
+          <form onSubmit={submitReset} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
+              <input
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoFocus
+                placeholder="如 Abc12345"
+                className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+              />
             </div>
-            <p className="mb-4 text-[13px] text-gray-500">
-              为用户 <span className="font-bold text-gray-700">{resetTarget.email}</span> 设定新密码。
-              重置后该用户的所有登录会话将立即失效，需用新密码重新登录。
-            </p>
-            <form onSubmit={submitReset} className="space-y-3">
-              <div>
-                <label className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
-                <input
-                  type="text"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  autoFocus
-                  placeholder="如 Abc12345"
-                  className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
-                />
-              </div>
-              {error && <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</div>}
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" onClick={() => setResetTarget(null)} disabled={resetting}>
-                  取消
-                </Button>
-                <Button type="submit" variant="primary" disabled={resetting || newPassword.length < 8}>
-                  {resetting ? <Loader2 size={14} className="animate-spin" /> : null}
-                  确认重置
-                </Button>
-              </div>
-            </form>
-          </Panel>
-        </div>
+            {error && <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>}
+            <AdminModalFooter>
+              <Button type="button" variant="secondary" onClick={() => setResetTarget(null)} disabled={resetting}>
+                取消
+              </Button>
+              <Button type="submit" variant="primary" disabled={resetting || newPassword.length < 8}>
+                {resetting ? <Loader2 size={14} className="animate-spin" /> : null}
+                确认重置
+              </Button>
+            </AdminModalFooter>
+          </form>
+        </AdminModal>
       )}
-    </div>
+    </>
   );
 }

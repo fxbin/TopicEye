@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Panel } from '@/components/ui';
+import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 
 interface AdminDashboardCard {
   id: string;
@@ -39,18 +40,12 @@ export default function AdminDashboardPage() {
   const router = useRouter();
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-8">
-      {/* Header */}
-      <header className="mb-6">
-        <div className="flex items-center gap-2 text-[11px] font-bold tracking-[0.08em] text-amber-600">
-          <LayoutDashboard size={14} strokeWidth={2.4} />
-          ADMIN DASHBOARD
-        </div>
-        <h1 className="mt-2 text-[24px] font-black leading-tight text-gray-900">管理后台概览</h1>
-        <p className="mt-1 text-[13px] text-gray-500">
-          从这里进入各项管理功能。所有管理操作仅对管理员开放。
-        </p>
-      </header>
+    <AdminPageShell maxWidth={1200}>
+      <AdminPageHeader
+        title="管理后台概览"
+        icon={LayoutDashboard}
+        description="从这里进入各项管理功能。所有管理操作仅对管理员开放。"
+      />
 
       {/* Cards grid */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -78,6 +73,6 @@ export default function AdminDashboardPage() {
           );
         })}
       </div>
-    </div>
+    </AdminPageShell>
   );
 }

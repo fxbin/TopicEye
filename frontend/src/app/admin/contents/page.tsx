@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Newspaper } from 'lucide-react';
 import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
 import { Pagination } from '@/components/Pagination';
-import { ErrorState, LoadingState } from '@/components/StateView';
+import { ErrorState, LoadingState, EmptyState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
+import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import type { ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
 
@@ -87,17 +88,11 @@ export default function ContentsPage() {
   };
 
   return (
-    <div className="fade-in h-full overflow-y-auto px-10 py-8">
-      {/* Header */}
-      <div className="mb-7">
-        <h1 className="mb-1.5 text-[26px] font-bold text-gray-900">
-          内容列表
-        </h1>
-        <p className="text-[13px] text-gray-400">
-          从各信源采集到的原始内容 · 共{' '}
-          <b className="font-mono text-gray-600">{total}</b> 条
-        </p>
-      </div>
+    <AdminPageShell maxWidth={1200}>
+      <AdminPageHeader
+        title="内容列表"
+        description={<>从各信源采集到的原始内容 · 共 <b className="font-mono text-gray-600">{total}</b> 条</>}
+      />
 
       {/* Category Filter Bar */}
       <Toolbar className="mb-5 gap-2">
@@ -130,7 +125,7 @@ export default function ContentsPage() {
 
       {/* Loading State */}
       {loading && (
-        <LoadingState label="加载中…" minHeight="200px" />
+        <LoadingState label="加载中…" minHeight="200px" panel />
       )}
 
       {/* Table */}
@@ -149,6 +144,7 @@ export default function ContentsPage() {
       )}
       {!loading && (
         <Panel className="overflow-hidden">
+          <div className="overflow-x-auto">
           {/* Table Header */}
           <div className="grid grid-cols-[3fr_1.2fr_0.8fr_1.5fr_1fr_0.8fr] border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span>标题</span>
@@ -161,15 +157,19 @@ export default function ContentsPage() {
 
           {/* Empty State */}
           {items.length === 0 && (
-            <div className="px-6 py-12 text-center text-sm text-gray-400">
-              暂无内容数据
-            </div>
+            <EmptyState
+              icon={Newspaper}
+              title="暂无内容数据"
+              desc="内容池为空，请检查信源采集状态"
+              minHeight="160px"
+            />
           )}
 
           {/* Rows */}
           {items.map((item) => (
             <ContentRow key={item.id} item={item} />
           ))}
+          </div>
         </Panel>
       )}
 
@@ -186,7 +186,7 @@ export default function ContentsPage() {
           }
         />
       )}
-    </div>
+    </AdminPageShell>
   );
 }
 

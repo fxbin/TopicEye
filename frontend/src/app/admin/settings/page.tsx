@@ -6,6 +6,8 @@ import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
 import type { EmailProviderConfig } from '@/lib/api/_analytics';
 import { Badge, Button, Panel } from '@/components/ui';
+import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
+import { LoadingState } from '@/components/StateView';
 
 const DEFAULT_FROM_NAME = 'TopicEye';
 
@@ -118,9 +120,9 @@ export default function AdminSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page">
-        <Loader2 size={24} className="animate-spin text-gray-400" />
-      </div>
+      <AdminPageShell maxWidth={860}>
+        <LoadingState label="加载中…" minHeight="200px" panel />
+      </AdminPageShell>
     );
   }
 
@@ -129,15 +131,12 @@ export default function AdminSettingsPage() {
   const notes = CONFIG_NOTES[provider] || [];
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[860px] space-y-5 pb-8">
-        <div>
-          <h1 className="flex items-center gap-2 text-[26px] font-black text-gray-900">
-            <Settings size={22} className="text-primary" />
-            系统设置
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">配置系统级邮件服务，用于注册验证码等事务邮件发送</p>
-        </div>
+    <AdminPageShell maxWidth={860}>
+      <AdminPageHeader
+        title="系统设置"
+        icon={Settings}
+        description="配置系统级邮件服务，用于注册验证码等事务邮件发送"
+      />
 
         <Panel className="p-6">
           <div className="mb-5 flex items-center justify-between">
@@ -304,14 +303,10 @@ export default function AdminSettingsPage() {
           )}
 
           {error && (
-            <div className="mt-4 rounded-sm border border-red-light bg-red-light px-3 py-2 text-xs font-bold text-red">
-              {error}
-            </div>
+            <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
           )}
           {notice && (
-            <div className="mt-4 rounded-sm border border-teal-border bg-teal-light px-3 py-2 text-xs font-bold text-teal">
-              {notice}
-            </div>
+            <AdminNoticeBanner tone="teal" onClose={() => setNotice(null)}>{notice}</AdminNoticeBanner>
           )}
 
           <div className="mt-5 flex justify-end">
@@ -330,7 +325,6 @@ export default function AdminSettingsPage() {
             ))}
           </ul>
         </Panel>
-      </div>
-    </div>
+    </AdminPageShell>
   );
 }

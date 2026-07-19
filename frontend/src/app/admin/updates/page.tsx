@@ -15,6 +15,7 @@ import {
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
+import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { useFetch } from '@/hooks/useFetch';
 import {
   productFeedbackApi,
@@ -198,12 +199,9 @@ export default function AdminUpdatesPage() {
   // admin 守卫已收敛到 app/admin/layout.tsx
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page">
-        <div className="inline-flex items-center gap-2 text-sm font-bold text-gray-500">
-          <Loader2 size={16} className="animate-spin" />
-          正在加载发版管理
-        </div>
-      </div>
+      <AdminPageShell maxWidth={1100}>
+        <LoadingState label="正在加载发版管理…" minHeight="200px" panel />
+      </AdminPageShell>
     );
   }
 
@@ -212,19 +210,13 @@ export default function AdminUpdatesPage() {
   const plannedCount = (items || []).filter((it) => it.status === 'planned').length;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[1100px] space-y-5 pb-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-[26px] font-black text-gray-900">
-              <Rocket size={22} className="text-orange" />
-              发版记录管理
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              创建和编辑产品发版记录 · 用户在「更新记录」页面看到的就是这里的内容
-            </p>
-          </div>
-          <div className="flex gap-2">
+    <AdminPageShell maxWidth={1100}>
+      <AdminPageHeader
+        title="发版记录管理"
+        icon={Rocket}
+        description="创建和编辑产品发版记录 · 用户在「更新记录」页面看到的就是这里的内容"
+        actions={
+          <>
             <Button type="button" onClick={openCreate}>
               <Plus size={14} />
               新建发版
@@ -233,31 +225,26 @@ export default function AdminUpdatesPage() {
               <RefreshCw size={14} />
               刷新
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="总发版" value={(items || []).length} tone="neutral" />
-          <StatTile label="已发布" value={shippedCount} tone="teal" />
-          <StatTile label="进行中" value={inProgressCount} tone="primary" />
-          <StatTile label="已规划" value={plannedCount} tone="amber" />
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="总发版" value={(items || []).length} tone="neutral" />
+        <StatTile label="已发布" value={shippedCount} tone="teal" />
+        <StatTile label="进行中" value={inProgressCount} tone="primary" />
+        <StatTile label="已规划" value={plannedCount} tone="amber" />
+      </div>
 
-        {fetchError && (
-          <div className="mb-4">
-            <ErrorState error={fetchError} onRetry={() => void refetch()} panel={false} />
-          </div>
-        )}
-        {formError && (
-          <div className="mb-4 rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-            {formError}
-          </div>
-        )}
-        {notice && !fetchError && !formError && (
-          <div className="rounded-sm border border-teal-border bg-teal-light/30 px-4 py-2.5 text-[13px] text-teal">
-            {notice}
-          </div>
-        )}
+      {fetchError && (
+        <ErrorState error={fetchError} onRetry={() => void refetch()} panel />
+      )}
+      {formError && (
+        <AdminNoticeBanner tone="red">{formError}</AdminNoticeBanner>
+      )}
+      {notice && !fetchError && !formError && (
+        <AdminNoticeBanner tone="teal">{notice}</AdminNoticeBanner>
+      )}
 
         {(items || []).length === 0 ? (
           <Panel className="p-8 text-center">
@@ -335,7 +322,6 @@ export default function AdminUpdatesPage() {
             })()}
           </>
         )}
-      </div>
 
       {showCreate && (
         <UpdateEditor
@@ -351,7 +337,7 @@ export default function AdminUpdatesPage() {
           onClose={closeDialog}
         />
       )}
-    </div>
+    </AdminPageShell>
   );
 }
 
@@ -412,8 +398,8 @@ function UpdateEditor({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6">
-      <div className="flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-md bg-white shadow-xl">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-4 sm:p-6" onClick={onClose}>
+      <div className="flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
           <h2 className="text-base font-semibold text-gray-900">
             {editing ? `编辑 v${editing.version}` : '新建发版'}
@@ -424,8 +410,8 @@ function UpdateEditor({
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {error && (
-            <div className="mb-3 rounded-sm border border-red-light bg-red-light/30 px-3 py-2 text-[13px] text-red">
-              {error}
+            <div className="mb-3">
+              <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>
             </div>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

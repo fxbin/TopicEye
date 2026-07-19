@@ -27,6 +27,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
+import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { modelsApi } from '@/lib/api';
 import type {
   EvalResult,
@@ -122,22 +123,16 @@ export default function ModelEvalPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1480px] px-4 py-6 pb-16 sm:px-6 lg:px-10">
-      <Panel className="relative mb-4 overflow-hidden p-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] sm:p-6">
-        <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" />
+    <AdminPageShell maxWidth={1480}>
+      {/* Header */}
+      <Panel className="overflow-hidden p-5 sm:p-6">
         <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2.5">
-              <Badge tone="primary" className="gap-1.5 font-mono">
-                <BrainCircuit size={13} strokeWidth={2.4} />
-                AI ENGINE
-              </Badge>
-              <span className="text-xs font-bold text-gray-500">模型配置与测评</span>
-            </div>
-            <h1 className="m-0 text-[28px] font-black leading-tight text-gray-900">AI 引擎工作台</h1>
-            <p className="mt-2 max-w-3xl text-[13px] leading-7 text-gray-500">
-              管理内容分析、日报、周刊和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。
-            </p>
+            <AdminPageHeader
+              title="AI 引擎工作台"
+              icon={BrainCircuit}
+              description="管理内容分析、日报、周刊和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。"
+            />
           </div>
           <Button type="button" variant="secondary" onClick={refreshAll} className="w-fit whitespace-nowrap">
             <RefreshCw size={14} strokeWidth={2.2} />
@@ -191,7 +186,7 @@ export default function ModelEvalPage() {
           {tab === 'history' && <HistoryTab />}
         </>
       )}
-    </div>
+    </AdminPageShell>
   );
 }
 

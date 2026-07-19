@@ -18,6 +18,7 @@ import {
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, Toolbar, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
+import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { useFetch } from '@/hooks/useFetch';
 import {
   productFeedbackApi,
@@ -272,45 +273,39 @@ export default function FeedbackPage() {
   };
 
   if (authLoading || loading) {
-    return <LoadingState label="正在加载反馈工作台" minHeight="60vh" />;
+    return (
+      <AdminPageShell maxWidth={1280}>
+        <LoadingState label="正在加载反馈工作台…" minHeight="200px" panel />
+      </AdminPageShell>
+    );
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[1280px] space-y-5 pb-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge tone="primary">反馈闭环</Badge>
-              {isAdmin && <Badge tone="teal">管理员视图</Badge>}
-            </div>
-            <h1 className="text-[26px] font-black leading-tight text-gray-900">反馈与更新</h1>
-            <p className="mt-2 max-w-[760px] text-sm leading-7 text-gray-500">
-              反馈可以直接提交；更新路线和记录随版本发布内置展示。
-            </p>
-          </div>
+    <AdminPageShell maxWidth={1280}>
+      <AdminPageHeader
+        title="反馈与更新"
+        icon={MessageSquareWarning}
+        description="反馈可以直接提交；更新路线和记录随版本发布内置展示。"
+        actions={
           <Button type="button" onClick={() => void refetch()}>
             <RefreshCw size={14} />
             刷新
           </Button>
-        </div>
+        }
+      />
 
-        {(formError || notice) && (
-          <div
-            className={cx(
-              'rounded-sm border px-4 py-3 text-[13px] font-bold',
-              formError ? 'border-red-light bg-red-light text-red' : 'border-teal-border bg-teal-light text-teal',
-            )}
-          >
-            {formError || notice}
-          </div>
-        )}
+      {(formError || notice) && (
+        <AdminNoticeBanner
+          tone={formError ? 'red' : 'teal'}
+          onClose={() => { setFormError(null); setNotice(null); }}
+        >
+          {formError || notice}
+        </AdminNoticeBanner>
+      )}
 
-        {fetchError && (
-          <div className="mb-4">
-            <ErrorState error={fetchError} onRetry={() => void refetch()} panel={false} />
-          </div>
-        )}
+      {fetchError && (
+        <ErrorState error={fetchError} onRetry={() => void refetch()} panel />
+      )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {currentUser ? (
@@ -480,8 +475,7 @@ export default function FeedbackPage() {
             />
           </Surface>
         </div>
-      </div>
-    </div>
+      </AdminPageShell>
   );
 }
 

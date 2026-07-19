@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Settings } from 'lucide-react';
 import { motherTopicsApi, type MotherTopic } from '@/lib/api';
 import { Badge, Button, Panel, Toolbar } from '@/components/ui';
+import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { FieldLabel } from '@/components/form';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
@@ -238,30 +239,23 @@ export default function MotherTopicsConfigPage() {
   };
 
   return (
-    <div className="max-w-[860px] px-6 py-5">
-      {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="mb-1 text-[22px] font-bold text-gray-900">
-            <span className="inline-flex items-center gap-2">
-              <Settings size={20} className="text-primary" strokeWidth={2.1} />
-              系统母题模板库
-            </span>
-          </h1>
-          <p className="m-0 text-[13px] text-gray-500">
-            维护系统级母题模板，所有用户可见且只读。用户会 fork 一份副本到自己的母题进行个性化配置。
-          </p>
-        </div>
-        <Button
-          type="button"
-          onClick={() => router.push('/my-topics')}
-          variant="secondary"
-          className="text-[13px] font-medium"
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          返回我的母题
-        </Button>
-      </div>
+    <AdminPageShell maxWidth={860}>
+      <AdminPageHeader
+        title="系统母题模板库"
+        icon={Settings}
+        description="维护系统级母题模板，所有用户可见且只读。用户会 fork 一份副本到自己的母题进行个性化配置。"
+        actions={
+          <Button
+            type="button"
+            onClick={() => router.push('/my-topics')}
+            variant="secondary"
+            className="text-[13px] font-medium"
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            返回我的母题
+          </Button>
+        }
+      />
 
       {/* Info box */}
       <Panel className="mb-6 border-teal-border bg-teal-light px-4 py-3 text-[13px] leading-6 text-teal">
@@ -308,6 +302,6 @@ export default function MotherTopicsConfigPage() {
           ))}
         </div>
       </Panel>
-    </div>
+    </AdminPageShell>
   );
 }

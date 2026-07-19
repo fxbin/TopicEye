@@ -7,6 +7,7 @@ import type { RSSHubInstance, CreateSourceRequest, SourceBatchImportItem, Update
 import { useAppContext } from '@/components/ClientLayout';
 import { timeAgo } from '@/lib/utils';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import SourceForm, { FormState, emptyForm } from '@/components/SourceForm';
 import SourceRowComponent, { type BackendSource } from '@/components/SourceRow';
 import { Spinner } from '@/components/SourceRow';
@@ -689,9 +690,9 @@ export default function SourcesPage() {
   const syncBoard = useMemo(() => buildSourceSyncBoard(mapSources, syncingIds, new Date()), [mapSources, syncingIds]);
 
   return (
-    <div className="fade-in h-full overflow-y-auto px-10 py-8">
+    <AdminPageShell maxWidth={1200}>
       {/* Header */}
-      <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {selectedIds.size > 0 && (
@@ -726,11 +727,10 @@ export default function SourcesPage() {
               </div>
             )}
           </div>
-          <h1 className="mb-1.5 text-[26px] font-black text-gray-900">信源管理</h1>
-          <p className="text-[13px] text-gray-400">
-            共 <b className="font-mono text-gray-600">{total}</b> 个信源 ·
-            活跃 <b className="font-mono text-teal">{activeCount}</b> 个
-          </p>
+          <AdminPageHeader
+            title="信源管理"
+            description={<>共 <b className="font-mono text-gray-600">{total}</b> 个信源 · 活跃 <b className="font-mono text-teal">{activeCount}</b> 个</>}
+          />
         </div>
         <Toolbar>
           <Button
@@ -843,17 +843,11 @@ export default function SourcesPage() {
 
       {/* Error Banner */}
       {rsshubError && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-          <span>{rsshubError}</span>
-          <button type="button" onClick={() => setRsshubError(null)} className="px-1 text-base font-black leading-none text-red">×</button>
-        </div>
+        <AdminNoticeBanner tone="red" onClose={() => setRsshubError(null)}>{rsshubError}</AdminNoticeBanner>
       )}
 
       {error && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-sm border border-red-light bg-red-light px-4 py-2.5 text-[13px] text-red">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="px-1 text-base font-black leading-none text-red">×</button>
-        </div>
+        <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
       )}
 
       {/* Status filter tabs — applies to all source list views */}
@@ -973,6 +967,6 @@ export default function SourcesPage() {
       {editingSource && (
         <EditSourceModal form={form} setForm={setForm} submitting={submitting} onUpdate={handleUpdate} onClose={() => { setEditingSource(null); setForm(emptyForm); }} />
       )}
-    </div>
+    </AdminPageShell>
   );
 }

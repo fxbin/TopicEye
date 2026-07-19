@@ -17,16 +17,20 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 
 ## Why TopicEye
 
-- **Transparent scoring engine, not a black box.** Every selected item ships with a full breakdown: base score (information density / actionability / creator value / viral potential / source authority / freshness), quality gates, time decay, diversity penalty, and feedback signal. See [`algorithm` page](docs/screenshots/screenshot-timeline.png) in the app.
+- **Transparent scoring engine, not a black box.** Every selected item ships with a full breakdown: base score (information density / actionability / creator value / viral potential / source authority / freshness), quality gates, time decay, diversity penalty, and feedback signal. See the [`algorithm` page](docs/screenshots/screenshot-algorithm.png) in the app.
 - **Feedback closes the loop.** Your 👍 / 👎 doesn't just get saved — it is weighted at 15% and feeds back into ranking. The engine gets sharper the more you use it.
 - **Self-host friendly.** Full Docker setup, SQLite or PostgreSQL, OAuth login (Google / GitHub). Your data stays yours.
-- **Agent-native (planned).** The scoring engine is being exposed as a stable API so other agents and tools can call it as their ranking layer. See the [roadmap](ROADMAP.md).
+- **Agent-native (planned).** The scoring engine is being exposed as a stable API so other agents and tools can call it as their ranking layer.
 
 ## Screenshots
 
-| Today's Picks | Timeline | Daily Report |
+| Today's Picks | Trending Radar | Low-Follower Viral |
 |---|---|---|
-| ![today](docs/screenshots/screenshot-today.png) | ![timeline](docs/screenshots/screenshot-timeline.png) | ![daily](docs/screenshots/screenshot-daily.png) |
+| ![today](docs/screenshots/screenshot-today.png) | ![trending](docs/screenshots/screenshot-trending.png) | ![lfv](docs/screenshots/screenshot-low-follower-viral.png) |
+
+| Daily Report | Algorithm Flow | Stats Dashboard |
+|---|---|---|
+| ![daily](docs/screenshots/screenshot-daily.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) | ![stats](docs/screenshots/screenshot-stats.png) |
 
 ## Features
 
@@ -122,19 +126,9 @@ curl -X POST http://127.0.0.1:8102/api/v1/sources/1/sync
 
 The project uses Conventional Commits (`feat(auth): ...`, `fix(cache): ...`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and [AGENTS.md](AGENTS.md) for the commit discipline enforced in this repo.
 
-## Roadmap
-
-We just shipped **v0.3.0** (public/private sources, user-owned daily reports). Up next:
-
-- **v0.4.0 — Open-source readiness:** Apache-2.0 license, English README, contributor docs, source-contributor plugin protocol, webnovel-CN feature flag. [Full roadmap →](ROADMAP.md)
-- **v0.5.0 — Agent-native scoring API:** expose the 6-dimension engine + low-follower-viral detection as a stable, key-authenticated API so other agents can call it.
-- **v0.6.0 — Commercialization prep:** multi-user quotas + Stripe subscriptions (gated behind real adoption signals).
-
 ## Contributing
 
-Contributions are welcome — especially **new source connectors** (RSS feeds, podcast indexes, newsletter scrapers, trending boards). Each connector is a self-contained, well-scoped PR that's perfect for a first contribution.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, code style, and how to add a source. Feel free to open an issue with the `good first issue` label to find a starter task.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, code style, and workflow. Feel free to open an issue with the `good first issue` label to find a starter task.
 
 ## License
 

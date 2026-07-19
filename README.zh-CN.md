@@ -16,13 +16,17 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 - **透明的评分引擎，不是黑盒。** 每条精选内容都带完整评分拆解：基础分（信息密度 / 可操作性 / 创作者价值 / 爆文潜力 / 来源权威 / 时效新鲜）、质量门槛、时效衰减、多样性惩罚、反馈信号。
 - **反馈闭环校准。** 你的 👍 / 👎 不只是被收藏——它以 15% 权重回灌进排序权重，引擎越用越准。
 - **支持自部署。** 完整 Docker 方案，SQLite 或 PostgreSQL，OAuth 登录（Google / GitHub）。数据归你所有。
-- **Agent-native（规划中）。** 评分引擎正在以稳定 API 形式开放，让别的 Agent / 工具可以把它作为排序层调用。见 [路线图](ROADMAP.md)。
+- **Agent-native（规划中）。** 评分引擎正在以稳定 API 形式开放，让别的 Agent / 工具可以把它作为排序层调用。
 
 ## 截图
 
-| 今日精选 | 时间线 | 日报 |
+| 今日选题 | 趋势雷达 | 低粉爆文 |
 |---|---|---|
-| ![today](docs/screenshots/screenshot-today.png) | ![timeline](docs/screenshots/screenshot-timeline.png) | ![daily](docs/screenshots/screenshot-daily.png) |
+| ![today](docs/screenshots/screenshot-today.png) | ![trending](docs/screenshots/screenshot-trending.png) | ![lfv](docs/screenshots/screenshot-low-follower-viral.png) |
+
+| 日报 | 算法流程 | 数据统计 |
+|---|---|---|
+| ![daily](docs/screenshots/screenshot-daily.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) | ![stats](docs/screenshots/screenshot-stats.png) |
 
 ## 功能模块
 
@@ -115,19 +119,9 @@ curl -X POST http://127.0.0.1:8102/api/v1/sources/1/sync
 
 项目使用 Conventional Commits（`feat(auth): ...`、`fix(cache): ...`）。完整工作流见 [CONTRIBUTING.md](CONTRIBUTING.md)，本仓库强制执行的提交规范见 [AGENTS.md](AGENTS.md)。
 
-## 路线图
-
-刚发布 **v0.3.0**（公共/私有信源双层模型、用户专属日报）。接下来：
-
-- **v0.4.0 — 开源就绪：** Apache-2.0 协议、英文 README、贡献者文档、信源贡献插件协议、网文配置开关。[完整路线图 →](ROADMAP.md)
-- **v0.5.0 — Agent-native 评分 API：** 把 6 维评分引擎 + 低粉爆文识别以稳定 API（key 鉴权）开放，让别的 Agent 可以调用。
-- **v0.6.0 — 商业化前置：** 多用户配额 + Stripe 订阅（只在真实采用信号出现后启动）。
-
 ## 贡献
 
-欢迎贡献——尤其是**新信源连接器**（RSS 源、播客索引、Newsletter 爬虫、热榜）。每个连接器是一个自包含、边界清晰的 PR，非常适合作为首次贡献。
-
-详见 [CONTRIBUTING.md](CONTRIBUTING.md)（环境搭建、代码风格、如何新增信源）。可以认领带 `good first issue` 标签的 issue 作为入门任务。
+欢迎贡献。详见 [CONTRIBUTING.md](CONTRIBUTING.md)（环境搭建、代码风格、工作流）。可以认领带 `good first issue` 标签的 issue 作为入门任务。
 
 ## 协议
 

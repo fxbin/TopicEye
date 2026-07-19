@@ -69,6 +69,7 @@ const FAVORITES_STORAGE_KEY = 'topiceye_favorites';
 const FAVORITE_TARGETS_STORAGE_KEY = 'topiceye_favorite_targets';
 const FAVORITE_INDEX_PAGE_SIZE = 200;
 const CHROMELESS_PATHS = new Set(['/login']);
+const ADMIN_PATH_PREFIX = '/admin';
 
 function userStorageKey(baseKey: string, userId: number | null): string {
   return userId ? `${baseKey}:user:${userId}` : baseKey;
@@ -157,6 +158,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [todayPicksCount, setTodayPicksCount] = useState(0);
   const [compactNav, setCompactNav] = useState(false);
   const isChromelessPath = CHROMELESS_PATHS.has(pathname);
+  const isAdminPath = pathname === ADMIN_PATH_PREFIX || pathname.startsWith(`${ADMIN_PATH_PREFIX}/`);
 
   const applyAuthSession = useCallback((session: AuthTokenResponse) => {
     setAuthToken(session.access_token);
@@ -496,6 +498,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       }}
     >
       {isChromelessPath ? (
+        <main className="h-dvh overflow-hidden bg-page">
+          {children}
+        </main>
+      ) : isAdminPath ? (
+        // admin 路径由 app/admin/layout.tsx 接管壳，这里只保留 AppContext
         <main className="h-dvh overflow-hidden bg-page">
           {children}
         </main>

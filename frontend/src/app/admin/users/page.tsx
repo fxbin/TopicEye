@@ -137,21 +137,13 @@ export default function UsersAdminPage() {
     }
   };
 
-  // ── 页面级 admin 守卫 ──────────────────────────────────────────────
+  // admin 守卫已收敛到 app/admin/layout.tsx
+  // layout 保证到达此处时 currentUser 非 null 且 role === 'admin'
+  if (!currentUser) return null;
   if (authLoading) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center bg-page">
         <Loader2 size={20} className="animate-spin text-gray-400" />
-      </div>
-    );
-  }
-  if (!currentUser || currentUser.role !== 'admin') {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page p-6">
-        <Panel className="max-w-md p-6 text-center">
-          <h2 className="mb-2 text-base font-semibold text-gray-900">需要管理员权限</h2>
-          <p className="text-[13px] text-gray-500">用户管理仅对管理员开放。</p>
-        </Panel>
       </div>
     );
   }

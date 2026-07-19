@@ -195,24 +195,14 @@ export default function AdminUpdatesPage() {
     }
   };
 
-  if (authLoading || loading) {
+  // admin 守卫已收敛到 app/admin/layout.tsx
+  if (loading) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center bg-page">
         <div className="inline-flex items-center gap-2 text-sm font-bold text-gray-500">
           <Loader2 size={16} className="animate-spin" />
           正在加载发版管理
         </div>
-      </div>
-    );
-  }
-
-  if (!currentUser || currentUser.role !== 'admin') {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page p-6">
-        <Panel className="max-w-md p-6 text-center">
-          <h2 className="mb-2 text-base font-semibold text-gray-900">需要管理员权限</h2>
-          <p className="text-[13px] text-gray-500">发版记录管理仅对管理员开放。</p>
-        </Panel>
       </div>
     );
   }

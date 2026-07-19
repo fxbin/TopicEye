@@ -114,16 +114,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  if (!currentUser || currentUser.role !== 'admin') {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page p-6">
-        <Panel className="max-w-md p-6 text-center">
-          <h2 className="mb-2 text-base font-semibold text-gray-900">需要管理员权限</h2>
-          <p className="text-[13px] text-gray-500">系统设置仅对管理员开放。</p>
-        </Panel>
-      </div>
-    );
-  }
+  // admin 守卫已收敛到 app/admin/layout.tsx
 
   if (loading) {
     return (

@@ -112,6 +112,128 @@ def _build_payload(webhook_url: str, text: str) -> dict:
     return payload
 
 
+def _detect_platform(webhook_url: str) -> str:
+    """检测 webhook URL 对应的推送平台。返回 feishu / dingtalk / slack / generic。"""
+    url_lower = webhook_url.lower()
+    if "feishu" in url_lower or "larksuite" in url_lower:
+        return "feishu"
+    if "oapi.dingtalk" in url_lower:
+        return "dingtalk"
+    if "hooks.slack" in url_lower:
+        return "slack"
+    return "generic"
+
+
+# severity → 平台颜色映射
+_SEVERITY_COLOR = {
+    "info": "blue",
+    "warning": "orange",
+    "error": "red",
+}
+
+# severity → 飞书 template 颜色
+_FEISHU_TEMPLATE = {
+    "info": "blue",
+    "warning": "orange",
+    "error": "red",
+}
+
+
+def _build_card_payload(
+    webhook_url: str,
+    *,
+    title: str,
+    content: str,
+    link: str = "",
+    severity: str = "warning",
+) -> dict:
+    """构造卡片消息 payload（飞书 interactive / 钉钉 actionCard / Slack blocks）。
+
+    不支持卡片的平台降级为 text 消息。
+
+    Parameters
+    ----------
+    title : 卡片标题
+    content : 卡片正文（markdown 文本，各平台会各自处理）
+    link : 可选的「查看详情」按钮链接
+    severity : info / warning / error，决定卡片颜色
+    """
+    platform = _detect_platform(webhook_url)
+    color = _SEVERITY_COLOR.get(severity, "orange")
+
+    if platform == "feishu":
+        # 飞书 interactive card
+        elements: list[dict] = [
+            {"tag": "div", "text": {"tag": "lark_md", "content": content}}
+        ]
+        if link:
+            elements.append(
+                {
+                    "tag": "action",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "查看详情"},
+                            "url": link,
+                            "type": "primary",
+                        }
+                    ],
+                }
+            )
+        return {
+            "msg_type": "interactive",
+            "card": {
+                "header": {
+                    "title": {"tag": "plain_text", "content": title},
+                    "template": _FEISHU_TEMPLATE.get(severity, "orange"),
+                },
+                "elements": elements,
+            },
+        }
+
+    if platform == "dingtalk":
+        # 钉钉 actionCard
+        text = content
+        if link:
+            text += f"\n\n[查看详情]({link})"
+        return {
+            "msgtype": "actionCard",
+            "actionCard": {
+                "title": title,
+                "text": f"### {title}\n\n{text}",
+                "btnOrientation": "0",
+            },
+        }
+
+    if platform == "slack":
+        # Slack Block Kit
+        blocks: list[dict] = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": title},
+            },
+            {"type": "section", "text": {"type": "mrkdwn", "text": content}},
+        ]
+        if link:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "查看详情"},
+                            "url": link,
+                            "style": "primary",
+                        }
+                    ],
+                }
+            )
+        return {"text": title, "blocks": blocks}
+
+    # generic：降级为 text
+    return _build_payload(webhook_url, f"{title}\n{content}")
+
+
 async def send_alert(
     *,
     title: str,
@@ -119,13 +241,14 @@ async def send_alert(
     alert_key: str,
     severity: str = "warning",
     event_type: str = "source_failure",
+    card: dict | None = None,
 ) -> bool:
     """发送告警到外部 webhook。
 
     Parameters
     ----------
     title : 告警标题
-    message : 告警详情
+    message : 告警详情（text 消息正文）
     alert_key : 去重 key（同 key 在 _DEDUP_WINDOW 内只发一次）
     severity : info / warning / error
     event_type : 事件类型，用于按用户配置过滤推送通道
@@ -134,6 +257,9 @@ async def send_alert(
         - weekly_digest: 周报生成完成
         - test: 测试发送
         env 通道（ALERT_WEBHOOK_URL）不参与过滤，永远收所有告警。
+    card : 可选卡片消息。传 dict 时发卡片（各平台适配），否则发 text。
+        格式: {"content": "...", "link": "..."}，title/severity 复用外层参数。
+        不支持卡片的平台自动降级为 text。
 
     Returns: True 如果发送成功或跳过（去重/未配置），False 如果所有 webhook 发送失败。
     """
@@ -159,7 +285,16 @@ async def send_alert(
     any_sent = False
     async with httpx.AsyncClient(timeout=10) as client:
         for webhook_url in webhook_urls:
-            payload = _build_payload(webhook_url, text)
+            if card is not None:
+                payload = _build_card_payload(
+                    webhook_url,
+                    title=title,
+                    content=card.get("content", message),
+                    link=card.get("link", ""),
+                    severity=severity,
+                )
+            else:
+                payload = _build_payload(webhook_url, text)
             try:
                 resp = await client.post(webhook_url, json=payload)
                 if resp.status_code < 300:

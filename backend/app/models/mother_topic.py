@@ -4,7 +4,11 @@ MotherTopic — 公众号母题配置。
 每个母题包含：名称、关键词列表、权重、内容类型、目标读者。
 系统根据关键词匹配内容，自动打上母题标签。
 
-当前版本：单用户（user_id 预留，后续多租户扩展）。
+多租户模型（路线 C：系统模板库 + 用户 fork）：
+- owner_user_id IS NULL  → 系统模板，admin 维护，用户只读
+- owner_user_id = <uid>   → 用户私有 fork，用户可自由改/加/停用
+新用户首次访问 /my-topics 时由应用层 fork_default_templates_for_user
+懒触发复制一份系统模板到用户名下。
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ class MotherTopic(Base):
     __tablename__ = "mother_topics"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     keywords: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # keywords 示例: ["AI工具", "ChatGPT", "工作流", "效率", "Notion"]
@@ -49,6 +53,11 @@ class MotherTopic(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     display_order: Mapped[int] = mapped_column(nullable=False, default=0)
     # display_order: 排列顺序，数字越小越靠前
+    owner_user_id: Mapped[Optional[int]] = mapped_column(
+        nullable=True,
+        index=True,
+        comment="NULL=系统模板；非 NULL=用户自定义 fork",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -81,6 +90,7 @@ class MotherTopic(Base):
             "target_reader": self.target_reader,
             "is_active": self.is_active,
             "display_order": self.display_order,
+            "owner_user_id": self.owner_user_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

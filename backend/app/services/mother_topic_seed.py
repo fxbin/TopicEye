@@ -304,12 +304,20 @@ MOTHER_TOPICS = [
 
 
 async def seed_mother_topics() -> int:
-    """创建或更新四个母题（幂等）。"""
+    """创建或更新四个系统模板母题（幂等）。
+
+    只操作系统模板（owner_user_id IS NULL），不影响用户 fork 的副本。
+    """
     added = 0
     async with async_session() as db:
         for topic_data in MOTHER_TOPICS:
-            # 检查是否已存在
-            result = await db.execute(select(MotherTopic).where(MotherTopic.name == topic_data["name"]))
+            # 只查系统模板（owner_user_id IS NULL），避免误更新用户 fork 的副本
+            result = await db.execute(
+                select(MotherTopic).where(
+                    MotherTopic.name == topic_data["name"],
+                    MotherTopic.owner_user_id.is_(None),
+                )
+            )
             existing = result.scalar_one_or_none()
 
             if existing:
@@ -320,7 +328,7 @@ async def seed_mother_topics() -> int:
                 existing.content_type = topic_data["content_type"]
                 existing.target_reader = topic_data["target_reader"]
                 existing.display_order = topic_data["display_order"]
-                logger.info("Updated: %s", topic_data["name"])
+                logger.info("Updated system template: %s", topic_data["name"])
             else:
                 topic = MotherTopic(
                     name=topic_data["name"],
@@ -331,10 +339,11 @@ async def seed_mother_topics() -> int:
                     target_reader=topic_data["target_reader"],
                     is_active=True,
                     display_order=topic_data["display_order"],
+                    owner_user_id=None,  # 显式声明为系统模板
                 )
                 db.add(topic)
                 added += 1
-                logger.info("Created: %s", topic_data["name"])
+                logger.info("Created system template: %s", topic_data["name"])
 
         await db.commit()
         return added

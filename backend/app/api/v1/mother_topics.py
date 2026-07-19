@@ -1,6 +1,12 @@
 """
 母题相关 API。
 提供母题的 CRUD、关键词打分、内容匹配接口。
+
+多租户模型（路线 C：系统模板库 + 用户 fork）：
+- owner_user_id IS NULL  → 系统模板，admin 维护，用户只读
+- owner_user_id = <uid>   → 用户私有 fork，用户可自由改/加/停用
+- 新用户首次访问时调 POST /fork-defaults 复制一份系统模板到自己名下
+- 打分接口按「系统模板 + 当前用户的 fork」过滤，确保用户改了能生效
 """
 
 from __future__ import annotations
@@ -10,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
@@ -54,6 +60,7 @@ class MotherTopicUpdate(BaseModel):
 
 class MotherTopicOut(MotherTopicBase):
     id: int
+    owner_user_id: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -72,6 +79,7 @@ class MotherTopicOut(MotherTopicBase):
             "target_reader": obj.target_reader,
             "is_active": obj.is_active,
             "display_order": obj.display_order,
+            "owner_user_id": obj.owner_user_id,
             "created_at": obj.created_at.isoformat() if obj.created_at else None,
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
         }
@@ -92,6 +100,42 @@ class ContentScoringResult(BaseModel):
     final_score: float
 
 
+# ── helpers ───────────────────────────────────────────────────────────
+
+
+def _visible_topics_stmt(user_id: int, active_only: bool = False):
+    """构建当前用户可见母题的查询：系统模板（owner IS NULL）+ 自己的 fork。"""
+    stmt = select(MotherTopic).where(
+        or_(
+            MotherTopic.owner_user_id.is_(None),
+            MotherTopic.owner_user_id == user_id,
+        )
+    ).order_by(MotherTopic.display_order, MotherTopic.id)
+    if active_only:
+        stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
+    return stmt
+
+
+async def _load_visible_topics(db: AsyncSession, user_id: int, active_only: bool = False) -> list[MotherTopic]:
+    """加载当前用户可见的母题列表。"""
+    result = await db.execute(_visible_topics_stmt(user_id, active_only))
+    return list(result.scalars().all())
+
+
+def _assert_can_modify(topic: MotherTopic, current_user: User) -> None:
+    """校验当前用户是否有权修改/删除该母题。
+
+    - 系统模板（owner_user_id IS NULL）：仅 admin 可改
+    - 用户私有 fork：仅 owner 可改
+    """
+    if topic.owner_user_id is None:
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="系统模板不可修改，请先 fork 到自己的母题")
+    elif topic.owner_user_id != current_user.id:
+        # Mask as 404 to avoid leaking existence (与 sources /me 模式一致)
+        raise HTTPException(status_code=404, detail="母题不存在")
+
+
 # ── 路由 ─────────────────────────────────────────────────────────────
 
 
@@ -102,12 +146,19 @@ async def list_mother_topics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """列出所有母题，支持只返回激活的。"""
-    if not active_only and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    stmt = select(MotherTopic).order_by(MotherTopic.display_order, MotherTopic.id)
-    if active_only:
-        stmt = stmt.where(MotherTopic.is_active == True)
+    """列出当前用户可见的母题（系统模板 + 自己的 fork）。
+
+    admin 可看到全量（含其他用户的私有母题）用于审计；active_only=false
+    不再是 admin-only —— 普通用户也能看自己名下的停用母题。
+    """
+    if current_user.role == "admin":
+        # admin 看全量（含其他用户的私有 fork，用于审计）
+        stmt = select(MotherTopic).order_by(MotherTopic.display_order, MotherTopic.id)
+        if active_only:
+            stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
+    else:
+        stmt = _visible_topics_stmt(current_user.id, active_only)
+
     result = await db.execute(stmt)
     topics = result.scalars().all()
     return [MotherTopicOut.from_orm_model(t) for t in topics]
@@ -118,9 +169,26 @@ async def list_mother_topics(
 async def create_mother_topic(
     topic_in: MotherTopicCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """创建新母题。"""
+    """创建母题。
+
+    - admin 创建系统模板（owner_user_id=None）
+    - 普通用户创建私有 fork（owner_user_id=current_user.id）
+    """
+    # 普通用户创建私有母题；admin 创建系统模板
+    owner_user_id = None if current_user.role == "admin" else current_user.id
+
+    # 同 scope 内 name 唯一性校验（DB 层有 unique constraint 兜底，这里提前拦截给更好的错误信息）
+    existing_stmt = select(MotherTopic).where(MotherTopic.name == topic_in.name)
+    if owner_user_id is None:
+        existing_stmt = existing_stmt.where(MotherTopic.owner_user_id.is_(None))
+    else:
+        existing_stmt = existing_stmt.where(MotherTopic.owner_user_id == owner_user_id)
+    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"母题「{topic_in.name}」已存在")
+
     topic = MotherTopic(
         name=topic_in.name,
         description=topic_in.description,
@@ -130,6 +198,7 @@ async def create_mother_topic(
         target_reader=topic_in.target_reader,
         is_active=topic_in.is_active,
         display_order=topic_in.display_order,
+        owner_user_id=owner_user_id,
     )
     db.add(topic)
     await db.commit()
@@ -137,18 +206,96 @@ async def create_mother_topic(
     return MotherTopicOut.from_orm_model(topic)
 
 
+@router.post("/fork-defaults")
+async def fork_default_templates(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """把系统模板（owner_user_id IS NULL）复制一份到当前用户名下。
+
+    幂等：用户已有的同名母题会被跳过。admin 调用无意义（admin 本就能改系统模板），
+    但不强制拦截 —— 便于测试。
+    """
+    if current_user.role == "admin":
+        # admin 不需要 fork，直接返回当前系统模板数
+        count_stmt = select(MotherTopic).where(MotherTopic.owner_user_id.is_(None))
+        templates = (await db.execute(count_stmt)).scalars().all()
+        return {"forked": 0, "skipped": len(templates), "message": "管理员无需 fork，可直接维护系统模板"}
+
+    # 加载所有系统模板
+    templates_stmt = select(MotherTopic).where(MotherTopic.owner_user_id.is_(None)).order_by(MotherTopic.display_order)
+    templates = (await db.execute(templates_stmt)).scalars().all()
+
+    # 加载用户已有的母题名，用于跳过
+    user_names_stmt = select(MotherTopic.name).where(MotherTopic.owner_user_id == current_user.id)
+    user_names = {name for (name,) in (await db.execute(user_names_stmt)).all()}
+
+    forked = 0
+    skipped = 0
+    for tpl in templates:
+        if tpl.name in user_names:
+            skipped += 1
+            continue
+        fork = MotherTopic(
+            name=tpl.name,
+            description=tpl.description,
+            keywords=list(tpl.keywords or []),
+            weight=tpl.weight,
+            content_type=tpl.content_type,
+            target_reader=tpl.target_reader,
+            is_active=tpl.is_active,
+            display_order=tpl.display_order,
+            owner_user_id=current_user.id,
+        )
+        db.add(fork)
+        forked += 1
+
+    if forked > 0:
+        await db.commit()
+
+    return {
+        "forked": forked,
+        "skipped": skipped,
+        "message": f"已 fork {forked} 个系统母题" + (f"，跳过 {skipped} 个已存在" if skipped else ""),
+    }
+
+
 @router.put("/{topic_id}", response_model=MotherTopicOut)
 async def update_mother_topic(
     topic_id: int,
     update_in: MotherTopicUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """更新母题。"""
+    """更新母题。
+
+    - 系统模板（owner IS NULL）：仅 admin 可改
+    - 用户私有 fork：仅 owner 可改
+    """
     topic = await db.get(MotherTopic, topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="母题不存在")
-    for field, value in update_in.model_dump(exclude_unset=True).items():
+    _assert_can_modify(topic, current_user)
+
+    payload = update_in.model_dump(exclude_unset=True)
+    # 不允许通过 update 修改 owner_user_id（防越权）
+    payload.pop("owner_user_id", None)
+
+    # 如果改了 name，校验同 scope 内不重名
+    if "name" in payload and payload["name"] != topic.name:
+        scope_filter = (
+            MotherTopic.owner_user_id.is_(None) if topic.owner_user_id is None
+            else MotherTopic.owner_user_id == topic.owner_user_id
+        )
+        dup_stmt = select(MotherTopic).where(
+            MotherTopic.name == payload["name"],
+            scope_filter,
+            MotherTopic.id != topic_id,
+        )
+        if (await db.execute(dup_stmt)).scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"母题「{payload['name']}」已存在")
+
+    for field, value in payload.items():
         if value is not None:
             setattr(topic, field, value)
     await db.commit()
@@ -160,12 +307,17 @@ async def update_mother_topic(
 async def delete_mother_topic(
     topic_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """删除母题（软删除：is_active=False）。"""
+    """删除母题（软删除：is_active=False）。
+
+    - 系统模板（owner IS NULL）：仅 admin 可删
+    - 用户私有 fork：仅 owner 可删
+    """
     topic = await db.get(MotherTopic, topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="母题不存在")
+    _assert_can_modify(topic, current_user)
     topic.is_active = False
     await db.commit()
     return {"ok": True, "message": "母题已停用"}
@@ -180,14 +332,12 @@ async def score_content(
     """
     对单条内容按母题打分。
     用于：选题候选打分、我的母题页过滤。
+
+    打分范围：系统模板 + 当前用户的 fork（用户改了母题能立即生效）。
     """
     text = f"{req.title} {req.summary or ''}"
 
-    # 获取激活的母题
-    result = await db.execute(
-        select(MotherTopic).where(MotherTopic.is_active == True).order_by(MotherTopic.display_order)
-    )
-    topics = result.scalars().all()
+    topics = await _load_visible_topics(db, current_user.id, active_only=True)
 
     if not topics:
         return ContentScoringResult(
@@ -246,13 +396,9 @@ async def score_content_batch(
 ):
     """
     批量对多条内容按母题打分。
-    只查一次 DB 获取所有活跃母题，然后循环打分。
+    只查一次 DB 获取所有活跃母题（系统模板 + 当前用户的 fork），然后循环打分。
     """
-    # 一次性加载所有活跃母题
-    result = await db.execute(
-        select(MotherTopic).where(MotherTopic.is_active == True).order_by(MotherTopic.display_order)
-    )
-    topics = result.scalars().all()
+    topics = await _load_visible_topics(db, current_user.id, active_only=True)
 
     if not topics:
         return BatchScoringResult(
@@ -316,10 +462,7 @@ async def match_content_to_topics(
 
     text = f"{content.title} {content.summary or ''}"
 
-    result = await db.execute(
-        select(MotherTopic).where(MotherTopic.is_active == True).order_by(MotherTopic.display_order)
-    )
-    topics = result.scalars().all()
+    topics = await _load_visible_topics(db, current_user.id, active_only=True)
 
     topic_scores = []
     for topic in topics:

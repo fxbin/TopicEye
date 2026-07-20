@@ -21,6 +21,8 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.request_utils import client_ip
+
 # 路径前缀 → (max_requests, window_seconds)
 _RATE_RULES: list[tuple[str, int, int]] = [
     ("/api/v1/auth", 20, 60),
@@ -33,14 +35,6 @@ _EXEMPT_PREFIXES = ("/health", "/metrics", "/docs", "/openapi.json", "/redoc")
 
 # 内存桶: {(ip, rule_idx): [(timestamp, ...)]}
 _buckets: dict[tuple[str, int], list[float]] = defaultdict(list)
-
-
-def _client_ip(request: Request) -> str:
-    # Respect X-Forwarded-For from reverse proxy (first hop)
-    xff = request.headers.get("x-forwarded-for", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _match_rule(path: str) -> tuple[int, int, int] | None:
@@ -71,7 +65,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         rule_idx, max_req, window = rule
-        ip = _client_ip(request)
+        ip = client_ip(request)
         bucket_key = (ip, rule_idx)
         now = time.monotonic()
 

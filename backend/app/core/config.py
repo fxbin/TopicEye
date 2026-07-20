@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     AUTH_REGISTER_ATTEMPTS_PER_MINUTE: int = 10
     AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE: int = 5
 
+    # ── Request handling ──
+    # 是否信任反向代理透传的 X-Forwarded-For 首段作为客户端真实 IP。
+    # 部署在 Nginx / Caddy / CDN 后应保持 True；直接暴露公网时设为 False
+    # 防止客户端伪造该头部绕过限流或污染审计日志。
+    TRUST_FORWARDED_IP: bool = True
+
     # ── OAuth (Google / GitHub 登录) ──
     # 留空则该 provider 不启用。申请方式见 .env.example。
     OAUTH_GOOGLE_CLIENT_ID: str = ""

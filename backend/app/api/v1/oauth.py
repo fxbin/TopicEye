@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.oauth import ENABLED_PROVIDERS, oauth
+from app.core.request_utils import client_ip
 from app.services.auth_service import (
     OAuthAccountConflictError,
     create_session,
@@ -85,7 +86,7 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     try:
         token = await client.authorize_access_token(request)
     except Exception as exc:
-        logger.warning("OAuth token exchange failed: provider=%s, ip=%s, exc=%s", provider, request.client.host if request.client else "unknown", exc)
+        logger.warning("OAuth token exchange failed: provider=%s, ip=%s, exc=%s", provider, client_ip(request), exc)
         return _frontend_redirect(error=f"OAuth 授权失败：{exc}")
 
     try:

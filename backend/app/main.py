@@ -45,6 +45,7 @@ _cache_warmup_task: asyncio.Task | None = None
 
 # ── Structured logging (JSON for production aggregation) ──
 from app.core.logging_config import configure_logging  # noqa: E402  — 在 basicConfig 之后
+from app.core.request_utils import client_ip
 
 _log_format = getattr(settings, "LOG_FORMAT", "text")
 configure_logging(log_format=_log_format)
@@ -439,10 +440,10 @@ async def app_exception_handler(request: Request, exc: AppException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    client_ip = request.client.host if request.client else "unknown"
+    request_client_ip = client_ip(request)
     logger.exception(
         "Unhandled exception: %s %s ip=%s path=%s",
-        request.method, exc, client_ip, request.url.path,
+        request.method, exc, request_client_ip, request.url.path,
     )
     return JSONResponse(
         status_code=500,

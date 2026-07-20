@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.request_utils import client_ip
 from app.models.user import User
 from app.schemas.auth import (
     AuthLoginRequest,
@@ -44,18 +45,12 @@ _AUTH_RATE_WINDOW_SECONDS = 60.0
 _AUTH_RATE_BUCKETS: dict[str, deque[float]] = {}
 
 
-def _client_host(request: Request) -> str:
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
-
-
 def _enforce_auth_rate_limit(request: Request, *, action: str, max_attempts: int) -> None:
     if max_attempts <= 0:
         return
     now = monotonic()
     cutoff = now - _AUTH_RATE_WINDOW_SECONDS
-    key = f"{action}:{_client_host(request)}"
+    key = f"{action}:{client_ip(request)}"
     bucket = _AUTH_RATE_BUCKETS.setdefault(key, deque())
     while bucket and bucket[0] <= cutoff:
         bucket.popleft()
@@ -168,15 +163,15 @@ async def send_code(data: SendCodeRequest, request: Request, db: AsyncSession = 
     """
     try:
         await send_verification_code(db, data.email)
-        logger.info("Send-code requested: email=%s, ip=%s", data.email, _client_host(request))
+        logger.info("Send-code requested: email=%s, ip=%s", data.email, client_ip(request))
     except CodeRateLimitedError:
-        logger.info("Send-code rate-limited: email=%s, ip=%s", data.email, _client_host(request))
+        logger.info("Send-code rate-limited: email=%s, ip=%s", data.email, client_ip(request))
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试")
     except EmailNotConfiguredError:
-        logger.warning("Send-code failed (email not configured): email=%s, ip=%s", data.email, _client_host(request))
+        logger.warning("Send-code failed (email not configured): email=%s, ip=%s", data.email, client_ip(request))
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员")
     except VerificationError as exc:
-        logger.warning("Send-code failed: email=%s, ip=%s, exc=%s", data.email, _client_host(request), exc)
+        logger.warning("Send-code failed: email=%s, ip=%s, exc=%s", data.email, client_ip(request), exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
@@ -187,7 +182,7 @@ async def send_code(data: SendCodeRequest, request: Request, db: AsyncSession = 
     dependencies=[Depends(enforce_register_rate_limit)],
 )
 async def register(data: AuthRegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    ip = _client_host(request)
+    ip = client_ip(request)
     existing = await get_user_by_email(db, data.email)
     if existing:
         logger.warning("Register failed (email exists): email=%s, ip=%s", data.email, ip)
@@ -212,7 +207,7 @@ async def register(data: AuthRegisterRequest, request: Request, db: AsyncSession
 
 @router.post("/login", response_model=AuthTokenResponse, dependencies=[Depends(enforce_login_rate_limit)])
 async def login(data: AuthLoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    ip = _client_host(request)
+    ip = client_ip(request)
     user = await authenticate_user(db, email=data.email, password=data.password)
     if not user:
         logger.warning("Login failed: email=%s, ip=%s", data.email, ip)
@@ -235,7 +230,7 @@ async def logout(
 ):
     token = _extract_bearer_token(authorization)
     ok = await revoke_token(db, token)
-    ip = _client_host(request)
+    ip = client_ip(request)
     logger.info("Logout: ok=%s, ip=%s", ok, ip)
     return {"logged_out": True}
 
@@ -252,7 +247,7 @@ async def change_my_password(
     校验旧密码后才允许修改；成功后撤销该用户其他设备的登录会话，
     当前调用方的 session 保留（keep_token）。
     """
-    ip = _client_host(request)
+    ip = client_ip(request)
     token = _extract_bearer_token(authorization)
     user = await get_user_for_token(db, token)
     if not user:

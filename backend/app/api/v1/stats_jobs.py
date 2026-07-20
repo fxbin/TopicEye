@@ -12,12 +12,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from sqlalchemy import func, select
 
 from app.api.v1.auth import get_current_user
 from app.core.config import settings
 from app.core.database import async_session
-from app.models.scheduled_job import JobExecutionLog
+from app.repositories.job_execution_log_repo import JobExecutionLogRepository
 from app.services.json_cache import get_cached_json, set_cached_json
 
 router = APIRouter(
@@ -76,68 +75,26 @@ async def _build_job_stats_payload(*, days: int, job_key: str | None) -> dict:
     end = datetime.now(UTC)
 
     async with async_session() as db:
+        repo = JobExecutionLogRepository(db)
+
         # ── by_status ──
-        status_stmt = (
-            select(JobExecutionLog.status, func.count().label("count"))
-            .where(JobExecutionLog.started_at >= cutoff)
-            .group_by(JobExecutionLog.status)
-        )
-        if job_key:
-            status_stmt = status_stmt.where(JobExecutionLog.job_key == job_key)
-        status_rows = (await db.execute(status_stmt)).all()
+        status_rows = await repo.count_by_status_since(cutoff=cutoff, job_key=job_key)
         by_status = {row[0]: int(row[1]) for row in status_rows}
 
         # ── duration aggregates ──
-        dur_stmt = select(
-            func.avg(JobExecutionLog.duration_ms).label("avg_dur"),
-            func.max(JobExecutionLog.duration_ms).label("max_dur"),
-        ).where(
-            JobExecutionLog.started_at >= cutoff,
-            JobExecutionLog.duration_ms.isnot(None),
-        )
-        if job_key:
-            dur_stmt = dur_stmt.where(JobExecutionLog.job_key == job_key)
-        dur_row = (await db.execute(dur_stmt)).one()
+        dur_row = await repo.aggregate_duration_since(cutoff=cutoff, job_key=job_key)
         avg_duration_ms = int(dur_row.avg_dur) if dur_row.avg_dur else 0
         max_duration_ms = int(dur_row.max_dur) if dur_row.max_dur else 0
 
         # ── by_job_key (runs + success_count) ──
-        per_key_stmt = (
-            select(
-                JobExecutionLog.job_key,
-                func.count().label("runs"),
-            )
-            .where(JobExecutionLog.started_at >= cutoff)
-            .group_by(JobExecutionLog.job_key)
-            .order_by(func.count().desc())
-        )
-        if job_key:
-            per_key_stmt = per_key_stmt.where(JobExecutionLog.job_key == job_key)
-        per_key_rows = (await db.execute(per_key_stmt)).all()
+        per_key_rows = await repo.count_runs_per_job_key_since(cutoff=cutoff, job_key=job_key)
 
         by_job_key: list[dict] = []
         for r_job_key, r_runs in per_key_rows:
-            # success count for this job_key
-            success_stmt = select(func.count()).where(
-                JobExecutionLog.job_key == r_job_key,
-                JobExecutionLog.started_at >= cutoff,
-                JobExecutionLog.status == "SUCCESS",
+            success_count = await repo.count_success_for_job_key(
+                job_key=r_job_key, cutoff=cutoff
             )
-            success_count = int((await db.execute(success_stmt)).scalar() or 0)
-
-            # last run info
-            last_stmt = (
-                select(
-                    JobExecutionLog.status,
-                    JobExecutionLog.started_at,
-                    JobExecutionLog.duration_ms,
-                    JobExecutionLog.error_message,
-                )
-                .where(JobExecutionLog.job_key == r_job_key)
-                .order_by(JobExecutionLog.started_at.desc())
-                .limit(1)
-            )
-            last = (await db.execute(last_stmt)).one_or_none()
+            last = await repo.get_last_run_for_job_key(r_job_key)
             by_job_key.append(
                 {
                     "job_key": r_job_key,
@@ -154,41 +111,15 @@ async def _build_job_stats_payload(*, days: int, job_key: str | None) -> dict:
 
         # ── per-job_key avg_duration (single aggregate query) ──
         if per_key_rows:
-            avg_per_key_stmt = (
-                select(
-                    JobExecutionLog.job_key,
-                    func.avg(JobExecutionLog.duration_ms).label("avg_dur"),
-                )
-                .where(
-                    JobExecutionLog.started_at >= cutoff,
-                    JobExecutionLog.duration_ms.isnot(None),
-                )
-                .group_by(JobExecutionLog.job_key)
-            )
-            avg_per_key_rows = (await db.execute(avg_per_key_stmt)).all()
+            avg_per_key_rows = await repo.aggregate_avg_duration_per_job_key_since(cutoff=cutoff)
             avg_lookup = {row[0]: int(row[1]) if row[1] else 0 for row in avg_per_key_rows}
             for entry in by_job_key:
                 entry["avg_duration_ms"] = avg_lookup.get(entry["job_key"], 0)
 
         # ── recent failures ──
-        failure_stmt = (
-            select(
-                JobExecutionLog.job_key,
-                JobExecutionLog.status,
-                JobExecutionLog.started_at,
-                JobExecutionLog.duration_ms,
-                JobExecutionLog.error_message,
-            )
-            .where(
-                JobExecutionLog.started_at >= cutoff,
-                JobExecutionLog.status.in_(["FAILED", "TIMEOUT"]),
-            )
-            .order_by(JobExecutionLog.started_at.desc())
-            .limit(10)
+        failure_rows = await repo.list_recent_failures_since(
+            cutoff=cutoff, job_key=job_key, limit=10
         )
-        if job_key:
-            failure_stmt = failure_stmt.where(JobExecutionLog.job_key == job_key)
-        failure_rows = (await db.execute(failure_stmt)).all()
         recent_failures = [
             {
                 "job_key": row[0],

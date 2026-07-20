@@ -634,7 +634,7 @@ function renderData(data){
   document.getElementById('kpiDbUtil').textContent='利用率: '+(snap.db_pool?.utilization??0).toFixed(0)+'%';
 
   // Process metrics
-  const rssMb=proc.rss_mb||0;
+  const rssMb=proc.process_rss_mb||0;
   document.getElementById('kpiMem').textContent=fmtMb(rssMb);
   document.getElementById('kpiCpu').textContent='CPU: '+(proc.process_cpu_user_s||0).toFixed(1)+'s user / '+(proc.process_cpu_sys_s||0).toFixed(1)+'s sys';
   // Track memory history for sparkline

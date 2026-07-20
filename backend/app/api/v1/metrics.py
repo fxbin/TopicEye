@@ -131,14 +131,13 @@ async def prometheus_metrics():
 
     try:
         pool = engine.sync_engine.pool
-        # SQLAlchemy AsyncEngine wraps a sync pool; .status() returns (size, checked_in, checked_out, overflow)
-        pool_status = pool.status()
-        if isinstance(pool_status, tuple) and len(pool_status) >= 4:
-            size, _checked_in, checked_out, overflow = pool_status[:4]
-            gauge("topiceye_db_pool_size", size, "DB connection pool configured size", {"pool": "primary"})
-            gauge("topiceye_db_pool_checked_out", checked_out, "DB connections currently checked out", {"pool": "primary"})
-            gauge("topiceye_db_pool_overflow", overflow, "DB connections currently in overflow", {"pool": "primary"})
-            collector.update_db_pool_snapshot(checked_out, size)
+        size = pool.size()
+        checked_out = pool.checkedout()
+        overflow = pool.overflow()
+        gauge("topiceye_db_pool_size", size, "DB connection pool configured size", {"pool": "primary"})
+        gauge("topiceye_db_pool_checked_out", checked_out, "DB connections currently checked out", {"pool": "primary"})
+        gauge("topiceye_db_pool_overflow", overflow, "DB connections currently in overflow", {"pool": "primary"})
+        collector.update_db_pool_snapshot(checked_out, size)
     except Exception as exc:
         gauge("topiceye_db_pool_error", 1, "DB pool metrics collection error", {"pool": "primary"})
         # 不阻断 /metrics 输出
@@ -167,6 +166,19 @@ async def metrics_snapshot():
     from app.core.request_metrics import get_collector
 
     collector = get_collector()
+
+    # 采集 DB 连接池指标（同步到 collector，供 snapshot / timeseries 使用）
+    # 避免依赖 /metrics Prometheus 端点被单独请求才有数据
+    try:
+        from app.core.database import engine
+
+        pool = engine.sync_engine.pool
+        size = pool.size()
+        checked_out = pool.checkedout()
+        collector.update_db_pool_snapshot(checked_out, size)
+    except Exception:
+        pass
+
     # 轮询驱动采样：每次被请求时检查是否该追加一个时间序列点
     collector.maybe_sample_timeseries()
 

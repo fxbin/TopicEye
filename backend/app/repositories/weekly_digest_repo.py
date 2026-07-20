@@ -8,7 +8,7 @@ import logging
 from typing import Dict, List, Optional
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.weekly_digest import WeeklyDigest
 from app.repositories.base import BaseRepository
@@ -17,7 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class WeeklyDigestRepository(BaseRepository[WeeklyDigest]):
-    """WeeklyDigest repository with week-based lookups."""
+    """WeeklyDigest repository with week-based lookups.
+
+    所有周报相关的 ORM 查询都集中在这里，api 层只调用、不直接写 sqlalchemy。
+    """
 
     model = WeeklyDigest
 
@@ -52,3 +55,8 @@ class WeeklyDigestRepository(BaseRepository[WeeklyDigest]):
             }
             for row in rows
         ]
+
+    async def count_all(self) -> int:
+        """统计周报总记录数，供 /weekly-digests 列表端点返回 total 字段使用。"""
+        result = await self.db.execute(select(func.count()).select_from(self.model))
+        return result.scalar() or 0

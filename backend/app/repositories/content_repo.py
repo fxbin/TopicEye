@@ -736,3 +736,36 @@ class ContentRepo(BaseRepository[ContentItem]):
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def count_hourly_by_title_keywords(
+        self,
+        keywords: list[str],
+        cutoff: datetime,
+    ) -> list[tuple[datetime, int]]:
+        """按标题关键词做小时分桶计数，供 /daily-reports/sparkline 端点使用。
+
+        - 关键词用 ILIKE 任意命中即算（OR 匹配），保证 1-2 个核心词也能查到曲线
+        - 过滤：crawled_at >= cutoff, status='analyzed', duplicate_of IS NULL
+        - 分桶：date_trunc('hour', crawled_at)
+        - 返回：[(hour_datetime, count), ...]
+
+        与历史行为完全等价（原 api 层直写的查询下沉到此）。
+        """
+        if not keywords:
+            return []
+        pattern_clauses = [self.model.title.ilike(f"%{kw}%") for kw in keywords]
+        stmt = (
+            select(
+                func.date_trunc("hour", self.model.crawled_at).label("ts"),
+                func.count().label("cnt"),
+            )
+            .where(
+                self.model.crawled_at >= cutoff,
+                self.model.status == "analyzed",
+                self.model.duplicate_of.is_(None),
+                or_(*pattern_clauses),
+            )
+            .group_by("ts")
+        )
+        result = await self.db.execute(stmt)
+        return [(row.ts, int(row.cnt)) for row in result.all()]

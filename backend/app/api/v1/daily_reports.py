@@ -10,15 +10,14 @@ from typing import Tuple, Optional
 from datetime import date as date_cls, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db, async_session
-from app.models.content import ContentItem
-from app.models.daily_report import DailyReport
 from app.models.user import User
+from app.repositories.content_repo import ContentRepo
 from app.repositories.daily_report_repo import DailyReportRepository
+from app.repositories.pick_mark_repo import PickMarkRepository
 from app.schemas.daily_report import (
     DailyReportResponse,
     DailyReportListResponse,
@@ -130,21 +129,16 @@ async def get_report_calendar(
     """Return a recent date map for spotting missing or failed daily reports."""
     today = datetime.now(LOCAL_TZ).date()
     start = today - timedelta(days=days - 1)
-    result = await db.execute(
-        select(DailyReport)
-        .where(DailyReport.report_date >= start.isoformat())
-        .where(DailyReport.report_date <= today.isoformat())
-        .order_by(DailyReport.report_date.desc(), DailyReport.cutoff_at.desc(), DailyReport.updated_at.desc())
-    )
-    reports = result.scalars().all()
+    repo = DailyReportRepository(db)
+    reports = await repo.list_for_calendar(start.isoformat(), today.isoformat())
 
-    grouped: dict[str, list[DailyReport]] = {}
+    grouped: dict[str, list] = {}
     for report in reports:
         grouped.setdefault(report.report_date, []).append(report)
 
     calendar_statuses = {"DONE", "ERROR", "GENERATING", "MISSING"}
 
-    def pick_calendar_report(items: list[DailyReport], current_date: date_cls) -> tuple[DailyReport | None, str]:
+    def pick_calendar_report(items: list, current_date: date_cls) -> tuple:
         if not items:
             return None, "MISSING"
 
@@ -204,13 +198,9 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
 ):
     """List recent daily reports."""
-    count_result = await db.execute(select(func.count()).select_from(DailyReport))
-    total = count_result.scalar() or 0
-
-    result = await db.execute(
-        select(DailyReport).order_by(DailyReport.report_date.desc(), DailyReport.cutoff_at.desc()).limit(limit)
-    )
-    items = result.scalars().all()
+    repo = DailyReportRepository(db)
+    total = await repo.count_all()
+    items = await repo.list_recent_with_limit(limit)
 
     return {"items": items, "total": total}
 
@@ -252,17 +242,12 @@ async def trigger_generate_version(
     utc_start, utc_end = _local_window_to_utc_naive(window_start, window_end)
 
     # 查是否已有记录（取最新一条，避免历史脏数据导致 MultipleResultsFound）
-    existing = await db.execute(
-        select(DailyReport)
-        .where(
-            DailyReport.report_date == parsed_date.isoformat(),
-            DailyReport.edition == normalized_edition,
-            DailyReport.owner_user_id.is_(None),
-        )
-        .order_by(DailyReport.id.desc())
-        .limit(1)
+    repo = DailyReportRepository(db)
+    report = await repo.find_existing_for_version(
+        report_date_iso=parsed_date.isoformat(),
+        edition=normalized_edition,
+        owner_user_id=None,
     )
-    report = existing.scalar_one_or_none()
 
     if report and report.status == "DONE" and not force:
         return report
@@ -271,17 +256,14 @@ async def trigger_generate_version(
         report.status = "GENERATING"
         report.updated_at = datetime.now(LOCAL_TZ)
     else:
-        report = DailyReport(
-            report_date=parsed_date.isoformat(),
+        report = repo.create_generating_placeholder(
+            report_date_iso=parsed_date.isoformat(),
             weekday=WEEKDAYS[parsed_date.weekday()],
             edition=normalized_edition,
             window_start=utc_start,
             window_end=utc_end,
             cutoff_at=parsed_cutoff,
-            status="GENERATING",
-            overview="正在生成日报...",
         )
-        db.add(report)
 
     await db.commit()
     report_id = report.id
@@ -302,10 +284,8 @@ async def trigger_generate_version(
                 logger.error("Background daily report generation failed: %s", e)
                 # 标记失败
                 try:
-                    fail_result = await bg_db.execute(
-                        select(DailyReport).where(DailyReport.id == report_id)
-                    )
-                    fail_report = fail_result.scalar_one_or_none()
+                    bg_repo = DailyReportRepository(bg_db)
+                    fail_report = await bg_repo.get_by_id(report_id)
                     if fail_report:
                         fail_report.status = "ERROR"
                         fail_report.overview = f"生成失败: {str(e)[:200]}"
@@ -374,31 +354,13 @@ async def get_sparkline(
 
     用 ILIKE 任意一个关键词命中即算（OR 匹配），保证标题里 1-2 个核心词也能查到曲线。
     """
-    from sqlalchemy import or_
-
     keywords = _extract_sparkline_keywords(title)
     if not keywords:
         return {"points": [], "keywords": [], "total": 0, "window_hours": hours}
 
     cutoff = datetime.now() - timedelta(hours=hours)
-    # ILIKE 任一关键词，OR 组合；过滤掉 AI 分析失败的（duplicate_of）、当天以外未分类的噪声
-    pattern_clauses = [
-        ContentItem.title.ilike(f"%{kw}%") for kw in keywords
-    ]
-    rows = await db.execute(
-        select(
-            func.date_trunc("hour", ContentItem.crawled_at).label("ts"),
-            func.count().label("cnt"),
-        )
-        .where(
-            ContentItem.crawled_at >= cutoff,
-            ContentItem.status == "analyzed",
-            ContentItem.duplicate_of.is_(None),
-            or_(*pattern_clauses),
-        )
-        .group_by("ts")
-    )
-    raw = rows.all()  # [(datetime_hour, count), ...]
+    content_repo = ContentRepo(db)
+    raw = await content_repo.count_hourly_by_title_keywords(keywords, cutoff)
 
     # 桶化：按 bucket_hours 聚合
     bucket_seconds = bucket_hours * 3600
@@ -448,16 +410,11 @@ async def list_pick_marks(
     user: User = Depends(get_current_user),
 ):
     """获取用户的选题标记列表。"""
-    from app.models.pick_mark import PickMark
     from datetime import date as date_type
 
     parsed_date = date_type.fromisoformat(report_date) if report_date else None
-    stmt = select(PickMark).where(PickMark.user_id == user.id)
-    if parsed_date:
-        stmt = stmt.where(PickMark.report_date == parsed_date)
-    stmt = stmt.order_by(PickMark.updated_at.desc())
-    result = await db.execute(stmt)
-    marks = result.scalars().all()
+    repo = PickMarkRepository(db)
+    marks = await repo.list_by_user(user.id, parsed_date)
     return {
         "marks": [
             {
@@ -480,7 +437,6 @@ async def upsert_pick_mark(
     user: User = Depends(get_current_user),
 ):
     """创建或更新选题标记（同一 user+date+title 只保留一条，覆盖 action）。"""
-    from app.models.pick_mark import PickMark
     from datetime import date as date_type
 
     report_date_str = body.get("report_date")
@@ -497,20 +453,14 @@ async def upsert_pick_mark(
     pick_source_url = body.get("pick_source_url")
 
     # Upsert：先查有没有
-    existing = await db.execute(
-        select(PickMark).where(
-            PickMark.user_id == user.id,
-            PickMark.report_date == parsed_date,
-            PickMark.pick_title == pick_title,
-        )
-    )
-    mark = existing.scalar_one_or_none()
+    repo = PickMarkRepository(db)
+    mark = await repo.find_existing(user.id, parsed_date, pick_title)
     if mark:
         mark.action = action
         mark.pick_category = pick_category or mark.pick_category
         mark.pick_source_url = pick_source_url or mark.pick_source_url
     else:
-        mark = PickMark(
+        repo.add_new(
             user_id=user.id,
             report_date=parsed_date,
             pick_title=pick_title,
@@ -518,7 +468,6 @@ async def upsert_pick_mark(
             pick_category=pick_category,
             pick_source_url=pick_source_url,
         )
-        db.add(mark)
     await db.commit()
     return {"status": "ok", "action": action}
 
@@ -531,17 +480,10 @@ async def delete_pick_mark(
     user: User = Depends(get_current_user),
 ):
     """删除选题标记。"""
-    from app.models.pick_mark import PickMark
-    from sqlalchemy import delete as sa_delete
     from datetime import date as date_type
 
     parsed_date = date_type.fromisoformat(report_date)
-    await db.execute(
-        sa_delete(PickMark).where(
-            PickMark.user_id == user.id,
-            PickMark.report_date == parsed_date,
-            PickMark.pick_title == pick_title,
-        )
-    )
+    repo = PickMarkRepository(db)
+    await repo.delete_by_user_date_title(user.id, parsed_date, pick_title)
     await db.commit()
     return {"status": "deleted"}

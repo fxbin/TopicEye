@@ -8,14 +8,12 @@ from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
-from app.models.daily_report import DailyReport
-from app.models.pick_mark import PickMark
-from app.models.weekly_digest import WeeklyDigest
+from app.repositories.daily_report_repo import DailyReportRepository
+from app.repositories.pick_mark_repo import PickMarkRepository
 from app.repositories.weekly_digest_repo import WeeklyDigestRepository
 from app.schemas.weekly_digest import (
     WeeklyDigestResponse,
@@ -62,11 +60,9 @@ async def list_digests(
     db: AsyncSession = Depends(get_db),
 ):
     """List recent weekly digests."""
-    count_result = await db.execute(select(func.count()).select_from(WeeklyDigest))
-    total = count_result.scalar() or 0
-
-    result = await db.execute(select(WeeklyDigest).order_by(WeeklyDigest.week_start.desc()).limit(limit))
-    items = result.scalars().all()
+    repo = WeeklyDigestRepository(db)
+    total = await repo.count_all()
+    items = await repo.get_latest(limit)
 
     return {"items": items, "total": total}
 
@@ -102,8 +98,8 @@ async def trigger_generate(
 
         wk, _, _, _ = _get_week_range()
 
-    existing = await db.execute(select(WeeklyDigest).where(WeeklyDigest.week_key == wk))
-    existing_digest = existing.scalar_one_or_none()
+    repo = WeeklyDigestRepository(db)
+    existing_digest = await repo.get_by_week_key(wk)
     if existing_digest:
         existing_digest.status = "PENDING"
         await db.flush()
@@ -141,26 +137,14 @@ async def get_pick_tracking(
     sunday = monday + timedelta(days=6)
 
     # 1. 查用户本周的所有标记
-    marks_result = await db.execute(
-        select(PickMark).where(
-            PickMark.user_id == user.id,
-            PickMark.report_date >= monday,
-            PickMark.report_date <= sunday,
-        ).order_by(PickMark.report_date)
-    )
-    marks = marks_result.scalars().all()
+    pick_repo = PickMarkRepository(db)
+    marks = await pick_repo.list_by_user_date_range(user.id, monday, sunday)
     if not marks:
         return {"marks": [], "total": 0, "week_key": week_key, "week_range": f"{monday.isoformat()} ~ {sunday.isoformat()}"}
 
     # 2. 查本周所有日报的 top_picks（统计每个标记选题出现在几天的榜单里）
-    reports_result = await db.execute(
-        select(DailyReport).where(
-            DailyReport.report_date >= monday.isoformat(),
-            DailyReport.report_date <= sunday.isoformat(),
-            DailyReport.status == "DONE",
-        ).order_by(DailyReport.report_date)
-    )
-    reports = reports_result.scalars().all()
+    report_repo = DailyReportRepository(db)
+    reports = await report_repo.list_done_by_date_range(monday.isoformat(), sunday.isoformat())
 
     # 构建 标题 → 出现日期集合
     title_to_dates: dict[str, list[str]] = {}

@@ -14,14 +14,14 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, is_admin
 from app.core.database import get_db
 from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.core.validators import validate_password_strength
-from app.models.user import User, UserOAuthAccount
+from app.models.user import User
+from app.repositories.user_repo import UserRepository
 from app.services.auth_service import hash_password, revoke_all_user_sessions
 
 router = APIRouter(
@@ -87,22 +87,18 @@ def _user_to_item(user: User, oauth_providers: list[str]) -> UserListItem:
 
 
 async def _load_user_or_404(db: AsyncSession, user_id: int) -> User:
+    """按 user_id 加载用户，不存在则抛 404。"""
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
     return user
 
 
-async def _assert_not_last_admin(db: AsyncSession, target: User) -> None:
+async def _assert_not_last_admin(repo: UserRepository, target: User) -> None:
     """封禁或降级 admin 时，确保系统中至少还剩一个活跃 admin。"""
     if target.role != "admin" and target.is_active:
         return
-    count = int(
-        await db.scalar(
-            select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))
-        )
-        or 0
-    )
+    count = await repo.count_active_admins()
     if count <= 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -124,43 +120,20 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     """分页列出用户，支持按邮箱/昵称模糊搜索与角色/套餐/状态筛选。"""
-    filters = []
-    cleaned = keyword.strip() if keyword else ""
-    if cleaned:
-        pattern = f"%{cleaned}%"
-        filters.append(or_(User.email.ilike(pattern), User.display_name.ilike(pattern)))
-    if role is not None:
-        filters.append(User.role == role)
-    if plan is not None:
-        filters.append(User.plan == plan)
-    if is_active is not None:
-        filters.append(User.is_active.is_(is_active))
-
-    base = select(User)
-    count_stmt = select(func.count()).select_from(User)
-    for f in filters:
-        base = base.where(f)
-        count_stmt = count_stmt.where(f)
-
-    total = int(await db.scalar(count_stmt) or 0)
-    result = await db.execute(
-        base.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    repo = UserRepository(db)
+    users, total = await repo.list_with_filters(
+        keyword=keyword,
+        role=role,
+        plan=plan,
+        is_active=is_active,
+        page=page,
+        page_size=page_size,
     )
-    users = list(result.scalars().all())
     if not users:
         return UserListResponse(items=[], total=total, page=page, page_size=page_size)
 
     # 一次性拉取本页用户的 OAuth provider 列表，避免 N+1
-    user_ids = [u.id for u in users]
-    oauth_rows = await db.execute(
-        select(UserOAuthAccount.user_id, UserOAuthAccount.provider).where(
-            UserOAuthAccount.user_id.in_(user_ids)
-        )
-    )
-    oauth_map: dict[int, list[str]] = {}
-    for uid, provider in oauth_rows.all():
-        oauth_map.setdefault(uid, []).append(provider)
-
+    oauth_map = await repo.list_oauth_providers_by_user_ids([u.id for u in users])
     items = [_user_to_item(u, oauth_map.get(u.id, [])) for u in users]
     return UserListResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -189,6 +162,8 @@ async def update_user(
             detail="套餐仅支持 free / pro 互转",
         )
 
+    repo = UserRepository(db)
+
     async def _apply():
         target = await _load_user_or_404(db, user_id)
 
@@ -206,7 +181,7 @@ async def update_user(
             or (req.role == "user" and is_admin(target))
         )
         if will_lose_admin:
-            await _assert_not_last_admin(db, target)
+            await _assert_not_last_admin(repo, target)
 
         if req.role is not None:
             target.role = req.role

@@ -7,13 +7,12 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
-from app.models.zhihu import ZhihuAlbum, ZhihuCategory
 from app.models.user import User
+from app.repositories.zhihu_repo import ZhihuRepository
 
 router = APIRouter(prefix="/zhihu", tags=["知乎"])
 
@@ -38,6 +37,7 @@ LEGACY_STORY_GROUPS = {
 
 
 def _storage_sort_type(sort_type: str, category_id: str) -> str:
+    """拼接存储用的 sort_type（如 "hottest__1512"）。"""
     return f"{sort_type}__{category_id}"
 
 
@@ -46,6 +46,7 @@ def _resolve_album_scope(
     subcategory: str | None,
     sort_type: str,
 ) -> tuple[str, str | None]:
+    """根据业务层 category/subcategory 解析实际存储的 sort_type 与子分类标签。"""
     if category == "故事":
         if subcategory:
             cat_id = STORY_SUBCAT_IDS.get(subcategory)
@@ -54,17 +55,6 @@ def _resolve_album_scope(
             return sort_type, subcategory
         return _storage_sort_type(sort_type, STORY_CATEGORY_ID), STORY_ALL_LABEL
     return sort_type, subcategory
-
-
-def _apply_album_filters(query, sort_type: str, category: str | None, subcategories: tuple[str, ...]):
-    query = query.where(ZhihuAlbum.sort_type == sort_type)
-    if category:
-        query = query.where(ZhihuAlbum.category1_name == category)
-    if len(subcategories) == 1:
-        query = query.where(ZhihuAlbum.category2_name == subcategories[0])
-    elif subcategories:
-        query = query.where(ZhihuAlbum.category2_name.in_(subcategories))
-    return query
 
 
 @router.get("/albums")
@@ -78,34 +68,38 @@ async def list_albums(
     current_user: User = Depends(get_current_user),
 ):
     """知乎盐选专辑列表（支持分类+子分类+排序过滤）。"""
+    repo = ZhihuRepository(db)
     db_sort_type, resolved_subcategory = _resolve_album_scope(category, subcategory, sort_type)
     subcategories = (resolved_subcategory,) if resolved_subcategory else ()
 
-    query = _apply_album_filters(select(ZhihuAlbum), db_sort_type, category, subcategories)
-    query = query.order_by(ZhihuAlbum.position.asc(), ZhihuAlbum.updated_at.desc()).limit(limit).offset(offset)
-
-    result = await db.execute(query)
-    albums = result.scalars().all()
+    albums = await repo.list_albums_with_filters(
+        sort_type=db_sort_type,
+        category=category,
+        subcategories=subcategories,
+        limit=limit,
+        offset=offset,
+    )
     count_sort_type = db_sort_type
     count_subcategories = subcategories
 
     if not albums and db_sort_type != sort_type:
         fallback_subcategories = (subcategory,) if subcategory else LEGACY_STORY_GROUPS.get(sort_type, ())
-        fallback_q = _apply_album_filters(select(ZhihuAlbum), sort_type, category, fallback_subcategories)
-        fallback_q = (
-            fallback_q.order_by(ZhihuAlbum.position.asc(), ZhihuAlbum.updated_at.desc()).limit(limit).offset(offset)
+        albums = await repo.list_albums_with_filters(
+            sort_type=sort_type,
+            category=category,
+            subcategories=fallback_subcategories,
+            limit=limit,
+            offset=offset,
         )
-        fallback_result = await db.execute(fallback_q)
-        albums = fallback_result.scalars().all()
         if albums:
             count_sort_type = sort_type
             count_subcategories = fallback_subcategories
 
-    count_q = _apply_album_filters(
-        select(func.count()).select_from(ZhihuAlbum), count_sort_type, category, count_subcategories
+    total = await repo.count_albums_with_filters(
+        sort_type=count_sort_type,
+        category=category,
+        subcategories=count_subcategories,
     )
-    count_result = await db.execute(count_q)
-    total = count_result.scalar() or 0
 
     return {
         "sort_type": sort_type,
@@ -148,13 +142,8 @@ async def list_categories(
     current_user: User = Depends(get_current_user),
 ):
     """知乎盐选分类列表。"""
-    if parent_id:
-        query = select(ZhihuCategory).where(ZhihuCategory.parent_id == parent_id).order_by(ZhihuCategory.sort)
-    else:
-        query = select(ZhihuCategory).where(ZhihuCategory.parent_id == None).order_by(ZhihuCategory.sort)
-
-    result = await db.execute(query)
-    cats = result.scalars().all()
+    repo = ZhihuRepository(db)
+    cats = await repo.list_categories_by_parent_id(parent_id)
 
     return {
         "count": len(cats),

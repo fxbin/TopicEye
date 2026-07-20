@@ -6,23 +6,22 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
-from app.models.fanqie import FanqieCategory, FanqieBook
 from app.models.user import User
+from app.repositories.fanqie_repo import FanqieRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/fanqie", tags=["番茄小说"])
 
 
 def _book_url(book_id: str) -> str:
+    """拼接番茄小说详情页 URL。"""
     return f"https://fanqienovel.com/page/{book_id}"
 
 
@@ -75,13 +74,8 @@ async def list_categories(
     current_user: User = Depends(get_current_user),
 ) -> list[dict]:
     """返回所有番茄分类（按 group 和 display_order 排序）。"""
-    result = await db.execute(
-        select(FanqieCategory).order_by(
-            FanqieCategory.group,
-            FanqieCategory.display_order,
-        )
-    )
-    cats = result.scalars().all()
+    repo = FanqieRepository(db)
+    cats = await repo.list_categories_ordered()
     return [{"fanqie_id": c.fanqie_id, "name": c.name, "group": c.group} for c in cats]
 
 
@@ -102,13 +96,11 @@ async def list_rankings(
         "female_reading": "女频阅读榜",
         "female_new": "女频新书榜",
     }
+    repo = FanqieRepository(db)
 
     out = {}
     for rt in types:
-        result = await db.execute(
-            select(FanqieBook).where(FanqieBook.rank_type == rt).order_by(FanqieBook.current_pos).limit(100)
-        )
-        books = result.scalars().all()
+        books = await repo.list_books_by_rank_type(rt, limit=100)
         out[rt] = {
             "label": labels.get(rt, rt),
             "count": len(books),
@@ -145,9 +137,8 @@ async def category_books(
     rank_type: "new" 新书榜 / "reading" 阅读榜，默认返回新书榜。
     通过 pos 字段过滤（同一本书可能在多个榜单上有排名）。
     """
-    # 先查分类信息确定 gender
-    cat_result = await db.execute(select(FanqieCategory).where(FanqieCategory.fanqie_id == fanqie_id))
-    cat = cat_result.scalar_one_or_none()
+    repo = FanqieRepository(db)
+    cat = await repo.find_category_by_fanqie_id(fanqie_id)
     gender = cat.group if cat else "male"
 
     # 选择对应的 pos 字段
@@ -156,19 +147,7 @@ async def category_books(
     else:
         pos_field = "male_new_pos" if gender == "male" else "female_new_pos"
 
-    # 查询：只返回在该榜单有排名的书
-    query = (
-        select(FanqieBook)
-        .where(
-            FanqieBook.category_id == fanqie_id,
-            getattr(FanqieBook, pos_field) != None,  # type: ignore
-        )
-        .order_by(getattr(FanqieBook, pos_field))
-        .limit(limit)
-    )
-
-    result = await db.execute(query)
-    books = result.scalars().all()
+    books = await repo.list_books_by_category_and_pos_field(fanqie_id, pos_field, limit)
 
     return {
         "fanqie_id": fanqie_id,

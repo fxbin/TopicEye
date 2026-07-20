@@ -6,18 +6,18 @@ from __future__ import annotations
 
 
 from fastapi import APIRouter, Query, Depends, BackgroundTasks
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
-from app.models.qimao import QimaoBook
 from app.models.user import User
+from app.repositories.qimao_repo import QimaoRepository
 
 router = APIRouter(prefix="/qimao", tags=["qimao"])
 
 
 def _book_url(book_id: str) -> str:
+    """拼接七猫小说详情页 URL。"""
     return f"https://www.qimao.com/shuku/{book_id}/"
 
 
@@ -28,15 +28,8 @@ async def rankings(
     channel: str = Query("boy", description="boy / girl"),
 ):
     """各榜单概览：每个榜单有多少本。"""
-    rows = await db.execute(
-        select(
-            QimaoBook.channel,
-            QimaoBook.rank_type,
-            func.count(QimaoBook.id).label("count"),
-        )
-        .where(QimaoBook.channel == channel)
-        .group_by(QimaoBook.channel, QimaoBook.rank_type)
-    )
+    repo = QimaoRepository(db)
+    rows = await repo.count_books_by_channel_group_by_rank_type(channel)
     rank_labels = {
         "hot": "大热榜",
         "new": "新书榜",
@@ -61,16 +54,8 @@ async def categories(
     channel: str = Query(None, description="boy / girl，不传则返回全部"),
 ):
     """分类列表：从已有数据中提取去重的 category1_name。"""
-    query = select(
-        QimaoBook.category1_name,
-        QimaoBook.channel,
-        func.count(QimaoBook.id).label("book_count"),
-    ).group_by(QimaoBook.category1_name, QimaoBook.channel)
-
-    if channel:
-        query = query.where(QimaoBook.channel == channel)
-
-    rows = await db.execute(query)
+    repo = QimaoRepository(db)
+    rows = await repo.list_categories_with_book_count(channel)
     cats = []
     for row in rows:
         if row.category1_name:
@@ -95,21 +80,14 @@ async def list_books(
     current_user: User = Depends(get_current_user),
 ):
     """指定榜单的图书列表。"""
-    query = (
-        select(QimaoBook)
-        .where(QimaoBook.channel == channel, QimaoBook.rank_type == rank_type)
-        .order_by(QimaoBook.position)
+    repo = QimaoRepository(db)
+    books, total = await repo.list_books_with_filters(
+        channel=channel,
+        rank_type=rank_type,
+        category=category,
+        offset=offset,
+        limit=limit,
     )
-    if category:
-        query = query.where(QimaoBook.category1_name == category)
-
-    # Total count
-    count_q = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_q)).scalar() or 0
-
-    query = query.offset(offset).limit(limit)
-    rows = await db.execute(query)
-    books = rows.scalars().all()
 
     return {
         "channel": channel,

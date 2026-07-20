@@ -473,7 +473,7 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
           }}
           title={label}
           className={cx(
-            'inline-flex rounded border-0 bg-transparent px-1 py-0.5 transition',
+            'inline-flex items-center justify-center rounded border-0 bg-transparent min-h-[24px] min-w-[24px] p-1 transition',
             activeFeedback === type ? 'cursor-default' : 'cursor-pointer',
             activeFeedback && activeFeedback !== type ? 'opacity-30' : 'opacity-100',
           )}
@@ -489,7 +489,7 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
             e.stopPropagation();
             setShowMore(!showMore);
           }}
-          className={cx('inline-flex cursor-pointer rounded border-0 px-1.5 py-0.5 text-gray-500 transition hover:text-gray-700', showMore ? 'bg-gray-100' : 'bg-transparent')}
+          className={cx('inline-flex items-center justify-center cursor-pointer rounded border-0 min-h-[24px] min-w-[24px] p-1 text-gray-500 transition hover:text-gray-700', showMore ? 'bg-gray-100' : 'bg-transparent')}
           title="更多反馈"
         >
           <ChevronDown size={13} strokeWidth={2.2} />

@@ -116,14 +116,32 @@ async def _call_llm_single(
             response = await asyncio.to_thread(completion, **kwargs)
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content
+        usage = extract_usage(response)
         await record_llm_call_in_new_session(
             model=model_config,
             request_model=model,
             scene=scene,
             status="DONE",
             duration_ms=duration_ms,
-            usage=extract_usage(response),
+            usage=usage,
         )
+        # ── 内存指标采集（不阻塞、不重试、失败静默）──
+        try:
+            from app.core.request_metrics import get_collector
+            from app.services.llm_usage import calculate_cost, pricing_from_model
+
+            pricing = pricing_from_model(model_config)
+            costs = calculate_cost(usage, pricing, provider=model_config.provider if model_config else None, request_model=model)
+            get_collector().record_llm_call(
+                scene=scene,
+                status="DONE",
+                duration_seconds=duration_ms / 1000,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cost_usd=costs.total_cost,
+            )
+        except Exception:
+            pass  # 指标采集不能影响主链路
         logger.info("LLM response: %d chars", len(content) if content else 0)
         return content or ""
     except Exception as exc:
@@ -136,6 +154,17 @@ async def _call_llm_single(
             duration_ms=duration_ms,
             error_message=str(exc),
         )
+        # ── 失败也记录指标 ──
+        try:
+            from app.core.request_metrics import get_collector
+
+            get_collector().record_llm_call(
+                scene=scene,
+                status="FAILED",
+                duration_seconds=duration_ms / 1000,
+            )
+        except Exception:
+            pass
         raise
 
 

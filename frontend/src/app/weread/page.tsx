@@ -983,7 +983,7 @@ function ReadingStatsCard() {
     setLoading(true);
     setError(null);
     try {
-      const result = await integrationsApi.getWeReadReadData(readType);
+      const result = await integrationsApi.getWeReadReadData(readType, true);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取阅读统计失败');
@@ -1161,7 +1161,7 @@ function ShelfComparison({ notebookCount, onShelfData }: {
     setLoading(true);
     setError(null);
     try {
-      const result = await integrationsApi.getWeReadShelf();
+      const result = await integrationsApi.getWeReadShelf(true);
       setData(result);
       onShelfData?.(result);
     } catch (err) {

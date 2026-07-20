@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone, UTC
 import re
 from typing import Any, Dict, Optional, Union
@@ -14,10 +15,13 @@ from app.core.config import settings
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceStatus, SourceType
 from app.models.user_integration import UserIntegration
+from app.models.weread_stats_cache import WeReadStatsCache
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.dedup import build_hash
 from app.services.integration_service import WEREAD_PROVIDER
 from app.services.source_read_cache import invalidate_source_read_caches
+
+logger = logging.getLogger(__name__)
 
 WEREAD_SOURCE_URL = "https://weread.qq.com/r/weread-skills"
 WEREAD_SOURCE_NAME = "微信读书素材"
@@ -755,3 +759,274 @@ async def sync_weread_materials(
         await db.flush()
         invalidate_source_read_caches()
         raise RuntimeError(message) from exc
+
+
+# ── WeRead stats cache (persistence layer) ────────────────────────────
+
+
+# Cache is considered fresh if fetched within this many hours.
+WEREAD_CACHE_TTL_HOURS = 24
+
+
+async def get_cached_weread_stats(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    cache_type: str,
+    read_type: str = "all",
+) -> WeReadStatsCache | None:
+    """Read a cached WeRead stats row.  Returns None if no cache exists."""
+    result = await db.execute(
+        select(WeReadStatsCache).where(
+            WeReadStatsCache.user_id == user_id,
+            WeReadStatsCache.cache_type == cache_type,
+            WeReadStatsCache.read_type == read_type,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def save_cached_weread_stats(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    cache_type: str,
+    read_type: str,
+    payload: dict[str, Any],
+    error: str | None = None,
+) -> WeReadStatsCache:
+    """Upsert a WeRead stats cache row."""
+    now = datetime.now(UTC)
+    existing = await get_cached_weread_stats(
+        db, user_id=user_id, cache_type=cache_type, read_type=read_type
+    )
+    if existing:
+        existing.payload = payload
+        existing.error = error
+        existing.fetched_at = now
+        existing.updated_at = now
+        await db.flush()
+        return existing
+
+    row = WeReadStatsCache(
+        user_id=user_id,
+        cache_type=cache_type,
+        read_type=read_type,
+        payload=payload,
+        error=error,
+        fetched_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+def _cache_is_fresh(cache: WeReadStatsCache | None, ttl_hours: int = WEREAD_CACHE_TTL_HOURS) -> bool:
+    """Check whether a cache row is fresh enough to serve without re-fetching."""
+    if cache is None or cache.error is not None:
+        return False
+    if cache.fetched_at is None:
+        return False
+    if cache.fetched_at.tzinfo is None:
+        fetched_utc = cache.fetched_at.replace(tzinfo=UTC)
+    else:
+        fetched_utc = cache.fetched_at.astimezone(UTC)
+    age = datetime.now(UTC) - fetched_utc
+    return age.total_seconds() < ttl_hours * 3600
+
+
+async def get_or_fetch_weread_readdata(
+    db: AsyncSession,
+    api_key: str,
+    *,
+    user_id: int,
+    read_type: str = "all",
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    """Cache-aside logic for WeRead reading stats.
+
+    1. If a fresh cache row exists and ``force_refresh`` is False, return it.
+    2. Otherwise fetch from WeRead API, persist to cache, and return.
+    3. If the live fetch fails but a stale cache exists, fall back to it.
+    """
+    if not force_refresh:
+        cached = await get_cached_weread_stats(
+            db, user_id=user_id, cache_type="readdata", read_type=read_type
+        )
+        if _cache_is_fresh(cached):
+            result = dict(cached.payload)  # type: ignore[union-attr]
+            result["_cached_at"] = cached.fetched_at.isoformat()  # type: ignore[union-attr]
+            return result
+
+    # Fetch live
+    try:
+        data = await get_weread_readdata_detail(api_key, read_type=read_type)
+        await save_cached_weread_stats(
+            db,
+            user_id=user_id,
+            cache_type="readdata",
+            read_type=read_type,
+            payload=data,
+        )
+        await db.commit()
+        return data
+    except Exception as exc:
+        # Fall back to stale cache if available
+        cached = await get_cached_weread_stats(
+            db, user_id=user_id, cache_type="readdata", read_type=read_type
+        )
+        if cached and cached.payload:
+            logger.warning("WeRead readdata fetch failed, serving stale cache: %s", exc)
+            result = dict(cached.payload)
+            result["_cached_at"] = cached.fetched_at.isoformat()
+            result["_stale"] = True
+            return result
+        raise
+
+
+async def get_or_fetch_weread_shelf(
+    db: AsyncSession,
+    api_key: str,
+    *,
+    user_id: int,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    """Cache-aside logic for WeRead shelf comparison data."""
+    if not force_refresh:
+        cached = await get_cached_weread_stats(
+            db, user_id=user_id, cache_type="shelf", read_type="all"
+        )
+        if _cache_is_fresh(cached):
+            result = dict(cached.payload)  # type: ignore[union-attr]
+            result["_cached_at"] = cached.fetched_at.isoformat()  # type: ignore[union-attr]
+            return result
+
+    try:
+        data = await get_weread_shelf_sync(api_key)
+        await save_cached_weread_stats(
+            db,
+            user_id=user_id,
+            cache_type="shelf",
+            read_type="all",
+            payload=data,
+        )
+        await db.commit()
+        return data
+    except Exception as exc:
+        cached = await get_cached_weread_stats(
+            db, user_id=user_id, cache_type="shelf", read_type="all"
+        )
+        if cached and cached.payload:
+            logger.warning("WeRead shelf fetch failed, serving stale cache: %s", exc)
+            result = dict(cached.payload)
+            result["_cached_at"] = cached.fetched_at.isoformat()
+            result["_stale"] = True
+            return result
+        raise
+
+
+async def refresh_weread_stats_for_user(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    api_key: str,
+) -> dict[str, Any]:
+    """Refresh all WeRead stats cache rows for a single user.
+
+    Called by the daily scheduler. Fetches readdata for all periods plus
+    the shelf comparison. Errors are recorded in the cache row rather than
+    raising, so one user's failure doesn't block others.
+    """
+    results: dict[str, Any] = {"user_id": user_id, "readdata": {}, "shelf": None}
+
+    # 1. Readdata for all periods
+    for rt in ("all", "week", "month", "year"):
+        try:
+            data = await get_weread_readdata_detail(api_key, read_type=rt)
+            await save_cached_weread_stats(
+                db, user_id=user_id, cache_type="readdata", read_type=rt, payload=data
+            )
+            results["readdata"][rt] = "ok"
+        except Exception as exc:
+            error_msg = redact_weread_sync_error(str(exc), api_key)[:500]
+            await save_cached_weread_stats(
+                db,
+                user_id=user_id,
+                cache_type="readdata",
+                read_type=rt,
+                payload={},
+                error=error_msg,
+            )
+            results["readdata"][rt] = f"error: {error_msg[:100]}"
+            logger.warning("WeRead readdata cache refresh failed (user=%s, rt=%s): %s", user_id, rt, exc)
+
+    # 2. Shelf comparison
+    try:
+        data = await get_weread_shelf_sync(api_key)
+        await save_cached_weread_stats(
+            db, user_id=user_id, cache_type="shelf", read_type="all", payload=data
+        )
+        results["shelf"] = "ok"
+    except Exception as exc:
+        error_msg = redact_weread_sync_error(str(exc), api_key)[:500]
+        await save_cached_weread_stats(
+            db,
+            user_id=user_id,
+            cache_type="shelf",
+            read_type="all",
+            payload={},
+            error=error_msg,
+        )
+        results["shelf"] = f"error: {error_msg[:100]}"
+        logger.warning("WeRead shelf cache refresh failed (user=%s): %s", user_id, exc)
+
+    await db.commit()
+    return results
+
+
+async def refresh_all_weread_stats_cache() -> dict[str, Any]:
+    """Refresh WeRead stats cache for all users with WeRead integration.
+
+    Entry point for the daily scheduler. Iterates all UserIntegration rows
+    where provider='weread' and api_key is not null.
+    """
+    from app.core.database import async_session
+    from app.services.integration_service import integration_api_key
+
+    summary: dict[str, Any] = {"total_users": 0, "success": 0, "failed": 0, "details": []}
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(UserIntegration).where(
+                UserIntegration.provider == WEREAD_PROVIDER,
+                UserIntegration.api_key.isnot(None),
+            )
+        )
+        integrations = result.scalars().all()
+
+    summary["total_users"] = len(integrations)
+    if not integrations:
+        logger.info("WeRead cache refresh: no users with integration, skipping")
+        return summary
+
+    for integration in integrations:
+        api_key = integration_api_key(integration)
+        if not api_key:
+            continue
+        async with async_session() as db:
+            try:
+                result = await refresh_weread_stats_for_user(
+                    db, user_id=integration.user_id, api_key=api_key
+                )
+                summary["details"].append(result)
+                summary["success"] += 1
+            except Exception:
+                logger.exception(
+                    "WeRead cache refresh failed for user=%s", integration.user_id
+                )
+                summary["failed"] += 1
+
+    logger.info("WeRead cache refresh done: %s", {k: v for k, v in summary.items() if k != "details"})
+    return summary

@@ -694,6 +694,35 @@ async def _generate_weekly_digest() -> None:
         logger.exception("Scheduler: weekly digest generation failed")
 
 
+@track_job(
+    "refresh_weread_stats_cache",
+    name="微信读书统计缓存刷新",
+    timeout=600,
+    description="每日05:00刷新所有用户的微信读书阅读统计和书架对比数据缓存",
+)
+async def _refresh_weread_stats_cache() -> None:
+    """每日凌晨 05:00 刷新所有用户的 WeRead 统计缓存。
+
+    拉取每个配置了 WeRead integration 的用户的阅读统计（all/week/month/year）
+    和书架对比数据，写入 weread_stats_cache 表。API 层优先读缓存以加速响应。
+    """
+    logger.info("Scheduler: WeRead stats cache refresh started")
+    try:
+        from app.services.weread_materials import refresh_all_weread_stats_cache
+
+        summary = await refresh_all_weread_stats_cache()
+        logger.info(
+            "Scheduler: WeRead stats cache refresh done — "
+            "users=%d, success=%d, failed=%d",
+            summary.get("total_users", 0),
+            summary.get("success", 0),
+            summary.get("failed", 0),
+        )
+        return str(summary)
+    except Exception:
+        logger.exception("Scheduler: WeRead stats cache refresh failed")
+
+
 # ── Lifecycle helpers ─────────────────────────────────────────────────
 
 
@@ -909,6 +938,15 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # WeRead 统计缓存刷新：每日 05:00（错开 04:30 趋势快照，避免 SQLite 写锁竞争）
+    scheduler.add_job(
+        _refresh_weread_stats_cache,
+        trigger=CronTrigger(hour=5, minute=0),
+        id="refresh_weread_stats_cache",
+        name="微信读书统计缓存每日刷新",
+        replace_existing=True,
+    )
+
     scheduler.start()
 
     # Immediately register all enabled sources so they start syncing
@@ -925,7 +963,8 @@ def start_scheduler() -> None:
 
     logger.info(
         "Scheduler started: per-source sync + 10min rescan + 5min post-sync + cleanup + "
-        "daily_report(12:00/20:00 + final 00:30) + weekly_digest(Mon 09:00)"
+        "daily_report(12:00/20:00 + final 00:30) + weekly_digest(Mon 09:00) + "
+        "weread_stats_cache(05:00)"
     )
 
 

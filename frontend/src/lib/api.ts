@@ -302,16 +302,19 @@ export const integrationsApi = {
     return request(`/integrations/weread/book/${bookId}`);
   },
 
-  getWeReadReadData(readType: 'all' | 'week' | 'month' | 'year' = 'all'): Promise<WeReadReadData> {
-    return request(`/integrations/weread/readdata?read_type=${readType}`);
+  getWeReadReadData(readType: 'all' | 'week' | 'month' | 'year' = 'all', forceRefresh = false): Promise<WeReadReadData> {
+    const params = new URLSearchParams({ read_type: readType });
+    if (forceRefresh) params.set('force_refresh', 'true');
+    return request(`/integrations/weread/readdata?${params}`);
   },
 
   getWeReadBookmarks(bookId: string, count = 20): Promise<WeReadBestBookmarks> {
     return request(`/integrations/weread/book/${bookId}/bookmarks?count=${count}`);
   },
 
-  getWeReadShelf(): Promise<WeReadShelfSync> {
-    return request('/integrations/weread/shelf');
+  getWeReadShelf(forceRefresh = false): Promise<WeReadShelfSync> {
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    return request(`/integrations/weread/shelf${params}`);
   },
 };
 

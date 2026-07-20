@@ -28,10 +28,10 @@ from app.services.integration_service import (
     upsert_user_integration,
 )
 from app.services.weread_materials import (
+    get_or_fetch_weread_readdata,
+    get_or_fetch_weread_shelf,
     get_weread_bestbookmarks,
     get_weread_book_info,
-    get_weread_readdata_detail,
-    get_weread_shelf_sync,
     redact_weread_sync_error,
     search_weread_books,
     sync_weread_materials,
@@ -187,19 +187,29 @@ async def get_weread_book(
 @router.get("/weread/readdata", response_model=WeReadReadDataResponse)
 async def get_weread_readdata(
     read_type: str = Query("all", description="统计周期：all/week/month/year"),
+    force_refresh: bool = Query(False, description="强制刷新缓存，绕过 TTL"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取微信读书阅读统计数据（时长/天数/排行/偏好）。"""
+    """获取微信读书阅读统计数据（时长/天数/排行/偏好）。
+
+    优先从本地缓存读取（TTL 24h），缓存不存在或过期时回源拉取并写入缓存。
+    传入 ``force_refresh=true`` 可强制绕过缓存重新拉取。
+    """
     api_key = await _get_weread_api_key(current_user, db)
     try:
-        result = await get_weread_readdata_detail(api_key, read_type=read_type)
+        result = await get_or_fetch_weread_readdata(
+            db, api_key, user_id=current_user.id, read_type=read_type, force_refresh=force_refresh
+        )
     except RuntimeError as exc:
         detail = redact_weread_sync_error(str(exc), api_key)
         raise HTTPException(status_code=502, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # Strip cache metadata before response validation
+    result.pop("_cached_at", None)
+    result.pop("_stale", None)
     return WeReadReadDataResponse(**result)
 
 
@@ -225,17 +235,27 @@ async def get_weread_bookmarks(
 
 @router.get("/weread/shelf", response_model=WeReadShelfSyncResponse)
 async def get_weread_shelf(
+    force_refresh: bool = Query(False, description="强制刷新缓存，绕过 TTL"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取完整书架（含未读/听书），用于书架 vs 笔记本对比分析。"""
+    """获取完整书架（含未读/听书），用于书架 vs 笔记本对比分析。
+
+    优先从本地缓存读取（TTL 24h），缓存不存在或过期时回源拉取并写入缓存。
+    传入 ``force_refresh=true`` 可强制绕过缓存重新拉取。
+    """
     api_key = await _get_weread_api_key(current_user, db)
     try:
-        result = await get_weread_shelf_sync(api_key)
+        result = await get_or_fetch_weread_shelf(
+            db, api_key, user_id=current_user.id, force_refresh=force_refresh
+        )
     except RuntimeError as exc:
         detail = redact_weread_sync_error(str(exc), api_key)
         raise HTTPException(status_code=502, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # Strip cache metadata before response validation
+    result.pop("_cached_at", None)
+    result.pop("_stale", None)
     return WeReadShelfSyncResponse(**result)

@@ -10,7 +10,6 @@ from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1._db_write import write_with_503_low_latency
@@ -23,7 +22,6 @@ from app.api.v1.auth import (
 )
 from app.core.config import settings
 from app.core.database import async_session, get_db
-from app.models.content import ContentItem
 from app.models.favorite import FavoriteTargetType
 from app.models.user import User
 from app.repositories.analysis_repo import AnalysisRepository
@@ -424,23 +422,12 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
     # 滚动 24h 内容数:与 /contents?hours=24 同口径
     try:
         async with async_session() as db:
-            content_visibility = (
-                ContentItem.owner_user_id.is_(None)
-                if current_user is None
-                else (
-                    (ContentItem.owner_user_id.is_(None))
-                    | (ContentItem.owner_user_id == current_user.id)
-                )
+            repo = ContentRepo(db)
+            result["today_content"] = await repo.count_today_analyzed_visible(
+                cutoff=cutoff,
+                visible_user_id=current_user.id if current_user is not None else None,
+                public_only=current_user is None,
             )
-            r = await db.execute(
-                select(ContentItem.id).where(
-                    ContentItem.status == "analyzed",
-                    ContentItem.crawled_at >= cutoff,
-                    ContentItem.duplicate_of.is_(None),
-                    content_visibility,
-                )
-            )
-            result["today_content"] = len(r.all())
     except Exception:
         logger.warning("today_count content query failed", exc_info=True)
 
@@ -545,9 +532,7 @@ async def list_favorites(
     )
     content_ids = [item.target_id for item in favorites if item.target_id is not None]
     if content_ids:
-        result = await db.execute(select(ContentItem).where(ContentItem.id.in_(content_ids)))
-        by_id = {item.id: item for item in result.scalars().all()}
-        items = [by_id[content_id] for content_id in content_ids if content_id in by_id]
+        items = await ContentRepo(db).list_by_ids_ordered(content_ids)
     else:
         items = []
     payload = {
@@ -787,8 +772,8 @@ async def toggle_favorite(
     current_user: User = Depends(get_current_user),
 ):
     """Toggle favorite status for a content item."""
-    result = await db.execute(select(ContentItem.id).where(ContentItem.id == content_id))
-    if result.scalar_one_or_none() is None:
+    content_repo = ContentRepo(db)
+    if await content_repo.get_by_id(content_id) is None:
         raise HTTPException(404, "Content not found")
 
     favorite_repo = FavoriteRepo(db, current_user.id)

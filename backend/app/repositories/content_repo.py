@@ -777,3 +777,51 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         result = await self.db.execute(select(self.model.id).where(self.model.id == content_id))
         return result.scalar_one_or_none()
+
+    async def count_today_analyzed_visible(
+        self,
+        *,
+        cutoff: datetime,
+        visible_user_id: int | None = None,
+        public_only: bool = False,
+    ) -> int:
+        """统计滚动 24h 内 analyzed 且非重复的可见内容数。
+
+        供 /contents/today-count 端点使用，口径与首页「今日选题」一致：
+        - status='analyzed'
+        - crawled_at >= cutoff
+        - duplicate_of IS NULL
+        - 可见性：public_only=True 时只计 owner_user_id IS NULL；
+          visible_user_id 非 None 时计公共池+该用户私有。
+        """
+        stmt = (
+            select(func.count(self.model.id))
+            .where(
+                self.model.status == "analyzed",
+                self.model.crawled_at >= cutoff,
+                self.model.duplicate_of.is_(None),
+            )
+        )
+        for clause in self._visibility_clauses(visible_user_id, public_only):
+            stmt = stmt.where(clause)
+        result = await self.db.execute(stmt)
+        return int(result.scalar() or 0)
+
+    async def list_by_ids_ordered(
+        self,
+        content_ids: list[int],
+    ) -> list[ContentItem]:
+        """按给定 id 顺序返回 ContentItem 列表。
+
+        供 /contents/favorites/list 端点按收藏顺序展示内容使用。
+        - 输入空列表返回空列表
+        - 不存在的 id 会被跳过（不抛错）
+        - 返回顺序与 content_ids 顺序一致
+        """
+        if not content_ids:
+            return []
+        result = await self.db.execute(
+            select(self.model).where(self.model.id.in_(content_ids))
+        )
+        by_id = {item.id: item for item in result.scalars().all()}
+        return [by_id[cid] for cid in content_ids if cid in by_id]

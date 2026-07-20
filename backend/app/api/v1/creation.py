@@ -11,16 +11,16 @@ Creation plan API endpoints.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import async_session
-from app.models.creation import CreationPlan
 from app.models.user import User
+from app.repositories.creation_repo import CreationPlanRepository
 from app.services.creation import generate_creation_plan, PLATFORM_PROMPTS
 
 router = APIRouter(prefix="/creation", tags=["creation"], dependencies=[Depends(get_current_user)])
@@ -57,7 +57,7 @@ async def list_platforms():
     return {"platforms": [{"id": k, "name": v["name"]} for k, v in PLATFORM_PROMPTS.items()]}
 
 
-def _plan_to_dict(p: CreationPlan) -> dict:
+def _plan_to_dict(p: Any) -> dict:
     return {
         "id": p.id,
         "user_id": p.user_id,
@@ -80,17 +80,13 @@ async def list_my_plans(
 ):
     """列出当前用户的历史创作方案（per-user 隔离）。"""
     async with async_session() as db:
-        stmt = (
-            select(CreationPlan)
-            .where(CreationPlan.user_id == current_user.id)
-            .order_by(CreationPlan.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+        repo = CreationPlanRepository(db)
+        items = await repo.list_user_plans(
+            user_id=current_user.id,
+            platform=platform,
+            limit=limit,
+            offset=offset,
         )
-        if platform:
-            stmt = stmt.where(CreationPlan.platform == platform)
-        result = await db.execute(stmt)
-        items = result.scalars().all()
     return {
         "count": len(items),
         "plans": [_plan_to_dict(p) for p in items],
@@ -104,13 +100,8 @@ async def get_my_plan(
 ):
     """获取单条历史方案详情（per-user 隔离）。"""
     async with async_session() as db:
-        result = await db.execute(
-            select(CreationPlan).where(
-                CreationPlan.id == plan_id,
-                CreationPlan.user_id == current_user.id,
-            )
-        )
-        plan = result.scalar_one_or_none()
+        repo = CreationPlanRepository(db)
+        plan = await repo.get_user_plan(plan_id, current_user.id)
     if plan is None:
         raise HTTPException(status_code=404, detail="方案不存在")
     return _plan_to_dict(plan)
@@ -122,15 +113,9 @@ async def delete_my_plan(
     current_user: User = Depends(get_current_user),
 ):
     """删除自己的一条历史方案（per-user 隔离）。"""
-    from sqlalchemy import delete
-
     async with async_session() as db:
-        result = await db.execute(
-            delete(CreationPlan).where(
-                CreationPlan.id == plan_id,
-                CreationPlan.user_id == current_user.id,
-            )
-        )
+        repo = CreationPlanRepository(db)
+        rowcount = await repo.delete_user_plan(plan_id, current_user.id)
         await db.commit()
-    if result.rowcount == 0:
+    if rowcount == 0:
         raise HTTPException(status_code=404, detail="方案不存在")

@@ -10,16 +10,15 @@ Endpoints:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Any
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import get_db
 from app.models.user import User
-from app.models.topic import TopicGroup
-from app.models.content import ContentItem
+from app.repositories.content_repo import ContentRepo
+from app.repositories.topic_repo import TopicRepository
 from app.services.topic_clustering import cluster_and_dedup_with_lease
 from app.services.zhihu_url import normalize_zhihu_url
 
@@ -59,12 +58,9 @@ async def list_topics(
     db: AsyncSession = Depends(get_db),
 ):
     """List all topic groups sorted by best_score desc."""
-    result = await db.execute(select(TopicGroup).order_by(TopicGroup.best_score.desc()))
-    topics = result.scalars().all()
-
-    total_result = await db.execute(select(func.count(TopicGroup.id)))
-    total = total_result.scalar() or 0
-
+    repo = TopicRepository(db)
+    topics = await repo.list_ordered_by_best_score()
+    total = await repo.count_all()
     return {"items": topics, "total": total}
 
 
@@ -74,15 +70,13 @@ async def get_topic(
     db: AsyncSession = Depends(get_db),
 ):
     """Get topic group with its member content items."""
-    result = await db.execute(select(TopicGroup).where(TopicGroup.id == topic_id))
-    topic = result.scalar_one_or_none()
+    topic_repo = TopicRepository(db)
+    topic = await topic_repo.get_by_id(topic_id)
     if not topic:
         raise HTTPException(404, "Topic not found")
 
-    items_result = await db.execute(
-        select(ContentItem).where(ContentItem.topic_id == topic_id).order_by(ContentItem.crawled_at.desc())
-    )
-    items = items_result.scalars().all()
+    content_repo = ContentRepo(db)
+    items = await content_repo.list_all_by_topic_id(topic_id)
 
     return {
         "topic": TopicResponse.model_validate(topic).model_dump(),

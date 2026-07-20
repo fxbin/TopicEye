@@ -9,13 +9,12 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, field_serializer
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.config import settings
 from app.core.database import async_session, get_db
-from app.models.trending import TrendingCategory, TrendingItem, TrendingSource
+from app.repositories.trending_repo import TrendingRepository
 from app.services.trending_cache import (
     TRENDING_SOURCES_CACHE_KEY,
     CrossPlatformCacheParams,
@@ -33,7 +32,6 @@ from app.services.trending_cache import (
 )
 from app.services.trending_pipeline import sync_all_trending, sync_trending_source
 from app.services.zhihu_url import normalize_zhihu_url
-import contextlib
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trending", tags=["trending"])
@@ -123,32 +121,13 @@ async def build_trending_list_payload(
     exclude_sources: list[str] | None = None,
     limit: int = 30,
 ) -> list[dict]:
-    stmt = select(TrendingItem)
-
-    if category:
-        try:
-            cat_enum = TrendingCategory(category)
-            stmt = stmt.where(TrendingItem.category == cat_enum)
-        except ValueError:
-            pass
-    if source:
-        try:
-            src_enum = TrendingSource(source)
-            stmt = stmt.where(TrendingItem.source == src_enum)
-        except ValueError:
-            pass
-    if exclude_sources:
-        # Convert string source names to TrendingSource enums (silently skip unknowns)
-        exclude_enums = []
-        for s in exclude_sources:
-            with contextlib.suppress(ValueError):
-                exclude_enums.append(TrendingSource(s))
-        if exclude_enums:
-            stmt = stmt.where(TrendingItem.source.notin_(exclude_enums))
-
-    stmt = stmt.order_by(TrendingItem.source, TrendingItem.rank).limit(limit * 10)
-    result = await db.execute(stmt)
-    items = result.scalars().all()
+    repo = TrendingRepository(db)
+    items = await repo.list_with_filters(
+        category=category,
+        source=source,
+        exclude_sources=exclude_sources,
+        limit=limit,
+    )
     return [TrendingItemOut.model_validate(item).model_dump() for item in items]
 
 
@@ -175,18 +154,8 @@ async def get_trending_sources():
 
 
 async def build_trending_sources_payload(db: AsyncSession) -> list[dict]:
-    stmt = (
-        select(
-            TrendingItem.source,
-            TrendingItem.category,
-            func.count(TrendingItem.id).label("count"),
-            func.max(TrendingItem.fetched_at).label("last_synced"),
-        )
-        .group_by(TrendingItem.source, TrendingItem.category)
-        .order_by(TrendingItem.category, TrendingItem.source)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
+    repo = TrendingRepository(db)
+    rows = await repo.list_grouped_by_source_category()
     payload = [
         TrendingSourceInfo(
             source=row[0],
@@ -253,9 +222,8 @@ async def get_cross_platform(
 async def build_cross_platform_payload(db: AsyncSession, *, min_resonance: int, limit: int) -> dict:
     from app.services.trending_cross import cluster_trending_items
 
-    stmt = select(TrendingItem).order_by(TrendingItem.source, TrendingItem.rank)
-    result = await db.execute(stmt)
-    items = result.scalars().all()
+    repo = TrendingRepository(db)
+    items = await repo.list_all_ordered_by_source_rank()
 
     item_dicts = [
         {
@@ -434,9 +402,8 @@ async def get_topic_angles(
     # 从 DB 找到相关趋势条目，拼出各平台标题
     # 转义 LIKE 通配符，防止用户输入 %/_ 泄露非预期数据
     safe_topic = topic[:8].replace("%", "\\%").replace("_", "\\_")
-    stmt = select(TrendingItem).where(TrendingItem.title.like(f"%{safe_topic}%")).order_by(TrendingItem.rank).limit(8)
-    result = await db.execute(stmt)
-    items = result.scalars().all()
+    repo = TrendingRepository(db)
+    items = await repo.search_by_title_like(f"%{safe_topic}%", limit=8)
 
     if not items:
         return {"common_angles": [], "contrast_angles": [], "angle_note": "未找到相关话题数据"}

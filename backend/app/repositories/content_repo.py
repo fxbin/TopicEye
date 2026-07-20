@@ -230,6 +230,19 @@ class ContentRepo(BaseRepository[ContentItem]):
             sort_order="desc",
         )
 
+    async def list_all_by_topic_id(self, topic_id: int) -> Sequence[ContentItem]:
+        """返回指定 topic 下的全部内容项，按 crawled_at 倒序。
+
+        供 /topics/{id} endpoint 使用，不分页（与历史行为等价）。
+        """
+        stmt = (
+            select(self.model)
+            .where(self.model.topic_id == topic_id)
+            .order_by(self.model.crawled_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def get_duplicates_of(self, canonical_id: int) -> Sequence[ContentItem]:
         """Fetch all items marked as duplicates of a canonical item."""
         result = await self.db.execute(

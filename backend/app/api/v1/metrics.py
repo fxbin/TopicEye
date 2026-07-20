@@ -39,14 +39,10 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Query, Response
-from sqlalchemy import desc, func, select
 
 from app.core.database import async_session
-from app.models.content import ContentItem
-from app.models.llm_model import LlmCallLog
-from app.models.notification import Notification
-from app.models.scheduled_job import JobExecutionLog
-from app.models.source import Source
+from app.repositories.llm_call_log_repo import LlmCallLogRepository
+from app.repositories.metrics_query_repo import MetricsQueryRepository
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -70,40 +66,31 @@ async def prometheus_metrics():
             lines.append(f"{name} {value}")
 
     async with async_session() as db:
+        repo = MetricsQueryRepository(db)
+
         # ── Sources by status ──
-        rows = await db.execute(select(Source.status, func.count()).group_by(Source.status))
-        for status, count in rows:
+        for status, count in await repo.count_sources_by_status():
             gauge("topiceye_sources_total", count, "Sources by status", {"status": status})
 
         # ── Content by status ──
-        rows = await db.execute(select(ContentItem.status, func.count()).group_by(ContentItem.status))
-        for status, count in rows:
+        for status, count in await repo.count_content_by_status():
             gauge("topiceye_content_total", count, "Content items by status", {"status": status})
 
         # ── Recent content (24h) ──
         cutoff = now - timedelta(hours=24)
-        recent = (
-            await db.scalar(select(func.count()).select_from(ContentItem).where(ContentItem.crawled_at >= cutoff)) or 0
-        )
+        recent = await repo.count_recent_content(cutoff)
         gauge("topiceye_content_recent_24h", recent, "Content items crawled in last 24h")
 
         # ── Analyses total ──
-        from app.models.analysis import AiAnalysis
-
-        analyses = await db.scalar(select(func.count()).select_from(AiAnalysis)) or 0
+        analyses = await repo.count_analyses()
         gauge("topiceye_analyses_total", analyses, "Total AI analyses")
 
         # ── Job runs by status (last 24h) ──
-        rows = await db.execute(
-            select(JobExecutionLog.status, func.count())
-            .where(JobExecutionLog.started_at >= cutoff)
-            .group_by(JobExecutionLog.status)
-        )
-        for status, count in rows:
+        for status, count in await repo.count_job_runs_by_status_since(cutoff):
             gauge("topiceye_job_runs_total", count, "Job runs in last 24h by status", {"status": status})
 
         # ── Notifications unread ──
-        unread = await db.scalar(select(func.count()).select_from(Notification)) or 0
+        unread = await repo.count_notifications()
         gauge("topiceye_notifications_total", unread, "Total notifications")
 
     # ── Uptime ──
@@ -281,28 +268,9 @@ async def llm_call_logs(
     useful for diagnosing LLM errors from the dashboard.
     """
     cutoff = datetime.now(UTC) - timedelta(hours=24)
-    query = (
-        select(
-            LlmCallLog.request_id,
-            LlmCallLog.scene,
-            LlmCallLog.actual_model,
-            LlmCallLog.status,
-            LlmCallLog.error_message,
-            LlmCallLog.duration_ms,
-            LlmCallLog.input_tokens,
-            LlmCallLog.output_tokens,
-            LlmCallLog.total_cost,
-            LlmCallLog.created_at,
-        )
-        .where(LlmCallLog.created_at >= cutoff)
-        .order_by(desc(LlmCallLog.created_at))
-        .limit(limit)
-    )
-    if status and status != "ALL":
-        query = query.where(LlmCallLog.status == status.upper())
-
     async with async_session() as db:
-        rows = (await db.execute(query)).all()
+        repo = LlmCallLogRepository(db)
+        rows = await repo.list_recent(status=status, cutoff=cutoff, limit=limit)
 
     return {
         "count": len(rows),

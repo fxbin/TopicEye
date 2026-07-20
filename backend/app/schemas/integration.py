@@ -116,11 +116,9 @@ class WeReadShelfBook(BaseModel):
     cover: str = ""
     category: str = ""
     deep_link: str = ""
-    reading_progress: int = 0
-    note_count: int = 0
-    review_count: int = 0
-    book_type: int = 0
-    sort: int = 0
+    finish_reading: int = 0
+    read_update_time: int = 0
+    has_notes: bool = False
 
 
 class WeReadShelfSyncResponse(BaseModel):
@@ -129,16 +127,25 @@ class WeReadShelfSyncResponse(BaseModel):
     total: int = 0
     has_notes: int = 0
     no_notes: int = 0
-    audiobook_count: int = 0
+    finished_count: int = 0
+    categories: list[tuple[str, int]] = Field(default_factory=list)
 
 
 class WeReadReadDataResponse(BaseModel):
     """阅读统计数据响应。"""
     read_type: str = "all"
+    mode: str = "overall"
     total_read_time: int = 0
-    total_read_days: int = 0
-    total_read_book_count: int = 0
-    total_note_count: int = 0
-    total_mark_count: int = 0
-    ranking_list: list[Any] = Field(default_factory=list)
-    preference: dict[str, Any] = Field(default_factory=dict)
+    read_days: int = 0
+    day_average_read_time: int = 0
+    compare: float = 0.0
+    rank_text: str = ""
+    prefer_category_word: str = ""
+    prefer_author: str = ""
+    author_count: int = 0
+    prefer_publisher: str = ""
+    prefer_time_word: str = ""
+    read_longest: list[Any] = Field(default_factory=list)
+    prefer_books: list[Any] = Field(default_factory=list)
+    medals: list[Any] = Field(default_factory=list)
+    regist_time: int = 0

@@ -234,15 +234,36 @@ def _weread_gateway_request(
     *,
     timeout: int = 15,
 ) -> dict[str, Any]:
-    """同步调用 WeRead Agent Gateway，返回 JSON dict。"""
+    """同步调用 WeRead Agent Gateway，返回 JSON dict。
+
+    所有 httpx 异常均包装为 RuntimeError，使上层 API 端点只需
+    捕获 RuntimeError / ValueError 即可。
+    """
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-        resp = client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
-        resp.raise_for_status()
-        return resp.json()
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            resp = client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        # 尝试从响应体提取 errmsg
+        detail = f"微信读书接口返回 {status_code}"
+        try:
+            err_body = exc.response.json()
+            errmsg = err_body.get("errmsg") or err_body.get("message") or ""
+            if errmsg:
+                detail = f"{detail}: {errmsg}"
+        except Exception:
+            text = exc.response.text.strip()[:200]
+            if text:
+                detail = f"{detail}: {text}"
+        raise RuntimeError(detail) from exc
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"无法连接微信读书服务: {exc}") from exc
 
 
 async def search_weread_books(
@@ -384,28 +405,41 @@ async def get_weread_readdata_detail(api_key: str, *, read_type: str = "all") ->
     if not stripped_key:
         raise ValueError("微信读书 API Key 未配置")
 
-    type_map = {"all": 0, "week": 1, "month": 2, "year": 3}
-    type_int = type_map.get(read_type, 0)
+    # WeRead Gateway /readdata/detail 使用 mode 字符串参数
+    mode_map = {"all": "overall", "week": "weekly", "month": "monthly", "year": "annually"}
+    mode = mode_map.get(read_type, "overall")
 
     body: dict[str, Any] = {
         "api_name": "/readdata/detail",
-        "type": type_int,
+        "mode": mode,
         "skill_version": WEREAD_SKILL_VERSION,
     }
 
     def _do_fetch_readdata() -> dict[str, Any]:
         data = _weread_gateway_request(stripped_key, body, timeout=20)
-        # 原样透传核心字段，前端按需取用
+        # 标准化核心字段
+        rank_data = data.get("rank") or {}
+        rank_text = rank_data.get("text", "") if isinstance(rank_data, dict) else ""
+        read_longest = data.get("readLongest") or []
+        prefer_books = data.get("preferBooks") or []
+        medals = data.get("medals") or []
         return {
             "read_type": read_type,
-            "total_read_time": data.get("totalReadTime") or data.get("total_read_time") or 0,
-            "total_read_days": data.get("totalReadDays") or data.get("total_read_days") or 0,
-            "total_read_book_count": data.get("totalReadBookCount") or data.get("total_read_book_count") or 0,
-            "total_note_count": data.get("totalNoteCount") or data.get("total_note_count") or 0,
-            "total_mark_count": data.get("totalMarkCount") or data.get("total_mark_count") or 0,
-            "ranking_list": data.get("rankingList") or data.get("ranking_list") or [],
-            "preference": data.get("preference") or data.get("categoryPreference") or {},
-            "raw": data,
+            "mode": mode,
+            "total_read_time": data.get("totalReadTime") or 0,
+            "read_days": data.get("readDays") or 0,
+            "day_average_read_time": data.get("dayAverageReadTime") or 0,
+            "compare": data.get("compare") or 0,
+            "rank_text": rank_text,
+            "prefer_category_word": data.get("preferCategoryWord") or "",
+            "prefer_author": data.get("preferAuthor") or "",
+            "author_count": data.get("authorCount") or 0,
+            "prefer_publisher": data.get("preferPublisher") or "",
+            "prefer_time_word": data.get("preferTimeWord") or "",
+            "read_longest": read_longest if isinstance(read_longest, list) else [],
+            "prefer_books": prefer_books if isinstance(prefer_books, list) else [],
+            "medals": medals if isinstance(medals, list) else [],
+            "regist_time": data.get("registTime") or 0,
         }
 
     return await asyncio.to_thread(_do_fetch_readdata)
@@ -461,61 +495,111 @@ async def get_weread_bestbookmarks(api_key: str, book_id: str, *, count: int = 2
     return await asyncio.to_thread(_do_fetch_bookmarks)
 
 
+def _fetch_notebook_book_ids(api_key: str) -> set[str]:
+    """分页拉取 /user/notebooks，返回所有有笔记的书籍 bookId 集合。
+
+    用于书架对比：shelf/sync 不返回 noteCount，需交叉引用
+    notebooks 数据判断哪些书有笔记。
+    """
+    book_ids: set[str] = set()
+    last_sort: int | None = None
+    for _page in range(WEREAD_FETCH_MAX_PAGES):
+        body: dict[str, Any] = {
+            "api_name": "/user/notebooks",
+            "count": WEREAD_FETCH_BATCH_SIZE,
+            "skill_version": WEREAD_SKILL_VERSION,
+        }
+        if last_sort is not None:
+            body["lastSort"] = last_sort
+        data = _weread_gateway_request(api_key, body, timeout=20)
+        books = data.get("books") or []
+        for b in books:
+            if isinstance(b, dict):
+                bid = str(b.get("bookId") or "")
+                if bid:
+                    book_ids.add(bid)
+        if data.get("hasMore") != 1 or not books:
+            break
+        last_sort = books[-1].get("sort")
+        if last_sort is None:
+            break
+    return book_ids
+
+
 async def get_weread_shelf_sync(api_key: str) -> dict[str, Any]:
     """通过 WeRead Gateway /shelf/sync 获取完整书架。
 
-    返回完整书架（包括未开始读的书、听书/讲书），可与笔记本数据对比分析囤书习惯。
+    返回完整书架（包括未开始读的书），可与笔记本数据对比分析囤书习惯。
+
+    /shelf/sync 不返回 noteCount/reviewCount，因此额外分页拉取
+    /user/notebooks 获取有笔记的 bookId 集合，交叉引用后标注每本书
+    是否有笔记。同时提取 category 字段用于分类分组。
 
     Args:
         api_key: 微信读书 API Key。
 
     Returns:
-        标准化后的书架 dict，含 books 列表和统计摘要。
+        标准化后的书架 dict，含 books 列表、统计摘要和分类分布。
     """
     stripped_key = (api_key or "").strip()
     if not stripped_key:
         raise ValueError("微信读书 API Key 未配置")
 
-    body: dict[str, Any] = {
+    shelf_body: dict[str, Any] = {
         "api_name": "/shelf/sync",
         "skill_version": WEREAD_SKILL_VERSION,
     }
 
     def _do_fetch_shelf() -> dict[str, Any]:
-        data = _weread_gateway_request(stripped_key, body, timeout=20)
+        # 1. 拉取书架
+        data = _weread_gateway_request(stripped_key, shelf_body, timeout=20)
         raw_books = data.get("books") or []
+
+        # 2. 交叉引用：拉取有笔记的 bookId 集合
+        notebook_ids = _fetch_notebook_book_ids(stripped_key)
+
         books: list[dict[str, Any]] = []
         for entry in raw_books:
             if not isinstance(entry, dict):
                 continue
-            book = entry.get("book") if isinstance(entry.get("book"), dict) else entry
-            book_id = str(book.get("bookId") or "")
+            # /shelf/sync 返回扁平结构，无嵌套 book 对象
+            book_id = str(entry.get("bookId") or "")
             if not book_id:
                 continue
+            has_notes = book_id in notebook_ids
             books.append({
                 "book_id": book_id,
-                "title": str(book.get("title") or ""),
-                "author": str(book.get("author") or ""),
-                "cover": str(book.get("cover") or ""),
-                "category": str(book.get("category") or ""),
-                "deep_link": str(book.get("deepLink") or ""),
-                "reading_progress": entry.get("readingProgress") or book.get("readingProgress") or 0,
-                "note_count": entry.get("noteCount") or book.get("noteCount") or 0,
-                "review_count": entry.get("reviewCount") or book.get("reviewCount") or 0,
-                "book_type": entry.get("bookType") or book.get("bookType") or 0,
-                "sort": entry.get("sort") or 0,
+                "title": str(entry.get("title") or ""),
+                "author": str(entry.get("author") or ""),
+                "cover": str(entry.get("cover") or ""),
+                "category": str(entry.get("category") or ""),
+                "deep_link": str(entry.get("deepLink") or ""),
+                "finish_reading": entry.get("finishReading") or 0,
+                "read_update_time": entry.get("readUpdateTime") or 0,
+                "has_notes": has_notes,
             })
-        # 统计摘要
+
+        # 3. 统计摘要
         total = len(books)
-        has_notes = sum(1 for b in books if b["note_count"] > 0 or b["review_count"] > 0)
-        no_notes = total - has_notes
-        audiobooks = sum(1 for b in books if b["book_type"] == 1)
+        has_notes_count = sum(1 for b in books if b["has_notes"])
+        no_notes = total - has_notes_count
+        finished = sum(1 for b in books if b["finish_reading"] == 1)
+
+        # 4. 分类分布
+        cat_map: dict[str, int] = {}
+        for b in books:
+            cat = b["category"] or "未分类"
+            cat_map[cat] = cat_map.get(cat, 0) + 1
+        # 按数量降序排列
+        categories = sorted(cat_map.items(), key=lambda x: -x[1])
+
         return {
             "books": books,
             "total": total,
-            "has_notes": has_notes,
+            "has_notes": has_notes_count,
             "no_notes": no_notes,
-            "audiobook_count": audiobooks,
+            "finished_count": finished,
+            "categories": categories,
         }
 
     return await asyncio.to_thread(_do_fetch_shelf)

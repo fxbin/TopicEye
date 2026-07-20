@@ -94,13 +94,21 @@ export interface WeReadBookInfo {
 
 export interface WeReadReadData {
   read_type: string;
+  mode: string;
   total_read_time: number;
-  total_read_days: number;
-  total_read_book_count: number;
-  total_note_count: number;
-  total_mark_count: number;
-  ranking_list: Array<Record<string, unknown>>;
-  preference: Record<string, unknown>;
+  read_days: number;
+  day_average_read_time: number;
+  compare: number;
+  rank_text: string;
+  prefer_category_word: string;
+  prefer_author: string;
+  author_count: number;
+  prefer_publisher: string;
+  prefer_time_word: string;
+  read_longest: Array<Record<string, unknown>>;
+  prefer_books: Array<Record<string, unknown>>;
+  medals: Array<Record<string, unknown>>;
+  regist_time: number;
 }
 
 export interface WeReadBookmarkItem {
@@ -123,11 +131,9 @@ export interface WeReadShelfBook {
   cover: string;
   category: string;
   deep_link: string;
-  reading_progress: number;
-  note_count: number;
-  review_count: number;
-  book_type: number;
-  sort: number;
+  finish_reading: number;
+  read_update_time: number;
+  has_notes: boolean;
 }
 
 export interface WeReadShelfSync {
@@ -135,7 +141,8 @@ export interface WeReadShelfSync {
   total: number;
   has_notes: number;
   no_notes: number;
-  audiobook_count: number;
+  finished_count: number;
+  categories: Array<[string, number]>;
 }
 
 // ─── Plans (功能权益) ───

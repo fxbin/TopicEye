@@ -23,7 +23,6 @@ import {
   Filter,
   Grid3x3,
   Zap,
-  Headphones,
   Layers,
   Timer,
   CalendarDays,
@@ -71,7 +70,7 @@ function parseWeReadMeta(item: ContentItem): WeReadMeta {
 
 type SortKey = 'published_at' | 'title' | 'noteCount' | 'reviewCount' | 'readingProgress';
 type SortOrder = 'asc' | 'desc';
-type GroupKey = 'none' | 'author' | 'status';
+type GroupKey = 'none' | 'author' | 'status' | 'weread_category';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'published_at', label: '最近笔记' },
@@ -85,6 +84,7 @@ const GROUP_OPTIONS: Array<{ value: GroupKey; label: string }> = [
   { value: 'none', label: '不分组' },
   { value: 'author', label: '按作者' },
   { value: 'status', label: '按阅读状态' },
+  { value: 'weread_category', label: '微信读书分类' },
 ];
 
 function getReadingStatus(progress: number): '未读' | '在读' | '已读' {
@@ -992,6 +992,12 @@ function ReadingStatsCard() {
     }
   }, [readType]);
 
+  // 切换周期时自动刷新
+  useEffect(() => {
+    if (data) handleFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readType]);
+
   // 格式化阅读时长（秒 → 小时分钟）
   const formatTime = (seconds: number) => {
     if (!seconds || seconds <= 0) return '0分钟';
@@ -1004,6 +1010,14 @@ function ReadingStatsCard() {
   const typeLabels: Record<string, string> = {
     all: '总计', week: '本周', month: '本月', year: '本年',
   };
+
+  // 从 read_longest 提取读书最久的书名
+  const longestBookTitle = useMemo(() => {
+    if (!data?.read_longest?.length) return '';
+    const first = data.read_longest[0] as Record<string, unknown>;
+    const book = (first.book || first) as Record<string, unknown>;
+    return String(book.title || '');
+  }, [data]);
 
   return (
     <Surface icon={Timer} title="阅读时长统计" hint="来自微信读书阅读数据">
@@ -1042,53 +1056,84 @@ function ReadingStatsCard() {
       )}
 
       {data && (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
-            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-              <Timer size={9} />
-              阅读时长
+        <div className="mt-3 space-y-2.5">
+          {/* 核心指标 */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+              <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
+                <Timer size={9} />
+                阅读时长
+              </div>
+              <div className="mt-0.5 font-mono text-base font-black text-gray-900">
+                {formatTime(data.total_read_time)}
+              </div>
+              {data.compare !== 0 && (
+                <div className={cx('text-[9px] font-bold', data.compare > 0 ? 'text-teal' : 'text-red')}>
+                  {data.compare > 0 ? '↑' : '↓'}{Math.abs(Math.round(data.compare * 100))}% 环比
+                </div>
+              )}
             </div>
-            <div className="mt-0.5 font-mono text-base font-black text-gray-900">
-              {formatTime(data.total_read_time)}
+            <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+              <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
+                <CalendarDays size={9} />
+                阅读天数
+              </div>
+              <div className="mt-0.5 font-mono text-base font-black text-gray-900">
+                {data.read_days}
+                <span className="ml-0.5 text-[10px] font-normal text-gray-400">天</span>
+              </div>
+              <div className="text-[9px] text-gray-400">
+                日均 {formatTime(data.day_average_read_time)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+              <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
+                <Users size={9} />
+                朋友排名
+              </div>
+              <div className="mt-0.5 text-xs font-black text-gray-900">
+                {data.rank_text || '暂无排名'}
+              </div>
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
-            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-              <CalendarDays size={9} />
-              阅读天数
-            </div>
-            <div className="mt-0.5 font-mono text-base font-black text-gray-900">
-              {data.total_read_days}
-              <span className="ml-0.5 text-[10px] font-normal text-gray-400">天</span>
-            </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
-            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-              <Library size={9} />
-              读过书籍
-            </div>
-            <div className="mt-0.5 font-mono text-base font-black text-gray-900">
-              {data.total_read_book_count}
-              <span className="ml-0.5 text-[10px] font-normal text-gray-400">本</span>
-            </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
-            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-              <Highlighter size={9} />
-              总划线
-            </div>
-            <div className="mt-0.5 font-mono text-base font-black text-gray-900">
-              {data.total_mark_count}
-            </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
-            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-              <MessageSquare size={9} />
-              总想法
-            </div>
-            <div className="mt-0.5 font-mono text-base font-black text-gray-900">
-              {data.total_note_count}
-            </div>
+
+          {/* 偏好分析 */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {data.prefer_category_word && (
+              <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                <div className="text-[9px] font-bold text-gray-400">偏好分类</div>
+                <div className="mt-0.5 text-xs font-bold text-primary">
+                  {data.prefer_category_word}
+                </div>
+              </div>
+            )}
+            {data.prefer_author && (
+              <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                <div className="text-[9px] font-bold text-gray-400">偏好作者</div>
+                <div className="mt-0.5 text-xs font-bold text-teal">
+                  {data.prefer_author}
+                  {data.author_count > 0 && (
+                    <span className="ml-1 text-[9px] text-gray-400">（{data.author_count}位）</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {data.prefer_time_word && (
+              <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                <div className="text-[9px] font-bold text-gray-400">偏好阅读时段</div>
+                <div className="mt-0.5 text-xs font-bold text-purple">
+                  {data.prefer_time_word}
+                </div>
+              </div>
+            )}
+            {longestBookTitle && (
+              <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                <div className="text-[9px] font-bold text-gray-400">读书最久</div>
+                <div className="mt-0.5 line-clamp-1 text-xs font-bold text-amber" title={longestBookTitle}>
+                  {longestBookTitle}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1104,7 +1149,10 @@ function ReadingStatsCard() {
 
 
 /** 书架对比 — 拉取完整书架与笔记本对比 */
-function ShelfComparison({ notebookCount }: { notebookCount: number }) {
+function ShelfComparison({ notebookCount, onShelfData }: {
+  notebookCount: number;
+  onShelfData?: (data: WeReadShelfSync) => void;
+}) {
   const [data, setData] = useState<WeReadShelfSync | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1115,12 +1163,13 @@ function ShelfComparison({ notebookCount }: { notebookCount: number }) {
     try {
       const result = await integrationsApi.getWeReadShelf();
       setData(result);
+      onShelfData?.(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取书架失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onShelfData]);
 
   if (!data && !loading && !error) {
     return (
@@ -1134,7 +1183,7 @@ function ShelfComparison({ notebookCount }: { notebookCount: number }) {
           获取完整书架
         </button>
         <p className="mt-2 text-[11px] text-gray-400">
-          对比完整书架（含未读/听书）与笔记本（有笔记的书），分析囤书习惯
+          对比完整书架与笔记本（有笔记的书），分析囤书习惯
         </p>
       </Surface>
     );
@@ -1167,7 +1216,8 @@ function ShelfComparison({ notebookCount }: { notebookCount: number }) {
   }
 
   const noNotesPct = data.total > 0 ? Math.round((data.no_notes / data.total) * 100) : 0;
-  const audiobookPct = data.total > 0 ? Math.round((data.audiobook_count / data.total) * 100) : 0;
+  const finishedPct = data.total > 0 ? Math.round((data.finished_count / data.total) * 100) : 0;
+  const hasNotesPct = data.total > 0 ? Math.round((data.has_notes / data.total) * 100) : 0;
 
   return (
     <Surface icon={Layers} title="书架 vs 笔记本对比" hint={`${data.total} 本 vs ${notebookCount} 本有笔记`}>
@@ -1192,6 +1242,7 @@ function ShelfComparison({ notebookCount }: { notebookCount: number }) {
         <div className="rounded-lg border border-gray-200 bg-white p-2.5">
           <div className="text-[9px] font-bold text-gray-400">有笔记</div>
           <div className="mt-0.5 font-mono text-lg font-black text-teal">{data.has_notes}</div>
+          <div className="text-[9px] text-gray-400">{hasNotesPct}%</div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-2.5">
           <div className="text-[9px] font-bold text-gray-400">无笔记</div>
@@ -1200,13 +1251,35 @@ function ShelfComparison({ notebookCount }: { notebookCount: number }) {
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-2.5">
           <div className="flex items-center gap-0.5 text-[9px] font-bold text-gray-400">
-            <Headphones size={9} />
-            听书/讲书
+            <BookMarked size={9} />
+            已读完
           </div>
-          <div className="mt-0.5 font-mono text-lg font-black text-purple">{data.audiobook_count}</div>
-          <div className="text-[9px] text-gray-400">{audiobookPct}%</div>
+          <div className="mt-0.5 font-mono text-lg font-black text-purple">{data.finished_count}</div>
+          <div className="text-[9px] text-gray-400">{finishedPct}%</div>
         </div>
       </div>
+
+      {/* 分类分布 Top 10 */}
+      {data.categories.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1.5 text-[10px] font-bold text-gray-500">书架分类分布（Top 10）</div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.categories.slice(0, 10).map(([cat, count]) => {
+              const pct = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
+              return (
+                <span
+                  key={cat}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-600"
+                  title={`${cat}: ${count}本 (${pct}%)`}
+                >
+                  {cat}
+                  <span className="font-mono text-gray-400">{count}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 囤书分析提示 */}
       {noNotesPct >= 60 && (
@@ -1232,6 +1305,26 @@ export default function WeReadPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const [showCharts, setShowCharts] = useState(false);
+
+  // ── 书架分类映射（由 ShelfComparison 组件填充）──
+  const [shelfCategoryMap, setShelfCategoryMap] = useState<Map<string, string>>(new Map());
+
+  // 当选择「微信读书分类」分组但还未加载书架数据时，自动拉取
+  const shelfCategoryLoaded = shelfCategoryMap.size > 0;
+  useEffect(() => {
+    if (groupKey === 'weread_category' && !shelfCategoryLoaded) {
+      integrationsApi.getWeReadShelf().then(result => {
+        const m = new Map<string, string>();
+        for (const book of result.books) {
+          const normalized = (book.title || '').trim().toLowerCase();
+          if (normalized && book.category) {
+            m.set(normalized, book.category);
+          }
+        }
+        setShelfCategoryMap(m);
+      }).catch(() => {});
+    }
+  }, [groupKey, shelfCategoryLoaded]);
 
   // ── 发现模式（全网搜书）──
   const [searchMode, setSearchMode] = useState<'shelf' | 'discover'>('shelf');
@@ -1340,7 +1433,7 @@ export default function WeReadPage() {
     return arr;
   }, [filtered, sortKey, sortOrder]);
 
-  // 分组
+    // 分组
   const grouped = useMemo(() => {
     if (groupKey === 'none') {
       return [{ label: '', items: sorted }];
@@ -1350,13 +1443,18 @@ export default function WeReadPage() {
       let key: string;
       if (groupKey === 'author') {
         key = entry.item.author || '未知作者';
-      } else {
+      } else if (groupKey === 'status') {
         key = getReadingStatus(entry.meta.readingProgress);
+      } else if (groupKey === 'weread_category') {
+        const normalized = (entry.item.title || '').trim().toLowerCase();
+        key = shelfCategoryMap.get(normalized) || '未分类';
+      } else {
+        key = '其他';
       }
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(entry);
     }
-    // 分组排序：作者按字母序，状态按 已读 > 在读 > 未读
+    // 分组排序
     const statusOrder = ['已读', '在读', '未读'];
     return Array.from(groups.entries())
       .map(([label, items]) => ({ label, items }))
@@ -1364,9 +1462,13 @@ export default function WeReadPage() {
         if (groupKey === 'status') {
           return statusOrder.indexOf(a.label) - statusOrder.indexOf(b.label);
         }
+        if (groupKey === 'weread_category') {
+          // 按数量降序
+          return b.items.length - a.items.length;
+        }
         return a.label.localeCompare(b.label, 'zh-CN');
       });
-  }, [sorted, groupKey]);
+  }, [sorted, groupKey, shelfCategoryMap]);
 
   // 统计数据
   const stats = useMemo(() => {
@@ -1604,7 +1706,16 @@ export default function WeReadPage() {
 
             {/* Phase 2: 阅读统计 + 书架对比 */}
             <ReadingStatsCard />
-            <ShelfComparison notebookCount={itemsWithMeta.length} />
+            <ShelfComparison notebookCount={itemsWithMeta.length} onShelfData={(shelfData) => {
+              const m = new Map<string, string>();
+              for (const book of shelfData.books) {
+                const normalized = (book.title || '').trim().toLowerCase();
+                if (normalized && book.category) {
+                  m.set(normalized, book.category);
+                }
+              }
+              setShelfCategoryMap(m);
+            }} />
 
             {/* 工具栏 */}
             <Panel className="flex flex-wrap items-center gap-3 p-3">

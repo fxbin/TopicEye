@@ -1326,8 +1326,8 @@ export default function WeReadPage() {
     }
   }, [groupKey, shelfCategoryLoaded]);
 
-  // ── 发现模式（全网搜书）──
-  const [searchMode, setSearchMode] = useState<'shelf' | 'discover'>('shelf');
+  // ── Tab 切换: shelf / stats / discover ──
+  const [activeTab, setActiveTab] = useState<'shelf' | 'stats' | 'discover'>('shelf');
   const [discoverResults, setDiscoverResults] = useState<WeReadSearchBook[]>([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
@@ -1368,7 +1368,7 @@ export default function WeReadPage() {
 
   // 发现模式：防抖搜索微信读书全网书库
   useEffect(() => {
-    if (searchMode !== 'discover') return;
+    if (activeTab !== 'discover') return;
     const keyword = discoverKeyword.trim();
     if (!keyword) {
       setDiscoverResults([]);
@@ -1392,7 +1392,7 @@ export default function WeReadPage() {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [discoverKeyword, searchMode]);
+  }, [discoverKeyword, activeTab]);
 
   // 搜索过滤
   const filtered = useMemo(() => {
@@ -1598,7 +1598,7 @@ export default function WeReadPage() {
         )}
 
         {/* 空状态 */}
-        {allItems.length === 0 && !loading && searchMode === 'shelf' && (
+        {allItems.length === 0 && !loading && activeTab === 'shelf' && (
           <Panel className="p-8 text-center">
             <BookOpen size={32} className="mx-auto mb-3 text-gray-300" />
             <p className="text-sm font-bold text-gray-500">还没有微信读书素材</p>
@@ -1611,22 +1611,22 @@ export default function WeReadPage() {
               或切换到
               <button
                 type="button"
-                onClick={() => setSearchMode('discover')}
+                onClick={() => setActiveTab('discover')}
                 className="mx-0.5 text-primary hover:underline font-bold"
               >发现</button>
-              模式搜索微信读书书库。
+              tab 搜索微信读书书库。
             </p>
           </Panel>
         )}
 
-        {/* 搜索模式切换 */}
+        {/* Tab 切换 */}
         <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
           <button
             type="button"
-            onClick={() => setSearchMode('shelf')}
+            onClick={() => setActiveTab('shelf')}
             className={cx(
               'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition',
-              searchMode === 'shelf'
+              activeTab === 'shelf'
                 ? 'bg-primary-light text-primary'
                 : 'text-gray-500 hover:text-gray-700',
             )}
@@ -1636,10 +1636,23 @@ export default function WeReadPage() {
           </button>
           <button
             type="button"
-            onClick={() => setSearchMode('discover')}
+            onClick={() => setActiveTab('stats')}
             className={cx(
               'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition',
-              searchMode === 'discover'
+              activeTab === 'stats'
+                ? 'bg-primary-light text-primary'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <BarChart3 size={13} />
+            统计分析
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('discover')}
+            className={cx(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition',
+              activeTab === 'discover'
                 ? 'bg-primary-light text-primary'
                 : 'text-gray-500 hover:text-gray-700',
             )}
@@ -1649,73 +1662,15 @@ export default function WeReadPage() {
           </button>
         </div>
 
-        {searchMode === 'shelf' && allItems.length > 0 && (
+        {activeTab === 'shelf' && allItems.length > 0 && (
           <>
-            {/* 统计卡片 */}
+            {/* 紧凑统计栏 */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard icon={Library} label="书籍总数" value={stats.totalBooks} tone="primary" />
               <StatCard icon={Highlighter} label="划线总数" value={stats.totalNotes} tone="teal" />
               <StatCard icon={MessageSquare} label="想法总数" value={stats.totalReviews} tone="purple" />
               <StatCard icon={BarChart3} label="平均进度" value={`${stats.avgProgress}%`} tone="amber" />
             </div>
-
-            {/* 本周阅读脉搏 */}
-            <Surface icon={Zap} title="本周阅读脉搏" hint="近两周笔记活动对比">
-              <WeeklyPulse items={itemsWithMeta} />
-            </Surface>
-
-            {/* 图表展开/收起按钮 */}
-            <button
-              type="button"
-              onClick={() => setShowCharts((v) => !v)}
-              className={cx(
-                'flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition',
-                showCharts
-                  ? 'border-primary-border bg-primary-light text-primary'
-                  : 'border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary-border',
-              )}
-            >
-              <PieChart size={14} />
-              {showCharts ? '收起统计图表' : '展开统计图表'}
-              {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-
-            {/* 统计图表区域 */}
-            {showCharts && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Surface icon={PieChart} title="阅读状态分布" hint="已读 / 在读 / 未读">
-                  <StatusDonut items={itemsWithMeta} />
-                </Surface>
-                <Surface icon={TrendingUp} title="阅读进度分布" hint="按进度区间统计">
-                  <ProgressHistogram items={itemsWithMeta} />
-                </Surface>
-                <Surface icon={Filter} title="完成率漏斗" hint="各阶段转化率，发现阅读瓶颈">
-                  <CompletionFunnel items={itemsWithMeta} />
-                </Surface>
-                <Surface icon={Grid3x3} title="笔记密度分布" hint="进度 vs 划线数，气泡=总笔记">
-                  <NoteDensityScatter items={itemsWithMeta} />
-                </Surface>
-                <Surface icon={Highlighter} title="划线最多 Top 10" hint="按划线数量排序">
-                  <TopNBars data={chartData.topNotes} unit="条" />
-                </Surface>
-                <Surface icon={Users} title="最活跃作者 Top 10" hint="按划线+想法总数排序">
-                  <TopNBars data={chartData.topAuthors} unit="条" />
-                </Surface>
-              </div>
-            )}
-
-            {/* Phase 2: 阅读统计 + 书架对比 */}
-            <ReadingStatsCard />
-            <ShelfComparison notebookCount={itemsWithMeta.length} onShelfData={(shelfData) => {
-              const m = new Map<string, string>();
-              for (const book of shelfData.books) {
-                const normalized = (book.title || '').trim().toLowerCase();
-                if (normalized && book.category) {
-                  m.set(normalized, book.category);
-                }
-              }
-              setShelfCategoryMap(m);
-            }} />
 
             {/* 工具栏 */}
             <Panel className="flex flex-wrap items-center gap-3 p-3">
@@ -1815,8 +1770,79 @@ export default function WeReadPage() {
           </>
         )}
 
-        {/* ── 发现模式：全网搜书 ── */}
-        {searchMode === 'discover' && (
+        {/* ── 统计分析 Tab ── */}
+        {activeTab === 'stats' && allItems.length > 0 && (
+          <>
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard icon={Library} label="书籍总数" value={stats.totalBooks} tone="primary" />
+              <StatCard icon={Highlighter} label="划线总数" value={stats.totalNotes} tone="teal" />
+              <StatCard icon={MessageSquare} label="想法总数" value={stats.totalReviews} tone="purple" />
+              <StatCard icon={BarChart3} label="平均进度" value={`${stats.avgProgress}%`} tone="amber" />
+            </div>
+
+            {/* 本周阅读脉搏 */}
+            <Surface icon={Zap} title="本周阅读脉搏" hint="近两周笔记活动对比">
+              <WeeklyPulse items={itemsWithMeta} />
+            </Surface>
+
+            {/* 图表展开/收起按钮 */}
+            <button
+              type="button"
+              onClick={() => setShowCharts((v) => !v)}
+              className={cx(
+                'flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition',
+                showCharts
+                  ? 'border-primary-border bg-primary-light text-primary'
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary-border',
+              )}
+            >
+              <PieChart size={14} />
+              {showCharts ? '收起统计图表' : '展开统计图表'}
+              {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {/* 统计图表区域 */}
+            {showCharts && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Surface icon={PieChart} title="阅读状态分布" hint="已读 / 在读 / 未读">
+                  <StatusDonut items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={TrendingUp} title="阅读进度分布" hint="按进度区间统计">
+                  <ProgressHistogram items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Filter} title="完成率漏斗" hint="各阶段转化率，发现阅读瓶颈">
+                  <CompletionFunnel items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Grid3x3} title="笔记密度分布" hint="进度 vs 划线数，气泡=总笔记">
+                  <NoteDensityScatter items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Highlighter} title="划线最多 Top 10" hint="按划线数量排序">
+                  <TopNBars data={chartData.topNotes} unit="条" />
+                </Surface>
+                <Surface icon={Users} title="最活跃作者 Top 10" hint="按划线+想法总数排序">
+                  <TopNBars data={chartData.topAuthors} unit="条" />
+                </Surface>
+              </div>
+            )}
+
+            {/* 阅读统计 + 书架对比 */}
+            <ReadingStatsCard />
+            <ShelfComparison notebookCount={itemsWithMeta.length} onShelfData={(shelfData) => {
+              const m = new Map<string, string>();
+              for (const book of shelfData.books) {
+                const normalized = (book.title || '').trim().toLowerCase();
+                if (normalized && book.category) {
+                  m.set(normalized, book.category);
+                }
+              }
+              setShelfCategoryMap(m);
+            }} />
+          </>
+        )}
+
+        {/* ── 发现 Tab：全网搜书 ── */}
+        {activeTab === 'discover' && (
           <>
             {/* 搜索框 */}
             <Panel className="p-3">

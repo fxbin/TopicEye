@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Run tests (SQLite)
         env:
           DATABASE_URL: "sqlite:///./test_ci.db"
@@ -60,7 +60,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Run tests (PostgreSQL)
         env:
           DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"

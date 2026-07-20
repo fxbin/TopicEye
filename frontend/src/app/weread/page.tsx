@@ -13,9 +13,12 @@ import {
   BarChart3,
   Library,
   X,
+  PieChart,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 import { contentsApi, integrationsApi } from '@/lib/api';
-import { Panel, Badge, cx } from '@/components/ui';
+import { Panel, Badge, Surface, cx } from '@/components/ui';
 import { Pagination } from '@/components/Pagination';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
@@ -316,6 +319,154 @@ function StatCard({ icon: Icon, label, value, tone }: {
   );
 }
 
+// ── 统计图表组件 ──
+
+const CHART_COLORS = ['#FF6B35', '#00C9A7', '#D97706', '#2563EB', '#8B5CF6', '#E11D48', '#059669', '#06B6D4', '#64748B', '#EC4899'];
+
+/** 环形图：阅读状态分布 */
+function StatusDonut({ items }: { items: Array<{ meta: WeReadMeta }> }) {
+  const counts = useMemo(() => {
+    let read = 0, reading = 0, unread = 0;
+    for (const { meta } of items) {
+      const s = getReadingStatus(meta.readingProgress);
+      if (s === '已读') read++;
+      else if (s === '在读') reading++;
+      else unread++;
+    }
+    return { read, reading, unread, total: items.length };
+  }, [items]);
+
+  if (counts.total === 0) return <div className="py-3 text-[13px] text-gray-400">暂无数据</div>;
+
+  const segments = [
+    { label: '已读', value: counts.read, color: '#00C9A7' },
+    { label: '在读', value: counts.reading, color: '#FF6B35' },
+    { label: '未读', value: counts.unread, color: '#D1D5DB' },
+  ];
+  const total = counts.total;
+  // CSS conic-gradient 环形图
+  let accumulated = 0;
+  const gradientStops = segments.map((s) => {
+    const start = (accumulated / total) * 360;
+    accumulated += s.value;
+    const end = (accumulated / total) * 360;
+    return `${s.color} ${start}deg ${end}deg`;
+  }).join(', ');
+
+  return (
+    <div className="flex items-center gap-4">
+      <div
+        className="relative h-[120px] w-[120px] shrink-0 rounded-full"
+        style={{ background: `conic-gradient(${gradientStops})` }}
+      >
+        <div className="absolute inset-[18px] grid place-items-center rounded-full bg-white">
+          <div className="text-center">
+            <div className="font-mono text-2xl font-black text-gray-900">{total}</div>
+            <div className="text-[10px] text-gray-400">总书籍</div>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {segments.map((s) => (
+          <div key={s.label} className="flex items-center gap-2">
+            <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+            <span className="text-xs font-bold text-gray-600">{s.label}</span>
+            <span className="font-mono text-xs text-gray-900">{s.value}</span>
+            <span className="font-mono text-[10px] text-gray-400">
+              {total > 0 ? Math.round((s.value / total) * 100) : 0}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 水平条形图：Top N */
+function TopNBars({ data, unit }: {
+  data: Array<{ label: string; value: number; sub?: string }>;
+  unit: string;
+}) {
+  if (data.length === 0) return <div className="py-3 text-[13px] text-gray-400">暂无数据</div>;
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <div className="flex flex-col gap-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <div className="w-[100px] shrink-0 truncate text-right text-[12px] font-medium text-gray-700" title={d.label}>
+            {d.label}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="h-3.5 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full transition-[width] duration-500"
+                style={{
+                  width: `${(d.value / maxVal) * 100}%`,
+                  background: CHART_COLORS[i % CHART_COLORS.length],
+                }}
+              />
+            </div>
+          </div>
+          <div className="w-16 shrink-0 text-right font-mono text-[11px] text-gray-600">
+            {d.value}{unit}
+            {d.sub && <span className="ml-0.5 text-[9px] text-gray-400">{d.sub}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 进度分布直方图 */
+function ProgressHistogram({ items }: { items: Array<{ meta: WeReadMeta }> }) {
+  const bins = useMemo(() => {
+    const buckets = [
+      { label: '0%', range: '未开始', count: 0, color: '#E5E7EB' },
+      { label: '1-25%', range: '刚开始', count: 0, color: '#FFD0B5' },
+      { label: '26-50%', range: '阅读中', count: 0, color: '#FF6B35' },
+      { label: '51-75%', range: '过半', count: 0, color: '#D97706' },
+      { label: '76-99%', range: '快读完', count: 0, color: '#00C9A7' },
+      { label: '100%', range: '已完成', count: 0, color: '#059669' },
+    ];
+    for (const { meta } of items) {
+      const p = meta.readingProgress;
+      if (p === 0) buckets[0].count++;
+      else if (p <= 25) buckets[1].count++;
+      else if (p <= 50) buckets[2].count++;
+      else if (p <= 75) buckets[3].count++;
+      else if (p < 100) buckets[4].count++;
+      else buckets[5].count++;
+    }
+    return buckets;
+  }, [items]);
+
+  const maxCount = Math.max(...bins.map((b) => b.count), 1);
+
+  return (
+    <div className="flex items-end justify-between gap-1.5" style={{ height: 120 }}>
+      {bins.map((b, i) => (
+        <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+          <div className="font-mono text-[10px] font-bold text-gray-500">{b.count}</div>
+          <div className="flex w-full flex-1 items-end">
+            <div
+              className="w-full rounded-t-sm transition-[height] duration-500"
+              style={{
+                height: `${(b.count / maxCount) * 100}%`,
+                background: b.color,
+                minHeight: b.count > 0 ? '4px' : '0',
+              }}
+            />
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] font-bold text-gray-600">{b.label}</div>
+            <div className="text-[9px] text-gray-400">{b.range}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── 主页面 ──
 
 export default function WeReadPage() {
@@ -327,6 +478,8 @@ export default function WeReadPage() {
   const [groupKey, setGroupKey] = useState<GroupKey>('none');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const [showCharts, setShowCharts] = useState(false);
 
   const { data, loading, error, refetch } = useFetch(
     () => contentsApi.list({
@@ -425,6 +578,42 @@ export default function WeReadPage() {
       ? Math.round(itemsWithMeta.reduce((s, e) => s + e.meta.readingProgress, 0) / itemsWithMeta.length)
       : 0;
     return { totalBooks: itemsWithMeta.length, totalNotes, totalReviews, avgProgress };
+  }, [itemsWithMeta]);
+
+  // 图表数据
+  const chartData = useMemo(() => {
+    // Top 10 划线书籍
+    const topNotes = [...itemsWithMeta]
+      .filter((e) => e.meta.noteCount > 0)
+      .sort((a, b) => b.meta.noteCount - a.meta.noteCount)
+      .slice(0, 10)
+      .map((e) => ({
+        label: e.item.title.length > 12 ? e.item.title.slice(0, 12) + '…' : e.item.title,
+        value: e.meta.noteCount,
+        sub: `${e.meta.reviewCount}想法`,
+      }));
+
+    // Top 10 活跃作者
+    const authorMap = new Map<string, { books: number; notes: number; reviews: number }>();
+    for (const { item, meta } of itemsWithMeta) {
+      const author = item.author || '未知作者';
+      const entry = authorMap.get(author) || { books: 0, notes: 0, reviews: 0 };
+      entry.books++;
+      entry.notes += meta.noteCount;
+      entry.reviews += meta.reviewCount;
+      authorMap.set(author, entry);
+    }
+    const topAuthors = Array.from(authorMap.entries())
+      .map(([author, data]) => ({
+        label: author.length > 12 ? author.slice(0, 12) + '…' : author,
+        value: data.notes + data.reviews,
+        sub: `${data.books}本`,
+      }))
+      .filter((d) => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+
+    return { topNotes, topAuthors };
   }, [itemsWithMeta]);
 
   // 分页（客户端）
@@ -530,6 +719,40 @@ export default function WeReadPage() {
               <StatCard icon={MessageSquare} label="想法总数" value={stats.totalReviews} tone="purple" />
               <StatCard icon={BarChart3} label="平均进度" value={`${stats.avgProgress}%`} tone="amber" />
             </div>
+
+            {/* 图表展开/收起按钮 */}
+            <button
+              type="button"
+              onClick={() => setShowCharts((v) => !v)}
+              className={cx(
+                'flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition',
+                showCharts
+                  ? 'border-primary-border bg-primary-light text-primary'
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary-border',
+              )}
+            >
+              <PieChart size={14} />
+              {showCharts ? '收起统计图表' : '展开统计图表'}
+              {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {/* 统计图表区域 */}
+            {showCharts && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Surface icon={PieChart} title="阅读状态分布" hint="已读 / 在读 / 未读">
+                  <StatusDonut items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={TrendingUp} title="阅读进度分布" hint="按进度区间统计">
+                  <ProgressHistogram items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Highlighter} title="划线最多 Top 10" hint="按划线数量排序">
+                  <TopNBars data={chartData.topNotes} unit="条" />
+                </Surface>
+                <Surface icon={Users} title="最活跃作者 Top 10" hint="按划线+想法总数排序">
+                  <TopNBars data={chartData.topAuthors} unit="条" />
+                </Surface>
+              </div>
+            )}
 
             {/* 工具栏 */}
             <Panel className="flex flex-wrap items-center gap-3 p-3">

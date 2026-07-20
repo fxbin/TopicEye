@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone, UTC
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
@@ -47,6 +47,136 @@ class SourceRepository(BaseRepository[Source]):
             lease_seconds=lease_seconds,
             min_interval_seconds=min_interval_seconds,
         )
+
+    async def get_max_sort_order(self) -> int | None:
+        """返回当前最大 sort_order，无数据返回 None。
+
+        供 create_source / create_my_source / import_source_batch 计算下一 sort_order 使用。
+        """
+        result = await self.db.execute(select(func.max(Source.sort_order)))
+        return result.scalar()
+
+    async def count_user_owned(self, user_id: int) -> int:
+        """统计用户私有信源数量，供私有信源配额检查使用。"""
+        result = await self.db.execute(
+            select(func.count()).select_from(Source).where(Source.owner_user_id == user_id)
+        )
+        return result.scalar() or 0
+
+    async def list_public_with_filters(
+        self,
+        *,
+        source_type: str | None = None,
+        status: str | None = None,
+        enabled: bool | None = None,
+        keyword: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[Sequence[Source], int]:
+        """公开信源（scope='system'）分页查询，返回 (items, total)。
+
+        keyword 模糊匹配 name/url/platform/category/keyword 字段（OR ILIKE）。
+        排序：sort_order ASC。与 list_sources 端点历史行为等价。
+        """
+        stmt = select(Source).where(Source.scope == "system")
+        count_stmt = select(func.count()).select_from(Source).where(Source.scope == "system")
+        filters = []
+        if source_type is not None:
+            filters.append(Source.source_type == source_type)
+        if status is not None:
+            filters.append(Source.status == status)
+        if enabled is not None:
+            filters.append(Source.enabled == enabled)
+        cleaned_keyword = keyword.strip() if keyword else ""
+        if cleaned_keyword:
+            pattern = f"%{cleaned_keyword}%"
+            filters.append(
+                or_(
+                    Source.name.ilike(pattern),
+                    Source.url.ilike(pattern),
+                    Source.platform.ilike(pattern),
+                    Source.category.ilike(pattern),
+                    Source.keyword.ilike(pattern),
+                )
+            )
+        for f in filters:
+            stmt = stmt.where(f)
+            count_stmt = count_stmt.where(f)
+        total = int(await self.db.scalar(count_stmt) or 0)
+        stmt = stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.db.execute(stmt)
+        return result.scalars().all(), total
+
+    async def list_user_owned_with_filters(
+        self,
+        user_id: int,
+        *,
+        source_type: str | None = None,
+        status: str | None = None,
+        enabled: bool | None = None,
+        keyword: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[Sequence[Source], int]:
+        """用户私有信源（owner_user_id=user_id）分页查询，返回 (items, total)。
+
+        keyword 模糊匹配 name/url/platform/category/keyword 字段（OR ILIKE）。
+        排序：sort_order ASC。与 list_my_sources 端点历史行为等价。
+        """
+        stmt = select(Source).where(Source.owner_user_id == user_id)
+        count_stmt = select(func.count()).select_from(Source).where(Source.owner_user_id == user_id)
+        filters = []
+        if source_type is not None:
+            filters.append(Source.source_type == source_type)
+        if status is not None:
+            filters.append(Source.status == status)
+        if enabled is not None:
+            filters.append(Source.enabled == enabled)
+        cleaned_keyword = keyword.strip() if keyword else ""
+        if cleaned_keyword:
+            pattern = f"%{cleaned_keyword}%"
+            filters.append(
+                or_(
+                    Source.name.ilike(pattern),
+                    Source.url.ilike(pattern),
+                    Source.platform.ilike(pattern),
+                    Source.category.ilike(pattern),
+                    Source.keyword.ilike(pattern),
+                )
+            )
+        for f in filters:
+            stmt = stmt.where(f)
+            count_stmt = count_stmt.where(f)
+        total = int(await self.db.scalar(count_stmt) or 0)
+        stmt = stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
+        result = await self.db.execute(stmt)
+        return result.scalars().all(), total
+
+    async def list_by_ids_and_scope(
+        self,
+        ids: list[int],
+        scope: str,
+    ) -> Sequence[Source]:
+        """按 id 列表 + scope 查询，供 reorder_sources 端点使用。
+
+        不分页，返回所有匹配的记录。排序按 sort_order ASC。
+        """
+        if not ids:
+            return []
+        stmt = (
+            select(Source)
+            .where(Source.id.in_(ids), Source.scope == scope)
+            .order_by(Source.sort_order.asc())
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def find_existing_urls(self, urls: list[str]) -> set[str]:
+        """检查给定 URL 列表中已存在的 URL 集合，供批量导入预览使用。"""
+        if not urls:
+            return set()
+        result = await self.db.execute(select(Source.url).where(Source.url.in_(urls)))
+        return set(result.scalars().all())
 
 
 async def claim_source_sync(

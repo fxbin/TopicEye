@@ -17,11 +17,11 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.source_repo import SourceRepository
 from app.schemas.source import normalize_source_url_value
-from app.models.source import Source, SourceType
+from app.models.source import SourceType
 
 
 # ─── Request schemas ────────────────────────────────────────────────────
@@ -219,8 +219,8 @@ async def _preview_source_batch_items(db: AsyncSession, content: str, category: 
     if not parsed:
         return []
     urls = [item["url"] for item in parsed]
-    existing_result = await db.execute(select(Source.url).where(Source.url.in_(urls)))
-    existing_urls = set(existing_result.scalars().all())
+    repo = SourceRepository(db)
+    existing_urls = await repo.find_existing_urls(urls)
     return [
         SourceBatchImportItem(
             name=item["name"],

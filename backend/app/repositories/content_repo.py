@@ -769,3 +769,11 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
         result = await self.db.execute(stmt)
         return [(row.ts, int(row.cnt)) for row in result.all()]
+
+    async def get_id_by_id(self, content_id: int) -> int | None:
+        """按主键查 id 字段，存在返回 id，不存在返回 None。
+
+        供 feedback 端点验证 content 存在性使用（只查 id 列，比 get_by_id 轻量）。
+        """
+        result = await self.db.execute(select(self.model.id).where(self.model.id == content_id))
+        return result.scalar_one_or_none()

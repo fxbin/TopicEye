@@ -5,7 +5,6 @@ import xml.etree.ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -106,7 +105,7 @@ async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="信源 URL 已存在")
     if payload.get("sort_order") is None:
-        max_order = await db.scalar(select(func.max(Source.sort_order)))
+        max_order = await repo.get_max_sort_order()
         payload["sort_order"] = (max_order or 0) + 10
     # Admin-created sources are public (system-scope)
     payload["owner_user_id"] = None
@@ -147,36 +146,16 @@ async def list_sources(
         )
 
     async with async_session() as db:
-        stmt = select(Source).where(Source.scope == "system")
-        count_stmt = select(func.count()).select_from(Source).where(Source.scope == "system")
-        filters = []
-        if source_type is not None:
-            filters.append(Source.source_type == source_type)
-        if status is not None:
-            filters.append(Source.status == status)
-        if enabled is not None:
-            filters.append(Source.enabled == enabled)
-        cleaned_keyword = keyword.strip() if keyword else ""
-        if cleaned_keyword:
-            pattern = f"%{cleaned_keyword}%"
-            filters.append(
-                or_(
-                    Source.name.ilike(pattern),
-                    Source.url.ilike(pattern),
-                    Source.platform.ilike(pattern),
-                    Source.category.ilike(pattern),
-                    Source.keyword.ilike(pattern),
-                )
-            )
-        for item_filter in filters:
-            stmt = stmt.where(item_filter)
-            count_stmt = count_stmt.where(item_filter)
-
-        total = int(await db.scalar(count_stmt) or 0)
-        result = await db.execute(
-            stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
+        repo = SourceRepository(db)
+        items, total = await repo.list_public_with_filters(
+            source_type=source_type,
+            status=status,
+            enabled=enabled,
+            keyword=keyword,
+            page=page,
+            page_size=page_size,
         )
-        items = list(result.scalars().all())
+        items = list(items)
     payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size).model_dump()
     content = set_cached_source_list(cache_params, payload)
     return Response(
@@ -223,38 +202,19 @@ async def list_my_sources(
         )
 
     async with async_session() as db:
-        stmt = select(Source).where(Source.owner_user_id == current_user.id)
-        count_stmt = select(func.count()).select_from(Source).where(Source.owner_user_id == current_user.id)
+        repo = SourceRepository(db)
         # 未过滤的私有信源总数，用于配额展示（total 是过滤后分页计数，不能直接复用）
-        private_sources_used = int(await db.scalar(count_stmt) or 0)
-        filters = []
-        if source_type is not None:
-            filters.append(Source.source_type == source_type)
-        if status is not None:
-            filters.append(Source.status == status)
-        if enabled is not None:
-            filters.append(Source.enabled == enabled)
-        cleaned_keyword = keyword.strip() if keyword else ""
-        if cleaned_keyword:
-            pattern = f"%{cleaned_keyword}%"
-            filters.append(
-                or_(
-                    Source.name.ilike(pattern),
-                    Source.url.ilike(pattern),
-                    Source.platform.ilike(pattern),
-                    Source.category.ilike(pattern),
-                    Source.keyword.ilike(pattern),
-                )
-            )
-        for item_filter in filters:
-            stmt = stmt.where(item_filter)
-            count_stmt = count_stmt.where(item_filter)
-
-        total = int(await db.scalar(count_stmt) or 0)
-        result = await db.execute(
-            stmt.order_by(Source.sort_order.asc()).offset((page - 1) * page_size).limit(page_size)
+        private_sources_used = await repo.count_user_owned(current_user.id)
+        items, total = await repo.list_user_owned_with_filters(
+            current_user.id,
+            source_type=source_type,
+            status=status,
+            enabled=enabled,
+            keyword=keyword,
+            page=page,
+            page_size=page_size,
         )
-        items = list(result.scalars().all())
+        items = list(items)
     payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size, private_sources_used=private_sources_used, private_sources_quota=private_sources_quota(current_user.plan)).model_dump()
     content = set_cached_source_list(cache_params, payload)
     return Response(
@@ -295,20 +255,15 @@ async def create_my_source(
 ):
     if not plan_allows_private_source(current_user.plan):
         raise HTTPException(status_code=403, detail="私有信源需要 Pro 及以上套餐")
+    repo = SourceRepository(db)
     # 配额检查：在去重/创建前拦截，避免无效写入
-    current_count = int(
-        await db.scalar(
-            select(func.count()).select_from(Source).where(Source.owner_user_id == current_user.id)
-        )
-        or 0
-    )
+    current_count = await repo.count_user_owned(current_user.id)
     if private_sources_quota_exceeded(current_user.plan, current_count):
         quota = private_sources_quota(current_user.plan)
         raise HTTPException(
             status_code=403,
             detail=f"私有信源已达上限（{current_count}/{quota}），请升级套餐或删除不再使用的信源",
         )
-    repo = SourceRepository(db)
     payload = data.model_dump()
     _normalize_source_status(payload)
     _normalize_api_source_config(payload)
@@ -316,7 +271,7 @@ async def create_my_source(
     if existing:
         raise HTTPException(status_code=409, detail="信源 URL 已存在")
     if payload.get("sort_order") is None:
-        max_order = await db.scalar(select(func.max(Source.sort_order)))
+        max_order = await repo.get_max_sort_order()
         payload["sort_order"] = (max_order or 0) + 10
     # Force owner + scope — never trust client input for these
     payload["owner_user_id"] = current_user.id
@@ -449,9 +404,10 @@ async def reorder_sources(data: SourceReorderRequest, db: AsyncSession = Depends
     if not unique_ids:
         raise HTTPException(status_code=400, detail="ordered_ids cannot be empty")
 
+    repo = SourceRepository(db)
     # Admin reorder only touches system-scope sources
-    result = await db.execute(select(Source).where(Source.id.in_(unique_ids), Source.scope == "system"))
-    sources_by_id = {source.id: source for source in result.scalars().all()}
+    sources = await repo.list_by_ids_and_scope(unique_ids, "system")
+    sources_by_id = {source.id: source for source in sources}
     missing_ids = [source_id for source_id in unique_ids if source_id not in sources_by_id]
     if missing_ids:
         raise HTTPException(status_code=404, detail=f"Sources not found: {missing_ids}")
@@ -546,7 +502,7 @@ async def import_source_batch(
     """Import sources from JSON/Markdown/OPML text."""
     items = await _preview_source_batch_items(db, data.content, data.category)
     repo = SourceRepository(db)
-    max_order = await db.scalar(select(func.max(Source.sort_order)))
+    max_order = await repo.get_max_sort_order()
     next_order = (max_order or 0) + 10
     created = skipped = 0
 

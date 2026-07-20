@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete, select, func
 from sqlalchemy.exc import IntegrityError
 
 from app.api.v1._db_write import write_with_503
@@ -11,12 +10,12 @@ from app.core.database import database_profile
 from app.core.database import get_db
 from app.core.sqlite_retry import begin_immediate_for_sqlite
 from app.models.feedback import (
-    UserFeedback,
     FeedbackType,
     FEEDBACK_SCORE_DELTAS,
 )
-from app.models.content import ContentItem
 from app.models.user import User
+from app.repositories.content_repo import ContentRepo
+from app.repositories.feedback_repo import FeedbackRepository
 from app.schemas.feedback import (
     FeedbackCreate,
     FeedbackResponse,
@@ -39,19 +38,18 @@ async def _write_feedback(
     db: AsyncSession,
     current_user: User,
     fb_type: FeedbackType,
-) -> UserFeedback:
-    content_id = await db.scalar(select(ContentItem.id).where(ContentItem.id == data.content_id))
+):
+    """写入用户反馈，处理 upsert + stale 清理。返回 UserFeedback 实例。"""
+    content_repo = ContentRepo(db)
+    content_id = await content_repo.get_id_by_id(data.content_id)
     if content_id is None:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    existing_result = await db.execute(
-        select(UserFeedback)
-        .where(UserFeedback.content_id == data.content_id)
-        .where(UserFeedback.user_id == current_user.id)
-        .order_by(UserFeedback.created_at.desc(), UserFeedback.id.desc())
+    feedback_repo = FeedbackRepository(db)
+    existing_feedback = list(
+        await feedback_repo.list_user_feedbacks_by_content(data.content_id, current_user.id)
     )
     score_delta = FEEDBACK_SCORE_DELTAS[fb_type]
-    existing_feedback = list(existing_result.scalars().all())
     existing = existing_feedback[0] if existing_feedback else None
     if existing is not None:
         existing.feedback_type = fb_type
@@ -59,22 +57,18 @@ async def _write_feedback(
         existing.comment = data.comment
         stale_ids = [feedback.id for feedback in existing_feedback[1:]]
         if stale_ids:
-            await db.execute(delete(UserFeedback).where(UserFeedback.id.in_(stale_ids)))
+            await feedback_repo.delete_by_ids(stale_ids)
         await db.flush()
         await db.refresh(existing)
         return existing
 
-    feedback = UserFeedback(
+    return await feedback_repo.create(
         user_id=current_user.id,
         content_id=data.content_id,
         feedback_type=fb_type,
         score_delta=score_delta,
         comment=data.comment,
     )
-    db.add(feedback)
-    await db.flush()
-    await db.refresh(feedback)
-    return feedback
 
 
 @router.post("", response_model=FeedbackResponse, status_code=201)
@@ -120,13 +114,8 @@ async def get_content_feedback(
     current_user: User = Depends(get_current_user),
 ):
     """Get the current user's feedback for a specific content item."""
-    result = await db.execute(
-        select(UserFeedback)
-        .where(UserFeedback.content_id == content_id)
-        .where(UserFeedback.user_id == current_user.id)
-        .order_by(UserFeedback.created_at.desc())
-    )
-    return list(result.scalars().all())
+    feedback_repo = FeedbackRepository(db)
+    return list(await feedback_repo.list_by_content_and_user(content_id, current_user.id))
 
 
 @router.get("/stats", response_model=FeedbackStatsResponse)
@@ -135,22 +124,10 @@ async def get_feedback_stats(
     _current_user: User = Depends(get_current_user),
 ):
     """Get aggregated feedback statistics."""
-    # Total count
-    total_result = await db.execute(select(func.count(UserFeedback.id)))
-    total = total_result.scalar() or 0
-
-    # Count by type
-    type_result = await db.execute(
-        select(
-            UserFeedback.feedback_type,
-            func.count(UserFeedback.id),
-        ).group_by(UserFeedback.feedback_type)
-    )
-    by_type = {str(row[0]): row[1] for row in type_result.all()}
-
-    # Average score delta
-    avg_result = await db.execute(select(func.avg(UserFeedback.score_delta)))
-    avg_score = avg_result.scalar() or 0.0
+    feedback_repo = FeedbackRepository(db)
+    total = await feedback_repo.count_all()
+    by_type = await feedback_repo.count_group_by_type()
+    avg_score = await feedback_repo.avg_score_delta()
 
     return FeedbackStatsResponse(
         total=total,

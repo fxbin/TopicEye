@@ -10,16 +10,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
+from datetime import datetime, timedelta, timezone, UTC
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
+from app.core.config import settings
 from app.core.database import async_session
-from app.models.content import ContentItem
-from app.models.source import Source, SourceStatus
+from app.models.source import SourceStatus
+from app.repositories.source_health_repo import SourceHealthRepository
 
 router = APIRouter(
     prefix="/stats/sources-health",
@@ -45,41 +44,16 @@ async def get_sources_health(
     - recent_content_count: 最近 24h 新增内容数
     - is_stale: 是否卡 SYNCING 超过 lease（health 风险标记）
     """
+    now = datetime.now(UTC)
+    recent_cutoff_dt = now - timedelta(hours=24)
+
     async with async_session() as db:
-        # per-source 内容统计（子查询避免 N+1）
-        total_subq = select(ContentItem.source_id, func.count().label("cnt")).group_by(ContentItem.source_id).subquery()
-        recent_cutoff = datetime.now(UTC).toordinal()  # placeholder
-
-        stmt = select(
-            Source,
-            func.coalesce(total_subq.c.cnt, 0).label("content_count"),
-        ).outerjoin(total_subq, total_subq.c.source_id == Source.id)
-        if status_filter:
-            stmt = stmt.where(Source.status == status_filter)
-        stmt = stmt.order_by(desc(Source.last_sync_at)).limit(limit)
-
-        rows = (await db.execute(stmt)).all()
-
-        # 最近 24h 内容数（单独查，避免复杂 JOIN）
-        now = datetime.now(UTC)
-        from datetime import timedelta
-
-        recent_cutoff_dt = now - timedelta(hours=24)
+        repo = SourceHealthRepository(db)
+        rows = await repo.list_sources_with_content_count(status_filter, limit)
 
         sources_health = []
         for source, content_count in rows:
-            # recent count per source
-            recent_count = (
-                await db.scalar(
-                    select(func.count())
-                    .select_from(ContentItem)
-                    .where(
-                        ContentItem.source_id == source.id,
-                        ContentItem.crawled_at >= recent_cutoff_dt,
-                    )
-                )
-                or 0
-            )
+            recent_count = await repo.count_recent_content(source.id, recent_cutoff_dt)
 
             last_sync_aware = source.last_sync_at
             last_sync_ago = (
@@ -90,9 +64,6 @@ async def get_sources_health(
             next_sync_in = None
             if last_sync_ago is not None:
                 next_sync_in = max(0, interval_seconds - last_sync_ago)
-
-            # stale SYNCING 判定（> 3 × SOURCE_SYNC_TIMEOUT_SECONDS）
-            from app.core.config import settings
 
             stale_threshold = int(settings.SOURCE_SYNC_TIMEOUT_SECONDS) * 3
             is_stale = (
@@ -118,7 +89,6 @@ async def get_sources_health(
                 }
             )
 
-    # 汇总
     total = len(sources_health)
     by_status = {}
     for s in sources_health:

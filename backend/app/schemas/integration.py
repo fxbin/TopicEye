@@ -88,3 +88,57 @@ class WeReadBookInfo(BaseModel):
     newRating: int | None = None
     newRatingCount: int | None = None
     newRatingDetail: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── WeRead 阅读统计 / 热门划线 / 完整书架 ──
+
+
+class WeReadBookmarkItem(BaseModel):
+    """热门划线条目。"""
+    chapter_name: str = ""
+    text: str = ""
+    content_style: int = 0
+    create_time: int = 0
+
+
+class WeReadBestBookmarksResponse(BaseModel):
+    """热门划线响应。"""
+    book_id: str
+    bookmarks: list[WeReadBookmarkItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class WeReadShelfBook(BaseModel):
+    """书架中的单本书。"""
+    book_id: str
+    title: str = ""
+    author: str = ""
+    cover: str = ""
+    category: str = ""
+    deep_link: str = ""
+    reading_progress: int = 0
+    note_count: int = 0
+    review_count: int = 0
+    book_type: int = 0
+    sort: int = 0
+
+
+class WeReadShelfSyncResponse(BaseModel):
+    """完整书架同步响应。"""
+    books: list[WeReadShelfBook] = Field(default_factory=list)
+    total: int = 0
+    has_notes: int = 0
+    no_notes: int = 0
+    audiobook_count: int = 0
+
+
+class WeReadReadDataResponse(BaseModel):
+    """阅读统计数据响应。"""
+    read_type: str = "all"
+    total_read_time: int = 0
+    total_read_days: int = 0
+    total_read_book_count: int = 0
+    total_note_count: int = 0
+    total_mark_count: int = 0
+    ranking_list: list[Any] = Field(default_factory=list)
+    preference: dict[str, Any] = Field(default_factory=dict)

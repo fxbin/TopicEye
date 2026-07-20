@@ -365,6 +365,162 @@ async def get_weread_book_info(api_key: str, book_id: str) -> dict[str, Any]:
     return await asyncio.to_thread(_do_fetch_info)
 
 
+# ── WeRead 阅读统计 / 热门划线 / 完整书架 ──
+
+
+async def get_weread_readdata_detail(api_key: str, *, read_type: str = "all") -> dict[str, Any]:
+    """通过 WeRead Gateway /readdata/detail 获取阅读统计数据。
+
+    包含阅读时长、天数、读书排行、偏好分析等聚合统计。
+
+    Args:
+        api_key: 微信读书 API Key。
+        read_type: 统计周期：``all``（总计）、``week``（周）、``month``（月）、``year``（年）。
+
+    Returns:
+        标准化后的阅读统计 dict。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    type_map = {"all": 0, "week": 1, "month": 2, "year": 3}
+    type_int = type_map.get(read_type, 0)
+
+    body: dict[str, Any] = {
+        "api_name": "/readdata/detail",
+        "type": type_int,
+        "skill_version": WEREAD_SKILL_VERSION,
+    }
+
+    def _do_fetch_readdata() -> dict[str, Any]:
+        data = _weread_gateway_request(stripped_key, body, timeout=20)
+        # 原样透传核心字段，前端按需取用
+        return {
+            "read_type": read_type,
+            "total_read_time": data.get("totalReadTime") or data.get("total_read_time") or 0,
+            "total_read_days": data.get("totalReadDays") or data.get("total_read_days") or 0,
+            "total_read_book_count": data.get("totalReadBookCount") or data.get("total_read_book_count") or 0,
+            "total_note_count": data.get("totalNoteCount") or data.get("total_note_count") or 0,
+            "total_mark_count": data.get("totalMarkCount") or data.get("total_mark_count") or 0,
+            "ranking_list": data.get("rankingList") or data.get("ranking_list") or [],
+            "preference": data.get("preference") or data.get("categoryPreference") or {},
+            "raw": data,
+        }
+
+    return await asyncio.to_thread(_do_fetch_readdata)
+
+
+async def get_weread_bestbookmarks(api_key: str, book_id: str, *, count: int = 20) -> dict[str, Any]:
+    """通过 WeRead Gateway /book/bestbookmarks 获取书籍热门划线。
+
+    返回按热度排序的热门划线（最多 20 条），可用于阅读决策和跨读者共鸣。
+
+    Args:
+        api_key: 微信读书 API Key。
+        book_id: 微信读书书籍 ID。
+        count: 最大返回条数（默认 20）。
+
+    Returns:
+        标准化后的热门划线 dict，含 bookmarks 列表。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    body: dict[str, Any] = {
+        "api_name": "/book/bestbookmarks",
+        "bookId": str(book_id),
+        "count": min(count, 20),
+        "skill_version": WEREAD_SKILL_VERSION,
+    }
+
+    def _do_fetch_bookmarks() -> dict[str, Any]:
+        data = _weread_gateway_request(stripped_key, body)
+        # gateway 返回的 items 列表里每项含 chapterName / markText / contentStyle 等
+        raw_items = data.get("items") or data.get("bookmarks") or []
+        bookmarks: list[dict[str, Any]] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            mark_text = str(item.get("markText") or item.get("text") or "").strip()
+            if not mark_text:
+                continue
+            bookmarks.append({
+                "chapter_name": str(item.get("chapterName") or item.get("chapter") or "").strip(),
+                "text": mark_text,
+                "content_style": item.get("contentStyle") or item.get("style") or 0,
+                "create_time": item.get("createTime") or item.get("create_time") or 0,
+            })
+        return {
+            "book_id": str(book_id),
+            "bookmarks": bookmarks[:count],
+            "total": len(bookmarks),
+        }
+
+    return await asyncio.to_thread(_do_fetch_bookmarks)
+
+
+async def get_weread_shelf_sync(api_key: str) -> dict[str, Any]:
+    """通过 WeRead Gateway /shelf/sync 获取完整书架。
+
+    返回完整书架（包括未开始读的书、听书/讲书），可与笔记本数据对比分析囤书习惯。
+
+    Args:
+        api_key: 微信读书 API Key。
+
+    Returns:
+        标准化后的书架 dict，含 books 列表和统计摘要。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    body: dict[str, Any] = {
+        "api_name": "/shelf/sync",
+        "skill_version": WEREAD_SKILL_VERSION,
+    }
+
+    def _do_fetch_shelf() -> dict[str, Any]:
+        data = _weread_gateway_request(stripped_key, body, timeout=20)
+        raw_books = data.get("books") or []
+        books: list[dict[str, Any]] = []
+        for entry in raw_books:
+            if not isinstance(entry, dict):
+                continue
+            book = entry.get("book") if isinstance(entry.get("book"), dict) else entry
+            book_id = str(book.get("bookId") or "")
+            if not book_id:
+                continue
+            books.append({
+                "book_id": book_id,
+                "title": str(book.get("title") or ""),
+                "author": str(book.get("author") or ""),
+                "cover": str(book.get("cover") or ""),
+                "category": str(book.get("category") or ""),
+                "deep_link": str(book.get("deepLink") or ""),
+                "reading_progress": entry.get("readingProgress") or book.get("readingProgress") or 0,
+                "note_count": entry.get("noteCount") or book.get("noteCount") or 0,
+                "review_count": entry.get("reviewCount") or book.get("reviewCount") or 0,
+                "book_type": entry.get("bookType") or book.get("bookType") or 0,
+                "sort": entry.get("sort") or 0,
+            })
+        # 统计摘要
+        total = len(books)
+        has_notes = sum(1 for b in books if b["note_count"] > 0 or b["review_count"] > 0)
+        no_notes = total - has_notes
+        audiobooks = sum(1 for b in books if b["book_type"] == 1)
+        return {
+            "books": books,
+            "total": total,
+            "has_notes": has_notes,
+            "no_notes": no_notes,
+            "audiobook_count": audiobooks,
+        }
+
+    return await asyncio.to_thread(_do_fetch_shelf)
+
+
 async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:
     """确保用户拥有自己的微信读书 Source（按 owner_user_id 隔离，不共用公共池）。"""
     result = await db.execute(

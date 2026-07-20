@@ -10,8 +10,11 @@ from app.models.user import User
 from app.schemas.integration import (
     IntegrationStatusResponse,
     IntegrationUpdateRequest,
+    WeReadBestBookmarksResponse,
     WeReadBookInfo,
+    WeReadReadDataResponse,
     WeReadSearchResponse,
+    WeReadShelfSyncResponse,
     WeReadSyncResponse,
 )
 from app.services.integration_service import (
@@ -25,7 +28,10 @@ from app.services.integration_service import (
     upsert_user_integration,
 )
 from app.services.weread_materials import (
+    get_weread_bestbookmarks,
     get_weread_book_info,
+    get_weread_readdata_detail,
+    get_weread_shelf_sync,
     redact_weread_sync_error,
     search_weread_books,
     sync_weread_materials,
@@ -173,3 +179,63 @@ async def get_weread_book(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return WeReadBookInfo(**result)
+
+
+# ── WeRead 阅读统计 / 热门划线 / 完整书架 ──
+
+
+@router.get("/weread/readdata", response_model=WeReadReadDataResponse)
+async def get_weread_readdata(
+    read_type: str = Query("all", description="统计周期：all/week/month/year"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取微信读书阅读统计数据（时长/天数/排行/偏好）。"""
+    api_key = await _get_weread_api_key(current_user, db)
+    try:
+        result = await get_weread_readdata_detail(api_key, read_type=read_type)
+    except RuntimeError as exc:
+        detail = redact_weread_sync_error(str(exc), api_key)
+        raise HTTPException(status_code=502, detail=detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return WeReadReadDataResponse(**result)
+
+
+@router.get("/weread/book/{book_id}/bookmarks", response_model=WeReadBestBookmarksResponse)
+async def get_weread_bookmarks(
+    book_id: str,
+    count: int = Query(20, ge=1, le=20, description="最大返回条数"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取书籍热门划线（按热度排序，最多 20 条）。"""
+    api_key = await _get_weread_api_key(current_user, db)
+    try:
+        result = await get_weread_bestbookmarks(api_key, book_id, count=count)
+    except RuntimeError as exc:
+        detail = redact_weread_sync_error(str(exc), api_key)
+        raise HTTPException(status_code=502, detail=detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return WeReadBestBookmarksResponse(**result)
+
+
+@router.get("/weread/shelf", response_model=WeReadShelfSyncResponse)
+async def get_weread_shelf(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取完整书架（含未读/听书），用于书架 vs 笔记本对比分析。"""
+    api_key = await _get_weread_api_key(current_user, db)
+    try:
+        result = await get_weread_shelf_sync(api_key)
+    except RuntimeError as exc:
+        detail = redact_weread_sync_error(str(exc), api_key)
+        raise HTTPException(status_code=502, detail=detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return WeReadShelfSyncResponse(**result)

@@ -597,6 +597,7 @@ async def get_enrichment(
         claimed_analysis.enrichment_status = "error"
         await db.commit()
         invalidate_content_read_caches()
+        logger.error("Enrichment failed: content_id=%d, exc=%s", content_id, e)
         raise HTTPException(500, f"Enrichment failed: {e}") from e
 
 
@@ -720,6 +721,7 @@ async def translate_reader_content(
     try:
         snapshot = await translate_snapshot(db, content)
     except Exception as exc:
+        logger.error("Translation failed: content_id=%d, exc=%s", content.id, exc)
         raise HTTPException(status_code=502, detail=f"翻译失败: {exc}") from exc
 
     return ArticleReaderResponse(

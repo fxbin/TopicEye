@@ -10,6 +10,8 @@ Creation plan API endpoints.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -22,6 +24,7 @@ from app.models.user import User
 from app.services.creation import generate_creation_plan, PLATFORM_PROMPTS
 
 router = APIRouter(prefix="/creation", tags=["creation"], dependencies=[Depends(get_current_user)])
+logger = logging.getLogger(__name__)
 
 
 class CreationRequest(BaseModel):
@@ -42,7 +45,9 @@ async def create_plan(
     async with async_session() as db:
         result = await generate_creation_plan(db, req.content_id, req.platform, user_id=current_user.id)
     if "error" in result:
+        logger.warning("Creation plan failed: user_id=%d, content_id=%d, platform=%s, error=%s", current_user.id, req.content_id, req.platform, result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
+    logger.info("Creation plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform)
     return result
 
 

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -33,6 +34,7 @@ router = APIRouter(
     tags=["user-api-tokens"],
     dependencies=[Depends(get_current_user)],
 )
+logger = logging.getLogger(__name__)
 
 
 class CreateApiTokenRequest(BaseModel):
@@ -66,6 +68,7 @@ async def create_token(
         expires_at=req.expires_at,
     )
     await db.commit()
+    logger.info("API token created: user_id=%d, token_id=%d, name=%s", current_user.id, record.id, req.name)
     return {
         "token": raw,  # 明文 token（仅此一次）
         "record": _token_to_dict(record),
@@ -96,6 +99,7 @@ async def revoke_token(
     if not ok:
         raise HTTPException(status_code=404, detail="Token 不存在或已撤销")
     await db.commit()
+    logger.info("API token revoked: user_id=%d, token_id=%d", current_user.id, token_id)
     return {"success": ok}
 
 
@@ -110,3 +114,4 @@ async def delete_token(
     if not ok:
         raise HTTPException(status_code=404, detail="Token 不存在")
     await db.commit()
+    logger.info("API token deleted: user_id=%d, token_id=%d", current_user.id, token_id)

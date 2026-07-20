@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import deque
 from time import monotonic
 from typing import Optional
@@ -38,6 +39,7 @@ from app.services.email_verification_service import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 _AUTH_RATE_WINDOW_SECONDS = 60.0
 _AUTH_RATE_BUCKETS: dict[str, deque[float]] = {}
 
@@ -158,7 +160,7 @@ def require_admin_view(admin_view: bool, user: User | None) -> None:
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(enforce_send_code_rate_limit)],
 )
-async def send_code(data: SendCodeRequest, db: AsyncSession = Depends(get_db)):
+async def send_code(data: SendCodeRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """发送邮箱验证码。注册前需先调用本接口获取验证码。
 
     频率限制：同 IP 每分钟最多 AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE 次；
@@ -166,11 +168,15 @@ async def send_code(data: SendCodeRequest, db: AsyncSession = Depends(get_db)):
     """
     try:
         await send_verification_code(db, data.email)
+        logger.info("Send-code requested: email=%s, ip=%s", data.email, _client_host(request))
     except CodeRateLimitedError:
+        logger.info("Send-code rate-limited: email=%s, ip=%s", data.email, _client_host(request))
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试")
     except EmailNotConfiguredError:
+        logger.warning("Send-code failed (email not configured): email=%s, ip=%s", data.email, _client_host(request))
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员")
     except VerificationError as exc:
+        logger.warning("Send-code failed: email=%s, ip=%s, exc=%s", data.email, _client_host(request), exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
@@ -180,31 +186,39 @@ async def send_code(data: SendCodeRequest, db: AsyncSession = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(enforce_register_rate_limit)],
 )
-async def register(data: AuthRegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(data: AuthRegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    ip = _client_host(request)
     existing = await get_user_by_email(db, data.email)
     if existing:
+        logger.warning("Register failed (email exists): email=%s, ip=%s", data.email, ip)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     try:
         await verify_code(db, data.email, data.verification_code)
     except InvalidCodeError as exc:
+        logger.warning("Register failed (invalid code): email=%s, ip=%s", data.email, ip)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     try:
         user = await create_user(db, email=data.email, password=data.password, display_name=data.display_name)
         token, session = await create_session(db, user)
     except IntegrityError:
+        logger.warning("Register failed (integrity): email=%s, ip=%s", data.email, ip)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    logger.info("Register success: email=%s, user_id=%d, ip=%s", data.email, user.id, ip)
     return AuthTokenResponse(access_token=token, expires_at=session.expires_at, user=UserResponse.model_validate(user))
 
 
 @router.post("/login", response_model=AuthTokenResponse, dependencies=[Depends(enforce_login_rate_limit)])
-async def login(data: AuthLoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(data: AuthLoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    ip = _client_host(request)
     user = await authenticate_user(db, email=data.email, password=data.password)
     if not user:
+        logger.warning("Login failed: email=%s, ip=%s", data.email, ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     token, session = await create_session(db, user)
+    logger.info("Login success: email=%s, user_id=%d, ip=%s", data.email, user.id, ip)
     return AuthTokenResponse(access_token=token, expires_at=session.expires_at, user=UserResponse.model_validate(user))
 
 
@@ -215,17 +229,21 @@ async def me(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     token = _extract_bearer_token(authorization)
-    await revoke_token(db, token)
+    ok = await revoke_token(db, token)
+    ip = _client_host(request)
+    logger.info("Logout: ok=%s, ip=%s", ok, ip)
     return {"logged_out": True}
 
 
 @router.post("/change-password")
 async def change_my_password(
     data: ChangePasswordRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -234,14 +252,18 @@ async def change_my_password(
     校验旧密码后才允许修改；成功后撤销该用户其他设备的登录会话，
     当前调用方的 session 保留（keep_token）。
     """
+    ip = _client_host(request)
     token = _extract_bearer_token(authorization)
     user = await get_user_for_token(db, token)
     if not user:
+        logger.warning("Change-password failed (invalid token): ip=%s", ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
     try:
         await change_password(db, user, data.old_password, data.new_password, keep_token=token)
     except ValueError as exc:
+        logger.warning("Change-password failed: user_id=%d, ip=%s, reason=%s", user.id, ip, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     await db.commit()
+    logger.info("Change-password success: user_id=%d, ip=%s", user.id, ip)
     return {"message": "密码修改成功，其他设备的登录状态已失效"}

@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -25,6 +26,7 @@ from app.services.auth_service import (
 )
 
 router = APIRouter(prefix="/auth/oauth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _is_provider_enabled(provider: str) -> bool:
@@ -83,6 +85,7 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     try:
         token = await client.authorize_access_token(request)
     except Exception as exc:
+        logger.warning("OAuth token exchange failed: provider=%s, ip=%s, exc=%s", provider, request.client.host if request.client else "unknown", exc)
         return _frontend_redirect(error=f"OAuth 授权失败：{exc}")
 
     try:
@@ -90,6 +93,7 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
             client, provider, token
         )
     except _OAuthUserInfoError as exc:
+        logger.warning("OAuth userinfo failed: provider=%s, exc=%s", provider, exc)
         return _frontend_redirect(error=str(exc))
 
     if not email or not provider_user_id:
@@ -105,9 +109,11 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
             display_name=display_name,
         )
     except OAuthAccountConflictError as exc:
+        logger.warning("OAuth account conflict: provider=%s, email=%s, exc=%s", provider, email, exc)
         return _frontend_redirect(error=str(exc))
 
     access_token, session = await create_session(db, user)
+    logger.info("OAuth login success: provider=%s, user_id=%d, email=%s", provider, user.id, email)
 
     # token 走 fragment，expires_at 一并传给前端用于过期判断
     fragment = urlencode({

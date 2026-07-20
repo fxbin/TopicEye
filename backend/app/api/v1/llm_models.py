@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from datetime import datetime, timedelta, UTC
@@ -49,6 +50,7 @@ from app.services.llm.presets import apply_model_preset, list_model_presets
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 router = APIRouter(prefix="/models", tags=["models"])
+logger = logging.getLogger(__name__)
 
 LLM_COMPLETION_TIMEOUT_SECONDS = 25
 LITELLM_COMPLETION_PARAM_KEYS = {
@@ -440,6 +442,7 @@ async def create_model(req: ModelCreateRequest, db: AsyncSession = Depends(get_d
         model = _new_model_from_request(req)
         db.add(model)
         await db.flush()
+        logger.info("LLM model created: id=%d, name=%s, provider=%s", model.id, model.name, model.provider)
         return {"id": model.id, "name": model.name, "message": "模型配置创建成功"}
 
     return await _retry_write_and_invalidate_models(db, _create)
@@ -607,6 +610,7 @@ async def update_model(model_id: int, req: ModelUpdateRequest, db: AsyncSession 
 
         _apply_model_request(model, req)
         await db.flush()
+        logger.info("LLM model updated: id=%d, name=%s", model.id, model.name)
         return {"message": f"模型 {model.name} 更新成功"}
 
     return await _retry_write_and_invalidate_models(db, _update)
@@ -624,6 +628,7 @@ async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
         name = model.name
         await db.delete(model)
         await db.flush()
+        logger.info("LLM model deleted: id=%d, name=%s", model_id, name)
         return {"message": f"模型 {name} 已删除"}
 
     return await _retry_write_and_invalidate_models(db, _delete)

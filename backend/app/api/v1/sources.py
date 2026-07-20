@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import logging
 import xml.etree.ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
@@ -46,6 +47,7 @@ from app.services.source_cache import (
 from app.services.source_read_cache import invalidate_source_read_caches
 
 router = APIRouter(prefix="/sources", tags=["sources"])
+logger = logging.getLogger(__name__)
 
 
 def _invalidate_source_cache() -> None:
@@ -111,6 +113,7 @@ async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
     payload["scope"] = "system"
     source = await repo.create(**payload)
     _invalidate_source_cache()
+    logger.info("Source created (admin): id=%d, name=%s, url=%s", source.id, source.name, source.url)
     return source
 
 
@@ -320,6 +323,7 @@ async def create_my_source(
     payload["scope"] = "user"
     source = await repo.create(**payload)
     _invalidate_source_cache()
+    logger.info("Source created (user): user_id=%d, id=%d, name=%s", current_user.id, source.id, source.name)
     return source
 
 
@@ -368,6 +372,7 @@ async def update_my_source(
         payload["scope"] = "user"
         source = await repo.update(source_id, **payload)
         _invalidate_source_cache()
+        logger.info("Source updated (user): user_id=%d, id=%d", current_user.id, source_id)
         return source
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -389,6 +394,7 @@ async def delete_my_source(
     try:
         await repo.delete(source_id)
         _invalidate_source_cache()
+        logger.info("Source deleted (user): user_id=%d, id=%d", current_user.id, source_id)
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
@@ -421,6 +427,7 @@ async def sync_my_source(
     stats = await ingest_from_source(source, db)
     await db.refresh(source)
     _invalidate_source_cache()
+    logger.info("Source synced: id=%d, fetched=%d, new=%d", source_id, stats["fetched"], stats["new"])
     if source.status == SourceStatus.ERROR or source.sync_error:
         await db.commit()
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")
@@ -609,6 +616,7 @@ async def update_source(source_id: int, data: SourceUpdate, db: AsyncSession = D
         payload["scope"] = "system"
         source = await repo.update(source_id, **payload)
         _invalidate_source_cache()
+        logger.info("Source updated (admin): id=%d", source_id)
         return source
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -624,6 +632,7 @@ async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
     try:
         await repo.delete(source_id)
         _invalidate_source_cache()
+        logger.info("Source deleted (admin): id=%d", source_id)
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
@@ -650,6 +659,7 @@ async def sync_source(source_id: int, db: AsyncSession = Depends(get_db)):
     stats = await ingest_from_source(source, db)
     await db.refresh(source)
     _invalidate_source_cache()
+    logger.info("Source synced: id=%d, fetched=%d, new=%d", source_id, stats["fetched"], stats["new"])
     if source.status == SourceStatus.ERROR or source.sync_error:
         await db.commit()
         raise HTTPException(status_code=502, detail=source.sync_error or "信源同步失败")

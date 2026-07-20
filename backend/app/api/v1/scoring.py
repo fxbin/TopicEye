@@ -13,6 +13,7 @@ tokens and personal API tokens (create one at /me/api-tokens).
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -30,6 +31,7 @@ from app.services.scoring_engine import ScoringInput, score_items, score_low_fol
 
 
 router = APIRouter(prefix="/scoring", tags=["scoring"], dependencies=[Depends(get_current_user)])
+logger = logging.getLogger(__name__)
 
 
 def _parse_dt(value: Any) -> datetime | None:
@@ -114,6 +116,7 @@ def _build_response(scored) -> ScoringResponse:
 async def score_content(req: ScoringRequest, current_user: User = Depends(get_current_user)):
     inputs = [_request_to_scoring_input(item) for item in req.items]
     scored = score_items(inputs)
+    logger.info("Scoring /score: user_id=%d, items=%d", current_user.id, len(inputs))
     return _build_response(scored)
 
 
@@ -131,4 +134,5 @@ async def score_content(req: ScoringRequest, current_user: User = Depends(get_cu
 async def score_lfv(req: ScoringRequest, current_user: User = Depends(get_current_user)):
     inputs = [_request_to_scoring_input(item) for item in req.items]
     scored = score_low_follower_viral(inputs)
+    logger.info("Scoring /lfv: user_id=%d, items=%d", current_user.id, len(inputs))
     return _build_response(scored)

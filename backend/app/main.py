@@ -439,7 +439,11 @@ async def app_exception_handler(request: Request, exc: AppException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception: %s", exc)
+    client_ip = request.client.host if request.client else "unknown"
+    logger.exception(
+        "Unhandled exception: %s %s ip=%s path=%s",
+        request.method, exc, client_ip, request.url.path,
+    )
     return JSONResponse(
         status_code=500,
         content={"error": "Internal server error", "detail": {}},

@@ -71,7 +71,7 @@ export default function Sidebar({
             <div className="text-[17px] font-bold leading-tight text-gray-900">
               选题雷达
             </div>
-            <div className="mt-px text-[10px] tracking-[0.08em] text-gray-400">
+            <div className="mt-px text-[10px] tracking-[0.08em] text-gray-500">
               TOPIC RADAR
             </div>
           </div>}
@@ -83,7 +83,7 @@ export default function Sidebar({
         {navSpaces.map((space) => (
           <div key={space.id} className={compact ? 'mb-3' : 'mb-4.5'}>
             {!compact && (
-              <div className="px-3 pb-2 text-[11px] font-bold tracking-[0.08em] text-gray-400">
+              <div className="px-3 pb-2 text-[11px] font-bold tracking-[0.08em] text-gray-500">
                 {space.label}
               </div>
             )}
@@ -100,7 +100,7 @@ export default function Sidebar({
                   className={cx(
                     'mb-0.5 flex w-full items-center rounded-sm border-0 text-sm transition',
                     compact ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2.5 text-left',
-                    active ? 'bg-primary-light font-semibold text-primary' : 'bg-transparent font-normal text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                    active ? 'bg-primary-light font-semibold text-primary-text' : 'bg-transparent font-normal text-gray-600 hover:bg-gray-50 hover:text-gray-900',
                   )}
                 >
                   <span className="flex items-center gap-2">
@@ -108,7 +108,7 @@ export default function Sidebar({
                     {!compact && <span>{item.label}</span>}
                   </span>
                   {!compact && count > 0 ? (
-                    <span className={cx('rounded-full px-2 py-px font-mono text-[11px] font-medium', active ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-400')}>
+                    <span className={cx('rounded-full px-2 py-px font-mono text-[11px] font-medium', active ? 'bg-primary-soft text-primary-text' : 'bg-gray-100 text-gray-600')}>
                       {count}
                     </span>
                   ) : null}
@@ -135,7 +135,7 @@ export default function Sidebar({
               {!compact && (
                 <div className="min-w-0">
                   <div className="truncate text-xs font-medium text-gray-700">{currentUser.display_name || currentUser.email}</div>
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[10px] text-gray-500">
                     {isAdmin(currentUser) ? '管理员' : currentUser.plan === 'free' ? '免费版' : '付费版'}
                   </div>
                 </div>
@@ -145,7 +145,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-gray-400 transition hover:bg-gray-100 hover:text-red"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-gray-500 transition hover:bg-gray-100 hover:text-red"
                 title="退出登录"
               >
                 <LogOut size={14} strokeWidth={2} />

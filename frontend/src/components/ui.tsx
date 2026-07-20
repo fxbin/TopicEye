@@ -47,10 +47,10 @@ export function Button({
   variant?: ButtonVariant;
 }) {
   const variantClass: Record<ButtonVariant, string> = {
-    primary: 'border-primary bg-primary text-white hover:bg-primary-hover',
-    secondary: 'border-gray-200 bg-white text-gray-700 hover:border-primary-border hover:text-primary',
+    primary: 'border-primary-text bg-primary-text text-white hover:opacity-90',
+    secondary: 'border-gray-200 bg-white text-gray-700 hover:border-primary-border hover:text-primary-text',
     ghost: 'border-transparent bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-800',
-    success: 'border-teal-border bg-teal-light text-teal hover:border-teal-border',
+    success: 'border-teal-border bg-teal-light text-teal-text hover:border-teal-border',
     danger: 'border-red-light bg-red-light text-red hover:border-red/30',
   };
 
@@ -90,8 +90,8 @@ export function Badge({
 }) {
   const toneClass: Record<BadgeTone, string> = {
     neutral: 'border-gray-200 bg-gray-100 text-gray-600',
-    primary: 'border-primary-border bg-primary-light text-primary',
-    teal: 'border-teal-border bg-teal-light text-teal',
+    primary: 'border-primary-border bg-primary-light text-primary-text',
+    teal: 'border-teal-border bg-teal-light text-teal-text',
     amber: 'border-amber-border bg-amber-light text-amber',
     purple: 'border-purple-border bg-purple-light text-purple',
     red: 'border-red-light bg-red-light text-red',

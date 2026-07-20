@@ -33,7 +33,7 @@ export default function TopicHeaderCard({
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <LevelBadge level={level} />
         {tags.map((c) => (
-          <span key={c} className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+          <span key={c} className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
             {c}
           </span>
         ))}

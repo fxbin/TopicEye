@@ -511,9 +511,9 @@ function KpiCard({
       </div>
       <div className="font-mono text-[28px] font-black leading-tight" style={{ color }}>
         {value}
-        <span className="ml-1 text-[13px] font-medium text-gray-400">{unit}</span>
+        <span className="ml-1 text-[13px] font-medium text-gray-500">{unit}</span>
       </div>
-      <div className="mt-1.5 text-[11px] text-gray-400">{sub}</div>
+      <div className="mt-1.5 text-[11px] text-gray-500">{sub}</div>
     </div>
   );
 }
@@ -646,7 +646,7 @@ export default function StatsPage() {
                   label: '精选内容',
                   value: overview?.curated ?? 0,
                   unit: '条',
-                  color: '#FF6B35',
+                  color: 'var(--color-primary-text)',
                   sub: `精选率 ${curatedRate}%`,
                   tone: 'primary' as const,
                 },
@@ -655,7 +655,7 @@ export default function StatsPage() {
                   label: '今日新增',
                   value: overview?.today_new ?? 0,
                   unit: '条',
-                  color: '#00C9A7',
+                  color: 'var(--color-teal-text)',
                   sub: '今日 0:00 起',
                   tone: 'teal' as const,
                 },

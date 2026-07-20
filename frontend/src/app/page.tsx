@@ -256,8 +256,8 @@ export default function HomePage() {
         title="今日选题"
         date={dateStr}
         stats={[
-          { label: '总内容', value: displayedTotalCount, color: '#FF6B35' },
-          { label: '今日新增', value: todayCount, color: '#00C9A7' },
+          { label: '总内容', value: displayedTotalCount, color: 'var(--color-primary-text)' },
+          { label: '今日新增', value: todayCount, color: 'var(--color-teal-text)' },
         ]}
       />
 
@@ -292,7 +292,7 @@ export default function HomePage() {
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeTimeRange === range
-                    ? 'bg-primary-light font-semibold text-primary'
+                    ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
                 )}
               >
@@ -316,7 +316,7 @@ export default function HomePage() {
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeSourceType === type
-                    ? 'bg-primary-light font-semibold text-primary'
+                    ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
                 )}
               >
@@ -358,7 +358,7 @@ export default function HomePage() {
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeRecommendLevel === level
-                    ? 'bg-primary-light font-semibold text-primary'
+                    ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
                 )}
               >
@@ -381,7 +381,7 @@ export default function HomePage() {
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeTag === tag
-                    ? 'bg-teal-light font-semibold text-teal'
+                    ? 'bg-teal-light font-semibold text-teal-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
                 )}
               >

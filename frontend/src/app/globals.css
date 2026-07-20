@@ -5,11 +5,14 @@
   --color-primary-hover: #E85D2A;
   --color-primary-light: #FFF4EE;
   --color-primary-border: #FFD0B5;
+  --color-primary-text: #B23A0F;
+  --color-primary-soft: #FFE6DB;
 
   --color-teal: #00C9A7;
   --color-teal-hover: #00B396;
   --color-teal-light: #E6FAF5;
   --color-teal-border: #A7F0DB;
+  --color-teal-text: #00766A;
 
   --color-purple: #8B5CF6;
   --color-purple-light: #F0EBFF;

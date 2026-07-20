@@ -70,7 +70,7 @@ export function StatTile({
       >
         {value}
       </div>
-      {hint && <div className="mt-1.5 truncate text-[10.5px] text-gray-400">{hint}</div>}
+      {hint && <div className="mt-1.5 truncate text-[10.5px] text-gray-500">{hint}</div>}
     </div>
   );
 }

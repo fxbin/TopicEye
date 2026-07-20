@@ -97,7 +97,7 @@ export function ContentTimeline({
             <h2 className="text-sm font-extrabold text-gray-900">
               {group.dateLabel}
             </h2>
-            <span className="font-mono text-xs text-gray-400">{group.entries.length}</span>
+            <span className="font-mono text-xs text-gray-500">{group.entries.length}</span>
           </div>
           <div className="relative flex flex-col gap-3.5">
             <div className="absolute bottom-[9px] left-[58px] top-[9px] w-px bg-gray-200" />
@@ -157,7 +157,7 @@ export function TimelineSummary({
         <div className="mb-3.5 flex items-center gap-2">
           <Clock3 size={15} className="text-primary" strokeWidth={2.2} />
           <span className="text-sm font-extrabold text-gray-900">内容时间流</span>
-          <span className="ml-auto font-mono text-[11px] text-gray-400">{totalLabel}</span>
+          <span className="ml-auto font-mono text-[11px] text-gray-500">{totalLabel}</span>
         </div>
         <div className="flex flex-col gap-2.5">
           {groups.map((group) => (
@@ -236,7 +236,7 @@ export function EditorialItem({
             {item.source_name}
           </span>
           <span className="text-xs text-gray-300">/</span>
-          <span className="shrink-0 text-xs text-gray-400">{timeLabel || time}</span>
+          <span className="shrink-0 text-xs text-gray-500">{timeLabel || time}</span>
           {level && <RecommendBadge level={level} />}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -272,7 +272,7 @@ export function EditorialItem({
           )}
           {itemTags.length > 0
             ? itemTags.slice(0, 5).map((tag) => (
-                <span key={tag} className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                <span key={tag} className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
                   #{tag}
                 </span>
               ))
@@ -311,7 +311,7 @@ export function EditorialItem({
             <a
               href={`/contents/${item.id}/reader`}
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary no-underline transition hover:border-primary"
+              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary-text no-underline transition hover:border-primary-text"
               title="在系统内阅读提取后的正文"
             >
               <BookOpen size={13} strokeWidth={2} />
@@ -324,7 +324,7 @@ export function EditorialItem({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-teal-border bg-teal-light px-2 py-1 text-xs font-bold text-teal no-underline transition hover:border-teal"
+              className="inline-flex items-center gap-1.5 rounded-xs border border-teal-border bg-teal-light px-2 py-1 text-xs font-bold text-teal-text no-underline transition hover:border-teal-text"
               title="查看原文"
             >
               <ExternalLink size={13} strokeWidth={2} />
@@ -366,10 +366,10 @@ export function ScoreBadge({ label, score, tone }: { label: string; score: numbe
   const strong = score >= 75;
   const medium = score >= 50;
   const toneClass = tone === 'primary' && strong
-    ? 'bg-primary-light text-primary'
+    ? 'bg-primary-light text-primary-text'
     : medium
       ? 'bg-gray-100 text-gray-600'
-      : 'bg-gray-100 text-gray-400';
+      : 'bg-gray-100 text-gray-500';
   return (
     <span className={cx('rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold', toneClass)}>
       {label}{Math.round(score)}
@@ -397,12 +397,12 @@ export function CurationScoreBadge({ score }: { score: number | null | undefined
   if (score == null || score === 0) return null;
   const rounded = Math.round(score);
   const toneClass = rounded >= 85
-    ? 'bg-teal-light text-teal'
+    ? 'bg-teal-light text-teal-text'
     : rounded >= 70
-      ? 'bg-primary-light text-primary'
+      ? 'bg-primary-light text-primary-text'
       : rounded >= 55
         ? 'bg-amber-light text-amber'
-        : 'bg-gray-100 text-gray-400';
+        : 'bg-gray-100 text-gray-500';
   return (
     <span className={cx('rounded px-2 py-0.5 font-mono text-[11px] font-bold', toneClass)}>
       {rounded}
@@ -489,7 +489,7 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
             e.stopPropagation();
             setShowMore(!showMore);
           }}
-          className={cx('inline-flex cursor-pointer rounded border-0 px-1.5 py-0.5 text-gray-400 transition hover:text-gray-600', showMore ? 'bg-gray-100' : 'bg-transparent')}
+          className={cx('inline-flex cursor-pointer rounded border-0 px-1.5 py-0.5 text-gray-500 transition hover:text-gray-700', showMore ? 'bg-gray-100' : 'bg-transparent')}
           title="更多反馈"
         >
           <ChevronDown size={13} strokeWidth={2.2} />

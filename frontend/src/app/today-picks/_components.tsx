@@ -226,7 +226,7 @@ export function FilterPanel({
                 className={cx(
                   'rounded-full border px-2.5 py-1 text-xs transition',
                   selectedCategory === cat || (!selectedCategory && cat === '全部')
-                    ? 'border-primary-border bg-primary-light font-black text-primary'
+                    ? 'border-primary-border bg-primary-light font-black text-primary-text'
                     : 'border-gray-200 bg-white font-semibold text-gray-600 hover:border-gray-300',
                 )}
               >
@@ -419,7 +419,7 @@ export function PickCard({
         flush ? 'border-b border-gray-100 bg-transparent hover:bg-[#FBFCFE]' : 'rounded-lg border border-gray-200 bg-white',
       )}
     >
-      <div className={cx('flex h-8 w-8 items-center justify-center rounded-sm font-mono text-xs font-black', rank <= 3 ? 'bg-primary-light text-primary' : 'bg-gray-100 text-gray-500')}>
+      <div className={cx('flex h-8 w-8 items-center justify-center rounded-sm font-mono text-xs font-black', rank <= 3 ? 'bg-primary-light text-primary-text' : 'bg-gray-100 text-gray-600')}>
         {rank}
       </div>
       <div className="min-w-0">
@@ -566,7 +566,7 @@ export function PickActions({
         }}
         className={cx(
           'inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60',
-          dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-primary bg-primary text-white hover:bg-primary-hover',
+          dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-primary-text bg-primary-text text-white hover:opacity-90',
         )}
       >
         <PenLine size={13} />

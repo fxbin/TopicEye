@@ -94,11 +94,11 @@ export function MovementList({ title, items, tone }: { title: string; items: Web
           {tone === 'up' ? <ArrowUp size={16} className="text-teal" /> : <ArrowDown size={16} className="text-red" />}
           {title}
         </div>
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] text-gray-500">{items.length}</span>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] text-gray-600">{items.length}</span>
       </div>
       <div className="flex flex-col gap-2">
         {items.length === 0 ? (
-          <div className="rounded-sm border border-gray-100 bg-gray-50 p-4 text-center text-xs text-gray-400">暂无明显变化</div>
+          <div className="rounded-sm border border-gray-100 bg-gray-50 p-4 text-center text-xs text-gray-500">暂无明显变化</div>
         ) : items.map((item, index) => (
           <a
             key={`${item.platform}-${item.title}-${item.rank_type}-${index}`}

@@ -38,8 +38,9 @@ export interface EmailProviderConfigUpdate {
   smtp_use_ssl: boolean;
 }
 
-/** 通知推送 webhook 配置响应（webhook_url 脱敏） */
-export interface NotificationWebhookConfig {
+/** 单个 webhook 配置响应（URL 脱敏） */
+export interface WebhookItem {
+  name: string;
   enabled: boolean;
   webhook_url_configured: boolean;
   webhook_url_preview: string;
@@ -47,12 +48,23 @@ export interface NotificationWebhookConfig {
   note: string;
 }
 
-/** 通知推送 webhook 配置更新请求。webhook_url 为空时保留原值 */
-export interface NotificationWebhookConfigUpdate {
+/** 通知推送 webhook 配置响应（webhooks 列表） */
+export interface NotificationWebhookConfig {
+  webhooks: WebhookItem[];
+}
+
+/** 单个 webhook 配置更新请求。webhook_url 为空时保留原值 */
+export interface WebhookItemUpdate {
+  name: string;
   enabled: boolean;
   webhook_url: string;
   event_types: string[];
   note: string;
+}
+
+/** 通知推送 webhook 配置更新请求（webhooks 列表，整体替换） */
+export interface NotificationWebhookConfigUpdate {
+  webhooks: WebhookItemUpdate[];
 }
 
 /** 通知推送事件类型选项 */

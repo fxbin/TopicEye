@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Server, Settings, Webhook } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Plus, Server, Settings, Trash2, Webhook } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
-import type { EmailProviderConfig, NotificationWebhookConfig } from '@/lib/api/_analytics';
+import type { EmailProviderConfig, NotificationWebhookConfig, WebhookItem, WebhookItemUpdate } from '@/lib/api/_analytics';
 import { NOTIFICATION_EVENT_TYPES } from '@/lib/api/_analytics';
 import { Badge, Button, Panel } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
@@ -56,12 +56,9 @@ export default function AdminSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 通知推送 webhook 状态
+  // 通知推送 webhook 状态（多 webhook 列表）
   const [webhookConfig, setWebhookConfig] = useState<NotificationWebhookConfig | null>(null);
-  const [webhookEnabled, setWebhookEnabled] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookEventTypes, setWebhookEventTypes] = useState<string[]>(['source_failure']);
-  const [webhookNote, setWebhookNote] = useState('');
+  const [webhooks, setWebhooks] = useState<WebhookItemUpdate[]>([]);
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookTesting, setWebhookTesting] = useState(false);
   const [webhookTestResult, setWebhookTestResult] = useState<string | null>(null);
@@ -84,9 +81,15 @@ export default function AdminSettingsPage() {
         setSmtpUseSsl(emailData.smtp_use_ssl);
 
         setWebhookConfig(webhookData);
-        setWebhookEnabled(webhookData.enabled);
-        setWebhookEventTypes(webhookData.event_types?.length ? webhookData.event_types : ['source_failure']);
-        setWebhookNote(webhookData.note);
+        setWebhooks(
+          webhookData.webhooks.map((wh) => ({
+            name: wh.name,
+            enabled: wh.enabled,
+            webhook_url: '', // 空表示保留原值
+            event_types: wh.event_types?.length ? wh.event_types : ['source_failure'],
+            note: wh.note,
+          })),
+        );
       })
       .catch(() => setError('加载配置失败'))
       .finally(() => setLoading(false));
@@ -141,24 +144,51 @@ export default function AdminSettingsPage() {
     setWebhookError(null);
     setWebhookNotice(null);
     try {
-      await settingsApi.updateNotificationWebhook({
-        enabled: webhookEnabled,
-        webhook_url: webhookUrl,
-        event_types: webhookEventTypes,
-        note: webhookNote,
-      });
-      setWebhookUrl('');
+      await settingsApi.updateNotificationWebhook({ webhooks });
       setWebhookNotice('保存成功');
       const fresh = await settingsApi.getNotificationWebhook();
       setWebhookConfig(fresh);
-      setWebhookEnabled(fresh.enabled);
-      setWebhookEventTypes(fresh.event_types?.length ? fresh.event_types : ['source_failure']);
-      setWebhookNote(fresh.note);
+      setWebhooks(
+        fresh.webhooks.map((wh: WebhookItem) => ({
+          name: wh.name,
+          enabled: wh.enabled,
+          webhook_url: '',
+          event_types: wh.event_types?.length ? wh.event_types : ['source_failure'],
+          note: wh.note,
+        })),
+      );
     } catch (err) {
       setWebhookError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setWebhookSaving(false);
     }
+  };
+
+  const handleAddWebhook = () => {
+    setWebhooks([...webhooks, {
+      name: '',
+      enabled: true,
+      webhook_url: '',
+      event_types: ['source_failure'],
+      note: '',
+    }]);
+  };
+
+  const handleRemoveWebhook = (index: number) => {
+    setWebhooks(webhooks.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateWebhook = (index: number, updates: Partial<WebhookItemUpdate>) => {
+    setWebhooks(webhooks.map((wh, i) => (i === index ? { ...wh, ...updates } : wh)));
+  };
+
+  const handleToggleEventType = (index: number, eventType: string, checked: boolean) => {
+    const wh = webhooks[index];
+    if (!wh) return;
+    const newTypes = checked
+      ? [...wh.event_types, eventType]
+      : wh.event_types.filter((v) => v !== eventType);
+    handleUpdateWebhook(index, { event_types: newTypes });
   };
 
   const handleTestWebhook = async () => {
@@ -393,103 +423,134 @@ export default function AdminSettingsPage() {
           </ul>
         </Panel>
 
-        {/* ── 通知推送 webhook ── */}
+        {/* ── 通知推送 webhook（多 webhook 列表） ── */}
         <Panel className="p-6">
           <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Webhook size={16} className="text-gray-500" />
               <h2 className="text-base font-black text-gray-900">通知推送</h2>
             </div>
-            {webhookConfig?.webhook_url_configured ? (
-              <Badge tone={webhookConfig.enabled ? 'teal' : 'neutral'}>
-                <CheckCircle2 size={12} className="mr-1" />
-                {webhookConfig.enabled ? '已启用' : '已配置·未启用'}
-              </Badge>
-            ) : (
-              <Badge tone="amber">未配置</Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {webhookConfig?.webhooks.some((w) => w.enabled && w.webhook_url_configured) ? (
+                <Badge tone="teal">
+                  <CheckCircle2 size={12} className="mr-1" />
+                  {webhookConfig.webhooks.filter((w) => w.enabled && w.webhook_url_configured).length} 个已启用
+                </Badge>
+              ) : (
+                <Badge tone="amber">未配置</Badge>
+              )}
+              <Button variant="ghost" onClick={handleAddWebhook} className="!px-2 !py-1 text-xs">
+                <Plus size={12} className="mr-1" />
+                添加
+              </Button>
+            </div>
           </div>
 
           <p className="mb-4 text-xs text-gray-500">
-            将信源抓取失败等运营通知推送到飞书 / 钉钉 / Slack 群机器人。webhook URL 含 token，加密存储。
+            将运营通知推送到飞书 / 钉钉 / Slack 群机器人。每个 webhook 可独立配置推送事件类型。webhook URL 加密存储。
           </p>
 
-          {/* 启用开关 */}
-          <label className="flex cursor-pointer items-center gap-2 pb-4 text-sm font-black text-gray-700">
-            <input
-              type="checkbox"
-              checked={webhookEnabled}
-              onChange={(e) => setWebhookEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            启用推送
-          </label>
-
-          {/* 推送事件类型 */}
-          <div className="pb-4">
-            <span className="mb-2 block text-xs font-black text-gray-500">推送事件类型</span>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {NOTIFICATION_EVENT_TYPES.map((et) => {
-                const checked = webhookEventTypes.includes(et.value);
+          {/* webhook 列表 */}
+          {webhooks.length === 0 ? (
+            <div className="rounded-sm border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
+              暂无 webhook 配置，点击右上角「添加」按钮新增
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {webhooks.map((wh, index) => {
+                const original = webhookConfig?.webhooks[index];
+                const urlConfigured = original?.webhook_url_configured;
+                const urlPreview = original?.webhook_url_preview || '';
                 return (
-                  <label
-                    key={et.value}
-                    className="flex cursor-pointer items-start gap-2 rounded-sm border border-gray-200 px-3 py-2 text-xs hover:border-primary-border"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setWebhookEventTypes([...webhookEventTypes, et.value]);
-                        } else {
-                          setWebhookEventTypes(webhookEventTypes.filter((v) => v !== et.value));
-                        }
-                      }}
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
-                    />
-                    <div>
-                      <div className="font-black text-gray-700">{et.label}</div>
-                      <div className="text-gray-400">{et.desc}</div>
+                  <div key={index} className="rounded-sm border border-gray-200 p-4">
+                    {/* 行 1：名称 + 启用 + 删除 */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={wh.enabled}
+                          onChange={(e) => handleUpdateWebhook(index, { enabled: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <input
+                          value={wh.name}
+                          onChange={(e) => handleUpdateWebhook(index, { name: e.target.value })}
+                          placeholder={`Webhook ${index + 1}（如：运营群）`}
+                          className="h-8 w-48 rounded-sm border border-gray-200 px-2 text-sm font-black outline-none focus:border-primary-border"
+                        />
+                        {urlConfigured ? (
+                          <Badge tone={wh.enabled ? 'teal' : 'neutral'}>
+                            {wh.enabled ? '已启用' : '未启用'}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <button
+                        onClick={() => handleRemoveWebhook(index)}
+                        className="text-gray-400 hover:text-red-500"
+                        title="删除"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                  </label>
+
+                    {/* Webhook URL */}
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-black text-gray-500">Webhook URL</span>
+                      <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
+                        <Webhook size={14} className="shrink-0 text-gray-400" />
+                        <input
+                          value={wh.webhook_url}
+                          onChange={(e) => handleUpdateWebhook(index, { webhook_url: e.target.value })}
+                          type="password"
+                          placeholder={
+                            urlConfigured
+                              ? `已配置（${urlPreview}****）留空不修改`
+                              : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
+                          }
+                          className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
+                        />
+                      </div>
+                    </label>
+
+                    {/* 推送事件类型 */}
+                    <div className="mt-3">
+                      <span className="mb-1.5 block text-xs font-black text-gray-500">推送事件类型</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {NOTIFICATION_EVENT_TYPES.map((et) => {
+                          const checked = wh.event_types.includes(et.value);
+                          return (
+                            <label
+                              key={et.value}
+                              className={`flex cursor-pointer items-center gap-1 rounded-sm border px-2 py-1 text-xs ${checked ? 'border-primary-border bg-primary-light/20 text-gray-700' : 'border-gray-200 text-gray-500'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => handleToggleEventType(index, et.value, e.target.checked)}
+                                className="h-3 w-3 rounded border-gray-300"
+                              />
+                              {et.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 备注 */}
+                    <label className="mt-3 block">
+                      <span className="mb-1 block text-xs font-black text-gray-500">备注（可选）</span>
+                      <input
+                        value={wh.note}
+                        onChange={(e) => handleUpdateWebhook(index, { note: e.target.value })}
+                        placeholder="如：飞书运营群"
+                        className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary-border"
+                      />
+                    </label>
+                  </div>
                 );
               })}
             </div>
-            <p className="mt-1 text-[11px] text-gray-400">
-              环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 通道不参与过滤，永远收所有告警。
-            </p>
-          </div>
-
-          {/* Webhook URL */}
-          <label className="mt-2 block">
-            <span className="mb-1.5 block text-xs font-black text-gray-500">Webhook URL</span>
-            <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
-              <Webhook size={15} className="shrink-0 text-gray-400" />
-              <input
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                type="password"
-                placeholder={
-                  webhookConfig?.webhook_url_configured
-                    ? `已配置（${webhookConfig.webhook_url_preview}****）留空不修改`
-                    : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
-                }
-                className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-              />
-            </div>
-          </label>
-
-          {/* 备注 */}
-          <label className="mt-4 block">
-            <span className="mb-1.5 block text-xs font-black text-gray-500">备注（可选）</span>
-            <input
-              value={webhookNote}
-              onChange={(e) => setWebhookNote(e.target.value)}
-              placeholder="如：运营告警群"
-              className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-            />
-          </label>
+          )}
 
           {webhookError && (
             <AdminNoticeBanner tone="red" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>
@@ -507,10 +568,10 @@ export default function AdminSettingsPage() {
             <Button
               variant="ghost"
               onClick={handleTestWebhook}
-              disabled={webhookTesting || !webhookConfig?.webhook_url_configured}
+              disabled={webhookTesting || !webhookConfig?.webhooks.some((w) => w.webhook_url_configured)}
             >
               {webhookTesting ? <Loader2 size={14} className="animate-spin" /> : null}
-              {webhookTesting ? '发送中...' : '发送测试'}
+              {webhookTesting ? '发送中...' : '发送测试（全部）'}
             </Button>
             <Button variant="primary" onClick={handleSaveWebhook} disabled={webhookSaving}>
               {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -522,11 +583,11 @@ export default function AdminSettingsPage() {
         <Panel className="p-5">
           <h3 className="mb-2 text-sm font-black text-gray-700">通知推送说明</h3>
           <ul className="space-y-1.5 text-xs text-gray-500">
+            <li>支持配置多个 webhook，每个独立配置推送事件类型</li>
             <li>支持飞书 / 钉钉 / Slack 群机器人 incoming webhook</li>
             <li>webhook URL 含 token，以加密方式存储，不会明文保存</li>
-            <li>当前推送场景：信源连续抓取失败告警（1 小时内同事件去重）</li>
-            <li>环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，与配置独立）</li>
-            <li>高级推送（卡片消息、日报、精选内容）规划中</li>
+            <li>推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 测试发送</li>
+            <li>环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，不参与事件过滤）</li>
           </ul>
         </Panel>
     </AdminPageShell>

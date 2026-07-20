@@ -48,6 +48,26 @@ def _event_types_match(cfg_event_types: list[str] | None, event_type: str) -> bo
     return event_type in cfg_event_types
 
 
+def _normalize_webhook_configs(cfg: dict) -> list[dict]:
+    """将 DB 中的 notification_webhook_config 规范化为 webhooks 列表。
+
+    支持两种格式：
+    1. 新格式：{"webhooks": [{name, webhook_url, enabled, event_types, note}, ...]}
+    2. 旧格式：{enabled, webhook_url, event_types, note}（单条，自动包装为列表）
+
+    返回 webhooks 列表（每个元素含 enabled / webhook_url / event_types / note）。
+    """
+    if not cfg:
+        return []
+    # 新格式
+    if "webhooks" in cfg:
+        return cfg["webhooks"] if isinstance(cfg["webhooks"], list) else []
+    # 旧格式：单条 config，自动包装
+    if cfg.get("webhook_url") or cfg.get("enabled"):
+        return [cfg]
+    return []
+
+
 async def _resolve_webhook_urls(event_type: str = "source_failure") -> list[str]:
     """收集所有应发送的 webhook URL（按事件类型过滤）。
 
@@ -76,10 +96,11 @@ async def _resolve_webhook_urls(event_type: str = "source_failure") -> list[str]
                     cfg = json.loads(row.value)
                 except json.JSONDecodeError:
                     cfg = {}
-                if cfg.get("enabled") and _event_types_match(cfg.get("event_types"), event_type):
-                    plain = decrypt_secret(cfg.get("webhook_url", "")) or ""
-                    if plain:
-                        urls.append(plain)
+                for wh in _normalize_webhook_configs(cfg):
+                    if wh.get("enabled") and _event_types_match(wh.get("event_types"), event_type):
+                        plain = decrypt_secret(wh.get("webhook_url", "")) or ""
+                        if plain:
+                            urls.append(plain)
     except Exception as exc:
         # DB 异常不能阻塞告警
         logger.warning("读取 notification_webhook_config 失败（non-fatal）: %s", exc)

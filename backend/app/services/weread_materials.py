@@ -228,6 +228,22 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 0) -> list[dict[s
 # ── WeRead 书籍搜索 & 详情 ──
 
 
+def _extract_name_from_list(value: Any) -> str:
+    """从 WeRead API 返回的列表中提取第一个元素的 name 字段。
+
+    preferAuthor / preferPublisher 等字段可能返回字符串或列表，
+    列表时形如 [{"name": "作者名", "count": 5, ...}]。
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and value:
+        first = value[0]
+        if isinstance(first, dict):
+            return str(first.get("name") or first.get("author") or "")
+        return str(first)
+    return ""
+
+
 def _weread_gateway_request(
     api_key: str,
     body: dict[str, Any],
@@ -432,9 +448,9 @@ async def get_weread_readdata_detail(api_key: str, *, read_type: str = "all") ->
             "compare": data.get("compare") or 0,
             "rank_text": rank_text,
             "prefer_category_word": data.get("preferCategoryWord") or "",
-            "prefer_author": data.get("preferAuthor") or "",
+            "prefer_author": _extract_name_from_list(data.get("preferAuthor")),
             "author_count": data.get("authorCount") or 0,
-            "prefer_publisher": data.get("preferPublisher") or "",
+            "prefer_publisher": _extract_name_from_list(data.get("preferPublisher")),
             "prefer_time_word": data.get("preferTimeWord") or "",
             "read_longest": read_longest if isinstance(read_longest, list) else [],
             "prefer_books": prefer_books if isinstance(prefer_books, list) else [],

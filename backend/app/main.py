@@ -29,6 +29,7 @@ import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
 import app.models.fanqie  # noqa: F401
+import app.models.metrics_snapshot  # noqa: F401
 import app.models.qimao  # noqa: F401
 import app.models.zhihu  # noqa: F401
 from app.api.v1.router import router as v1_router

@@ -38,11 +38,12 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Response
-from sqlalchemy import func, select
+from fastapi import APIRouter, Query, Response
+from sqlalchemy import desc, func, select
 
 from app.core.database import async_session
 from app.models.content import ContentItem
+from app.models.llm_model import LlmCallLog
 from app.models.notification import Notification
 from app.models.scheduled_job import JobExecutionLog
 from app.models.source import Source
@@ -197,10 +198,115 @@ async def metrics_snapshot():
     except Exception:
         pass
 
+    # 进程级指标（内存 / CPU）
+    process: dict = {}
+    try:
+        from app.services.metrics_persistence import _get_process_metrics
+        process = _get_process_metrics()
+    except Exception:
+        pass
+
     return {
         "snapshot": snapshot,
         "timeseries": timeseries,
         "circuit_breaker": breaker_status,
         "slow_queries": slow_queries,
         "llm_cache": cache_status,
+        "process": process,
+    }
+
+
+# ── 历史快照端点（从 SQLite 查询持久化的指标历史）──
+
+
+@router.get("/history")
+async def metrics_history(
+    hours: int = Query(1, ge=1, le=168, description="Look-back window in hours (max 7 days)"),
+    limit: int = Query(500, ge=1, le=2000, description="Max rows to return"),
+):
+    """Historical metrics snapshots from SQLite.
+
+    Returns persisted snapshot records for the given look-back window.
+    Useful for trend charts beyond the 30-minute in-memory ring buffer.
+    """
+    from app.services.metrics_persistence import query_history
+
+    records = await query_history(hours=hours, limit=limit)
+    return {"hours": hours, "count": len(records), "records": records}
+
+
+# ── 应用日志端点（从内存 ring buffer 查询）──
+
+
+@router.get("/logs")
+async def metrics_logs(
+    level: str = Query("ALL", description="Filter by log level (ALL/DEBUG/INFO/WARNING/ERROR/CRITICAL)"),
+    limit: int = Query(200, ge=1, le=1000, description="Max entries to return"),
+):
+    """Recent application logs from the in-memory ring buffer.
+
+    Entries are returned newest-first.  Buffer capacity is 1000 entries.
+    """
+    from app.core.log_ringbuffer import get_ring_buffer_handler
+
+    handler = get_ring_buffer_handler()
+    entries = handler.get_entries(level=level.upper() if level != "ALL" else None, limit=limit)
+    summary = handler.get_summary()
+    return {"entries": entries, "summary": summary}
+
+
+# ── LLM 调用日志端点（从 SQLite 查询 llm_call_logs 表）──
+
+
+@router.get("/llm-logs")
+async def llm_call_logs(
+    status: str = Query("ALL", description="Filter by status (ALL/DONE/FAILED)"),
+    limit: int = Query(50, ge=1, le=500, description="Max entries to return"),
+):
+    """Recent LLM call logs from the ``llm_call_logs`` table.
+
+    When ``status=FAILED`` is specified, returns only failed calls —
+    useful for diagnosing LLM errors from the dashboard.
+    """
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    query = (
+        select(
+            LlmCallLog.request_id,
+            LlmCallLog.scene,
+            LlmCallLog.actual_model,
+            LlmCallLog.status,
+            LlmCallLog.error_message,
+            LlmCallLog.duration_ms,
+            LlmCallLog.input_tokens,
+            LlmCallLog.output_tokens,
+            LlmCallLog.total_cost,
+            LlmCallLog.created_at,
+        )
+        .where(LlmCallLog.created_at >= cutoff)
+        .order_by(desc(LlmCallLog.created_at))
+        .limit(limit)
+    )
+    if status and status != "ALL":
+        query = query.where(LlmCallLog.status == status.upper())
+
+    async with async_session() as db:
+        rows = (await db.execute(query)).all()
+
+    return {
+        "count": len(rows),
+        "logs": [
+            {
+                "request_id": r.request_id,
+                "scene": r.scene,
+                "model": r.actual_model or "unknown",
+                "status": r.status,
+                "error": (r.error_message or "")[:300],
+                "duration_ms": r.duration_ms,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "cost_usd": round(r.total_cost, 6) if r.total_cost else 0,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
     }

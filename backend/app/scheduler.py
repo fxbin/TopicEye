@@ -877,6 +877,38 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # 监控指标快照持久化：每 60 秒写入一行到 metrics_snapshots 表
+    async def _persist_metrics_snapshot() -> None:
+        try:
+            from app.services.metrics_persistence import persist_metrics_snapshot
+            await persist_metrics_snapshot()
+        except Exception:
+            logger.debug("Metrics snapshot persistence failed", exc_info=True)
+
+    scheduler.add_job(
+        _persist_metrics_snapshot,
+        trigger=IntervalTrigger(seconds=60),
+        id="metrics_snapshot_persist",
+        name="监控指标快照持久化",
+        replace_existing=True,
+    )
+
+    # 清理过期监控快照：每日 03:15 保留 7 天
+    async def _cleanup_old_metrics_snapshots() -> None:
+        try:
+            from app.services.metrics_persistence import cleanup_old_snapshots
+            await cleanup_old_snapshots()
+        except Exception:
+            logger.debug("Metrics snapshot cleanup failed", exc_info=True)
+
+    scheduler.add_job(
+        _cleanup_old_metrics_snapshots,
+        trigger=CronTrigger(hour=3, minute=15),
+        id="metrics_snapshot_cleanup",
+        name="清理过期监控快照(>7天)",
+        replace_existing=True,
+    )
+
     scheduler.start()
 
     # Immediately register all enabled sources so they start syncing

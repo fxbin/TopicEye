@@ -94,6 +94,11 @@ def configure_logging(log_format: str = "text", level: int = logging.INFO) -> No
         handler.setFormatter(logging.Formatter(fmt))
 
     root.addHandler(handler)
+
+    # ── In-memory ring buffer for dashboard log viewing ──
+    from app.core.log_ringbuffer import get_ring_buffer_handler
+    root.addHandler(get_ring_buffer_handler())
+
     root.setLevel(level)
 
     # Quiet down noisy third-party loggers

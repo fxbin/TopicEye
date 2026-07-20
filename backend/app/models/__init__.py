@@ -15,6 +15,7 @@ from app.models.user import User, UserSession
 from app.models.product_feedback import IssueFeedback, ProductUpdate
 from app.models.article_snapshot import ArticleSnapshot
 from app.models.article_reader_event import ArticleReaderEvent
+from app.models.metrics_snapshot import MetricsSnapshotRecord
 
 __all__ = [
     "Source",
@@ -37,4 +38,5 @@ __all__ = [
     "ProductUpdate",
     "ArticleSnapshot",
     "ArticleReaderEvent",
+    "MetricsSnapshotRecord",
 ]

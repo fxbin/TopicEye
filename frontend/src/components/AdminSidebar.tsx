@@ -3,6 +3,7 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   BookOpen,
@@ -31,6 +32,7 @@ interface AdminNavItem {
 // admin 全量导航（含不在 NAV_SPACES 里的 /admin/contents、/admin/mother-topics）
 const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { id: 'dashboard', label: '概览', href: '/admin', icon: LayoutDashboard },
+  { id: 'monitor', label: '监控大盘', href: '/dashboard', icon: Activity },
   { id: 'sources', label: '信源管理', href: '/admin/sources', icon: RadioTower },
   { id: 'contents', label: '内容管理', href: '/admin/contents', icon: Newspaper },
   { id: 'users', label: '用户管理', href: '/admin/users', icon: Users },
@@ -97,7 +99,13 @@ export default function AdminSidebar() {
             <button
               key={item.id}
               type="button"
-              onClick={() => router.push(item.href)}
+              onClick={() => {
+                if (item.href.startsWith('/dashboard')) {
+                  window.open(item.href, '_blank');
+                } else {
+                  router.push(item.href);
+                }
+              }}
               className={cx(
                 'mb-0.5 flex w-full items-center gap-2 rounded-sm px-3 py-2.5 text-left text-sm transition',
                 active

@@ -35,6 +35,21 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${backendApiUrl}/api/:path*`,
       },
+      // 内置监控大盘（后端自包含 HTML 页面，纯 Canvas 图表）
+      {
+        source: '/dashboard',
+        destination: `${backendApiUrl}/dashboard`,
+      },
+      // Prometheus 标准采集端点（根路径别名）
+      {
+        source: '/metrics',
+        destination: `${backendApiUrl}/metrics`,
+      },
+      // 健康检查端点
+      {
+        source: '/health/:path*',
+        destination: `${backendApiUrl}/health/:path*`,
+      },
     ];
   },
 };

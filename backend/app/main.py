@@ -392,6 +392,13 @@ from app.middleware.rate_limit import RateLimitMiddleware  # noqa: E402  — 路
 
 app.add_middleware(RateLimitMiddleware)
 
+# HTTP 请求指标采集（计数/延迟/并发/限流命中/5xx 错误）
+# 挂在最外层：捕获所有请求（含被 CORS / rate limit 拦截的），
+# 但豁免 /metrics /health 等监控路径避免递归噪音。
+from app.middleware.request_metrics import RequestMetricsMiddleware  # noqa: E402
+
+app.add_middleware(RequestMetricsMiddleware)
+
 # Mount v1 API routes
 app.include_router(v1_router)
 
@@ -400,6 +407,21 @@ app.include_router(v1_router)
 from app.api.agent_skills import router as agent_skills_router  # noqa: E402
 
 app.include_router(agent_skills_router)
+
+# 内置监控大盘（自包含 HTML 页面，零外部依赖）
+from app.api.dashboard import router as dashboard_router  # noqa: E402
+
+app.include_router(dashboard_router)
+
+
+# ── 根路径 /metrics 别名（Prometheus 标准约定）─────────────────────────
+# prometheus.yml 默认 metrics_path: /metrics，此处提供根路径别名
+# 避免用户必须配置 metrics_path: /api/v1/metrics
+@app.get("/metrics", tags=["metrics"])
+async def root_metrics_alias():
+    """Root-level /metrics alias → delegates to v1 prometheus_metrics."""
+    from app.api.v1.metrics import prometheus_metrics
+    return await prometheus_metrics()
 
 
 # ── Global exception handlers ─────────────────────────────────────────

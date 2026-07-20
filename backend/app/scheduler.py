@@ -860,6 +860,23 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # 指标阈值告警：每 2 分钟检查一次关键指标
+    async def _check_metrics_alerts() -> None:
+        try:
+            from app.services.metrics_alerting import check_metrics_thresholds
+
+            await check_metrics_thresholds()
+        except Exception:
+            logger.debug("Metrics threshold check failed", exc_info=True)
+
+    scheduler.add_job(
+        _check_metrics_alerts,
+        trigger=IntervalTrigger(minutes=2),
+        id="metrics_alerting",
+        name="指标阈值告警检查",
+        replace_existing=True,
+    )
+
     scheduler.start()
 
     # Immediately register all enabled sources so they start syncing

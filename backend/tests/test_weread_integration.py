@@ -800,6 +800,6 @@ def test_normalize_weread_entries_uses_sort_as_published_at():
     # 有 sort 的：published_at 应为 sort 对应的时间
     assert entries[0]["title"] == "最近笔记的书"
     assert entries[0]["published_at"].timestamp() == ts
-    # 无 sort 的：published_at 回退到 now
+    # 无 sort 的：published_at 为 None，由 sync_weread_materials 决定回退策略
     assert entries[1]["title"] == "无 sort 的书"
-    assert entries[1]["published_at"].timestamp() > ts
+    assert entries[1]["published_at"] is None

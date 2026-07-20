@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 from urllib.parse import quote
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -121,11 +121,12 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
         summary = "，".join(summary_parts) if summary_parts else None
         # WeRead Gateway 返回的 sort 字段是最近笔记活动时间戳（Unix seconds），
         # 用作 published_at 以保留微信读书自身的排序顺序。
+        # sort 不存在或无效时返回 None，由 sync_weread_materials 决定回退策略。
         sort_value = raw.get("sort")
         if isinstance(sort_value, (int, float)) and sort_value > 1_000_000_000:
             published_at = datetime.fromtimestamp(int(sort_value), tz=UTC)
         else:
-            published_at = datetime.now(UTC)
+            published_at = None
         entries.append(
             {
                 "title": title or note[:80],
@@ -271,7 +272,7 @@ async def sync_weread_materials(
         raise ValueError("微信读书 API Key 未配置")
 
     source = await ensure_weread_source(db, user_id=user_id)
-    fetched = new = duplicates = 0
+    fetched = new = duplicates = updated = 0
     now = datetime.now(UTC)
     try:
         entries = await fetch_weread_materials(resolved_api_key, limit=limit)
@@ -279,14 +280,30 @@ async def sync_weread_materials(
         for entry in entries:
             content_hash = build_hash(str(entry.get("title") or "") + str(entry.get("url") or ""))
             # 去重按 owner_user_id 隔离：不同用户的同名笔记不算重复
-            exists = await db.scalar(
+            existing_id = await db.scalar(
                 select(ContentItem.id).where(
                     ContentItem.content_hash == content_hash,
                     ContentItem.owner_user_id == user_id,
                 )
             )
-            if exists:
+            if existing_id:
                 duplicates += 1
+                # 已存在的条目：用最新的 sort 时间戳和摘要更新，
+                # 保证排序与微信读书平台一致
+                entry_published_at = entry.get("published_at")
+                entry_summary = entry.get("summary")
+                update_values: dict[str, Any] = {}
+                if entry_published_at is not None:
+                    update_values["published_at"] = entry_published_at
+                if entry_summary is not None:
+                    update_values["summary"] = entry_summary
+                if update_values:
+                    await db.execute(
+                        update(ContentItem)
+                        .where(ContentItem.id == existing_id)
+                        .values(**update_values)
+                    )
+                    updated += 1
                 continue
             db.add(
                 ContentItem(
@@ -318,8 +335,9 @@ async def sync_weread_materials(
         integration.last_sync_error = None
         await db.flush()
         invalidate_source_read_caches()
-        if new:
+        if new or updated:
             invalidate_content_read_caches()
+        if new:
             from app._post_sync_pipeline import _request_post_sync_pipeline
 
             _request_post_sync_pipeline({"new": new})
@@ -327,6 +345,7 @@ async def sync_weread_materials(
             "fetched": fetched,
             "new": new,
             "duplicates": duplicates,
+            "updated": updated,
             "source_name": source.name,
         }
     except Exception as exc:

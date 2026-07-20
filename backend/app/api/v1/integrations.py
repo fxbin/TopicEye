@@ -97,6 +97,7 @@ async def sync_weread(
         fetched=int(result["fetched"]),
         new=int(result["new"]),
         duplicates=int(result["duplicates"]),
+        updated=int(result.get("updated", 0)),
         source_name=str(result["source_name"]),
-        message=f"同步完成：拉取 {result['fetched']} 条，新增 {result['new']} 条。",
+        message=f"同步完成：拉取 {result['fetched']} 条，新增 {result['new']} 条，更新 {result.get('updated', 0)} 条。",
     )

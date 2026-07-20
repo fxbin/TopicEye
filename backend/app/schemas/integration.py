@@ -36,5 +36,6 @@ class WeReadSyncResponse(BaseModel):
     fetched: int
     new: int
     duplicates: int
+    updated: int = 0
     message: str
     source_name: str

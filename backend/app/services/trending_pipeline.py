@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone, UTC
 from typing import Dict, Union
 
@@ -22,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.trending import TrendingItem
+from app.services.scraper_http import build_browser_client_kwargs
 from app.services.trending_cache import invalidate_trending_cache
 from app.services.trending_scrapers import (
     get_trending_cls,
@@ -66,10 +66,7 @@ async def _sync_trending_source_locked(source_name: str, db: AsyncSession) -> di
     batch_id = f"{source_name}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
     try:
-        proxy_url = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
-        client_kwargs = {"timeout": 30, "follow_redirects": True}
-        if proxy_url:
-            client_kwargs["proxy"] = proxy_url
+        client_kwargs = build_browser_client_kwargs()
 
         async with httpx.AsyncClient(**client_kwargs) as client:
             entries = await scraper.fetch(client)

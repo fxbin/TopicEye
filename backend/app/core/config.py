@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     # 慢站(Wired 等)会快速 fail 释放 worker,不让其拖到 sync 整体超时(120s)。
     # 调大可以更宽容但风险是 sync 任务被堵住影响其他 source。
     RSS_SCRAPER_TIMEOUT_SECONDS: float = 15.0
+    # 趋势雷达单次 fetch 的 httpx 超时(秒)。trending 站点多为国内 API,
+    # 偶发慢响应,保留 30s 比 RSS 宽松一些避免误杀。
+    HTTP_TRENDING_TIMEOUT_SECONDS: float = 30.0
+    # 抓取层统一的 proxy 单一来源。设置后所有 scraper (content + trending)
+    # 都会通过此 URL 出网,优先级高于环境变量 https_proxy / HTTPS_PROXY。
+    # 留空则回退到环境变量(向后兼容现有部署)。
+    HTTP_PROXY_URL: str | None = None
+    # 抓取层品牌 UA,用于 content scraper (RSS / Atom / Podcast 等公开协议)。
+    # 走礼貌爬虫语义,标识 TopicEye 身份,便于站点统计与联系。
+    HTTP_SCRAPER_USER_AGENT: str = "TopicEye/1.0 (+https://topiceye.example.com) Python-httpx"
+    # 抓取层浏览器 UA,用于 trending scraper (国内榜单 API 大多拒绝
+    # default Python-httpx UA,返回 403/406)。集中维护避免 16+ 处硬编码漂移。
+    HTTP_BROWSER_USER_AGENT: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
     # User-triggered reader mode.  This is intentionally a narrow, public-page
     # fetcher: no browser automation, cookies, proxies, or anti-bot bypass.
     ARTICLE_READER_ENABLED: bool = True

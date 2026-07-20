@@ -15,6 +15,8 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # ── 类型别名 ──────────────────────────────────────────────────────
@@ -74,10 +76,8 @@ def get_syncable_trending_sources() -> list[str]:
 # ── Base class ────────────────────────────────────────────────────
 # 多数榜单站点会拒绝 default Python-httpx UA（返回 403/406），故各 scraper
 # 统一伪装成桌面 Chrome。集中维护，避免 16+ 处硬编码漂移。
-BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-)
+# 取自 settings.HTTP_BROWSER_USER_AGENT,部署时可在 .env 中统一覆盖。
+BROWSER_UA = settings.HTTP_BROWSER_USER_AGENT
 
 
 class BaseTrendingScraper(ABC):

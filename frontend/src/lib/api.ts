@@ -28,6 +28,8 @@ import type {
   IntegrationStatus,
   PlanCatalogResponse,
   WeReadSyncResult,
+  WeReadSearchResponse,
+  WeReadBookInfo,
   NotificationListResponse,
 } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
@@ -286,6 +288,15 @@ export const integrationsApi = {
 
   syncWeRead(limit = 0): Promise<WeReadSyncResult> {
     return request(`/integrations/weread/sync?limit=${limit}`, { method: 'POST' });
+  },
+
+  searchWeRead(keyword: string, count = 10, scope = 10): Promise<WeReadSearchResponse> {
+    const params = new URLSearchParams({ keyword, count: String(count), scope: String(scope) });
+    return request(`/integrations/weread/search?${params}`);
+  },
+
+  getWeReadBook(bookId: string): Promise<WeReadBookInfo> {
+    return request(`/integrations/weread/book/${bookId}`);
   },
 };
 

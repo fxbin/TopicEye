@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   ExternalLink,
@@ -16,13 +16,16 @@ import {
   PieChart,
   TrendingUp,
   Users,
+  Sparkles,
+  Star,
+  Loader2,
 } from 'lucide-react';
 import { contentsApi, integrationsApi } from '@/lib/api';
 import { Panel, Badge, Surface, cx } from '@/components/ui';
 import { Pagination } from '@/components/Pagination';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
-import type { ContentItem } from '@/types';
+import type { ContentItem, WeReadSearchBook } from '@/types';
 import { AutoLink } from '@/components/AutoLink';
 
 const SHELF_PAGE_SIZE = 200; // 书架视图一次拉满，客户端排序/分组
@@ -172,6 +175,103 @@ function BookCard({ item, meta, onExpand }: {
         {status}
       </span>
     </button>
+  );
+}
+
+// ── 发现模式搜索结果卡片 ──
+
+function DiscoverBookCard({ book, inShelf }: {
+  book: WeReadSearchBook;
+  inShelf: boolean;
+}) {
+  const ratingLabel = book.newRatingDetail?.title;
+  const ratingColor =
+    ratingLabel === '神作' ? 'teal' :
+    ratingLabel === '好评如潮' || ratingLabel === '值得一读' ? 'primary' :
+    'neutral';
+
+  return (
+    <div className="group flex flex-col items-center text-center transition hover:-translate-y-1">
+      {/* 封面 */}
+      <div className="relative mb-2 h-[140px] w-[100px] shrink-0">
+        {book.cover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={book.cover}
+            alt=""
+            className="h-full w-full rounded-md object-cover shadow-sm transition group-hover:shadow-lg"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              const sib = (e.target as HTMLImageElement).nextElementSibling as HTMLElement | null;
+              if (sib) sib.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <div
+          className={cx(
+            'absolute inset-0 grid place-items-center rounded-md bg-gray-100 shadow-sm',
+            book.cover ? 'hidden' : 'flex',
+          )}
+        >
+          <BookOpen size={20} className="text-gray-300" />
+        </div>
+
+        {/* 已在书架角标 */}
+        {inShelf && (
+          <div className="absolute right-0 top-0 rounded-bl-md rounded-tr-md bg-teal px-1.5 py-0.5 text-[9px] font-black text-white shadow">
+            书架中
+          </div>
+        )}
+      </div>
+
+      {/* 书名 */}
+      <h3 className="line-clamp-2 max-w-[110px] text-xs font-bold leading-4 text-gray-800">
+        {book.title}
+      </h3>
+
+      {/* 作者 */}
+      {book.author && (
+        <p className="mt-0.5 line-clamp-1 max-w-[110px] text-[10px] text-gray-400">
+          {book.author}
+        </p>
+      )}
+
+      {/* 评分徽章 */}
+      <div className="mt-1 flex items-center gap-1">
+        {book.newRating && (
+          <span
+            className={cx(
+              'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold',
+              ratingColor === 'teal' && 'bg-teal-light text-teal',
+              ratingColor === 'primary' && 'bg-primary-light text-primary',
+              ratingColor === 'neutral' && 'bg-gray-100 text-gray-400',
+            )}
+          >
+            <Star size={8} className="fill-current" />
+            {(book.newRating / 10).toFixed(1)}
+          </span>
+        )}
+        {book.readingCount !== undefined && book.readingCount > 0 && (
+          <span className="text-[9px] text-gray-400">
+            {book.readingCount > 10000 ? `${(book.readingCount / 10000).toFixed(1)}万` : book.readingCount} 人在读
+          </span>
+        )}
+      </div>
+
+      {/* 外链 */}
+      {book.deepLink && (
+        <a
+          href={book.deepLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          去读
+          <ExternalLink size={8} />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -481,6 +581,14 @@ export default function WeReadPage() {
 
   const [showCharts, setShowCharts] = useState(false);
 
+  // ── 发现模式（全网搜书）──
+  const [searchMode, setSearchMode] = useState<'shelf' | 'discover'>('shelf');
+  const [discoverResults, setDiscoverResults] = useState<WeReadSearchBook[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [discoverKeyword, setDiscoverKeyword] = useState('');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { data, loading, error, refetch } = useFetch(
     () => contentsApi.list({
       platform: '微信读书',
@@ -502,6 +610,44 @@ export default function WeReadPage() {
       meta: parseWeReadMeta(item),
     }));
   }, [allItems]);
+
+  // 书架中书名的归一化集合，用于发现模式标记"已在书架"
+  const shelfTitleSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const { item } of itemsWithMeta) {
+      const normalized = (item.title || '').trim().toLowerCase();
+      if (normalized) s.add(normalized);
+    }
+    return s;
+  }, [itemsWithMeta]);
+
+  // 发现模式：防抖搜索微信读书全网书库
+  useEffect(() => {
+    if (searchMode !== 'discover') return;
+    const keyword = discoverKeyword.trim();
+    if (!keyword) {
+      setDiscoverResults([]);
+      setDiscoverError(null);
+      return;
+    }
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(async () => {
+      setDiscoverLoading(true);
+      setDiscoverError(null);
+      try {
+        const result = await integrationsApi.searchWeRead(keyword, 20);
+        setDiscoverResults(result.books);
+      } catch (err) {
+        setDiscoverError(err instanceof Error ? err.message : '搜索失败');
+        setDiscoverResults([]);
+      } finally {
+        setDiscoverLoading(false);
+      }
+    }, 500);
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [discoverKeyword, searchMode]);
 
   // 搜索过滤
   const filtered = useMemo(() => {
@@ -698,7 +844,7 @@ export default function WeReadPage() {
         )}
 
         {/* 空状态 */}
-        {allItems.length === 0 && !loading && (
+        {allItems.length === 0 && !loading && searchMode === 'shelf' && (
           <Panel className="p-8 text-center">
             <BookOpen size={32} className="mx-auto mb-3 text-gray-300" />
             <p className="text-sm font-bold text-gray-500">还没有微信读书素材</p>
@@ -707,10 +853,49 @@ export default function WeReadPage() {
               <a href="/profile" className="mx-0.5 text-primary hover:underline">个人中心</a>
               配置微信读书 API Key，然后点击右上角「同步素材」。
             </p>
+            <p className="mt-2 text-xs text-gray-400">
+              或切换到
+              <button
+                type="button"
+                onClick={() => setSearchMode('discover')}
+                className="mx-0.5 text-primary hover:underline font-bold"
+              >发现</button>
+              模式搜索微信读书书库。
+            </p>
           </Panel>
         )}
 
-        {allItems.length > 0 && (
+        {/* 搜索模式切换 */}
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+          <button
+            type="button"
+            onClick={() => setSearchMode('shelf')}
+            className={cx(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition',
+              searchMode === 'shelf'
+                ? 'bg-primary-light text-primary'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <Library size={13} />
+            书架
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchMode('discover')}
+            className={cx(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition',
+              searchMode === 'discover'
+                ? 'bg-primary-light text-primary'
+                : 'text-gray-500 hover:text-gray-700',
+            )}
+          >
+            <Sparkles size={13} />
+            发现
+          </button>
+        </div>
+
+        {searchMode === 'shelf' && allItems.length > 0 && (
           <>
             {/* 统计卡片 */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -848,6 +1033,102 @@ export default function WeReadPage() {
                 onPage={setPage}
                 summary={<span className="text-xs font-bold text-gray-500">{currentPage} / {totalPages}</span>}
               />
+            )}
+          </>
+        )}
+
+        {/* ── 发现模式：全网搜书 ── */}
+        {searchMode === 'discover' && (
+          <>
+            {/* 搜索框 */}
+            <Panel className="p-3">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={discoverKeyword}
+                  onChange={(e) => setDiscoverKeyword(e.target.value)}
+                  placeholder="搜索微信读书书库：书名 / 作者 / 关键词…"
+                  className="w-full rounded-md border border-gray-200 py-2 pl-9 pr-9 text-sm text-gray-700 placeholder:text-gray-400 focus:border-primary-border focus:outline-none"
+                  autoFocus
+                />
+                {discoverKeyword && (
+                  <button
+                    type="button"
+                    onClick={() => setDiscoverKeyword('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-gray-400">
+                搜索微信读书全网书库，发现书架之外的好书。已在书架的书会标记「书架中」。
+              </p>
+            </Panel>
+
+            {/* 搜索中 */}
+            {discoverLoading && (
+              <Panel className="flex items-center justify-center gap-2 p-12">
+                <Loader2 size={20} className="animate-spin text-primary" />
+                <span className="text-sm font-bold text-gray-500">正在搜索微信读书书库…</span>
+              </Panel>
+            )}
+
+            {/* 搜索错误 */}
+            {discoverError && !discoverLoading && (
+              <Panel className="p-6 text-center">
+                <p className="text-sm font-bold text-red">{discoverError}</p>
+                <p className="mt-1 text-xs text-gray-400">请确保已配置微信读书 API Key</p>
+              </Panel>
+            )}
+
+            {/* 搜索结果 */}
+            {!discoverLoading && !discoverError && discoverResults.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black text-gray-700">搜索结果</span>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                    {discoverResults.length} 本
+                  </span>
+                  {discoverKeyword && (
+                    <span className="text-[11px] text-gray-400">
+                      关键词「{discoverKeyword}」
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+                  {discoverResults.map((book) => (
+                    <DiscoverBookCard
+                      key={book.bookId}
+                      book={book}
+                      inShelf={shelfTitleSet.has(book.title.trim().toLowerCase())}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 空搜索提示 */}
+            {!discoverLoading && !discoverError && discoverResults.length === 0 && !discoverKeyword.trim() && (
+              <Panel className="p-12 text-center">
+                <Sparkles size={32} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm font-bold text-gray-500">搜索微信读书全网书库</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  输入书名、作者或关键词，发现书架之外的好书。
+                </p>
+              </Panel>
+            )}
+
+            {/* 无结果 */}
+            {!discoverLoading && !discoverError && discoverResults.length === 0 && discoverKeyword.trim() && (
+              <Panel className="p-12 text-center">
+                <Search size={32} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm font-bold text-gray-500">未找到相关书籍</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  试试其他关键词？
+                </p>
+              </Panel>
             )}
           </>
         )}

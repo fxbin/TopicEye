@@ -47,6 +47,49 @@ export interface WeReadSyncResult {
   source_name: string;
 }
 
+export interface WeReadSearchBook {
+  bookId: string;
+  title: string;
+  author: string;
+  translator?: string;
+  cover: string;
+  intro?: string;
+  deepLink?: string;
+  category?: string;
+  publisher?: string;
+  price?: number | null;
+  newRating?: number | null;
+  newRatingCount?: number | null;
+  newRatingDetail?: { title?: string; good?: number; fair?: number; poor?: number };
+  readingCount?: number;
+  scopeLabel?: string;
+}
+
+export interface WeReadSearchResponse {
+  books: WeReadSearchBook[];
+  hasMore: number;
+  total: number;
+  keyword: string;
+}
+
+export interface WeReadBookInfo {
+  bookId: string;
+  title: string;
+  author: string;
+  translator?: string;
+  cover: string;
+  intro: string;
+  deepLink?: string;
+  category?: string;
+  publisher?: string;
+  publishTime?: string;
+  isbn?: string;
+  wordCount?: number | null;
+  newRating?: number | null;
+  newRatingCount?: number | null;
+  newRatingDetail?: { title?: string; good?: number; fair?: number; poor?: number };
+}
+
 // ─── Plans (功能权益) ───
 
 export interface PlanTier {

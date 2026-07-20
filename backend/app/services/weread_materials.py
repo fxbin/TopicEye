@@ -225,6 +225,146 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 0) -> list[dict[s
     return await asyncio.to_thread(_do_fetch)
 
 
+# ── WeRead 书籍搜索 & 详情 ──
+
+
+def _weread_gateway_request(
+    api_key: str,
+    body: dict[str, Any],
+    *,
+    timeout: int = 15,
+) -> dict[str, Any]:
+    """同步调用 WeRead Agent Gateway，返回 JSON dict。"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        resp = client.post(WEREAD_GATEWAY_URL, headers=headers, json=body)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def search_weread_books(
+    api_key: str,
+    keyword: str,
+    *,
+    count: int = 10,
+    scope: int = 10,
+    max_idx: int = 0,
+) -> dict[str, Any]:
+    """通过 WeRead Gateway /store/search 搜索书籍。
+
+    Args:
+        api_key: 微信读书 API Key。
+        keyword: 搜索关键词。
+        count: 每页数量（默认 10）。
+        scope: 搜索类型：0=全部, 10=电子书, 14=听书, 6=作者, 12=全文, 13=书单, 2=公众号, 4=文章。
+        max_idx: 翻页偏移。
+
+    Returns:
+        标准化后的搜索结果 dict，含 books 列表和 hasMore。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    body: dict[str, Any] = {
+        "api_name": "/store/search",
+        "keyword": keyword,
+        "count": count,
+        "scope": scope,
+        "skill_version": WEREAD_SKILL_VERSION,
+    }
+    if max_idx > 0:
+        body["maxIdx"] = max_idx
+
+    def _do_search() -> dict[str, Any]:
+        payload = _weread_gateway_request(stripped_key, body)
+        # 展平 results 里各分组的 books
+        all_books: list[dict[str, Any]] = []
+        results = payload.get("results") or []
+        for group in results:
+            if not isinstance(group, dict):
+                continue
+            for item in group.get("books") or []:
+                if not isinstance(item, dict):
+                    continue
+                info = item.get("bookInfo") or {}
+                if not info.get("bookId"):
+                    continue
+                all_books.append(
+                    {
+                        "bookId": str(info["bookId"]),
+                        "title": info.get("title", ""),
+                        "author": info.get("author", ""),
+                        "translator": info.get("translator", ""),
+                        "cover": info.get("cover", ""),
+                        "intro": info.get("intro", ""),
+                        "deepLink": info.get("deepLink", ""),
+                        "category": info.get("category", ""),
+                        "publisher": info.get("publisher", ""),
+                        "price": info.get("price"),
+                        "newRating": info.get("newRating"),
+                        "newRatingCount": info.get("newRatingCount"),
+                        "newRatingDetail": info.get("newRatingDetail", {}),
+                        "readingCount": item.get("readingCount", 0),
+                        "scopeLabel": group.get("title", ""),
+                    }
+                )
+        return {
+            "books": all_books,
+            "hasMore": payload.get("hasMore", 0),
+            "sid": payload.get("sid", ""),
+            "total": len(all_books),
+        }
+
+    return await asyncio.to_thread(_do_search)
+
+
+async def get_weread_book_info(api_key: str, book_id: str) -> dict[str, Any]:
+    """通过 WeRead Gateway /book/info 获取书籍详情。
+
+    Args:
+        api_key: 微信读书 API Key。
+        book_id: 微信读书书籍 ID。
+
+    Returns:
+        标准化后的书籍信息 dict。
+    """
+    stripped_key = (api_key or "").strip()
+    if not stripped_key:
+        raise ValueError("微信读书 API Key 未配置")
+
+    body: dict[str, Any] = {
+        "api_name": "/book/info",
+        "bookId": str(book_id),
+        "skill_version": WEREAD_SKILL_VERSION,
+    }
+
+    def _do_fetch_info() -> dict[str, Any]:
+        data = _weread_gateway_request(stripped_key, body)
+        return {
+            "bookId": str(data.get("bookId", "")),
+            "title": data.get("title", ""),
+            "author": data.get("author", ""),
+            "translator": data.get("translator", ""),
+            "cover": data.get("cover", ""),
+            "intro": data.get("intro", ""),
+            "deepLink": data.get("deepLink", ""),
+            "category": data.get("category", ""),
+            "publisher": data.get("publisher", ""),
+            "publishTime": data.get("publishTime", ""),
+            "isbn": data.get("isbn", ""),
+            "wordCount": data.get("wordCount"),
+            "newRating": data.get("newRating"),
+            "newRatingCount": data.get("newRatingCount"),
+            "newRatingDetail": data.get("newRatingDetail", {}),
+        }
+
+    return await asyncio.to_thread(_do_fetch_info)
+
+
 async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:
     """确保用户拥有自己的微信读书 Source（按 owner_user_id 隔离，不共用公共池）。"""
     result = await db.execute(

@@ -39,3 +39,52 @@ class WeReadSyncResponse(BaseModel):
     updated: int = 0
     message: str
     source_name: str
+
+
+# ── WeRead 搜索 ──
+
+
+class WeReadSearchBook(BaseModel):
+    """搜索结果中的单本书。"""
+    bookId: str
+    title: str = ""
+    author: str = ""
+    translator: str = ""
+    cover: str = ""
+    intro: str = ""
+    deepLink: str = ""
+    category: str = ""
+    publisher: str = ""
+    price: float | None = None
+    newRating: int | None = None
+    newRatingCount: int | None = None
+    newRatingDetail: dict[str, Any] = Field(default_factory=dict)
+    readingCount: int = 0
+    scopeLabel: str = ""
+
+
+class WeReadSearchResponse(BaseModel):
+    """搜索响应。"""
+    books: list[WeReadSearchBook]
+    hasMore: int = 0
+    total: int = 0
+    keyword: str = ""
+
+
+class WeReadBookInfo(BaseModel):
+    """书籍详情。"""
+    bookId: str
+    title: str = ""
+    author: str = ""
+    translator: str = ""
+    cover: str = ""
+    intro: str = ""
+    deepLink: str = ""
+    category: str = ""
+    publisher: str = ""
+    publishTime: str = ""
+    isbn: str = ""
+    wordCount: int | None = None
+    newRating: int | None = None
+    newRatingCount: int | None = None
+    newRatingDetail: dict[str, Any] = Field(default_factory=dict)

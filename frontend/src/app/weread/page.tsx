@@ -78,6 +78,23 @@ function getReadingStatus(progress: number): '未读' | '在读' | '已读' {
   return '未读';
 }
 
+// ── 微信读书网页版跳转 URL ──
+
+const WEREAD_FALLBACK_URL = 'https://weread.qq.com/r/weread-skills';
+
+/** 构造微信读书网页版搜索 URL，用于书架中没有直接 deepLink 的书 */
+function wereadSearchUrl(title: string): string {
+  return `https://weread.qq.com/#search/${encodeURIComponent(title)}`;
+}
+
+/** 获取书架书籍的微信读书跳转 URL：有真实 URL 用 URL，否则用搜索 URL */
+function wereadBookUrl(item: ContentItem): string {
+  if (item.url && item.url !== WEREAD_FALLBACK_URL) {
+    return item.url;
+  }
+  return wereadSearchUrl(item.title);
+}
+
 // ── 书架卡片 ──
 
 function BookCard({ item, meta, onExpand }: {
@@ -89,10 +106,12 @@ function BookCard({ item, meta, onExpand }: {
   const statusColor = status === '已读' ? 'teal' : status === '在读' ? 'primary' : 'neutral';
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onExpand}
-      className="group flex flex-col items-center text-center transition hover:-translate-y-1"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onExpand(); }}
+      className="group relative flex cursor-pointer flex-col items-center text-center transition hover:-translate-y-1"
     >
       {/* 封面 */}
       <div className="relative mb-2 h-[140px] w-[100px] shrink-0">
@@ -130,6 +149,18 @@ function BookCard({ item, meta, onExpand }: {
             />
           </div>
         )}
+
+        {/* 跳转微信读书按钮 — 悬停显示 */}
+        <a
+          href={wereadBookUrl(item)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="在微信读书中打开"
+          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-md transition group-hover:opacity-100 hover:bg-white hover:text-primary"
+        >
+          <ExternalLink size={11} />
+        </a>
       </div>
 
       {/* 书名 */}
@@ -174,7 +205,7 @@ function BookCard({ item, meta, onExpand }: {
       >
         {status}
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -258,19 +289,17 @@ function DiscoverBookCard({ book, inShelf }: {
         )}
       </div>
 
-      {/* 外链 */}
-      {book.deepLink && (
-        <a
-          href={book.deepLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-primary hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          去读
-          <ExternalLink size={8} />
-        </a>
-      )}
+      {/* 外链 — 始终显示 */}
+      <a
+        href={book.deepLink || wereadSearchUrl(book.title)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-primary hover:underline"
+        onClick={(e) => e.stopPropagation()}
+      >
+        去读
+        <ExternalLink size={8} />
+      </a>
     </div>
   );
 }
@@ -375,18 +404,16 @@ function BookDetailPanel({ item, meta, onClose }: {
           </div>
         )}
 
-        {/* 外链 */}
-        {item.url && item.url !== 'https://weread.qq.com/r/weread-skills' && (
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
-          >
-            在微信读书中查看
-            <ExternalLink size={12} />
-          </a>
-        )}
+        {/* 外链 — 始终显示，没有直接 URL 时用搜索 */}
+        <a
+          href={wereadBookUrl(item)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+        >
+          在微信读书中{item.url && item.url !== WEREAD_FALLBACK_URL ? '查看' : '搜索'}
+          <ExternalLink size={12} />
+        </a>
       </Panel>
     </div>
   );

@@ -5,19 +5,18 @@ App-level settings API — RSSHub instance management.
 from __future__ import annotations
 import json
 import logging
-from datetime import datetime, timezone, UTC
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import database_profile, get_db
 from app.core.db_backend import database_diagnostics, redact_database_secrets
-from app.models.app_setting import AppSetting, DEFAULT_FEATURE_FLAGS
+from app.models.app_setting import DEFAULT_FEATURE_FLAGS
 from app.models.app_setting import get_feature_flags_async, set_feature_flags_async
+from app.repositories.app_setting_repo import AppSettingRepository
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(get_current_admin_user)])
 
@@ -54,8 +53,7 @@ def normalize_rsshub_instance_url(value: str) -> str:
 @router.get("/rsshub/instances", response_model=RSSHubInstancesGetResponse)
 async def get_rsshub_instances(db: AsyncSession = Depends(get_db)):
     """Get current RSSHub instance list (from DB or defaults)."""
-    result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
-    row = result.scalar_one_or_none()
+    row = await AppSettingRepository(db).get_by_key("rsshub_instances")
 
     if row and row.value:
         try:
@@ -98,22 +96,11 @@ async def update_rsshub_instances(
 
     raw_value = json.dumps([inst.model_dump() for inst in normalized_instances], ensure_ascii=False)
 
-    result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
-    existing = result.scalar_one_or_none()
-
-    if existing:
-        existing.value = raw_value
-        existing.updated_at = datetime.now(UTC)
-    else:
-        db.add(
-            AppSetting(
-                key="rsshub_instances",
-                value=raw_value,
-                description="RSSHub 实例列表，支持多实例降级",
-                updated_at=datetime.now(UTC),
-            )
-        )
-
+    await AppSettingRepository(db).upsert_setting(
+        "rsshub_instances",
+        raw_value,
+        description="RSSHub 实例列表，支持多实例降级",
+    )
     await db.commit()
 
     return {"instances": normalized_instances, "updated": True}
@@ -225,10 +212,7 @@ class EmailProviderConfigUpdateRequest(BaseModel):
 @router.get("/email-provider", response_model=EmailProviderConfigResponse)
 async def get_email_provider_config(db: AsyncSession = Depends(get_db)):
     """获取当前邮件 Provider 配置。敏感字段（api_key / smtp_password）不返回明文，仅返回脱敏预览。"""
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "email_provider_config")
-    )
-    row = result.scalar_one_or_none()
+    row = await AppSettingRepository(db).get_by_key("email_provider_config")
 
     if not row or not row.value:
         return EmailProviderConfigResponse(supported_providers=SUPPORTED_EMAIL_PROVIDERS)
@@ -292,10 +276,8 @@ async def update_email_provider_config(
     from app.services.secret_store import encrypt_secret
 
     # 读取现有配置（用于敏感字段保留逻辑）
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "email_provider_config")
-    )
-    existing = result.scalar_one_or_none()
+    setting_repo = AppSettingRepository(db)
+    existing = await setting_repo.get_by_key("email_provider_config")
     existing_config: dict = {}
     if existing and existing.value:
         try:
@@ -328,18 +310,12 @@ async def update_email_provider_config(
     }
     raw_value = json.dumps(new_config, ensure_ascii=False)
 
-    if existing:
-        existing.value = raw_value
-        existing.updated_at = datetime.now(UTC)
-    else:
-        db.add(
-            AppSetting(
-                key="email_provider_config",
-                value=raw_value,
-                description="邮件服务 Provider 配置（敏感字段加密存储）",
-                updated_at=datetime.now(UTC),
-            )
-        )
+    await setting_repo.upsert_setting(
+        "email_provider_config",
+        raw_value,
+        description="邮件服务 Provider 配置（敏感字段加密存储）",
+        existing=existing,
+    )
 
     await db.commit()
     return {"updated": True}
@@ -432,10 +408,7 @@ def _normalize_stored_config_to_webhooks(cfg: dict) -> list[dict]:
 @router.get("/notification-webhook", response_model=NotificationWebhookConfigResponse)
 async def get_notification_webhook_config(db: AsyncSession = Depends(get_db)):
     """获取当前通知推送 webhook 配置（webhooks 列表）。webhook_url 不返回明文，仅返回脱敏预览。"""
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "notification_webhook_config")
-    )
-    row = result.scalar_one_or_none()
+    row = await AppSettingRepository(db).get_by_key("notification_webhook_config")
 
     if not row or not row.value:
         return NotificationWebhookConfigResponse(webhooks=[])
@@ -478,10 +451,8 @@ async def update_notification_webhook_config(
     from app.services.secret_store import encrypt_secret
 
     # 读取现有配置（用于 webhook_url 保留逻辑）
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == "notification_webhook_config")
-    )
-    existing = result.scalar_one_or_none()
+    setting_repo = AppSettingRepository(db)
+    existing = await setting_repo.get_by_key("notification_webhook_config")
     existing_webhooks: list[dict] = []
     if existing and existing.value:
         try:
@@ -526,18 +497,12 @@ async def update_notification_webhook_config(
     new_config = {"webhooks": new_webhooks}
     raw_value = json.dumps(new_config, ensure_ascii=False)
 
-    if existing:
-        existing.value = raw_value
-        existing.updated_at = datetime.now(UTC)
-    else:
-        db.add(
-            AppSetting(
-                key="notification_webhook_config",
-                value=raw_value,
-                description="通知推送 webhook 配置（支持多 webhook，URL 加密存储）",
-                updated_at=datetime.now(UTC),
-            )
-        )
+    await setting_repo.upsert_setting(
+        "notification_webhook_config",
+        raw_value,
+        description="通知推送 webhook 配置（支持多 webhook，URL 加密存储）",
+        existing=existing,
+    )
 
     await db.commit()
     return {"updated": True}

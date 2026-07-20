@@ -19,6 +19,10 @@ import {
   Sparkles,
   Star,
   Loader2,
+  Clock,
+  Filter,
+  Grid3x3,
+  Zap,
 } from 'lucide-react';
 import { contentsApi, integrationsApi } from '@/lib/api';
 import { Panel, Badge, Surface, cx } from '@/components/ui';
@@ -95,6 +99,16 @@ function wereadBookUrl(item: ContentItem): string {
   return wereadSearchUrl(item.title);
 }
 
+/** 检测是否为暂停阅读：进度 < 50% 且 30 天无笔记活动 */
+function isPausedReading(meta: WeReadMeta, publishedAt: string | null): boolean {
+  if (meta.readingProgress >= 50) return false;
+  if (!publishedAt) return false;
+  const date = new Date(publishedAt);
+  if (Number.isNaN(date.getTime())) return false;
+  const daysSince = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+  return daysSince >= 30;
+}
+
 // ── 书架卡片 ──
 
 function BookCard({ item, meta, onExpand }: {
@@ -104,6 +118,7 @@ function BookCard({ item, meta, onExpand }: {
 }) {
   const status = getReadingStatus(meta.readingProgress);
   const statusColor = status === '已读' ? 'teal' : status === '在读' ? 'primary' : 'neutral';
+  const paused = isPausedReading(meta, item.published_at || null);
 
   return (
     <div
@@ -205,6 +220,13 @@ function BookCard({ item, meta, onExpand }: {
       >
         {status}
       </span>
+      {/* 暂停阅读标记 */}
+      {paused && (
+        <span className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-amber-light px-1.5 py-0.5 text-[9px] font-bold text-amber">
+          <Clock size={8} />
+          暂停
+        </span>
+      )}
     </div>
   );
 }
@@ -594,6 +616,255 @@ function ProgressHistogram({ items }: { items: Array<{ meta: WeReadMeta }> }) {
   );
 }
 
+/** 完成率漏斗图：开始→25%→50%→75%→100% */
+function CompletionFunnel({ items }: { items: Array<{ meta: WeReadMeta }> }) {
+  const stages = useMemo(() => {
+    let started = 0, reached25 = 0, reached50 = 0, reached75 = 0, finished = 0;
+    for (const { meta } of items) {
+      const p = meta.readingProgress;
+      if (p > 0) started++;
+      if (p >= 25) reached25++;
+      if (p >= 50) reached50++;
+      if (p >= 75) reached75++;
+      if (p >= 100) finished++;
+    }
+    return { started, reached25, reached50, reached75, finished };
+  }, [items]);
+
+  const funnelStages = [
+    { label: '开始阅读', count: stages.started, color: '#FF6B35' },
+    { label: '读到 25%', count: stages.reached25, color: '#D97706' },
+    { label: '读到 50%', count: stages.reached50, color: '#F59E0B' },
+    { label: '读到 75%', count: stages.reached75, color: '#00C9A7' },
+    { label: '读完', count: stages.finished, color: '#059669' },
+  ];
+
+  const maxCount = Math.max(...funnelStages.map(s => s.count), 1);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {funnelStages.map((stage, i) => {
+        const prevCount = i > 0 ? funnelStages[i - 1].count : 0;
+        const rate = prevCount > 0 ? Math.round((stage.count / prevCount) * 100) : 100;
+        const widthPct = (stage.count / maxCount) * 100;
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-16 shrink-0 text-right text-[11px] font-bold text-gray-600">
+              {stage.label}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="h-7 overflow-hidden rounded-md bg-gray-50">
+                <div
+                  className="flex h-full items-center justify-end rounded-md px-2 transition-[width] duration-500"
+                  style={{
+                    width: `${Math.max(widthPct, 8)}%`,
+                    background: stage.color + '20',
+                    borderRight: `3px solid ${stage.color}`,
+                  }}
+                >
+                  <span className="font-mono text-[11px] font-bold" style={{ color: stage.color }}>
+                    {stage.count}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="w-12 shrink-0 text-right font-mono text-[10px] text-gray-400">
+              {i > 0 && stage.count > 0 ? `${rate}%` : ''}
+            </div>
+          </div>
+        );
+      })}
+      <p className="mt-1 text-[10px] text-gray-400">百分比 = 相比上一阶段的留存率</p>
+    </div>
+  );
+}
+
+/** 笔记密度散点图：X=进度, Y=划线数, 气泡=总笔记数 */
+function NoteDensityScatter({ items }: { items: Array<{ item: ContentItem; meta: WeReadMeta }> }) {
+  const points = useMemo(() => {
+    return items
+      .filter(({ meta }) => meta.noteCount > 0 || meta.reviewCount > 0)
+      .map(({ item, meta }) => ({
+        title: item.title,
+        progress: meta.readingProgress,
+        noteCount: meta.noteCount,
+        totalNotes: meta.noteCount + meta.reviewCount,
+        status: getReadingStatus(meta.readingProgress),
+      }));
+  }, [items]);
+
+  if (points.length === 0) return <div className="py-3 text-[13px] text-gray-400">暂无笔记数据</div>;
+
+  const maxNotes = Math.max(...points.map(p => p.noteCount), 1);
+  const W = 320;
+  const H = 180;
+  const padding = { left: 32, right: 16, top: 16, bottom: 28 };
+  const plotW = W - padding.left - padding.right;
+  const plotH = H - padding.top - padding.bottom;
+
+  const xScale = (progress: number) => padding.left + (progress / 100) * plotW;
+  const yScale = (notes: number) => padding.top + plotH - (notes / maxNotes) * plotH;
+  const rScale = (total: number) => 3 + Math.sqrt(total) * 1.5;
+
+  const statusColor = (status: string) =>
+    status === '已读' ? '#059669' : status === '在读' ? '#FF6B35' : '#D1D5DB';
+
+  const yTicks = [0, Math.ceil(maxNotes / 2), maxNotes];
+  const xTicks = [0, 25, 50, 75, 100];
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 220 }}>
+        {/* Grid lines */}
+        {yTicks.map((tick, i) => (
+          <g key={`y-${i}`}>
+            <line
+              x1={padding.left}
+              y1={yScale(tick)}
+              x2={W - padding.right}
+              y2={yScale(tick)}
+              stroke="#F3F4F6"
+              strokeWidth={1}
+            />
+            <text x={padding.left - 6} y={yScale(tick) + 3} textAnchor="end" fontSize={9} fill="#9CA3AF">
+              {tick}
+            </text>
+          </g>
+        ))}
+        {/* X axis ticks */}
+        {xTicks.map((tick, i) => (
+          <text key={`x-${i}`} x={xScale(tick)} y={H - 10} textAnchor="middle" fontSize={9} fill="#9CA3AF">
+            {tick}%
+          </text>
+        ))}
+        {/* Axis labels */}
+        <text x={W / 2} y={H - 1} textAnchor="middle" fontSize={8} fill="#6B7280">
+          阅读进度
+        </text>
+        <text
+          x={10}
+          y={H / 2}
+          textAnchor="middle"
+          fontSize={8}
+          fill="#6B7280"
+          transform={`rotate(-90 10 ${H / 2})`}
+        >
+          划线数
+        </text>
+        {/* Data points */}
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={xScale(p.progress)}
+            cy={yScale(p.noteCount)}
+            r={rScale(p.totalNotes)}
+            fill={statusColor(p.status) + '50'}
+            stroke={statusColor(p.status)}
+            strokeWidth={1}
+          >
+            <title>{`${p.title}: 进度${p.progress}% · ${p.noteCount}划线 · ${p.totalNotes}总笔记`}</title>
+          </circle>
+        ))}
+      </svg>
+      {/* Legend */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full" style={{ background: '#059669' }} />
+          已读
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full" style={{ background: '#FF6B35' }} />
+          在读
+        </span>
+        <span className="text-gray-400">气泡大小 = 总笔记数</span>
+      </div>
+    </div>
+  );
+}
+
+/** 本周阅读脉搏 */
+function WeeklyPulse({ items }: { items: Array<{ item: ContentItem; meta: WeReadMeta }> }) {
+  const pulse = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = now.getDay() || 7;
+    const thisWeekStart = new Date(now);
+    thisWeekStart.setDate(now.getDate() - dayOfWeek + 1);
+    thisWeekStart.setHours(0, 0, 0, 0);
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(thisWeekStart.getDate() - 7);
+
+    let thisWeekNotes = 0;
+    const thisWeekBooks = new Set<number>();
+    let lastWeekNotes = 0;
+    const lastWeekBooks = new Set<number>();
+
+    for (const { item, meta } of items) {
+      if (!item.published_at) continue;
+      const date = new Date(item.published_at);
+      if (Number.isNaN(date.getTime())) continue;
+      const notes = meta.noteCount + meta.reviewCount;
+      if (date >= thisWeekStart) {
+        thisWeekNotes += notes;
+        thisWeekBooks.add(item.id);
+      } else if (date >= lastWeekStart) {
+        lastWeekNotes += notes;
+        lastWeekBooks.add(item.id);
+      }
+    }
+
+    const notesTrend = lastWeekNotes > 0
+      ? Math.round(((thisWeekNotes - lastWeekNotes) / lastWeekNotes) * 100)
+      : thisWeekNotes > 0 ? 100 : 0;
+    const booksTrend = lastWeekBooks.size > 0
+      ? Math.round(((thisWeekBooks.size - lastWeekBooks.size) / lastWeekBooks.size) * 100)
+      : thisWeekBooks.size > 0 ? 100 : 0;
+
+    return {
+      thisWeekNotes,
+      thisWeekBooks: thisWeekBooks.size,
+      lastWeekNotes,
+      lastWeekBooks: lastWeekBooks.size,
+      notesTrend,
+      booksTrend,
+    };
+  }, [items]);
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
+        <div className="text-[10px] font-bold text-gray-400">本周新增笔记</div>
+        <div className="mt-1 flex items-baseline gap-1.5">
+          <span className="font-mono text-xl font-black text-gray-900">{pulse.thisWeekNotes}</span>
+          {pulse.notesTrend !== 0 && (
+            <span className={cx('text-[10px] font-bold', pulse.notesTrend > 0 ? 'text-teal' : 'text-red')}>
+              {pulse.notesTrend > 0 ? '↑' : '↓'}{Math.abs(pulse.notesTrend)}%
+            </span>
+          )}
+          {pulse.notesTrend === 0 && pulse.lastWeekNotes > 0 && (
+            <span className="text-[10px] font-bold text-gray-400">持平</span>
+          )}
+        </div>
+        <div className="mt-0.5 text-[9px] text-gray-400">上周 {pulse.lastWeekNotes}</div>
+      </div>
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
+        <div className="text-[10px] font-bold text-gray-400">本周活跃书籍</div>
+        <div className="mt-1 flex items-baseline gap-1.5">
+          <span className="font-mono text-xl font-black text-gray-900">{pulse.thisWeekBooks}</span>
+          {pulse.booksTrend !== 0 && (
+            <span className={cx('text-[10px] font-bold', pulse.booksTrend > 0 ? 'text-teal' : 'text-red')}>
+              {pulse.booksTrend > 0 ? '↑' : '↓'}{Math.abs(pulse.booksTrend)}%
+            </span>
+          )}
+          {pulse.booksTrend === 0 && pulse.lastWeekBooks > 0 && (
+            <span className="text-[10px] font-bold text-gray-400">持平</span>
+          )}
+        </div>
+        <div className="mt-0.5 text-[9px] text-gray-400">上周 {pulse.lastWeekBooks}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── 主页面 ──
 
 export default function WeReadPage() {
@@ -932,6 +1203,11 @@ export default function WeReadPage() {
               <StatCard icon={BarChart3} label="平均进度" value={`${stats.avgProgress}%`} tone="amber" />
             </div>
 
+            {/* 本周阅读脉搏 */}
+            <Surface icon={Zap} title="本周阅读脉搏" hint="近两周笔记活动对比">
+              <WeeklyPulse items={itemsWithMeta} />
+            </Surface>
+
             {/* 图表展开/收起按钮 */}
             <button
               type="button"
@@ -956,6 +1232,12 @@ export default function WeReadPage() {
                 </Surface>
                 <Surface icon={TrendingUp} title="阅读进度分布" hint="按进度区间统计">
                   <ProgressHistogram items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Filter} title="完成率漏斗" hint="各阶段转化率，发现阅读瓶颈">
+                  <CompletionFunnel items={itemsWithMeta} />
+                </Surface>
+                <Surface icon={Grid3x3} title="笔记密度分布" hint="进度 vs 划线数，气泡=总笔记">
+                  <NoteDensityScatter items={itemsWithMeta} />
                 </Surface>
                 <Surface icon={Highlighter} title="划线最多 Top 10" hint="按划线数量排序">
                   <TopNBars data={chartData.topNotes} unit="条" />

@@ -90,6 +90,54 @@ export interface WeReadBookInfo {
   newRatingDetail?: { title?: string; good?: number; fair?: number; poor?: number };
 }
 
+// ─── WeRead Phase 2: 阅读统计 / 热门划线 / 完整书架 ───
+
+export interface WeReadReadData {
+  read_type: string;
+  total_read_time: number;
+  total_read_days: number;
+  total_read_book_count: number;
+  total_note_count: number;
+  total_mark_count: number;
+  ranking_list: Array<Record<string, unknown>>;
+  preference: Record<string, unknown>;
+}
+
+export interface WeReadBookmarkItem {
+  chapter_name: string;
+  text: string;
+  content_style: number;
+  create_time: number;
+}
+
+export interface WeReadBestBookmarks {
+  book_id: string;
+  bookmarks: WeReadBookmarkItem[];
+  total: number;
+}
+
+export interface WeReadShelfBook {
+  book_id: string;
+  title: string;
+  author: string;
+  cover: string;
+  category: string;
+  deep_link: string;
+  reading_progress: number;
+  note_count: number;
+  review_count: number;
+  book_type: number;
+  sort: number;
+}
+
+export interface WeReadShelfSync {
+  books: WeReadShelfBook[];
+  total: number;
+  has_notes: number;
+  no_notes: number;
+  audiobook_count: number;
+}
+
 // ─── Plans (功能权益) ───
 
 export interface PlanTier {

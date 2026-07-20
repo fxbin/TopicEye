@@ -30,6 +30,9 @@ import type {
   WeReadSyncResult,
   WeReadSearchResponse,
   WeReadBookInfo,
+  WeReadReadData,
+  WeReadBestBookmarks,
+  WeReadShelfSync,
   NotificationListResponse,
 } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
@@ -297,6 +300,18 @@ export const integrationsApi = {
 
   getWeReadBook(bookId: string): Promise<WeReadBookInfo> {
     return request(`/integrations/weread/book/${bookId}`);
+  },
+
+  getWeReadReadData(readType: 'all' | 'week' | 'month' | 'year' = 'all'): Promise<WeReadReadData> {
+    return request(`/integrations/weread/readdata?read_type=${readType}`);
+  },
+
+  getWeReadBookmarks(bookId: string, count = 20): Promise<WeReadBestBookmarks> {
+    return request(`/integrations/weread/book/${bookId}/bookmarks?count=${count}`);
+  },
+
+  getWeReadShelf(): Promise<WeReadShelfSync> {
+    return request('/integrations/weread/shelf');
   },
 };
 

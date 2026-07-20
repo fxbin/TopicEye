@@ -62,7 +62,8 @@ class Settings(BaseSettings):
     HTTP_PROXY_URL: str | None = None
     # 抓取层品牌 UA,用于 content scraper (RSS / Atom / Podcast 等公开协议)。
     # 走礼貌爬虫语义,标识 TopicEye 身份,便于站点统计与联系。
-    HTTP_SCRAPER_USER_AGENT: str = "TopicEye/1.0 (+https://topiceye.example.com) Python-httpx"
+    # 项目暂无对外域名,UA 暂不带 URL;后续有真实域名时再加回 (+https://...)。
+    HTTP_SCRAPER_USER_AGENT: str = "TopicEye/1.0 Python-httpx"
     # 抓取层浏览器 UA,用于 trending scraper (国内榜单 API 大多拒绝
     # default Python-httpx UA,返回 403/406)。集中维护避免 16+ 处硬编码漂移。
     HTTP_BROWSER_USER_AGENT: str = (

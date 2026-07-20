@@ -566,7 +566,7 @@ export function PickActions({
         }}
         className={cx(
           'inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60',
-          dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-primary-text bg-primary-text text-white hover:opacity-90',
+          dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-primary-solid bg-primary-solid text-white hover:opacity-90',
         )}
       >
         <PenLine size={13} />

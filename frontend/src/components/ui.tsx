@@ -47,7 +47,7 @@ export function Button({
   variant?: ButtonVariant;
 }) {
   const variantClass: Record<ButtonVariant, string> = {
-    primary: 'border-primary-text bg-primary-text text-white hover:opacity-90',
+    primary: 'border-primary-solid bg-primary-solid text-white hover:opacity-90',
     secondary: 'border-gray-200 bg-white text-gray-700 hover:border-primary-border hover:text-primary-text',
     ghost: 'border-transparent bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-800',
     success: 'border-teal-border bg-teal-light text-teal-text hover:border-teal-border',

@@ -708,11 +708,13 @@ export default function DailyReportPage() {
                               isExpanded ? 'border-primary-border shadow-md' : 'border-gray-200',
                             )}
                           >
-                            {/* 选题一行摘要（可扫描层） */}
-                            <button
-                              type="button"
+                            {/* 选题一行摘要（可扫描层）*/}
+                            <div
+                              role="button"
+                              tabIndex={0}
                               onClick={() => setExpandedPick(isExpanded ? null : globalIdx)}
-                              className="flex w-full items-start gap-3 p-3 text-left sm:p-4"
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedPick(isExpanded ? null : globalIdx); } }}
+                              className="flex w-full cursor-pointer items-start gap-3 p-3 text-left sm:p-4"
                             >
                               {/* 评分 */}
                               <div className="flex shrink-0 flex-col items-center gap-0.5">
@@ -785,7 +787,7 @@ export default function DailyReportPage() {
                               <div className={cx('mt-1 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
                                 <ChevronRight size={16} />
                               </div>
-                            </button>
+                              </div>
 
                             {/* 展开后的决策卡 */}
                             {isExpanded && (
@@ -904,10 +906,12 @@ export default function DailyReportPage() {
                         const key = pickKey(pick);
                         return (
                           <div key={`brief-${cat}-${j}`}>
-                            <button
-                              type="button"
+                            <div
+                              role="button"
+                              tabIndex={0}
                               onClick={() => setExpandedPick(isExpanded ? null : globalIdx)}
-                              className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left sm:px-4"
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedPick(isExpanded ? null : globalIdx); } }}
+                              className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2.5 text-left sm:px-4"
                             >
                               <span className="mt-0.5 shrink-0 font-mono text-[11px] font-bold text-gray-300">{String(globalIdx + 1).padStart(2, '0')}</span>
                               <div className="min-w-0 flex-1">
@@ -953,7 +957,7 @@ export default function DailyReportPage() {
                               <div className={cx('mt-0.5 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
                                 <ChevronRight size={14} />
                               </div>
-                            </button>
+                            </div>
                             {isExpanded && (
                               <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 sm:px-4">
                                 <a

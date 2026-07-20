@@ -378,6 +378,21 @@ async def test_today_picks_cache_and_build_are_user_scoped(monkeypatch):
 
 
 def test_today_picks_scoring_input_preserves_zero_and_analysis_source_weight():
+    """characterization test: 此测试直接调用 today_picks._row_to_scoring_input
+    私有方法并断言 ScoringInput dataclass 的字段映射契约：
+
+    1. info_density / actionability / freshness_score 等字段的零值必须被保留，
+       不能被 _row_to_scoring_input 内部的 value_or_default 默认值（50）覆盖。
+    2. source_weight 必须优先取 row["analysis_source_weight"]，仅在其为 None
+       时才回退到 row["source_weight"]（此样本中 analysis_source_weight=0、
+       source_weight_db=5，断言 source_weight == 0 即验证优先级）。
+
+    无法通过 build_today_picks 公共 payload 间接验证：公共 payload 中的
+    analysis.adjusted_curation_score 是 score_items(ScoringInput) 计算后的
+    复合结果，零值维度会被其他维度（quality_score / creator_score / hot_score
+    等）加权覆盖；且公共 payload 不直接暴露 ScoringInput 实例字段值，只暴露
+    score_breakdown 的部分维度。重构 _row_to_scoring_input 时需同步更新此测试。
+    """
     row = _duckdb_rows()[0]
     row.update(
         {
@@ -534,6 +549,11 @@ def test_score_rows_does_not_double_filter_with_today_picks_threshold():
     score_items 在 percentile 模式下(默认 P70)选 P70 及以上的项,实际阈值 ~18;
     之前 _score_rows 又加了 `final_score >= 55` 兜底,把 percentile 选出的 394 条
     全部过滤掉,today_picks 永远空。
+
+    改造说明:原测试直接调用 today_picks._score_rows 私有方法,耦合实现细节。
+    现改为通过公共入口 build_today_picks 驱动:monkeypatch query_today_picks
+    返回构造的 100 条 row,断言 payload["total"] 与 score_items selected 数一致。
+    若 _score_rows 重新加入硬阈值二次过滤,payload["total"] 会小于 selected 数。
     """
     from datetime import UTC, datetime, timedelta
 
@@ -570,8 +590,7 @@ def test_score_rows_does_not_double_filter_with_today_picks_threshold():
     selected_in_engine = [bd for bd, _ in scored if bd.selected]
     assert len(selected_in_engine) > 0, "score_items 应在 percentile 模式选中一些项"
 
-    # 关键:_score_rows 出来的结果数应该和 score_items 的 selected 数一致,
-    # 不应该再被一个硬阈值 55 二次过滤
+    # 构造与 ScoringInput 同源的 row dict 列表，喂给 mock 的 query_today_picks
     rows = [
         {
             "id": i,
@@ -598,10 +617,23 @@ def test_score_rows_does_not_double_filter_with_today_picks_threshold():
         }
         for i in range(100)
     ]
-    out = today_picks._score_rows(rows)
-    assert len(out) == len(
+
+    # 通过公共入口 build_today_picks 驱动，验证 _score_rows 不会二次过滤
+    original_query = today_picks.query_today_picks
+    original_topics = today_picks.query_topics
+    today_picks.query_today_picks = lambda **_k: rows
+    today_picks.query_topics = lambda **_k: []
+    try:
+        import asyncio
+
+        payload = asyncio.run(today_picks.build_today_picks(FailingSession(), hours=48, limit=None))
+    finally:
+        today_picks.query_today_picks = original_query
+        today_picks.query_topics = original_topics
+
+    assert payload["total"] == len(
         selected_in_engine
-    ), f"_score_rows ({len(out)}) 不应再过滤掉 score_items 选中的 {len(selected_in_engine)} 条"
+    ), f"build_today_picks total ({payload['total']}) 不应再过滤掉 score_items 选中的 {len(selected_in_engine)} 条"
 
 
 # ── OLTP fallback 口径对齐 DuckDB 的回归测试 ──────────────────────────
@@ -728,12 +760,12 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
     monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
-        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+        payload = await today_picks.build_today_picks(db, hours=48, category=None, limit=None)
 
     await engine.dispose()
-    row_ids = {row["id"] for row in rows}
-    assert mid_risk_id in row_ids, "风险 60 的内容应保留（阈值对齐 82 后不被误杀）"
-    assert all(row["risk_score"] <= 82 for row in rows)
+    item_ids = {item["id"] for item in payload["items"]}
+    assert mid_risk_id in item_ids, "风险 60 的内容应保留（阈值对齐 82 后不被误杀）"
+    assert all(item["analysis"]["risk_score"] <= 82 for item in payload["items"])
 
 
 @pytest.mark.asyncio
@@ -765,17 +797,24 @@ async def test_fallback_excludes_ignored_content(monkeypatch):
     monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
-        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+        payload = await today_picks.build_today_picks(db, hours=48, category=None, limit=None)
 
     await engine.dispose()
-    row_ids = {row["id"] for row in rows}
-    assert to_ignore not in row_ids, "ignored 内容应被 fallback 剔除"
-    assert ids[0] in row_ids, "非 ignored 高质量样本应保留"
+    item_ids = {item["id"] for item in payload["items"]}
+    assert to_ignore not in item_ids, "ignored 内容应被 fallback 剔除"
+    assert ids[0] in item_ids, "非 ignored 高质量样本应保留"
 
 
 @pytest.mark.asyncio
 async def test_fallback_aggregates_feedback_score(monkeypatch):
-    """OLTP fallback 应聚合真实 feedback_score（不再硬编码 0）。"""
+    """OLTP fallback 应聚合真实 feedback_score（不再硬编码 0）。
+
+    characterization test: 此测试直接调用 today_picks._build_today_picks_via_oltp
+    私有方法并断言 row dict 的 feedback_score 字段。原因是 feedback_score 不在
+    build_today_picks 的公共 payload 结构中（被聚合进 analysis.adjusted_curation_score），
+    通过公共入口无法精确断言 fallback 是否读到了真实 feedback_score 值。
+    重构 _build_today_picks_via_oltp 时需同步更新此测试。
+    """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.core.database import Base
@@ -827,13 +866,12 @@ async def test_fallback_reads_real_duplicate_of(monkeypatch):
     monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
-        rows = await today_picks._build_today_picks_via_oltp(db, hours=48, category=None, limit=None)
+        payload = await today_picks.build_today_picks(db, hours=48, category=None, limit=None)
 
     await engine.dispose()
-    # fallback row dict 应携带真实 duplicate_of（而非硬编码 None）
-    dup_row = next(row for row in rows if row["id"] == dup_id)
-    assert dup_row["duplicate_of"] == canonical_id, "fallback 应读真实 duplicate_of 列"
-    # _score_rows 应剔除重复项（duplicate_of is None 过滤）
-    scored = today_picks._score_rows(rows)
-    scored_ids = {row["id"] for _, row in scored}
-    assert dup_id not in scored_ids, "重复项应被 _score_rows 剔除"
+    # build_today_picks 的 _score_rows 内部会剔除 duplicate_of 不为 None 的项。
+    # 若 fallback 误把 duplicate_of 硬编码为 None，dup_id 会出现在 payload 中，
+    # 此断言即失败。因此这个断言间接验证了 fallback 读到了真实 duplicate_of 列。
+    item_ids = {item["id"] for item in payload["items"]}
+    assert dup_id not in item_ids, "重复项应被 _score_rows 剔除（间接验证 fallback 读到真实 duplicate_of）"
+    assert canonical_id in item_ids, "被重复指向的 canonical 项应保留"

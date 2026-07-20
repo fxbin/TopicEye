@@ -15,6 +15,11 @@
 - KPI 卡片 sparkline 迷你趋势线
 - 响应式（ResizeObserver 自动重绘）
 - 延迟分位数图表（P50 / P95 / P99）
+- 可配置刷新间隔（5s / 10s / 30s / 1m / 5m / 15m / 关闭）
+- Page Visibility API：标签页隐藏时自动暂停轮询
+- LLM 失败日志面板
+- 应用日志面板（内存 ring buffer）
+- 进程内存/CPU 指标
 """
 
 from __future__ import annotations
@@ -39,13 +44,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-.header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
 .header h1{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
 .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0}
 .status-dot.warn{background:var(--amber)}
 .status-dot.err{background:var(--red)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-.header-right{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--text-dim)}
+.header-right{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--text-dim);flex-wrap:wrap}
 .header-right a{color:var(--blue);text-decoration:none}
 .header-right a:hover{text-decoration:underline}
 .toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
@@ -56,9 +61,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .toggle input:checked+.track::after{left:18px;background:#fff}
 .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;transition:background .15s}
 .btn:hover{background:var(--border)}
+.btn.active{background:var(--blue);border-color:var(--blue)}
+select.refresh-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer}
+
+/* Tab bar */
+.tab-bar{display:flex;gap:0;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab{padding:8px 18px;font-size:13px;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab .badge-count{display:inline-block;background:var(--red);color:#fff;font-size:10px;padding:0 5px;border-radius:8px;margin-left:4px;min-width:16px;text-align:center}
 
 /* KPI Grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;padding:14px 24px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px 24px}
 .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
 .kpi-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em}
 .kpi-value{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -92,6 +106,21 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
 .badge.half{background:#2a200a;color:var(--amber)}
 .loading{text-align:center;padding:30px;color:var(--text-faint);font-size:13px}
 
+/* Log panels */
+.log-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;max-height:400px;overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px}
+.log-entry{padding:4px 12px;border-bottom:1px solid var(--surface);display:flex;gap:8px;align-items:flex-start}
+.log-entry:hover{background:var(--surface2)}
+.log-ts{color:var(--text-faint);flex-shrink:0;width:70px}
+.log-level{flex-shrink:0;width:60px;font-weight:600}
+.log-level.ERROR,.log-level.CRITICAL{color:var(--red)}
+.log-level.WARNING{color:var(--amber)}
+.log-level.INFO{color:var(--blue)}
+.log-level.DEBUG{color:var(--text-faint)}
+.log-msg{flex:1;word-break:break-word;color:var(--text)}
+.log-source{color:var(--text-faint);font-size:11px;margin-left:8px}
+.log-filter{display:flex;gap:6px;margin-bottom:8px}
+.log-filter .btn{padding:3px 10px}
+
 /* Tooltip */
 .chart-tooltip{position:absolute;background:rgba(15,23,42,0.95);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:10;backdrop-filter:blur(4px);display:none;white-space:nowrap}
 .chart-tooltip .tt-time{color:var(--text-dim);font-size:11px;margin-bottom:4px}
@@ -110,19 +139,32 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
     <label class="toggle">
       <input type="checkbox" id="rateMode" checked>
       <span class="track"></span>
-      <span>速率模式</span>
+      <span>速率</span>
     </label>
-    <label class="toggle">
-      <input type="checkbox" id="autoRefresh" checked>
-      <span class="track"></span>
-      <span>自动刷新</span>
-    </label>
+    <span>刷新:</span>
+    <select class="refresh-select" id="refreshInterval">
+      <option value="5000">5s</option>
+      <option value="10000" selected>10s</option>
+      <option value="30000">30s</option>
+      <option value="60000">1m</option>
+      <option value="300000">5m</option>
+      <option value="900000">15m</option>
+      <option value="0">关闭</option>
+    </select>
     <a href="/metrics" target="_blank">Prometheus</a>
-    <a href="/health/ready" target="_blank">健康检查</a>
+    <a href="/health/ready" target="_blank">健康</a>
     <button class="btn" onclick="fetchData()">刷新</button>
   </div>
 </div>
 
+<div class="tab-bar">
+  <div class="tab active" data-tab="overview">概览</div>
+  <div class="tab" data-tab="llm-logs">LLM 日志 <span class="badge-count" id="llmFailCount" style="display:none">0</span></div>
+  <div class="tab" data-tab="app-logs">应用日志</div>
+</div>
+
+<!-- ── Tab: Overview ── -->
+<div id="tab-overview" class="tab-content">
 <div class="kpi-grid" id="kpiGrid">
   <div class="kpi-card">
     <div class="kpi-label">HTTP 请求总数</div>
@@ -159,6 +201,12 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
     <div class="kpi-value purple" id="kpiDbPool">--</div>
     <div class="kpi-sub" id="kpiDbUtil">利用率: --</div>
     <canvas class="kpi-spark" id="sparkDb" width="80" height="30"></canvas>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">进程内存 (RSS)</div>
+    <div class="kpi-value" id="kpiMem" style="color:var(--pink)">--</div>
+    <div class="kpi-sub" id="kpiCpu">CPU: --</div>
+    <canvas class="kpi-spark" id="sparkMem" width="80" height="30"></canvas>
   </div>
 </div>
 
@@ -238,15 +286,53 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="chart-box">
     <table>
       <thead><tr><th>场景</th><th class="num">成功</th><th class="num">失败</th><th class="num">Token</th><th class="num">成本 (USD)</th><th class="num">P95 延迟</th></tr></thead>
-      <tbody id="llmSceneTable"><tr><td colspan="5" class="loading">加载中...</td></tr></tbody>
+      <tbody id="llmSceneTable"><tr><td colspan="6" class="loading">加载中...</td></tr></tbody>
     </table>
+  </div>
+</div>
+</div>
+
+<!-- ── Tab: LLM Logs ── -->
+<div id="tab-llm-logs" class="tab-content" style="display:none;padding:14px 24px">
+  <div class="section-title">LLM 调用日志（最近 24h） <span class="pill" id="llmLogCount">0 条</span></div>
+  <div class="log-filter">
+    <button class="btn active" data-llm-filter="FAILED" onclick="setLlmLogFilter('FAILED')">仅失败</button>
+    <button class="btn" data-llm-filter="ALL" onclick="setLlmLogFilter('ALL')">全部</button>
+    <button class="btn" onclick="fetchLlmLogs()">刷新</button>
+  </div>
+  <div class="log-panel" id="llmLogPanel">
+    <div class="loading">点击刷新加载...</div>
+  </div>
+</div>
+
+<!-- ── Tab: App Logs ── -->
+<div id="tab-app-logs" class="tab-content" style="display:none;padding:14px 24px">
+  <div class="section-title">应用日志（内存 Ring Buffer） <span class="pill" id="appLogCount">0 条</span></div>
+  <div class="log-filter">
+    <button class="btn active" data-log-filter="ALL" onclick="setAppLogFilter('ALL')">全部</button>
+    <button class="btn" data-log-filter="ERROR" onclick="setAppLogFilter('ERROR')">ERROR</button>
+    <button class="btn" data-log-filter="WARNING" onclick="setAppLogFilter('WARNING')">WARNING</button>
+    <button class="btn" data-log-filter="INFO" onclick="setAppLogFilter('INFO')">INFO</button>
+    <button class="btn" onclick="fetchAppLogs()">刷新</button>
+  </div>
+  <div class="log-panel" id="appLogPanel">
+    <div class="loading">点击刷新加载...</div>
   </div>
 </div>
 
 <script>
 const API = window.location.origin + '/api/v1/metrics/snapshot';
+const API_HISTORY = window.location.origin + '/api/v1/metrics/history';
+const API_LOGS = window.location.origin + '/api/v1/metrics/logs';
+const API_LLM_LOGS = window.location.origin + '/api/v1/metrics/llm-logs';
 let lastData = null;
 let refreshTimer = null;
+let currentRefreshMs = 10000;
+let isTabVisible = true;
+let activeTab = 'overview';
+let llmLogFilter = 'FAILED';
+let appLogFilter = 'ALL';
+let memHistory = [];
 
 // ── Utilities ──
 function fmtNum(n){if(n==null||n===undefined)return'--';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
@@ -254,6 +340,8 @@ function fmtCost(n){return n!=null?'$'+n.toFixed(4):'--'}
 function fmtMs(s){if(s==null||s===0)return'--';if(s<1)return(s*1000).toFixed(0)+'ms';return s.toFixed(2)+'s'}
 function fmtTime(s){if(!s)return'--';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);if(h>0)return h+'h '+m+'m';if(m>0)return m+'m '+sec+'s';return sec+'s'}
 function fmtClock(ts){if(!ts)return'--';return new Date(ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}
+function fmtMb(mb){if(mb==null)return'--';if(mb>=1024)return(mb/1024).toFixed(1)+'GB';return mb.toFixed(0)+'MB'}
+function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 // Calculate rate (delta/s) from cumulative time series
 function calcRate(ts, key){
@@ -285,7 +373,6 @@ function drawSparkline(canvasId, data, color){
   for(const d of data){if(d.v<min)min=d.v;if(d.v>max)max=d.v}
   if(min===max){min-=1;max+=1}
   const pad=2;
-  // Gradient fill
   const grad=ctx.createLinearGradient(0,0,0,H);
   grad.addColorStop(0,color+'40');
   grad.addColorStop(1,color+'00');
@@ -295,12 +382,10 @@ function drawSparkline(canvasId, data, color){
     const y=pad+(1-(data[i].v-min)/(max-min))*(H-2*pad);
     if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
   }
-  // Fill
   ctx.lineTo(W-pad,H-pad);
   ctx.lineTo(pad,H-pad);
   ctx.closePath();
   ctx.fillStyle=grad;ctx.fill();
-  // Stroke
   ctx.beginPath();
   for(let i=0;i<data.length;i++){
     const x=pad+(i/(data.length-1))*(W-2*pad);
@@ -321,7 +406,6 @@ class InteractiveChart{
     this.hoverIdx=-1;
     this.hoverX=null;
     this.bindEvents();
-    // ResizeObserver for responsive redraw
     if(window.ResizeObserver){
       new ResizeObserver(()=>this.render()).observe(this.canvas.parentElement);
     }
@@ -349,7 +433,6 @@ class InteractiveChart{
     const tsRange=maxTs-minTs||1;
     const ratio=(this.hoverX-pad.left)/cw;
     const targetTs=minTs+ratio*tsRange;
-    // Find nearest point
     let best=0,bestDist=Infinity;
     for(let i=0;i<data.length;i++){
       const d=Math.abs(data[i].t-targetTs);
@@ -373,7 +456,6 @@ class InteractiveChart{
       ctx.fillStyle='#4a5b7e';ctx.font='13px sans-serif';ctx.textAlign='center';
       ctx.fillText('暂无数据（等待采样中...）',W/2,H/2);return;
     }
-    // Determine scales
     const hasRight=this.opts.rightAxis&&this.series.some(s=>s.axis==='right');
     let lMin=Infinity,lMax=-Infinity,rMin=Infinity,rMax=-Infinity;
     for(const s of this.series){
@@ -390,14 +472,11 @@ class InteractiveChart{
     const lRange=lMax-lMin,rRange=rMax-rMin;
     lMin-=lRange*0.1;lMax+=lRange*0.1;
     rMin-=rRange*0.1;rMax+=rRange*0.1;
-    // X range
     const data=this.series[0].data;
     const minTs=data[0].t,maxTs=data[data.length-1].t;
     const tsRange=(maxTs-minTs)||1;
-    // Grid
     ctx.strokeStyle='#1c2840';ctx.lineWidth=0.5;
     ctx.font='10px monospace';ctx.fillStyle='#4a5b7e';
-    // Horizontal grid + left axis labels
     ctx.textAlign='right';
     for(let i=0;i<=4;i++){
       const y=pad.top+(ch/4)*i;
@@ -406,7 +485,6 @@ class InteractiveChart{
       ctx.fillText(fmtNum(lVal),pad.left-6,y+3);
     }
     ctx.setLineDash([]);
-    // Right axis labels
     if(hasRight){
       ctx.textAlign='left';
       for(let i=0;i<=4;i++){
@@ -416,18 +494,15 @@ class InteractiveChart{
         ctx.fillText(fmtNum(rVal),pad.left+cw+6,y+3);
       }
     }
-    // X axis time labels
     ctx.textAlign='center';ctx.fillStyle='#4a5b7e';
     for(let i=0;i<=4;i++){
       const x=pad.left+(cw/4)*i;
       const ts=minTs+(tsRange/4)*i;
       ctx.fillText(fmtClock(ts),x,H-6);
     }
-    // Draw series
     for(const s of this.series){
       const isRight=s.axis==='right';
       const dMin=isRight?rMin:lMin,dMax=isRight?rMax:lMax,dRange=(dMax-dMin)||1;
-      // Gradient fill
       if(s.fill){
         const grad=ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
         grad.addColorStop(0,s.fill);
@@ -444,7 +519,6 @@ class InteractiveChart{
         ctx.closePath();
         ctx.fillStyle=grad;ctx.fill();
       }
-      // Line
       ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();
       for(let i=0;i<s.data.length;i++){
         const p=s.data[i];
@@ -454,15 +528,12 @@ class InteractiveChart{
       }
       ctx.stroke();
     }
-    // Crosshair + hover point markers
     if(this.hoverIdx>=0&&this.hoverIdx<data.length){
       const p=data[this.hoverIdx];
       const hx=pad.left+((p.t-minTs)/tsRange)*cw;
-      // Vertical crosshair
       ctx.strokeStyle='rgba(124,141,176,0.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);
       ctx.beginPath();ctx.moveTo(hx,pad.top);ctx.lineTo(hx,pad.top+ch);ctx.stroke();
       ctx.setLineDash([]);
-      // Point markers
       for(const s of this.series){
         const sp=s.data[this.hoverIdx];
         if(!sp)continue;
@@ -473,7 +544,6 @@ class InteractiveChart{
         ctx.beginPath();ctx.arc(hx,y,4,0,Math.PI*2);ctx.fill();
         ctx.strokeStyle='#0b1120';ctx.lineWidth=2;ctx.stroke();
       }
-      // Tooltip
       if(this.tooltip){
         let html='<div class="tt-time">'+fmtClock(p.t)+'</div>';
         for(const s of this.series){
@@ -484,7 +554,6 @@ class InteractiveChart{
         }
         this.tooltip.innerHTML=html;
         this.tooltip.style.display='block';
-        // Position tooltip
         const tw=this.tooltip.offsetWidth||120;
         let tx=hx+10;
         if(tx+tw>W)tx=hx-tw-10;
@@ -492,7 +561,6 @@ class InteractiveChart{
         this.tooltip.style.top=(pad.top+4)+'px';
       }
     }
-    // Legend
     ctx.font='11px sans-serif';ctx.textAlign='left';
     let lx=pad.left+8;
     for(const s of this.series){
@@ -534,6 +602,7 @@ function renderData(data){
   const cb=data.circuit_breaker||{};
   const cache=data.llm_cache||{};
   const slow=data.slow_queries||0;
+  const proc=data.process||{};
   const rateMode=document.getElementById('rateMode').checked;
 
   // Status dot
@@ -553,7 +622,6 @@ function renderData(data){
   errEl.className='kpi-value '+(errRate>5?'red':errRate>1?'amber':'green');
   document.getElementById('kpiErrors').textContent='5xx: '+(snap.http?.total_errors_5xx||0);
 
-  // Latency KPI
   const lat=snap.http?.latency||{};
   document.getElementById('kpiP95').textContent=fmtMs(lat.p95);
   document.getElementById('kpiLatencySub').textContent='P50: '+fmtMs(lat.p50)+' / P99: '+fmtMs(lat.p99);
@@ -564,6 +632,16 @@ function renderData(data){
   document.getElementById('kpiLlmTokens').textContent='Token: '+fmtNum((snap.llm?.total_input_tokens||0)+(snap.llm?.total_output_tokens||0));
   document.getElementById('kpiDbPool').textContent=(snap.db_pool?.checked_out||0)+' / '+(snap.db_pool?.size||0);
   document.getElementById('kpiDbUtil').textContent='利用率: '+(snap.db_pool?.utilization??0).toFixed(0)+'%';
+
+  // Process metrics
+  const rssMb=proc.rss_mb||0;
+  document.getElementById('kpiMem').textContent=fmtMb(rssMb);
+  document.getElementById('kpiCpu').textContent='CPU: '+(proc.process_cpu_user_s||0).toFixed(1)+'s user / '+(proc.process_cpu_sys_s||0).toFixed(1)+'s sys';
+  // Track memory history for sparkline
+  if(rssMb>0){
+    memHistory.push({t:Date.now()/1000,v:rssMb});
+    if(memHistory.length>30)memHistory.shift();
+  }
 
   document.getElementById('uptime').textContent='运行时间: '+fmtTime(snap.uptime_seconds);
   document.getElementById('lastUpdate').textContent='最后更新: '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
@@ -590,13 +668,13 @@ function renderData(data){
   // Top paths
   const topPaths=snap.http?.top_paths||[];
   const tpTable=document.getElementById('topPathsTable');
-  tpTable.innerHTML=topPaths.length?topPaths.map(p=>'<tr><td>'+p.path+'</td><td class="num">'+p.count+'</td></tr>').join(''):'<tr><td colspan="2" style="text-align:center;color:#4a5b7e">暂无数据</td></tr>';
+  tpTable.innerHTML=topPaths.length?topPaths.map(p=>'<tr><td>'+escHtml(p.path)+'</td><td class="num">'+p.count+'</td></tr>').join(''):'<tr><td colspan="2" style="text-align:center;color:#4a5b7e">暂无数据</td></tr>';
 
   // LLM scene table
   const scenes=snap.llm?.by_scene||{};
   let sceneHtml='';
   for(const[scene,d]of Object.entries(scenes)){
-    sceneHtml+='<tr><td>'+scene+'</td><td class="num">'+(d.done||0)+'</td><td class="num">'+(d.failed||0)+'</td><td class="num">'+fmtNum(d.tokens||0)+'</td><td class="num">'+fmtCost(d.cost||0)+'</td><td class="num">--</td></tr>';
+    sceneHtml+='<tr><td>'+escHtml(scene)+'</td><td class="num">'+(d.done||0)+'</td><td class="num">'+(d.failed||0)+'</td><td class="num">'+fmtNum(d.tokens||0)+'</td><td class="num">'+fmtCost(d.cost||0)+'</td><td class="num">--</td></tr>';
   }
   document.getElementById('llmSceneTable').innerHTML=sceneHtml||'<tr><td colspan="6" style="text-align:center;color:#4a5b7e">暂无数据</td></tr>';
 
@@ -606,7 +684,6 @@ function renderData(data){
   const tsLlm=ts.map(p=>({t:p.ts,v:p.total_llm_calls}));
   const tsCost=ts.map(p=>({t:p.ts,v:p.total_llm_cost_usd}));
   const tsDb=ts.map(p=>({t:p.ts,v:p.db_pool_checked_out}));
-  // For latency sparkline, use request rate as proxy (latency TS not available per-point)
   const tsReqRate=calcRate(ts,'total_requests');
   drawSparkline('sparkReq',tsReqRate,'#3b82f6');
   drawSparkline('sparkErr',tsErr,'#ef4444');
@@ -614,10 +691,10 @@ function renderData(data){
   drawSparkline('sparkLlm',tsLlm,'#22c55e');
   drawSparkline('sparkCost',tsCost,'#f59e0b');
   drawSparkline('sparkDb',tsDb,'#a855f7');
+  drawSparkline('sparkMem',memHistory,'#ec4899');
 
   // ── Main charts ──
   if(rateMode){
-    // Rate mode: show req/s and error/s
     const reqRates=calcRate(ts,'total_requests');
     const errRates=calcRate(ts,'total_errors_5xx');
     chartReq.setData([
@@ -631,7 +708,6 @@ function renderData(data){
       {label:'成本/s (USD)',color:'#f59e0b',axis:'right',data:costRates,fmt:v=>'$'+v.toFixed(4)},
     ]);
   }else{
-    // Cumulative mode
     chartReq.setData([
       {label:'请求总数',color:'#3b82f6',fill:'rgba(59,130,246,0.15)',data:ts.map(p=>({t:p.ts,v:p.total_requests}))},
       {label:'5xx 错误',color:'#ef4444',data:ts.map(p=>({t:p.ts,v:p.total_errors_5xx}))},
@@ -642,18 +718,13 @@ function renderData(data){
     ]);
   }
 
-  // DB pool chart
   chartDb.setData([
     {label:'已借出',color:'#a855f7',fill:'rgba(168,85,247,0.15)',data:ts.map(p=>({t:p.ts,v:p.db_pool_checked_out}))},
     {label:'池大小',color:'#4a5b7e',data:ts.map(p=>({t:p.ts,v:p.db_pool_size}))},
   ]);
 
-  // Latency charts (from snapshot, not time series — show as bar-like info)
-  // Since we don't have per-sample latency TS, show current percentile as reference lines
   const latSnap=snap.http?.latency||{};
   const llmLatSnap=snap.llm?.latency||{};
-  // Create a simple time series proxy using request rate for latency chart
-  // We'll show the current P50/P95/P99 as horizontal reference lines over the request rate
   const reqRateTs=calcRate(ts,'total_requests');
   chartLat.setData([
     {label:'P50 ('+fmtMs(latSnap.p50)+')',color:'#22c55e',data:reqRateTs.map(p=>({t:p.t,v:latSnap.p50||0})),fmt:v=>fmtMs(v)},
@@ -667,13 +738,29 @@ function renderData(data){
   ]);
 }
 
-// ── Auto refresh ──
+// ── Auto refresh with Page Visibility ──
 function startAutoRefresh(){
   if(refreshTimer)clearInterval(refreshTimer);
+  if(currentRefreshMs<=0)return; // 关闭
   refreshTimer=setInterval(()=>{
-    if(document.getElementById('autoRefresh').checked)fetchData();
-  },5000);
+    if(document.hidden||!isTabVisible)return; // 标签页隐藏时暂停
+    if(activeTab==='overview')fetchData();
+  },currentRefreshMs);
 }
+
+document.getElementById('refreshInterval').addEventListener('change',(e)=>{
+  currentRefreshMs=parseInt(e.target.value);
+  startAutoRefresh();
+  if(currentRefreshMs>0&&activeTab==='overview')fetchData();
+});
+
+// Page Visibility API
+document.addEventListener('visibilitychange',()=>{
+  isTabVisible=!document.hidden;
+  if(isTabVisible&&currentRefreshMs>0&&activeTab==='overview'){
+    fetchData(); // 回到页面时立即刷新一次
+  }
+});
 
 // Rate mode toggle
 document.getElementById('rateMode').addEventListener('change',()=>{
@@ -685,6 +772,80 @@ window.addEventListener('resize',()=>{
   if(lastData)renderData(lastData);
 });
 
+// ── Tab switching ──
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTab=tab.dataset.tab;
+    document.querySelectorAll('.tab-content').forEach(c=>c.style.display='none');
+    document.getElementById('tab-'+activeTab).style.display='block';
+    if(activeTab==='llm-logs')fetchLlmLogs();
+    if(activeTab==='app-logs')fetchAppLogs();
+  });
+});
+
+// ── LLM Logs ──
+function setLlmLogFilter(f){
+  llmLogFilter=f;
+  document.querySelectorAll('[data-llm-filter]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.llmFilter===f);
+  });
+  fetchLlmLogs();
+}
+
+async function fetchLlmLogs(){
+  try{
+    const url=API_LLM_LOGS+'?status='+llmLogFilter+'&limit=50';
+    const data=await fetchJSON(url);
+    const logs=data.logs||[];
+    document.getElementById('llmLogCount').textContent=data.count+' 条';
+    const panel=document.getElementById('llmLogPanel');
+    if(!logs.length){
+      panel.innerHTML='<div class="loading">暂无日志记录</div>';
+      return;
+    }
+    panel.innerHTML=logs.map(l=>{
+      const cls=l.status==='FAILED'?'err':'ok';
+      const time=l.created_at?new Date(l.created_at).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+      return '<div class="log-entry"><span class="log-ts">'+time+'</span><span class="log-level '+(l.status==='FAILED'?'ERROR':'INFO')+'">'+l.status+'</span><span class="log-msg">'+escHtml(l.scene)+' / '+escHtml(l.model)+' — '+(l.error?escHtml(l.error):'OK')+' <span class="log-source">['+l.duration_ms+'ms, $'+(l.cost_usd||0).toFixed(4)+', in:'+l.input_tokens+'/out:'+l.output_tokens+']</span></span></div>';
+    }).join('');
+  }catch(err){
+    document.getElementById('llmLogPanel').innerHTML='<div class="loading">加载失败: '+escHtml(err.message)+'</div>';
+  }
+}
+
+// ── App Logs ──
+function setAppLogFilter(f){
+  appLogFilter=f;
+  document.querySelectorAll('[data-log-filter]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.logFilter===f);
+  });
+  fetchAppLogs();
+}
+
+async function fetchAppLogs(){
+  try{
+    const url=API_LOGS+'?level='+appLogFilter+'&limit=200';
+    const data=await fetchJSON(url);
+    const entries=data.entries||[];
+    const summary=data.summary||{};
+    document.getElementById('appLogCount').textContent=summary.total+' 条 / 上限 '+summary.capacity;
+    const panel=document.getElementById('appLogPanel');
+    if(!entries.length){
+      panel.innerHTML='<div class="loading">暂无日志记录</div>';
+      return;
+    }
+    panel.innerHTML=entries.map(e=>{
+      const time=e.ts?new Date(e.ts).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+      return '<div class="log-entry"><span class="log-ts">'+time+'</span><span class="log-level '+e.level+'">'+e.level+'</span><span class="log-msg">'+escHtml(e.logger)+': '+escHtml(e.message)+' <span class="log-source">'+escHtml(e.source||'')+'</span></span></div>';
+    }).join('');
+  }catch(err){
+    document.getElementById('appLogPanel').innerHTML='<div class="loading">加载失败: '+escHtml(err.message)+'</div>';
+  }
+}
+
+// ── Init ──
 fetchData();
 startAutoRefresh();
 </script>

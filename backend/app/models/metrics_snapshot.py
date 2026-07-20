@@ -25,7 +25,7 @@ class MetricsSnapshotRecord(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     captured_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     uptime_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 

@@ -739,6 +739,11 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
 
     场景：risk_score=60，在 DuckDB 主路径（risk <= 82）能进、scorer 软降权后仍可入选；
     旧 fallback 用硬编码 50 会直接丢弃。
+
+    fixture 设计: 灌入 1 个基线样本 + 1 个中风险样本 + 4 个低质量样本。
+    4 个低质量样本把 P70 百分位阈值压到 ~30,让中风险样本(risk=60, risk_factor≈0.82,
+    final≈64)能稳健入选 top 30%。如果只有 2 个候选,P70 阈值=92.9,中风险样本
+    会被 P70 误杀(与 fallback 阈值无关,是 scorer 候选池过小的副作用)。
     """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -752,6 +757,10 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
         engine,
         extra_content=[
             {"title": "中风险样本", "url": "https://example.com/mid-risk", "risk_score": 60.0},
+            {"title": "低质量1", "url": "https://example.com/low-1", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
+            {"title": "低质量2", "url": "https://example.com/low-2", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
+            {"title": "低质量3", "url": "https://example.com/low-3", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
+            {"title": "低质量4", "url": "https://example.com/low-4", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
         ],
     )
     mid_risk_id = ids[1]

@@ -119,6 +119,13 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
         if isinstance(progress, (int, float)) and progress:
             summary_parts.append(f"阅读进度 {int(progress)}%")
         summary = "，".join(summary_parts) if summary_parts else None
+        # WeRead Gateway 返回的 sort 字段是最近笔记活动时间戳（Unix seconds），
+        # 用作 published_at 以保留微信读书自身的排序顺序。
+        sort_value = raw.get("sort")
+        if isinstance(sort_value, (int, float)) and sort_value > 1_000_000_000:
+            published_at = datetime.fromtimestamp(int(sort_value), tz=UTC)
+        else:
+            published_at = datetime.now(UTC)
         entries.append(
             {
                 "title": title or note[:80],
@@ -127,7 +134,7 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
                 "summary": summary,
                 "raw_content": note or title,
                 "cover_url": book.get("cover") or raw.get("cover") or raw.get("cover_url") or raw.get("coverUrl"),
-                "published_at": datetime.now(UTC),
+                "published_at": published_at,
             }
         )
     return entries

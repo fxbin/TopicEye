@@ -48,12 +48,12 @@ function parseWeReadMeta(item: ContentItem): WeReadMeta {
 
 // ── 排序 & 分组类型 ──
 
-type SortKey = 'created_at' | 'title' | 'noteCount' | 'reviewCount' | 'readingProgress';
+type SortKey = 'published_at' | 'title' | 'noteCount' | 'reviewCount' | 'readingProgress';
 type SortOrder = 'asc' | 'desc';
 type GroupKey = 'none' | 'author' | 'status';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'created_at', label: '同步时间' },
+  { value: 'published_at', label: '最近笔记' },
   { value: 'title', label: '书名' },
   { value: 'noteCount', label: '划线数' },
   { value: 'reviewCount', label: '想法数' },
@@ -322,7 +322,7 @@ export default function WeReadPage() {
   const [page, setPage] = useState(1);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>('created_at');
+  const [sortKey, setSortKey] = useState<SortKey>('published_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [groupKey, setGroupKey] = useState<GroupKey>('none');
   const [searchQuery, setSearchQuery] = useState('');
@@ -333,7 +333,7 @@ export default function WeReadPage() {
       platform: '微信读书',
       page: 1,
       page_size: SHELF_PAGE_SIZE,
-      sort_by: 'created_at',
+      sort_by: 'published_at',
       sort_order: 'desc',
     }),
     [],
@@ -367,10 +367,10 @@ export default function WeReadPage() {
     const dir = sortOrder === 'desc' ? -1 : 1;
     arr.sort((a, b) => {
       let cmp = 0;
-      switch (sortKey) {
-        case 'created_at':
-          cmp = (a.item.created_at || '').localeCompare(b.item.created_at || '');
-          break;
+        switch (sortKey) {
+          case 'published_at':
+            cmp = (a.item.published_at || '').localeCompare(b.item.published_at || '');
+            break;
         case 'title':
           cmp = a.item.title.localeCompare(b.item.title, 'zh-CN');
           break;

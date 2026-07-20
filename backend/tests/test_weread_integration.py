@@ -773,3 +773,33 @@ def test_normalize_weread_entries_accepts_nested_payload_and_strips_blank_url():
 def test_normalize_weread_entries_rejects_unknown_payload_shape():
     assert normalize_weread_entries({"data": {"items": "not-a-list"}}) == []
     assert normalize_weread_entries("not-a-payload") == []
+
+
+def test_normalize_weread_entries_uses_sort_as_published_at():
+    """sort 字段（Unix timestamp）应被解析为 published_at，保留微信读书排序顺序。"""
+    import time
+
+    ts = int(time.time()) - 3600  # 1 小时前
+    payload = {
+        "books": [
+            {
+                "title": "最近笔记的书",
+                "sort": ts,
+                "bookId": "b1",
+            },
+            {
+                "title": "无 sort 的书",
+                "bookId": "b2",
+            },
+        ],
+    }
+
+    entries = normalize_weread_entries(payload)
+
+    assert len(entries) == 2
+    # 有 sort 的：published_at 应为 sort 对应的时间
+    assert entries[0]["title"] == "最近笔记的书"
+    assert entries[0]["published_at"].timestamp() == ts
+    # 无 sort 的：published_at 回退到 now
+    assert entries[1]["title"] == "无 sort 的书"
+    assert entries[1]["published_at"].timestamp() > ts

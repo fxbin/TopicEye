@@ -28,15 +28,15 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.config import settings
 from app.core.database import async_session, get_db  # noqa: F401 — async_session 保留供测试 monkeypatch
 from app.core.sqlite_retry import retry_write_transaction as _retry_write
-from app.models.llm_model import LlmCallLog, LlmModel
+from app.models.llm_model import LlmModel
 from app.models.user import User
+from app.repositories.llm_model_repo import LlmModelRepository
 from app.services.llm.model_list_cache import (
     MODEL_LIST_CACHE_HEADER,
     get_cached_model_list,
@@ -417,11 +417,8 @@ async def list_models(db: AsyncSession = Depends(get_db)):
             headers={MODEL_LIST_CACHE_HEADER: f"HIT; age={age_seconds:.3f}s"},
         )
 
-    result = await db.execute(
-        select(LlmModel)
-        .order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
-    )
-    models = result.scalars().all()
+    result = await LlmModelRepository(db).list_ordered_for_api()
+    models = list(result)
     payload = {
         "models": [_model_payload(m) for m in models],
         "total": len(models),
@@ -440,7 +437,7 @@ async def create_model(req: ModelCreateRequest, db: AsyncSession = Depends(get_d
 
     async def _create():
         model = _new_model_from_request(req)
-        db.add(model)
+        LlmModelRepository(db).add_instance(model)
         await db.flush()
         logger.info("LLM model created: id=%d, name=%s, provider=%s", model.id, model.name, model.provider)
         return {"id": model.id, "name": model.name, "message": "模型配置创建成功"}
@@ -461,13 +458,7 @@ async def get_usage_summary(
 ):
     """Summarize token usage and estimated cost from request-level LLM call logs."""
     since = datetime.now(UTC) - timedelta(days=days)
-    result = await db.execute(
-        select(LlmCallLog, LlmModel)
-        .join(LlmModel, LlmCallLog.model_id == LlmModel.id, isouter=True)
-        .where(LlmCallLog.created_at >= since)
-        .order_by(desc(LlmCallLog.created_at))
-    )
-    rows = result.all()
+    rows = await LlmModelRepository(db).list_call_logs_with_model_since(since=since)
 
     by_model: dict[int, dict] = {}
     by_prompt: dict[str, dict] = {}
@@ -603,8 +594,7 @@ async def update_model(model_id: int, req: ModelUpdateRequest, db: AsyncSession 
     """Update an existing model configuration."""
 
     async def _update():
-        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
-        model = result.scalar_one_or_none()
+        model = await LlmModelRepository(db).get_by_id(model_id)
         if not model:
             raise HTTPException(404, f"Model {model_id} not found")
 
@@ -621,8 +611,7 @@ async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a model configuration."""
 
     async def _delete():
-        result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
-        model = result.scalar_one_or_none()
+        model = await LlmModelRepository(db).get_by_id(model_id)
         if not model:
             raise HTTPException(404, f"Model {model_id} not found")
         name = model.name
@@ -639,8 +628,7 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Test a model by sending a simple prompt."""
     from litellm import completion
 
-    result = await db.execute(select(LlmModel).where(LlmModel.id == model_id))
-    model = result.scalar_one_or_none()
+    model = await LlmModelRepository(db).get_by_id(model_id)
     if not model:
         raise HTTPException(404, f"Model {model_id} not found")
 

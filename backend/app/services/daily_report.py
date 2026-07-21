@@ -339,6 +339,141 @@ async def get_latest_today_report(
     )
 
 
+def _match_picks_to_curated(
+    raw_picks: list[dict],
+    curated_for_prompt: list[dict],
+) -> tuple[list[dict], list[int]]:
+    """将 LLM 返回的 top_picks 匹配回精选素材，注入稳定字段并做后端兜底校验。
+
+    匹配优先级：source_idx（精确）→ source_title 子串兜底 → URL 末位兜底。
+    不信任 LLM 输出的枚举/字段约束，对 tier=lifecycle/angles 做白名单过滤。
+
+    Args:
+        raw_picks: LLM 返回的 top_picks 列表，每项含 source_idx / source_title / source_url 等。
+        curated_for_prompt: 精选素材列表（已截断到 prompt 长度），每项含 id / title / url / score。
+
+    Returns:
+        (picks, selected_source_ids) — 匹配成功的 pick 列表 + 对应素材 id 列表。
+    """
+    matchable_items = curated_for_prompt
+    curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
+    curated_by_title = {item["title"]: item for item in matchable_items}
+    curated_by_url = {
+        normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")
+    }
+    curated_titles = set(curated_by_title)
+    selected_source_ids: list[int] = []
+    picks: list[dict] = []
+    for pick in raw_picks:
+        matched_item: dict | None = None
+        idx = pick.get("source_idx")
+        if isinstance(idx, int):
+            matched_item = curated_by_idx.get(idx)
+        if not matched_item:
+            source_title = pick.get("source_title", "")
+            matched_title = next(
+                (t for t in curated_titles if source_title and (source_title in t or t in source_title)),
+                None,
+            )
+            matched_item = curated_by_title.get(matched_title) if matched_title else None
+        if not matched_item:
+            pick_url_norm = normalize_zhihu_url(pick.get("source_url", ""))
+            matched_item = curated_by_url.get(pick_url_norm)
+        if not matched_item:
+            continue
+        # 注入稳定字段：URL/title/score 由后端按匹配结果填，模型无需也不应改写。
+        pick["source_url"] = normalize_zhihu_url(matched_item.get("url", ""))
+        pick["source_title"] = pick.get("source_title") or matched_item["title"]
+        pick["title"] = pick.get("editorial_title") or matched_item["title"]
+        pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
+        # —— 后端兜底校验（不信任 LLM 输出的枚举/字段约束）——
+        tier = pick.get("tier") or "feature"
+        pick["tier"] = tier
+        if tier == "brief":
+            # brief 字段白名单：过滤掉 LLM 残留的 feature 专属字段
+            pick = {k: v for k, v in pick.items() if k in _BRIEF_ALLOWED_FIELDS}
+        else:
+            # feature：生命周期没有足够依据时宁可不显示，也不伪造"上升期"。
+            lc = pick.get("lifecycle")
+            if lc in _VALID_LIFECYCLE:
+                pick["lifecycle"] = lc
+            else:
+                pick.pop("lifecycle", None)
+            # angles 过滤问句 + 限 3 条
+            angles = pick.get("angles") or []
+            pick["angles"] = [
+                a for a in angles if isinstance(a, str) and not a.strip().endswith(("？", "?"))
+            ][:3]
+        picks.append(pick)
+        if matched_item["id"] not in selected_source_ids:
+            selected_source_ids.append(matched_item["id"])
+    return picks, selected_source_ids
+
+
+async def _push_daily_report_success(
+    report: DailyReport,
+    picks: list[dict],
+    report_date: str,
+    normalized_edition: str,
+) -> None:
+    """日报生成成功后推送通知：站内 success 通知 + webhook 卡片。
+
+    两条通道独立、互不阻塞，任一失败仅记录 warning，不影响主流程。
+    """
+    try:
+        from app.services.notification_service import push_notification
+
+        await push_notification(
+            "success",
+            "daily_report",
+            "日报生成完成",
+            f"{report_date} {_edition_label(normalized_edition)}，共 {report.topic_count} 个选题",
+        )
+    except Exception:
+        logger.warning("daily_report success notification failed", exc_info=True)
+
+    try:
+        from app.services.alerting import send_alert
+
+        overview_text = (report.overview or "")[:200]
+        top3_lines: list[str] = []
+        for i, pick in enumerate(picks[:3], start=1):
+            title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+            tier = pick.get("tier", "")
+            tier_tag = f" `[{tier}]`" if tier else ""
+            top3_lines.append(f"**{i}. {title}**{tier_tag}")
+
+        card_content_parts = [overview_text]
+        if top3_lines:
+            card_content_parts.append("\n---\n**今日精选 Top 3：**\n" + "\n".join(top3_lines))
+        if report.topic_count > 3:
+            card_content_parts.append(f"\n…共 {report.topic_count} 个选题")
+
+        card_content = "\n".join(card_content_parts)
+        card_link = f"/daily?date={report_date}"
+
+        await send_alert(
+            title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
+            message=f"日报生成完成，共 {report.topic_count} 个选题",
+            alert_key=f"daily_report:{report_date}:{normalized_edition}",
+            severity="info",
+            event_type="daily_report",
+            card={"content": card_content, "link": card_link},
+        )
+    except Exception:
+        logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)
+
+
+async def _push_daily_report_failure(exc: Exception) -> None:
+    """日报生成失败时推送站内 error 通知。失败仅记录 warning，不抛出。"""
+    try:
+        from app.services.notification_service import push_notification
+
+        await push_notification("error", "daily_report", "日报生成失败", str(exc)[:200])
+    except Exception:
+        logger.warning("daily_report failure notification failed", exc_info=True)
+
+
 async def generate_daily_report(
     db: AsyncSession,
     *,
@@ -505,59 +640,7 @@ async def generate_daily_report(
         report.trends = json.dumps(result.get("trends", []), ensure_ascii=False)
 
         raw_picks = result.get("top_picks", [])
-        picks = []
-        # source_idx 主匹配（精确），source_title 子串兜底，URL 末位兜底。
-        matchable_items = curated_for_prompt
-        curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
-        curated_by_title = {item["title"]: item for item in matchable_items}
-        curated_by_url = {
-            normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")
-        }
-        curated_titles = set(curated_by_title)
-        selected_source_ids: list[int] = []
-        for pick in raw_picks:
-            matched_item: dict | None = None
-            idx = pick.get("source_idx")
-            if isinstance(idx, int):
-                matched_item = curated_by_idx.get(idx)
-            if not matched_item:
-                source_title = pick.get("source_title", "")
-                matched_title = next(
-                    (t for t in curated_titles if source_title and (source_title in t or t in source_title)),
-                    None,
-                )
-                matched_item = curated_by_title.get(matched_title) if matched_title else None
-            if not matched_item:
-                pick_url_norm = normalize_zhihu_url(pick.get("source_url", ""))
-                matched_item = curated_by_url.get(pick_url_norm)
-            if not matched_item:
-                continue
-            # 注入稳定字段：URL/title/score 由后端按匹配结果填，模型无需也不应改写。
-            pick["source_url"] = normalize_zhihu_url(matched_item.get("url", ""))
-            pick["source_title"] = pick.get("source_title") or matched_item["title"]
-            pick["title"] = pick.get("editorial_title") or matched_item["title"]
-            pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
-            # —— 后端兜底校验（不信任 LLM 输出的枚举/字段约束）——
-            tier = pick.get("tier") or "feature"
-            pick["tier"] = tier
-            if tier == "brief":
-                # brief 字段白名单：过滤掉 LLM 残留的 feature 专属字段
-                pick = {k: v for k, v in pick.items() if k in _BRIEF_ALLOWED_FIELDS}
-            else:
-                # feature：生命周期没有足够依据时宁可不显示，也不伪造“上升期”。
-                lc = pick.get("lifecycle")
-                if lc in _VALID_LIFECYCLE:
-                    pick["lifecycle"] = lc
-                else:
-                    pick.pop("lifecycle", None)
-                # angles 过滤问句 + 限 3 条
-                angles = pick.get("angles") or []
-                pick["angles"] = [
-                    a for a in angles if isinstance(a, str) and not a.strip().endswith(("？", "?"))
-                ][:3]
-            picks.append(pick)
-            if matched_item["id"] not in selected_source_ids:
-                selected_source_ids.append(matched_item["id"])
+        picks, selected_source_ids = _match_picks_to_curated(raw_picks, curated_for_prompt)
 
         report.top_picks = json.dumps(picks, ensure_ascii=False)
         report.platform_tips = json.dumps(result.get("platform_tips", {}), ensure_ascii=False)
@@ -568,61 +651,13 @@ async def generate_daily_report(
         report.status = "DONE"
         report.updated_at = _local_now()
         await db.commit()
-        try:
-            from app.services.notification_service import push_notification
-
-            await push_notification(
-                "success",
-                "daily_report",
-                "日报生成完成",
-                f"{report_date} {_edition_label(normalized_edition)}，共 {report.topic_count} 个选题",
-            )
-        except Exception:
-            logger.warning("daily_report success notification failed", exc_info=True)
-
-        # webhook 卡片推送（失败不阻塞日报生成）
-        try:
-            from app.services.alerting import send_alert
-
-            # 构造卡片内容：overview 摘要 + top 3 picks
-            overview_text = (report.overview or "")[:200]
-            top3_lines: list[str] = []
-            for i, pick in enumerate(picks[:3], start=1):
-                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
-                tier = pick.get("tier", "")
-                tier_tag = f" `[{tier}]`" if tier else ""
-                top3_lines.append(f"**{i}. {title}**{tier_tag}")
-
-            card_content_parts = [overview_text]
-            if top3_lines:
-                card_content_parts.append("\n---\n**今日精选 Top 3：**\n" + "\n".join(top3_lines))
-            if report.topic_count > 3:
-                card_content_parts.append(f"\n…共 {report.topic_count} 个选题")
-
-            card_content = "\n".join(card_content_parts)
-            card_link = f"/daily?date={report_date}"
-
-            await send_alert(
-                title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
-                message=f"日报生成完成，共 {report.topic_count} 个选题",
-                alert_key=f"daily_report:{report_date}:{normalized_edition}",
-                severity="info",
-                event_type="daily_report",
-                card={"content": card_content, "link": card_link},
-            )
-        except Exception:
-            logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)
+        await _push_daily_report_success(report, picks, report_date, normalized_edition)
     except Exception as exc:
         report.status = "ERROR"
         report.overview = f"生成失败: {str(exc)[:200]}"
         report.source_item_ids = json.dumps([item["id"] for item in curated_items], ensure_ascii=False)
         await db.commit()
-        try:
-            from app.services.notification_service import push_notification
-
-            await push_notification("error", "daily_report", "日报生成失败", str(exc)[:200])
-        except Exception:
-            logger.warning("daily_report failure notification failed", exc_info=True)
+        await _push_daily_report_failure(exc)
 
     return report
 

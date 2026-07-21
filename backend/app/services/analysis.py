@@ -274,6 +274,130 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
     )
 
 
+def _select_analysis_prompts(
+    content: ContentItem, *, title: str, content_text: str
+) -> tuple[str, str, str, bool]:
+    """按内容特征选择分析 prompt。
+
+    优先级：arXiv 论文 > 英文内容 > 中文内容。
+
+    Returns:
+        (system_prompt, analysis_prompt, lang, is_arxiv)
+    """
+    platform_lower = (content.platform or "").lower()
+    is_arxiv = "arxiv" in platform_lower or "arxiv" in (content.source_name or "").lower()
+    lang = _detect_lang(title, content_text or "")
+
+    if is_arxiv:
+        logger.info("Detected arXiv paper, using paper prompts for content id=%d", content.id)
+        return PAPER_SYSTEM_PROMPT, PAPER_ANALYSIS_PROMPT, lang, True
+    if lang == "en":
+        logger.info("Detected English content, using EN prompts for content id=%d", content.id)
+        return SYSTEM_PROMPT_EN, ANALYSIS_PROMPT_EN, lang, False
+    return SYSTEM_PROMPT, ANALYSIS_PROMPT, lang, False
+
+
+def _apply_cross_market_bonus(
+    content: ContentItem, *, lang: str, curation_score: float
+) -> float:
+    """英文跨境内容给中文创作者更高的早期信号价值，curation_score 加分。
+
+    触发条件：source/platform 命中 hacker/reddit/techcrunch/arxiv/github 且原 curation≥55。
+    加分上限：min(10, 100 - curation_score)，避免超过 100。
+    """
+    if lang != "en":
+        return curation_score
+    source_name = (content.source_name or "").lower()
+    platform = (content.platform or "").lower()
+    is_intl = any(kw in source_name for kw in ("hacker", "reddit", "techcrunch", "arxiv", "github"))
+    is_intl = is_intl or any(kw in platform for kw in ("hacker", "reddit"))
+    if not is_intl or curation_score < 55:
+        return curation_score
+    bonus = min(10, 100 - curation_score)
+    logger.info(
+        "Cross-market bonus +%d for content id=%d (source=%s, curation=%.0f)",
+        bonus,
+        content.id,
+        content.source_name,
+        curation_score + bonus,
+    )
+    return curation_score + bonus
+
+
+def _build_analysis_record(
+    content: ContentItem,
+    result: dict[str, Any],
+    *,
+    is_arxiv: bool,
+    curation_score: float,
+    analysis_mode: str,
+    prescreen_model: str | None,
+    final_model: str,
+    escalated: bool,
+    escalation_reason: str | None,
+    prescreen_score: float | None,
+    prescreen_confidence: float | None,
+    fallback_used: bool,
+) -> AiAnalysis:
+    """根据归一化后的 LLM 结果构造 AiAnalysis 实例（不含 db 操作）。"""
+    scores = result.get("scores", {})
+    curation = result.get("curation", {})
+    # arXiv 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
+    # 归一化：调和 worth_deep_read(deep_read_score≥70) 矛盾 + 字符串 bool 解析
+    _deep_read = _normalize_deep_read(result.get("deep_read")) if is_arxiv else None
+    return AiAnalysis(
+        content_id=content.id,
+        quality_score=scores.get("quality_score", 0),
+        hot_score=scores.get("hot_score", 0),
+        freshness_score=scores.get("freshness_score", 0),
+        creator_score=scores.get("creator_score", 0),
+        viral_score=scores.get("viral_score", 0),
+        risk_score=scores.get("risk_score", 0),
+        summary=result.get("summary", ""),
+        key_points=result.get("key_points"),
+        audience_emotion="",
+        recommended_reason=result.get("recommendation"),
+        creator_angles=result.get("creator_angles"),
+        title_suggestions=result.get("title_suggestions"),
+        risk_notes={"notes": result.get("risk_notes", "") if scores.get("risk_score", 0) > 50 else ""},
+        curation_score=curation_score,
+        tags=result.get("tags"),
+        recommendation=result.get("recommendation"),
+        info_density=curation.get("info_density", 50),
+        actionability=curation.get("actionability", 50),
+        source_weight=curation.get("source_weight", 50),
+        enrichment_status="completed" if _deep_read else "pending",
+        enrichment={"deep_read": _deep_read} if _deep_read else None,
+        analysis_mode=analysis_mode,
+        prescreen_model=prescreen_model,
+        final_model=final_model,
+        escalated=escalated,
+        escalation_reason=escalation_reason,
+        prescreen_confidence=prescreen_confidence,
+        prescreen_score=prescreen_score,
+        summary_source=(
+            "local_fallback" if fallback_used else "llm_lite" if analysis_mode == "lite_only" else "llm_pro"
+        ),
+    )
+
+
+async def _mark_content_error(db: AsyncSession, content_id: int) -> None:
+    """分析失败后将内容标记为 ERROR 状态。失败仅记录 warning，不抛出。"""
+    try:
+        content = await db.get(ContentItem, content_id)
+        if content is not None:
+            content.status = ContentStatus.ERROR
+            content.updated_at = datetime.now(UTC)
+            await db.commit()
+    except Exception as status_error:
+        await db.rollback()
+        logger.warning(
+            "Failed to mark content id=%d as error after analysis failure: %s",
+            content_id,
+            status_error,
+        )
+
+
 # ── Core analysis function ───────────────────────────────────────
 
 
@@ -285,23 +409,9 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     title = content.title
     truncated = content_text[:3000] if content_text else "无正文内容"
 
-    # Select content-appropriate prompt.
-    # 优先级：arXiv 论文 > 英文内容 > 中文内容
-    platform_lower = (content.platform or "").lower()
-    is_arxiv = "arxiv" in platform_lower or "arxiv" in (content.source_name or "").lower()
-    lang = _detect_lang(title, content_text or "")
-
-    if is_arxiv:
-        system_prompt = PAPER_SYSTEM_PROMPT
-        analysis_prompt = PAPER_ANALYSIS_PROMPT
-        logger.info("Detected arXiv paper, using paper prompts for content id=%d", content.id)
-    elif lang == "en":
-        system_prompt = SYSTEM_PROMPT_EN
-        analysis_prompt = ANALYSIS_PROMPT_EN
-        logger.info("Detected English content, using EN prompts for content id=%d", content.id)
-    else:
-        system_prompt = SYSTEM_PROMPT
-        analysis_prompt = ANALYSIS_PROMPT
+    system_prompt, analysis_prompt, lang, is_arxiv = _select_analysis_prompts(
+        content, title=title, content_text=content_text
+    )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -376,69 +486,24 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             fallback_used = True
     result = _normalize_analysis_result(result)
 
-    # Extract scores
-    scores = result.get("scores", {})
-
     # Extract curation
     curation = result.get("curation", {})
     curation_score = curation.get("curation_score", 0)
+    curation_score = _apply_cross_market_bonus(content, lang=lang, curation_score=curation_score)
 
-    # Cross-market bonus: English content from HN/Reddit has higher signal value
-    # for Chinese-speaking creators (early trend detection before mainstream coverage)
-    if lang == "en":
-        source_name = (content.source_name or "").lower()
-        platform = (content.platform or "").lower()
-        is_intl = any(kw in source_name for kw in ("hacker", "reddit", "techcrunch", "arxiv", "github"))
-        is_intl = is_intl or any(kw in platform for kw in ("hacker", "reddit"))
-        if is_intl and curation_score >= 55:
-            bonus = min(10, 100 - curation_score)  # cap at 100
-            curation_score += bonus
-            logger.info(
-                "Cross-market bonus +%d for content id=%d (source=%s, curation=%.0f)",
-                bonus,
-                content.id,
-                content.source_name,
-                curation_score,
-            )
-
-    # Build analysis record
-    # arXiv 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
-    # 归一化：调和 worth_deep_read(deep_read_score≥70) 矛盾 + 字符串 bool 解析
-    _deep_read = _normalize_deep_read(result.get("deep_read")) if is_arxiv else None
-    analysis = AiAnalysis(
-        content_id=content.id,
-        quality_score=scores.get("quality_score", 0),
-        hot_score=scores.get("hot_score", 0),
-        freshness_score=scores.get("freshness_score", 0),
-        creator_score=scores.get("creator_score", 0),
-        viral_score=scores.get("viral_score", 0),
-        risk_score=scores.get("risk_score", 0),
-        summary=result.get("summary", ""),
-        key_points=result.get("key_points"),
-        audience_emotion="",
-        recommended_reason=result.get("recommendation"),
-        creator_angles=result.get("creator_angles"),
-        title_suggestions=result.get("title_suggestions"),
-        risk_notes={"notes": result.get("risk_notes", "") if scores.get("risk_score", 0) > 50 else ""},
-        # New curation fields
+    analysis = _build_analysis_record(
+        content,
+        result,
+        is_arxiv=is_arxiv,
         curation_score=curation_score,
-        tags=result.get("tags"),
-        recommendation=result.get("recommendation"),
-        info_density=curation.get("info_density", 50),
-        actionability=curation.get("actionability", 50),
-        source_weight=curation.get("source_weight", 50),
-        enrichment_status="completed" if _deep_read else "pending",
-        enrichment={"deep_read": _deep_read} if _deep_read else None,
         analysis_mode=analysis_mode,
         prescreen_model=prescreen_model,
         final_model=final_model,
         escalated=escalated,
         escalation_reason=escalation_reason,
-        prescreen_confidence=prescreen_confidence,
         prescreen_score=prescreen_score,
-        summary_source=(
-            "local_fallback" if fallback_used else "llm_lite" if analysis_mode == "lite_only" else "llm_pro"
-        ),
+        prescreen_confidence=prescreen_confidence,
+        fallback_used=fallback_used,
     )
 
     db.add(analysis)
@@ -561,19 +626,7 @@ async def analyze_one_claimed(
             return None
 
         logger.error("Failed to analyze content id=%d: %s", content_id, e)
-        try:
-            content = await db.get(ContentItem, content_id)
-            if content is not None:
-                content.status = ContentStatus.ERROR
-                content.updated_at = datetime.now(UTC)
-                await db.commit()
-        except Exception as status_error:
-            await db.rollback()
-            logger.warning(
-                "Failed to mark content id=%d as error after analysis failure: %s",
-                content_id,
-                status_error,
-            )
+        await _mark_content_error(db, content_id)
         if raise_on_failure:
             raise
         return None

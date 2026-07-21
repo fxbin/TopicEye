@@ -278,6 +278,12 @@ CI 在每次 push 和 PR 上跑四条 lane：
 
 欢迎贡献。详见 [CONTRIBUTING.md](CONTRIBUTING.md)（环境搭建、代码风格、工作流）。可以认领带 `good first issue` 标签的 issue 作为入门任务。
 
+## 鸣谢
+
+[![LINUX DO](docs/images/linuxdo.png)](https://linux.do)
+
+AI 相关的一切，请访问 [LINUX DO](https://linux.do)！祝社区越办越好~
+
 ## 协议
 
 基于 [Apache License, Version 2.0](LICENSE) 开源。Copyright © 2026 fxbin。

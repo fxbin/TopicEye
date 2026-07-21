@@ -30,6 +30,9 @@ frontend/.env.local
 # Docker
 docker-data/
 
+# Deploy (runtime-generated Nginx config)
+deploy/nginx/conf.d/
+
 # IDE
 .idea/
 .vscode/
@@ -44,9 +47,10 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Docs (PRD, prototypes, internal plans) — keep screenshots for README
+# Docs (PRD, prototypes, internal plans) — keep screenshots and images for README
 docs/*
 !docs/screenshots/
+!docs/images/
 
 # Test cache
 .pytest_cache/

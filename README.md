@@ -280,6 +280,12 @@ CI runs three lanes on every push and PR:
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, code style, and workflow. Feel free to open an issue with the `good first issue` label to find a starter task.
 
+## Special Thanks
+
+[![LINUX DO](docs/images/linuxdo.png)](https://linux.do)
+
+For all things AI, head to [LINUX DO](https://linux.do)! Wishing the community ever greater success~
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE). Copyright © 2026 fxbin.

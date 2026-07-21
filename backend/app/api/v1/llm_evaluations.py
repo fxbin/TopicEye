@@ -22,14 +22,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, Integer as SAInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.config import settings
 from app.core.database import async_session, get_db
 from app.core.sqlite_retry import retry_write_transaction as _retry_write
-from app.models.llm_model import LlmModel, ModelEvaluation
+from app.models.llm_model import ModelEvaluation
+from app.repositories.llm_evaluation_repo import ModelEvaluationRepository
+from app.repositories.llm_model_repo import LlmModelRepository
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 # 从父模块导入共享 helper（test_model 和 evaluation 都用）
@@ -183,8 +184,9 @@ async def _run_one_evaluation(
             async with async_session() as eval_db:
 
                 async def _mark_missing_key():
-                    result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
-                    current = result.scalar_one()
+                    current = await ModelEvaluationRepository(eval_db).get_by_id(eval_id)
+                    if current is None:
+                        raise RuntimeError(f"Evaluation {eval_id} not found")
                     current.status = "FAILED"
                     current.error_message = "模型配置缺少 API Key，请在模型配置中补充后再测评。"
                     await eval_db.flush()
@@ -215,8 +217,9 @@ async def _run_one_evaluation(
             async with async_session() as eval_db:
 
                 async def _mark_done():
-                    result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
-                    current = result.scalar_one()
+                    current = await ModelEvaluationRepository(eval_db).get_by_id(eval_id)
+                    if current is None:
+                        raise RuntimeError(f"Evaluation {eval_id} not found")
                     current.status = "DONE"
                     current.response_text = content
                     current.duration_ms = duration_ms
@@ -245,8 +248,9 @@ async def _run_one_evaluation(
             async with async_session() as eval_db:
 
                 async def _mark_failed():
-                    result = await eval_db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
-                    current = result.scalar_one()
+                    current = await ModelEvaluationRepository(eval_db).get_by_id(eval_id)
+                    if current is None:
+                        raise RuntimeError(f"Evaluation {eval_id} not found")
                     current.status = "FAILED"
                     current.error_message = error_message[:2000]
                     current.duration_ms = duration_ms
@@ -272,13 +276,7 @@ async def _run_one_evaluation(
 async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)):
     """Run an A/B evaluation across selected models with the same prompt."""
     # Fetch models
-    result = await db.execute(
-        select(LlmModel).where(
-            LlmModel.id.in_(req.model_ids),
-            LlmModel.enabled == True,
-        )
-    )
-    models = [_model_snapshot(model) for model in result.scalars().all()]
+    models = [_model_snapshot(model) for model in await LlmModelRepository(db).list_enabled_by_ids(req.model_ids)]
     if not models:
         raise HTTPException(400, "没有找到启用的模型")
     await db.rollback()
@@ -299,6 +297,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
     evaluations = []
 
     async def _create_records():
+        eval_repo = ModelEvaluationRepository(db)
         for model in models:
             eval_record = ModelEvaluation(
                 eval_run_id=eval_run_id,
@@ -308,7 +307,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
                 prompt_text=prompt_text[:2000],
                 status="PENDING",
             )
-            db.add(eval_record)
+            eval_repo.add_instance(eval_record)
             evaluations.append((model, eval_record))
         await db.flush()
 
@@ -316,9 +315,11 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
     await db.commit()
 
     async def _mark_all_running():
+        eval_repo = ModelEvaluationRepository(db)
         for _model, eval_record in evaluations:
-            result = await db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_record.id))
-            current = result.scalar_one()
+            current = await eval_repo.get_by_id(eval_record.id)
+            if current is None:
+                raise RuntimeError(f"Evaluation {eval_record.id} not found")
             current.status = "RUNNING"
             await db.flush()
 
@@ -355,20 +356,7 @@ async def list_eval_runs(
 ):
     """List all evaluation runs with summary stats."""
     # Get distinct run IDs with stats
-    result = await db.execute(
-        select(
-            ModelEvaluation.eval_run_id,
-            ModelEvaluation.prompt_type,
-            func.count(ModelEvaluation.id).label("model_count"),
-            func.min(ModelEvaluation.created_at).label("created_at"),
-            func.sum(func.cast(ModelEvaluation.status == "DONE", SAInteger)).label("done_count"),
-            func.sum(func.cast(ModelEvaluation.status == "FAILED", SAInteger)).label("fail_count"),
-        )
-        .group_by(ModelEvaluation.eval_run_id, ModelEvaluation.prompt_type)
-        .order_by(desc(func.min(ModelEvaluation.created_at)))
-        .limit(limit)
-    )
-    rows = result.all()
+    rows = await ModelEvaluationRepository(db).aggregate_runs_with_stats(limit=limit)
 
     return {
         "runs": [
@@ -389,10 +377,7 @@ async def list_eval_runs(
 @router.get("/evaluations/runs/{run_id}", dependencies=[Depends(get_current_admin_user)])
 async def get_eval_run(run_id: str, db: AsyncSession = Depends(get_db)):
     """Get all evaluation results for a specific run."""
-    result = await db.execute(
-        select(ModelEvaluation).where(ModelEvaluation.eval_run_id == run_id).order_by(ModelEvaluation.model_name)
-    )
-    evals = result.scalars().all()
+    evals = await ModelEvaluationRepository(db).list_by_run_id(run_id)
 
     if not evals:
         raise HTTPException(404, f"Evaluation run {run_id} not found")
@@ -428,8 +413,7 @@ async def score_evaluation(
     db: AsyncSession = Depends(get_db),
 ):
     """Human-score a single evaluation result."""
-    result = await db.execute(select(ModelEvaluation).where(ModelEvaluation.id == eval_id))
-    evaluation = result.scalar_one_or_none()
+    evaluation = await ModelEvaluationRepository(db).get_by_id(eval_id)
     if not evaluation:
         raise HTTPException(404, f"Evaluation {eval_id} not found")
 

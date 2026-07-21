@@ -8,12 +8,10 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
-from app.models.monthly_digest import MonthlyDigest
 from app.repositories.monthly_digest_repo import MonthlyDigestRepository
 from app.schemas.monthly_digest import (
     MonthlyDigestListResponse,
@@ -65,11 +63,10 @@ async def list_digest_months(db: AsyncSession = Depends(get_db)):
 
 @router.get("", response_model=MonthlyDigestListResponse)
 async def list_digests(limit: int = 12, db: AsyncSession = Depends(get_db)):
-    count_result = await db.execute(select(func.count()).select_from(MonthlyDigest))
-    total = count_result.scalar() or 0
-
-    result = await db.execute(select(MonthlyDigest).order_by(MonthlyDigest.month_start.desc()).limit(limit))
-    return {"items": result.scalars().all(), "total": total}
+    repo = MonthlyDigestRepository(db)
+    total = await repo.count_all()
+    items = await repo.get_latest(limit=limit)
+    return {"items": items, "total": total}
 
 
 @router.post("/generate", response_model=MonthlyDigestResponse)
@@ -83,8 +80,8 @@ async def trigger_generate(
         target_key = f"{reference_date.year}-{reference_date.month:02d}"
 
     if target_key:
-        existing = await db.execute(select(MonthlyDigest).where(MonthlyDigest.month_key == target_key))
-        existing_digest = existing.scalar_one_or_none()
+        repo = MonthlyDigestRepository(db)
+        existing_digest = await repo.get_by_month_key(target_key)
         if existing_digest:
             existing_digest.status = "PENDING"
             await db.flush()

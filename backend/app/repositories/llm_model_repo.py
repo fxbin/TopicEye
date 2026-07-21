@@ -48,6 +48,18 @@ class LlmModelRepository(BaseRepository[LlmModel]):
         """
         self.db.add(model)
 
+    async def list_enabled_by_ids(self, model_ids: list[int]) -> Sequence[LlmModel]:
+        """按 id 列表查询已启用的 LlmModel，用于 A/B 测评选择参与模型。
+
+        返回顺序不保证，调用方需自行处理。与 run_evaluation 端点历史行为等价。
+        """
+        stmt = select(LlmModel).where(
+            LlmModel.id.in_(model_ids),
+            LlmModel.enabled == True,  # noqa: E712
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def list_call_logs_with_model_since(
         self,
         *,

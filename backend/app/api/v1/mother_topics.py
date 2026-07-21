@@ -16,14 +16,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
 from app.models.mother_topic import MotherTopic
-from app.models.content import ContentItem
 from app.models.user import User
+from app.repositories.content_repo import ContentRepo
+from app.repositories.mother_topic_repo import MotherTopicRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mother-topics", tags=["母题"])
@@ -103,23 +103,10 @@ class ContentScoringResult(BaseModel):
 # ── helpers ───────────────────────────────────────────────────────────
 
 
-def _visible_topics_stmt(user_id: int, active_only: bool = False):
-    """构建当前用户可见母题的查询：系统模板（owner IS NULL）+ 自己的 fork。"""
-    stmt = select(MotherTopic).where(
-        or_(
-            MotherTopic.owner_user_id.is_(None),
-            MotherTopic.owner_user_id == user_id,
-        )
-    ).order_by(MotherTopic.display_order, MotherTopic.id)
-    if active_only:
-        stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
-    return stmt
-
-
 async def _load_visible_topics(db: AsyncSession, user_id: int, active_only: bool = False) -> list[MotherTopic]:
     """加载当前用户可见的母题列表。"""
-    result = await db.execute(_visible_topics_stmt(user_id, active_only))
-    return list(result.scalars().all())
+    repo = MotherTopicRepository(db)
+    return list(await repo.list_visible_for_user(user_id=user_id, active_only=active_only))
 
 
 def _assert_can_modify(topic: MotherTopic, current_user: User) -> None:
@@ -151,16 +138,12 @@ async def list_mother_topics(
     admin 可看到全量（含其他用户的私有母题）用于审计；active_only=false
     不再是 admin-only —— 普通用户也能看自己名下的停用母题。
     """
+    repo = MotherTopicRepository(db)
     if current_user.role == "admin":
         # admin 看全量（含其他用户的私有 fork，用于审计）
-        stmt = select(MotherTopic).order_by(MotherTopic.display_order, MotherTopic.id)
-        if active_only:
-            stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
+        topics = await repo.list_all_for_admin(active_only=active_only)
     else:
-        stmt = _visible_topics_stmt(current_user.id, active_only)
-
-    result = await db.execute(stmt)
-    topics = result.scalars().all()
+        topics = await repo.list_visible_for_user(user_id=current_user.id, active_only=active_only)
     return [MotherTopicOut.from_orm_model(t) for t in topics]
 
 
@@ -180,12 +163,8 @@ async def create_mother_topic(
     owner_user_id = None if current_user.role == "admin" else current_user.id
 
     # 同 scope 内 name 唯一性校验（DB 层有 unique constraint 兜底，这里提前拦截给更好的错误信息）
-    existing_stmt = select(MotherTopic).where(MotherTopic.name == topic_in.name)
-    if owner_user_id is None:
-        existing_stmt = existing_stmt.where(MotherTopic.owner_user_id.is_(None))
-    else:
-        existing_stmt = existing_stmt.where(MotherTopic.owner_user_id == owner_user_id)
-    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+    repo = MotherTopicRepository(db)
+    existing = await repo.find_by_name_in_scope(name=topic_in.name, owner_user_id=owner_user_id)
     if existing:
         raise HTTPException(status_code=409, detail=f"母题「{topic_in.name}」已存在")
 
@@ -200,7 +179,7 @@ async def create_mother_topic(
         display_order=topic_in.display_order,
         owner_user_id=owner_user_id,
     )
-    db.add(topic)
+    repo.add_instance(topic)
     await db.commit()
     await db.refresh(topic)
     return MotherTopicOut.from_orm_model(topic)
@@ -216,19 +195,17 @@ async def fork_default_templates(
     幂等：用户已有的同名母题会被跳过。admin 调用无意义（admin 本就能改系统模板），
     但不强制拦截 —— 便于测试。
     """
+    repo = MotherTopicRepository(db)
     if current_user.role == "admin":
         # admin 不需要 fork，直接返回当前系统模板数
-        count_stmt = select(MotherTopic).where(MotherTopic.owner_user_id.is_(None))
-        templates = (await db.execute(count_stmt)).scalars().all()
+        templates = await repo.list_system_templates()
         return {"forked": 0, "skipped": len(templates), "message": "管理员无需 fork，可直接维护系统模板"}
 
     # 加载所有系统模板
-    templates_stmt = select(MotherTopic).where(MotherTopic.owner_user_id.is_(None)).order_by(MotherTopic.display_order)
-    templates = (await db.execute(templates_stmt)).scalars().all()
+    templates = await repo.list_system_templates()
 
     # 加载用户已有的母题名，用于跳过
-    user_names_stmt = select(MotherTopic.name).where(MotherTopic.owner_user_id == current_user.id)
-    user_names = {name for (name,) in (await db.execute(user_names_stmt)).all()}
+    user_names = await repo.list_user_topic_names(current_user.id)
 
     forked = 0
     skipped = 0
@@ -247,7 +224,7 @@ async def fork_default_templates(
             display_order=tpl.display_order,
             owner_user_id=current_user.id,
         )
-        db.add(fork)
+        repo.add_instance(fork)
         forked += 1
 
     if forked > 0:
@@ -272,7 +249,8 @@ async def update_mother_topic(
     - 系统模板（owner IS NULL）：仅 admin 可改
     - 用户私有 fork：仅 owner 可改
     """
-    topic = await db.get(MotherTopic, topic_id)
+    repo = MotherTopicRepository(db)
+    topic = await repo.get_by_id(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="母题不存在")
     _assert_can_modify(topic, current_user)
@@ -283,16 +261,12 @@ async def update_mother_topic(
 
     # 如果改了 name，校验同 scope 内不重名
     if "name" in payload and payload["name"] != topic.name:
-        scope_filter = (
-            MotherTopic.owner_user_id.is_(None) if topic.owner_user_id is None
-            else MotherTopic.owner_user_id == topic.owner_user_id
+        dup = await repo.find_duplicate_name_excluding_id(
+            name=payload["name"],
+            owner_user_id=topic.owner_user_id,
+            exclude_id=topic_id,
         )
-        dup_stmt = select(MotherTopic).where(
-            MotherTopic.name == payload["name"],
-            scope_filter,
-            MotherTopic.id != topic_id,
-        )
-        if (await db.execute(dup_stmt)).scalar_one_or_none():
+        if dup:
             raise HTTPException(status_code=409, detail=f"母题「{payload['name']}」已存在")
 
     for field, value in payload.items():
@@ -314,7 +288,8 @@ async def delete_mother_topic(
     - 系统模板（owner IS NULL）：仅 admin 可删
     - 用户私有 fork：仅 owner 可删
     """
-    topic = await db.get(MotherTopic, topic_id)
+    repo = MotherTopicRepository(db)
+    topic = await repo.get_by_id(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="母题不存在")
     _assert_can_modify(topic, current_user)
@@ -456,7 +431,7 @@ async def match_content_to_topics(
     current_user: User = Depends(get_current_user),
 ):
     """对已入库的内容重新匹配母题。"""
-    content = await db.get(ContentItem, content_id)
+    content = await ContentRepo(db).get_by_id(content_id)
     if not content:
         raise HTTPException(status_code=404, detail="内容不存在")
 

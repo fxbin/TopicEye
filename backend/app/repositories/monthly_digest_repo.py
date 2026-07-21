@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.monthly_digest import MonthlyDigest
 from app.repositories.base import BaseRepository
@@ -27,6 +27,12 @@ class MonthlyDigestRepository(BaseRepository[MonthlyDigest]):
         stmt = select(self.model).order_by(self.model.month_start.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def count_all(self) -> int:
+        """返回 MonthlyDigest 总条数，供列表端点返回 total 字段使用。"""
+        stmt = select(func.count()).select_from(self.model)
+        result = await self.db.execute(stmt)
+        return int(result.scalar() or 0)
 
     async def get_months_with_digests(self) -> list[dict[str, str | None]]:
         stmt = select(

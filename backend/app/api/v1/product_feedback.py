@@ -4,7 +4,6 @@ from datetime import datetime, timezone, UTC
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case as sa_case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user, get_optional_current_user
@@ -17,6 +16,10 @@ from app.models.product_feedback import (
     ProductUpdateStatus,
 )
 from app.models.user import User
+from app.repositories.product_feedback_repo import (
+    IssueFeedbackRepository,
+    ProductUpdateRepository,
+)
 from app.schemas.product_feedback import (
     IssueFeedbackCreate,
     IssueFeedbackListResponse,
@@ -49,32 +52,6 @@ def _issue_response(issue: IssueFeedback, reporter: User | None = None) -> Issue
     )
 
 
-async def _issue_counts(db: AsyncSession, user_id: int | None = None) -> tuple[int, int]:
-    filters = []
-    if user_id is not None:
-        filters.append(IssueFeedback.user_id == user_id)
-
-    open_result = await db.execute(
-        select(func.count(IssueFeedback.id)).where(
-            *filters,
-            IssueFeedback.status.in_(
-                [
-                    IssueFeedbackStatus.open,
-                    IssueFeedbackStatus.triaged,
-                    IssueFeedbackStatus.in_progress,
-                ]
-            ),
-        )
-    )
-    fixed_result = await db.execute(
-        select(func.count(IssueFeedback.id)).where(
-            *filters,
-            IssueFeedback.status == IssueFeedbackStatus.fixed,
-        )
-    )
-    return int(open_result.scalar() or 0), int(fixed_result.scalar() or 0)
-
-
 @router.post("/issues", response_model=IssueFeedbackResponse, status_code=201)
 async def create_issue_feedback(
     data: IssueFeedbackCreate,
@@ -89,7 +66,7 @@ async def create_issue_feedback(
         severity=data.severity,
         status=IssueFeedbackStatus.open,
     )
-    db.add(issue)
+    IssueFeedbackRepository(db).add_instance(issue)
     await db.flush()
     await db.refresh(issue)
     return _issue_response(issue, current_user)
@@ -103,20 +80,16 @@ async def list_my_issue_feedback(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    filters = [IssueFeedback.user_id == current_user.id]
-    if status is not None:
-        filters.append(IssueFeedback.status == status)
-
-    total = await db.scalar(select(func.count(IssueFeedback.id)).where(*filters))
-    result = await db.execute(
-        select(IssueFeedback)
-        .where(*filters)
-        .order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc())
-        .limit(limit)
-        .offset(offset)
+    repo = IssueFeedbackRepository(db)
+    total = await repo.count_user_issues(user_id=current_user.id, status=status)
+    items_rows = await repo.list_user_issues(
+        user_id=current_user.id,
+        status=status,
+        limit=limit,
+        offset=offset,
     )
-    items = [_issue_response(issue, current_user) for issue in result.scalars().all()]
-    open_count, fixed_count = await _issue_counts(db, current_user.id)
+    items = [_issue_response(issue, current_user) for issue in items_rows]
+    open_count, fixed_count = await repo.count_issues_by_status(user_id=current_user.id)
     return IssueFeedbackListResponse(
         items=items,
         total=int(total or 0),
@@ -135,25 +108,17 @@ async def list_all_issue_feedback(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin_user),
 ):
-    filters = []
-    if status is not None:
-        filters.append(IssueFeedback.status == status)
-    if severity:
-        filters.append(IssueFeedback.severity == severity)
-    if area:
-        filters.append(IssueFeedback.area == area)
-
-    total = await db.scalar(select(func.count(IssueFeedback.id)).where(*filters))
-    result = await db.execute(
-        select(IssueFeedback, User)
-        .outerjoin(User, User.id == IssueFeedback.user_id)
-        .where(*filters)
-        .order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc())
-        .limit(limit)
-        .offset(offset)
+    repo = IssueFeedbackRepository(db)
+    total = await repo.count_all_issues(status=status, severity=severity, area=area)
+    rows = await repo.list_all_issues_with_reporter(
+        status=status,
+        severity=severity,
+        area=area,
+        limit=limit,
+        offset=offset,
     )
-    items = [_issue_response(issue, reporter) for issue, reporter in result.all()]
-    open_count, fixed_count = await _issue_counts(db)
+    items = [_issue_response(issue, reporter) for issue, reporter in rows]
+    open_count, fixed_count = await repo.count_issues_by_status()
     return IssueFeedbackListResponse(
         items=items,
         total=int(total or 0),
@@ -169,12 +134,8 @@ async def update_issue_feedback(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin_user),
 ):
-    result = await db.execute(
-        select(IssueFeedback, User)
-        .outerjoin(User, User.id == IssueFeedback.user_id)
-        .where(IssueFeedback.id == issue_id)
-    )
-    row = result.first()
+    repo = IssueFeedbackRepository(db)
+    row = await repo.get_issue_with_reporter(issue_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Issue feedback not found")
 
@@ -213,28 +174,12 @@ async def list_product_updates(
 ):
     """从 DB 查 product_updates. items 是 JSON 数组, 无法在 SQL 里筛内部字段,
     kind 过滤走 Python."""
-    filters = []
-    if status is not None:
-        filters.append(ProductUpdate.status == status)
+    repo = ProductUpdateRepository(db)
+    total = await repo.count_updates(status=status)
+    rows = await repo.list_updates(status=status, limit=limit, offset=offset)
 
-    total = await db.scalar(select(func.count(ProductUpdate.id)).where(*filters))
-    result = await db.execute(
-        select(ProductUpdate)
-        .where(*filters)
-        .order_by(
-            # shipped 在前 (1), 非 shipped 在后 (0); 同档按 shipped_at/updated_at 倒序
-            sa_case(
-                (ProductUpdate.status == ProductUpdateStatus.shipped, 1),
-                else_=0,
-            ).desc(),
-            ProductUpdate.shipped_at.desc().nullslast(),
-            ProductUpdate.updated_at.desc(),
-        )
-        .limit(limit)
-        .offset(offset)
-    )
     items: list[ProductUpdateResponse] = []
-    for row in result.scalars().all():
+    for row in rows:
         resp = ProductUpdateResponse.model_validate(row)
         if kind is not None and not any(e.kind == kind for e in resp.items):
             continue
@@ -262,7 +207,7 @@ async def create_product_update(
         items=[entry.model_dump(mode="json") for entry in data.items],
         created_by_id=current_admin.id,
     )
-    db.add(item)
+    ProductUpdateRepository(db).add_instance(item)
     await db.flush()
     await db.refresh(item)
     return item
@@ -275,7 +220,7 @@ async def update_product_update(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin_user),
 ):
-    item = await db.get(ProductUpdate, update_id)
+    item = await ProductUpdateRepository(db).get_by_id(update_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Product update not found")
 
@@ -310,8 +255,8 @@ async def delete_product_update(
     """删除管理员在 DB 中创建的 ProductUpdate (builtin 不可删)."""
     if update_id <= 0:
         raise HTTPException(status_code=400, detail="Builtin updates cannot be deleted")
-    item = await db.get(ProductUpdate, update_id)
+    repo = ProductUpdateRepository(db)
+    item = await repo.get_by_id(update_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Product update not found")
-    await db.delete(item)
-    await db.flush()
+    await repo.delete_instance(item)

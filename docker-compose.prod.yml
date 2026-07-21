@@ -1,20 +1,18 @@
 # =============================================================================
-# TopicEye 生产部署配置
+# TopicEye 生产部署配置 — 全 Docker 化（含 Nginx + Certbot）
 # =============================================================================
 #
 # 用法：
 #   docker compose -f docker-compose.prod.yml build
 #   docker compose -f docker-compose.prod.yml up -d
 #
-# 与 docker-compose.yml（开发配置）的关键差异：
-#   1. backend：无 bind mount（代码 bake 进镜像，不用 --reload）
-#   2. frontend：无 bind mount，用 npm run start（不是 dev）
-#   3. 所有服务加 healthcheck（镜像自带，compose 补充）
-#   4. resource limits（4C4G 服务器友好）
-#   5. postgres 加 healthcheck
-#   6. restart: unless-stopped 全部开启
+# 架构：
+#   公网 80/443 ─► nginx 容器 ─► backend:8000  (FastAPI API)
+#                          └─► frontend:3000 (Next.js SSR)
+#   backend ─► postgres:5432 (仅 Docker 内网)
 #
-# 镜像自带 HEALTHCHECK（见 Dockerfile），compose 层主要补 resource limits。
+#   所有业务容器不暴露端口到宿主机，只有 nginx 容器映射 80/443。
+#   SSL 证书由 certbot 容器通过 webroot 模式签发，nginx 容器读取。
 #
 # 部署前检查：
 #   - .env 配置好（DATABASE_URL / LLM key / CORS_ORIGINS）
@@ -23,25 +21,73 @@
 # =============================================================================
 
 services:
+  # ── 反向代理（唯一暴露公网的容器）──────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      # Nginx 站点配置（deploy.sh 生成到 deploy/nginx/conf.d/）
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL 证书（certbot 容器签发后写入此 volume）
+      - letsencrypt:/etc/letsencrypt:ro
+      # ACME challenge webroot（certbot 验证域名所有权）
+      - certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${NGINX_MEM_LIMIT:-128m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── SSL 证书签发（按需运行，不常驻）────────────────────────────
+  # 首次签发：
+  #   docker compose -f docker-compose.prod.yml run --rm certbot \
+  #     certonly --webroot -w /var/www/certbot -d your-domain.com \
+  #     --non-interactive --agree-tos --email your@email.com
+  #
+  # 自动续期（cron）：
+  #   docker compose -f docker-compose.prod.yml run --rm certbot renew
+  #   docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    # 不自动启动，按需 run
+    profiles: ["tools"]
+    entrypoint: ["certbot"]
+
+  # ── 后端 ──────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      # 绑 loopback：生产用 Nginx/Caddy 反代，避免 uvicorn 直接暴露公网
-      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
-    # 不 bind mount 源码（代码在镜像里）；只挂 data volume
+    # 不映射端口到宿主机：仅 Docker 内网，由 nginx 容器反代
+    expose:
+      - "8000"
     volumes:
       - backend-data:/app/data
-    # Keep local credentials out of the image. The file is optional so a fresh
-    # clone can still start with the defaults, while an existing installation
-    # retains its LLM/OAuth/runtime configuration after switching from dev.
     env_file:
       - path: ./backend/.env
         required: false
     environment:
-      # A local stable deployment can retain development-mode secrets. Public
-      # deployments must set APP_ENV=production and a non-default APP_SECRET_KEY.
       - APP_ENV=${APP_ENV:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://topiceye:topiceye@postgres:5432/topiceye}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
@@ -53,7 +99,6 @@ services:
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
       - DUCKDB_STARTUP_INIT_ENABLED=${DUCKDB_STARTUP_INIT_ENABLED:-false}
       - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
-    # 不 override command：用 Dockerfile CMD（uvicorn 无 --reload）
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,16 +108,22 @@ services:
       resources:
         limits:
           memory: ${BACKEND_MEM_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
+  # ── 数据库 ────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    # 不映射端口：仅 Docker 内网
+    expose:
+      - "5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-topiceye}
       - POSTGRES_USER=${POSTGRES_USER:-topiceye}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-topiceye}
-    ports:
-      # 绑 loopback：只让 backend 容器内访问，避免 PG 暴露公网被爆破
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -86,21 +137,25 @@ services:
       resources:
         limits:
           memory: ${POSTGRES_MEM_LIMIT:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── 前端 ──────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      # 绑 loopback：生产用 Nginx/Caddy 反代到 80/443
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
-    # 不 bind mount 源码；只隔离 node_modules
+    # 不映射端口：仅 Docker 内网，由 nginx 容器反代
+    expose:
+      - "3000"
     volumes:
       - frontend-node-modules:/app/node_modules
     environment:
       - BACKEND_API_URL=http://backend:8000
       - NODE_ENV=production
-    # 不 override command：用 Dockerfile CMD（npm run start，不是 dev）
     depends_on:
       backend:
         condition: service_healthy
@@ -109,8 +164,15 @@ services:
       resources:
         limits:
           memory: ${FRONTEND_MEM_LIMIT:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   backend-data:
   postgres-data:
   frontend-node-modules:
+  letsencrypt:               # SSL 证书（certbot 写入，nginx 读取）
+  certbot-webroot:           # ACME challenge 文件（certbot 写入，nginx 读取）

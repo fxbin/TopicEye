@@ -1,0 +1,151 @@
+# ─────────────────────────────────────────────────────────────
+# TopicEye Nginx 反向代理配置（Docker 内网版）
+# ─────────────────────────────────────────────────────────────
+#
+# 此文件由 deploy.sh 生成到 deploy/nginx/conf.d/topiceye.conf
+# 模板源文件: deploy/nginx/topiceye.conf.template
+#
+# 上游服务使用 Docker 服务名（非 127.0.0.1）：
+#   backend:8000   → FastAPI
+#   frontend:3000  → Next.js
+#
+# 路由策略：
+#   /.well-known/acme-challenge/ → certbot webroot (SSL 签发)
+#   /api/          → backend:8000
+#   /dashboard     → backend:8000
+#   /metrics       → backend:8000
+#   /health/       → backend:8000
+#   /docs          → backend:8000
+#   /openapi.json  → backend:8000
+#   其余所有       → frontend:3000
+# ─────────────────────────────────────────────────────────────
+
+# ── 上游服务（Docker 内网服务名）───────────────────────────────
+upstream topiceye_backend {
+    server backend:8000;
+    keepalive 32;
+}
+
+upstream topiceye_frontend {
+    server frontend:3000;
+    keepalive 16;
+}
+
+# ── HTTP (80) ─────────────────────────────────────────────────
+server {
+    listen 80;
+    server_name __DOMAIN__;
+
+    # Nginx 自身健康检查（Docker healthcheck 用）
+    location = /nginx-health {
+        access_log off;
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+
+    # ── ACME Challenge（certbot SSL 签发验证）─────────────────
+    # certbot 容器将验证文件写入 /var/www/certbot，nginx 读它
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        access_log off;
+    }
+
+    # ── 后端 API ──────────────────────────────────────────────
+    location /api/ {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        # LLM 分析 / 日报生成等长耗时请求
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_connect_timeout 10s;
+
+        # SSE / 流式响应
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # ── Swagger / OpenAPI ─────────────────────────────────────
+    location /docs {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /openapi.json {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # ── 监控 & Prometheus ─────────────────────────────────────
+    location /dashboard {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /metrics {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # ── 健康检查 ──────────────────────────────────────────────
+    location /health/ {
+        proxy_pass http://topiceye_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # ── 前端 (Next.js SSR + 静态资源) ────────────────────────
+    location / {
+        # SSL 启用后，HTTP 请求 301 跳转到 HTTPS
+        # __SSL_REDIRECT__
+
+        proxy_pass http://topiceye_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── Gzip ──────────────────────────────────────────────────
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/xml
+        image/svg+xml;
+}
+
+# ── HTTPS (443) — SSL 启用后由 deploy.sh 注入 ─────────────────
+# __SSL_SERVER_BLOCK__

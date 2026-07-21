@@ -15,7 +15,6 @@ from app.api.v1.auth import get_current_admin_user
 from app.core.database import database_profile, get_db
 from app.core.db_backend import database_diagnostics, redact_database_secrets
 from app.models.app_setting import DEFAULT_FEATURE_FLAGS
-from app.models.app_setting import get_feature_flags_async, set_feature_flags_async
 from app.repositories.app_setting_repo import AppSettingRepository
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(get_current_admin_user)])
@@ -149,7 +148,7 @@ class FeatureFlagsUpdateRequest(BaseModel):
 @router.get("/feature-flags")
 async def get_feature_flags(db: AsyncSession = Depends(get_db)):
     """获取功能模块开关列表。DB 为空时回退默认值（所有可选模块默认关）。"""
-    flags = await get_feature_flags_async(db)
+    flags = await AppSettingRepository(db).list_feature_flags()
     return {"flags": flags, "defaults": DEFAULT_FEATURE_FLAGS}
 
 
@@ -159,7 +158,7 @@ async def update_feature_flags(
     db: AsyncSession = Depends(get_db),
 ):
     """更新功能模块开关（upsert 合并）。返回合并后的完整 flags。"""
-    merged = await set_feature_flags_async(payload.flags, db)
+    merged = await AppSettingRepository(db).upsert_feature_flags(payload.flags)
     await db.commit()
     return {"flags": merged}
 

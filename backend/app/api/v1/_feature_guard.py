@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.app_setting import get_feature_flag_async
+from app.repositories.app_setting_repo import AppSettingRepository
 
 
 def require_feature(flag_key: str):
@@ -20,7 +20,7 @@ def require_feature(flag_key: str):
     """
 
     async def _guard(db: AsyncSession = Depends(get_db)):
-        if not await get_feature_flag_async(db, flag_key):
+        if not await AppSettingRepository(db).get_feature_flag(flag_key):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="此功能未启用")
         return True
 

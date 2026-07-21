@@ -34,9 +34,11 @@ _BLOCKED_PATTERNS = [
 
 
 async def _load_instances_from_db(db=None) -> list[dict]:
-    """Load RSSHub instance list from app_settings. Returns list of dicts."""
-    from app.models.app_setting import AppSetting
-    from sqlalchemy import select
+    """Load RSSHub instance list from app_settings. Returns list of dicts.
+
+    DB 空或 JSON 损坏时返回 DEFAULT_RSSHUB_INSTANCES（由 repo 层负责回退）。
+    """
+    from app.repositories.app_setting_repo import AppSettingRepository
 
     close_after = False
     if db is None:
@@ -46,15 +48,7 @@ async def _load_instances_from_db(db=None) -> list[dict]:
         close_after = True
 
     try:
-        result = await db.execute(select(AppSetting).where(AppSetting.key == "rsshub_instances"))
-        row = result.scalar_one_or_none()
-        if row and row.value:
-            try:
-                instances = json.loads(row.value)
-                return [i for i in instances if i.get("enabled", True)]
-            except json.JSONDecodeError:
-                pass
-        return []
+        return await AppSettingRepository(db).list_rsshub_instances()
     finally:
         if close_after:
             await db.close()

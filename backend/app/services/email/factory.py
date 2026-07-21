@@ -11,10 +11,9 @@ from __future__ import annotations
 import json
 import logging
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.app_setting import AppSetting
+from app.repositories.app_setting_repo import AppSettingRepository
 from app.services.email.base import EmailProvider
 from app.services.email.brevo_provider import BrevoProvider
 from app.services.email.smtp_provider import SmtpProvider
@@ -47,10 +46,7 @@ async def get_email_provider(db: AsyncSession) -> EmailProvider | None:
     返回:
         EmailProvider 实例，或 None（未配置）
     """
-    result = await db.execute(
-        select(AppSetting).where(AppSetting.key == _EMAIL_PROVIDER_CONFIG_KEY)
-    )
-    row = result.scalar_one_or_none()
+    row = await AppSettingRepository(db).get_by_key(_EMAIL_PROVIDER_CONFIG_KEY)
     if not row or not row.value:
         return None
 

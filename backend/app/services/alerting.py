@@ -80,17 +80,12 @@ async def _resolve_webhook_urls(event_type: str = "source_failure") -> list[str]
     try:
         import json
 
-        from sqlalchemy import select
-
         from app.core.database import async_session
-        from app.models.app_setting import AppSetting
+        from app.repositories.app_setting_repo import AppSettingRepository
         from app.services.secret_store import decrypt_secret
 
         async with async_session() as db:
-            result = await db.execute(
-                select(AppSetting).where(AppSetting.key == "notification_webhook_config")
-            )
-            row = result.scalar_one_or_none()
+            row = await AppSettingRepository(db).get_by_key("notification_webhook_config")
             if row and row.value:
                 try:
                     cfg = json.loads(row.value)

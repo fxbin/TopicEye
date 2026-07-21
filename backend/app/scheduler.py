@@ -437,8 +437,8 @@ async def _cleanup_old_trending_snapshots() -> None:
 async def _sync_fanqie() -> None:
     """番茄小说榜单每日抓取（凌晨1点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
-        from app.models.app_setting import get_feature_flag_async
-        if not await get_feature_flag_async(db, "webnovel_module"):
+        from app.repositories.app_setting_repo import AppSettingRepository
+        if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return  # 网文模块未启用，跳过抓取
     logger.info("Scheduler: fanqie sync started")
     try:
@@ -455,8 +455,8 @@ async def _sync_fanqie() -> None:
 async def _sync_qimao() -> None:
     """七猫小说榜单每日抓取（凌晨2点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
-        from app.models.app_setting import get_feature_flag_async
-        if not await get_feature_flag_async(db, "webnovel_module"):
+        from app.repositories.app_setting_repo import AppSettingRepository
+        if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return
     logger.info("Scheduler: qimao sync started")
     try:
@@ -473,8 +473,8 @@ async def _sync_qimao() -> None:
 async def _sync_zhihu() -> None:
     """知乎故事榜单每日抓取（凌晨4点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
-        from app.models.app_setting import get_feature_flag_async
-        if not await get_feature_flag_async(db, "webnovel_module"):
+        from app.repositories.app_setting_repo import AppSettingRepository
+        if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return
     logger.info("Scheduler: zhihu sync started")
     try:

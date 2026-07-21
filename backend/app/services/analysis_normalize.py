@@ -42,8 +42,12 @@ def _valid_analysis_result(result: Any) -> bool:
     """Return whether the model result contains the minimum analysis contract.
 
     收紧校验：不仅要求 scores/curation 是 dict，还要求 scores 含至少一个
-    有效数值、summary 非空。否则 LLM 返回空壳（如 {"scores":{},"summary":""}）
+    有效数值。否则 LLM 返回空壳（如 {"scores":{},"summary":""}）
     会被当成有效分析，垃圾数据静默入库污染精选评分。
+
+    注意：summary 非空不再作为硬性校验条件。normalize 会把非 str 的 summary
+    转成 ""，若此时 scores 仍有效，应接受并落库（summary 空不等于空壳）。
+    完全空壳（scores 也无有效数值）仍会被拒绝走 fallback。
     """
     if not isinstance(result, dict):
         return False
@@ -56,10 +60,6 @@ def _valid_analysis_result(result: Any) -> bool:
         isinstance(v, (int, float)) and 0 <= v <= 100 for v in scores.values()
     )
     if not has_valid_score:
-        return False
-    # summary 非空（LLM 必须给出实际摘要）
-    summary = result.get("summary")
-    if not isinstance(summary, str) or not summary.strip():
         return False
     return True
 

@@ -476,15 +476,25 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
                 fallback_used = True
             else:
                 raise
-        if not fallback_used and not _valid_analysis_result(result):
-            logger.warning(
-                "LLM analysis result invalid for content id=%d, using local fallback: %s",
-                content.id,
-                str(result)[:200],
-            )
-            result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
-            fallback_used = True
-    result = _normalize_analysis_result(result)
+        if not fallback_used:
+            # 先 normalize 再校验：让格式漂移（如 summary 非 str、score 超界）有机会被修复。
+            # 否则 _valid_analysis_result 在 normalize 之前就拦截，normalize 容错能力失效。
+            # 但要区分"格式漂移"（原始有 scores/curation 字段，值异常）和"空壳响应"
+            # （原始根本没有 scores/curation 字段，如 {"raw_response":""}）。
+            # 后者必须走 fallback，否则 normalize 会填默认值 50 让空壳静默入库。
+            has_raw_contract = isinstance(result, dict) and isinstance(result.get("scores"), dict) and isinstance(result.get("curation"), dict)
+            result = _normalize_analysis_result(result)
+            if not has_raw_contract or not _valid_analysis_result(result):
+                logger.warning(
+                    "LLM analysis result invalid for content id=%d, using local fallback: %s",
+                    content.id,
+                    str(result)[:200],
+                )
+                result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
+                fallback_used = True
+                result = _normalize_analysis_result(result)
+        else:
+            result = _normalize_analysis_result(result)
 
     # Extract curation
     curation = result.get("curation", {})

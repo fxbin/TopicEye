@@ -492,7 +492,7 @@ async def test_clustering_uses_one_latest_analysis_per_content(monkeypatch):
             )
         await db.commit()
 
-        stats = await topic_clustering.cluster_and_dedup(db)
+        stats = await topic_clustering.cluster_and_dedup(db, use_llm_naming=True)
         topics = (await db.execute(select(TopicGroup))).scalars().all()
 
         assert stats["total"] == 2

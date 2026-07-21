@@ -478,12 +478,20 @@ async def test_weread_sync_error_state_persists_and_key_changes_reset_over_http(
 
     monkeypatch.setattr("app.services.weread_materials.fetch_weread_materials", failing_fetch)
 
+    # 邮箱验证码 refactor 后 register 需要 verification_code 字段并调用 verify_code。
+    # 这里跳过真实校验，直接 mock 成"通过"。
+    async def _noop_verify_code(db, email, code):
+        return None
+
+    monkeypatch.setattr("app.api.v1.auth.verify_code", _noop_verify_code)
+
     registered = await weread_http_client.post(
         "/auth/register",
         json={
             "email": "weread-http@example.com",
             "password": "Password123",
             "display_name": "WeRead HTTP",
+            "verification_code": "1234",
         },
     )
     assert registered.status_code == 201

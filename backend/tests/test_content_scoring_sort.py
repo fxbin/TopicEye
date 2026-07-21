@@ -20,6 +20,7 @@ class FakeContentRepo:
         time_cutoff,
         limit,
         visible_user_id=None,
+        public_only=False,
     ):
         items = [
             _content_item(1, "high"),

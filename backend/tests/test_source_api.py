@@ -729,9 +729,10 @@ async def test_sync_source_requests_post_sync_pipeline_for_new_content(
 
     post_sync_requests = []
     monkeypatch.setattr(sources_api, "ingest_from_source", fake_ingest_from_source)
+    # sources.py 把 _request_post_sync_pipeline 写在函数体内 import（避免顶层循环依赖），
+    # 因此不能 monkeypatch sources_api 模块属性，要 mock 源模块的全路径。
     monkeypatch.setattr(
-        sources_api,
-        "_request_post_sync_pipeline",
+        "app._post_sync_pipeline._request_post_sync_pipeline",
         lambda stats: post_sync_requests.append(stats) or True,
     )
 

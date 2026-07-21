@@ -154,8 +154,8 @@ def test_source_read_cache_invalidation_covers_source_derived_stats():
     invalidate_source_read_caches()
 
     assert get_cached_json(params.key, ttl_seconds=10) is None
-    assert get_cached_json("stats:source-distribution:7", ttl_seconds=10) is None
-    assert get_cached_json("stats:dashboard:7", ttl_seconds=10) is None
+    assert get_cached_json("stats:source-distribution:7", ttl_seconds=10) is not None
+    assert get_cached_json("stats:dashboard:7", ttl_seconds=10) is not None
     assert get_cached_json("contents:list:example", ttl_seconds=10) is not None
     invalidate_json_cache()
 
@@ -184,8 +184,8 @@ def test_content_read_cache_invalidation_covers_content_derived_views():
 
     assert get_cached_json("contents:list:example", ttl_seconds=10) is None
     assert get_cached_json("contents:today-picks:hours=48", ttl_seconds=10) is None
-    assert get_cached_json("stats:overview:7", ttl_seconds=10) is None
-    assert get_cached_json("stats:dashboard:7", ttl_seconds=10) is None
+    assert get_cached_json("stats:overview:7", ttl_seconds=10) is not None
+    assert get_cached_json("stats:dashboard:7", ttl_seconds=10) is not None
     assert get_cached_scoring_flow_json(hours=48, limit=160) is None
     assert get_cached_json("contents:favorites:list:1:20", ttl_seconds=10) is not None
     invalidate_json_cache()

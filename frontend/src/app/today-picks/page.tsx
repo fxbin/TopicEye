@@ -10,6 +10,7 @@ import {
 import { contentsApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import RadarSignature from '@/components/RadarSignature';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
@@ -205,11 +206,14 @@ function TodayPicksPage() {
       <div className="sticky top-0 z-10 -mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-10 py-4.5 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center gap-4.5">
           <div className="flex-1">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-black text-gray-900">当日精选</h1>
-              <Badge tone="primary" className="font-mono text-[10px]">
-                CURATION DESK
-              </Badge>
+            <div className="flex items-center gap-3">
+              <RadarSignature size={40} />
+              <div className="flex items-center gap-2.5">
+                <h1 className="display-title text-xl text-gray-900">当日精选</h1>
+                <Badge tone="primary" className="font-mono text-[10px]">
+                  CURATION DESK
+                </Badge>
+              </div>
             </div>
             <p className="mt-1 text-xs text-gray-400">
               从算法候选中筛出可写选题，按话题、质量和来源做二次判断

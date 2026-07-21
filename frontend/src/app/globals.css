@@ -43,6 +43,7 @@
 
   --font-sans: var(--font-dm-sans), -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+  --font-serif-display: var(--font-display), "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
 
   --radius-lg: 12px;
   --radius-md: 10px;
@@ -147,6 +148,45 @@ main {
   }
 }
 
+/* RadarSignature 品牌签名动画 */
+@keyframes radar-signature-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-signature-sweep {
+  animation: radar-signature-rotate 3.2s linear infinite;
+}
+
+.radar-signature-ping {
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes radar-signature-blip {
+  0%,
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+  62%,
+  78% {
+    opacity: 1;
+  }
+}
+
+.radar-signature-blip {
+  animation: radar-signature-blip 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-signature-sweep,
+  .radar-signature-ping,
+  .radar-signature-blip {
+    animation: none;
+  }
+}
+
 .fade-in {
   animation: fade-in 0.3s ease-out;
 }
@@ -215,6 +255,13 @@ main {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* 衬线 display 标题：页面大标题专用，与 DM Sans 正文形成对比 */
+.display-title {
+  font-family: var(--font-serif-display);
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* Utility: line-clamp */

@@ -34,6 +34,7 @@ const config: Config = {
       fontFamily: {
         sans: [cssVar("font-sans")],
         mono: [cssVar("font-mono")],
+        display: [cssVar("font-serif-display")],
       },
       borderRadius: {
         lg: cssVar("radius-lg"),

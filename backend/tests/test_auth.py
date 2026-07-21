@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, UTC
 
 import httpx
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -29,6 +29,26 @@ from app.services.auth_service import (
 
 # 测试用验证码常量
 _TEST_VERIFICATION_CODE = "123456"
+
+
+def _build_request(path: str = "/auth") -> Request:
+    """构造测试用 Request 对象，供 register/login/logout 路由函数直接调用。
+
+    路由签名 refactor 后新增 `request: Request` 参数（用于 client_ip 日志和限流），
+    直接传 db 会导致 `client_ip(request)` 访问 `request.headers` 时报 AttributeError。
+
+    参数:
+        path: 请求路径（仅用于 Request.scope，不影响测试逻辑）
+    """
+    scope = {
+        "type": "http",
+        "client": ("127.0.0.1", 0),
+        "headers": [],
+        "query_string": b"",
+        "path": path,
+        "method": "POST",
+    }
+    return Request(scope)
 
 
 async def _seed_verification_code(db: AsyncSession, email: str, code: str) -> None:
@@ -190,6 +210,7 @@ async def test_auth_route_functions_register_login_me_logout():
                 display_name="Route User",
                 verification_code=_TEST_VERIFICATION_CODE,
             ),
+            _build_request("/auth/register"),
             db,
         )
         assert registered.user.email == "route@example.com"
@@ -206,6 +227,7 @@ async def test_auth_route_functions_register_login_me_logout():
                     password="Password123",
                     verification_code=_TEST_VERIFICATION_CODE,
                 ),
+                _build_request("/auth/register"),
                 db,
             )
         except HTTPException as exc:
@@ -213,13 +235,23 @@ async def test_auth_route_functions_register_login_me_logout():
         assert duplicate_error is not None
         assert duplicate_error.status_code == 409
 
-        logged_in = await login(AuthLoginRequest(email="route@example.com", password="Password123"), db)
+        logged_in = await login(
+            AuthLoginRequest(email="route@example.com", password="Password123"),
+            _build_request("/auth/login"),
+            db,
+        )
         assert logged_in.user.role == "user"
         current_user = await get_current_user(f"Bearer {logged_in.access_token}", db)
         assert isinstance(current_user, User)
         assert (await me(current_user)).email == "route@example.com"
 
-        assert (await logout(f"Bearer {logged_in.access_token}", db))["logged_out"] is True
+        assert (
+            await logout(
+                _build_request("/auth/logout"),
+                f"Bearer {logged_in.access_token}",
+                db,
+            )
+        )["logged_out"] is True
         invalid_error = None
         try:
             await get_current_user(f"Bearer {logged_in.access_token}", db)

@@ -171,12 +171,15 @@ async def test_warmup_startup_critical_caches_populates_scoring_flow(cache_warmu
 
     expected_warmed = {f"scoring-flow:{hours}:{limit}" for hours, limit in SCORING_FLOW_WARMUP_TARGETS}
     expected_warmed.update(STATS_WORKSPACE_CACHE_KEYS)
+    expected_warmed.update(TRENDING_WORKSPACE_CACHE_KEYS)
     assert set(result["warmed"]) == expected_warmed
     assert result["errors"] == []
     ttl = settings.READ_CACHE_TTL_SECONDS
     for hours, limit in SCORING_FLOW_WARMUP_TARGETS:
         assert get_cached_scoring_flow_json(hours=hours, limit=limit) is not None
     for key in STATS_WORKSPACE_CACHE_KEYS:
+        assert get_cached_json(key, ttl_seconds=ttl) is not None
+    for key in TRENDING_WORKSPACE_CACHE_KEYS:
         assert get_cached_json(key, ttl_seconds=ttl) is not None
 
 

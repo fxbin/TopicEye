@@ -159,11 +159,14 @@ async def test_webnovel_sync_apis_still_require_admin(admin_api_client, monkeypa
     async def fake_zhihu_sync():
         sync_calls.append("zhihu")
 
-    from app.services import fanqie_service, qimao_service, zhihu_service
+    # endpoint 通过 BackgroundTasks 调度 app.scheduler._sync_fanqie / _sync_qimao / _sync_zhihu
+    # （endpoint 内部 from app.scheduler import _sync_fanqie 局部 import）。
+    # 因此 monkeypatch 目标必须是 scheduler 模块的函数对象，而不是 service 层的 full_sync 等。
+    from app import scheduler as scheduler_module
 
-    monkeypatch.setattr(fanqie_service, "full_sync", fake_fanqie_sync)
-    monkeypatch.setattr(qimao_service, "sync_qimao_ranks", fake_qimao_sync)
-    monkeypatch.setattr(zhihu_service, "sync_zhihu_ranks", fake_zhihu_sync)
+    monkeypatch.setattr(scheduler_module, "_sync_fanqie", fake_fanqie_sync)
+    monkeypatch.setattr(scheduler_module, "_sync_qimao", fake_qimao_sync)
+    monkeypatch.setattr(scheduler_module, "_sync_zhihu", fake_zhihu_sync)
 
     endpoints = [
         "/fanqie/sync",
@@ -180,6 +183,11 @@ async def test_webnovel_sync_apis_still_require_admin(admin_api_client, monkeypa
 
         admin = await client.post(endpoint, headers={"Authorization": f"Bearer {admin_token}"})
         assert admin.status_code == 200, endpoint
+        # ASGITransport 下 background task 在 response 返回后由事件循环调度，
+        # 需要 await asyncio.sleep(0) 让出控制权让 fake sync 函数执行。
+        import asyncio
+
+        await asyncio.sleep(0)
 
     assert sync_calls == ["fanqie", "qimao", "zhihu"]
 

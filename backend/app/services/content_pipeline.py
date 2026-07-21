@@ -241,48 +241,13 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         # ids so we can attach ContentMetrics without orphaning them.
         db_elapsed_ms = 0
         if new_items:
-            # dialect.insert does not trigger ORM `default=` callables, so
-            # populate NOT-NULL columns that have no server_default.
-            now = datetime.now(UTC)
-            for item in new_items:
-                if item.crawled_at is None:
-                    item.crawled_at = now
-                if item.created_at is None:
-                    item.created_at = now
-                if item.updated_at is None:
-                    item.updated_at = now
-                if item.is_favorited is None:
-                    item.is_favorited = False
-                if item.similarity_score is None:
-                    item.similarity_score = 0.0
-
-            # Exclude autoincrement PK from explicit values: PG rejects
-            # NULL on a SERIAL PK (NotNullViolationError) while SQLite silently
-            # generates a rowid. Excluding makes both backends auto-generate.
-            column_names = [c.name for c in ContentItem.__table__.columns if not (c.primary_key and c.autoincrement)]
-            new_records = [{col: getattr(item, col) for col in column_names} for item in new_items]
-            insert_stmt = _backend_insert(ContentItem).values(new_records)
-            insert_stmt = insert_stmt.on_conflict_do_nothing(
-                index_elements=["source_id", "content_hash"],
-            ).returning(ContentItem.id)
             db_started_at = time.perf_counter()
-            result = await db.execute(insert_stmt)
-            inserted_ids = [row[0] for row in result.all()]
-
-            # Attach ContentMetrics to successfully inserted rows only.
-            from app.models.metrics import ContentMetrics
-
-            skipped_by_conflict = len(new_items) - len(inserted_ids)
+            skipped_by_conflict = await _persist_new_content_items(
+                db, new_items, metrics_records, category_counts
+            )
             if skipped_by_conflict:
                 duplicate_count += skipped_by_conflict
                 new_count -= skipped_by_conflict
-            for content_id, metrics_rec in zip(inserted_ids, metrics_records):
-                if metrics_rec is None:
-                    continue
-                metrics_rec["content_id"] = content_id
-                db.add(ContentMetrics(**metrics_rec))
-
-            await _increment_category_counts(db, category_counts)
             invalidate_content_read_caches()
             db_elapsed_ms = int((time.perf_counter() - db_started_at) * 1000)
 
@@ -316,6 +281,61 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         await db.flush()
 
     return {"fetched": fetched_count, "new": new_count, "duplicates": duplicate_count}
+
+
+async def _persist_new_content_items(
+    db: AsyncSession,
+    new_items: list[ContentItem],
+    metrics_records: list[dict | None],
+    category_counts: dict[str, int],
+) -> int:
+    """通过方言 INSERT + ON CONFLICT DO NOTHING 持久化新内容项。
+
+    DB 层去重是并发安全的兜底；上方的 SELECT IN 只优化快乐路径。
+    RETURNING 返回实际插入的 id，用于挂载 ContentMetrics 避免孤儿记录。
+
+    Returns:
+        被冲突跳过的数量（skipped_by_conflict）。
+    """
+    # dialect.insert does not trigger ORM `default=` callables, so
+    # populate NOT-NULL columns that have no server_default.
+    now = datetime.now(UTC)
+    for item in new_items:
+        if item.crawled_at is None:
+            item.crawled_at = now
+        if item.created_at is None:
+            item.created_at = now
+        if item.updated_at is None:
+            item.updated_at = now
+        if item.is_favorited is None:
+            item.is_favorited = False
+        if item.similarity_score is None:
+            item.similarity_score = 0.0
+
+    # Exclude autoincrement PK from explicit values: PG rejects
+    # NULL on a SERIAL PK (NotNullViolationError) while SQLite silently
+    # generates a rowid. Excluding makes both backends auto-generate.
+    column_names = [c.name for c in ContentItem.__table__.columns if not (c.primary_key and c.autoincrement)]
+    new_records = [{col: getattr(item, col) for col in column_names} for item in new_items]
+    insert_stmt = _backend_insert(ContentItem).values(new_records)
+    insert_stmt = insert_stmt.on_conflict_do_nothing(
+        index_elements=["source_id", "content_hash"],
+    ).returning(ContentItem.id)
+    result = await db.execute(insert_stmt)
+    inserted_ids = [row[0] for row in result.all()]
+
+    # Attach ContentMetrics to successfully inserted rows only.
+    from app.models.metrics import ContentMetrics
+
+    skipped_by_conflict = len(new_items) - len(inserted_ids)
+    for content_id, metrics_rec in zip(inserted_ids, metrics_records):
+        if metrics_rec is None:
+            continue
+        metrics_rec["content_id"] = content_id
+        db.add(ContentMetrics(**metrics_rec))
+
+    await _increment_category_counts(db, category_counts)
+    return skipped_by_conflict
 
 
 async def _classify_entries_concurrently(
@@ -445,84 +465,14 @@ def _build_metrics_record(entry: dict) -> dict | None:
 
     Returns None when the entry has no recognised metrics meta.
     """
-    # ── Reddit metrics ──
-    reddit_meta = entry.get("_reddit_meta")
-    if reddit_meta:
-        score = reddit_meta.get("score", 0)
-        num_comments = reddit_meta.get("num_comments", 0)
-        subscribers = reddit_meta.get("subreddit_subscribers", 0)
-
-        engagement_rate = 0.0
-        if subscribers > 0:
-            engagement_rate = round((score + num_comments) / subscribers * 100, 4)
-
-        explosion_ratio = 0.0
-        if subscribers > 0:
-            explosion_ratio = round(score / subscribers * 1000, 4)
-
-        return dict(
-            likes=score,
-            comments=num_comments,
-            shares=0,
-            favorites=0,
-            followers_count=subscribers,
-            engagement_rate=engagement_rate,
-            explosion_ratio=explosion_ratio,
-        )
-
-    # ── Zhihu metrics ──
-    zhihu_meta = entry.get("_zhihu_meta")
-    if zhihu_meta:
-        hot_score_raw = zhihu_meta.get("hot_score", 0)
-        rank_raw = zhihu_meta.get("rank", 0)
-        try:
-            hot_score = int(float(str(hot_score_raw).replace("_", "")))
-        except (ValueError, TypeError):
-            hot_score = 0
-        try:
-            rank = int(float(str(rank_raw).replace("_", "")))
-        except (ValueError, TypeError):
-            rank = 0
-
-        # For Zhihu hot list, hot_score is the primary engagement metric
-        # Use a simple explosion_ratio based on rank (lower rank = higher)
-        explosion_ratio = 0.0
-        if rank > 0:
-            explosion_ratio = round(1000.0 / rank, 4)
-
-        return dict(
-            likes=hot_score,
-            comments=0,
-            shares=0,
-            favorites=0,
-            followers_count=0,
-            engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
-            explosion_ratio=explosion_ratio,
-        )
-
-    # ── Douyin Hot metrics ──
-    douyin_meta = entry.get("_douyin_hot_meta")
-    if douyin_meta:
-        hot_score = douyin_meta.get("hot_score", 0)
-        rank = douyin_meta.get("rank", 0)
-
-        explosion_ratio = 0.0
-        if rank > 0:
-            explosion_ratio = round(1000.0 / rank, 4)
-
-        return dict(
-            likes=hot_score,
-            comments=0,
-            shares=0,
-            favorites=0,
-            followers_count=0,
-            engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
-            explosion_ratio=explosion_ratio,
-        )
-
-    # ── Twitter RSS metrics ──
+    if entry.get("_reddit_meta"):
+        return _build_reddit_metrics(entry["_reddit_meta"])
+    if entry.get("_zhihu_meta"):
+        return _build_zhihu_metrics(entry["_zhihu_meta"])
+    if entry.get("_douyin_hot_meta"):
+        return _build_douyin_metrics(entry["_douyin_hot_meta"])
     if entry.get("_twitter_rss_meta"):
-        # Basic metrics from xgo.ing RSS — limited data available
+        # xgo.ing RSS 数据有限，暂只占位
         return dict(
             likes=0,
             comments=0,
@@ -532,8 +482,82 @@ def _build_metrics_record(entry: dict) -> dict | None:
             engagement_rate=0.0,
             explosion_ratio=0.0,
         )
-
     return None
+
+
+def _build_reddit_metrics(meta: dict) -> dict:
+    """Reddit 子版块指标：score / num_comments / subreddit_subscribers。"""
+    score = meta.get("score", 0)
+    num_comments = meta.get("num_comments", 0)
+    subscribers = meta.get("subreddit_subscribers", 0)
+
+    engagement_rate = 0.0
+    if subscribers > 0:
+        engagement_rate = round((score + num_comments) / subscribers * 100, 4)
+
+    explosion_ratio = 0.0
+    if subscribers > 0:
+        explosion_ratio = round(score / subscribers * 1000, 4)
+
+    return dict(
+        likes=score,
+        comments=num_comments,
+        shares=0,
+        favorites=0,
+        followers_count=subscribers,
+        engagement_rate=engagement_rate,
+        explosion_ratio=explosion_ratio,
+    )
+
+
+def _build_zhihu_metrics(meta: dict) -> dict:
+    """知乎热榜指标：hot_score / rank（rank 越小越靠前）。"""
+    hot_score_raw = meta.get("hot_score", 0)
+    rank_raw = meta.get("rank", 0)
+    try:
+        hot_score = int(float(str(hot_score_raw).replace("_", "")))
+    except (ValueError, TypeError):
+        hot_score = 0
+    try:
+        rank = int(float(str(rank_raw).replace("_", "")))
+    except (ValueError, TypeError):
+        rank = 0
+
+    # For Zhihu hot list, hot_score is the primary engagement metric
+    # Use a simple explosion_ratio based on rank (lower rank = higher)
+    explosion_ratio = 0.0
+    if rank > 0:
+        explosion_ratio = round(1000.0 / rank, 4)
+
+    return dict(
+        likes=hot_score,
+        comments=0,
+        shares=0,
+        favorites=0,
+        followers_count=0,
+        engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
+        explosion_ratio=explosion_ratio,
+    )
+
+
+def _build_douyin_metrics(meta: dict) -> dict:
+    """抖音热榜指标：hot_score / rank。"""
+    hot_score = meta.get("hot_score", 0)
+    rank = meta.get("rank", 0)
+
+    explosion_ratio = 0.0
+    if rank > 0:
+        explosion_ratio = round(1000.0 / rank, 4)
+
+    return dict(
+        likes=hot_score,
+        comments=0,
+        shares=0,
+        favorites=0,
+        followers_count=0,
+        engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
+        explosion_ratio=explosion_ratio,
+    )
 
 
 def _backend_insert(model):

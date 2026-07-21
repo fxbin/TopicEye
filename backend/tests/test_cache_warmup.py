@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone, UTC
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -138,7 +138,6 @@ async def cache_warmup_session(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_warmup_read_caches_populates_hot_read_cache_keys(cache_warmup_session):
-
     result = await cache_warmup.warmup_read_caches()
 
     expected_warmed = {

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
+import app.services.weread_materials as weread_materials
 from app.api.v1.auth import router as auth_router
 from app.api.v1.integrations import (
     delete_weread_integration,
@@ -21,14 +21,13 @@ from app.api.v1.integrations import (
     update_weread_integration,
 )
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings
-from app.core.database import Base
-from app.core.database import get_db
+from app.core.database import Base, get_db
 from app.models.content import ContentItem
 from app.models.source import Source, SourceStatus
 from app.models.user_integration import UserIntegration
 from app.schemas.integration import IntegrationUpdateRequest
 from app.services.auth_service import create_user
-from app.services.integration_service import WEREAD_PROVIDER, WEREAD_INSTALL_COMMAND, get_user_integration
+from app.services.integration_service import WEREAD_INSTALL_COMMAND, WEREAD_PROVIDER, get_user_integration
 from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
 from app.services.source_cache import (
     default_source_list_cache_params,
@@ -36,7 +35,6 @@ from app.services.source_cache import (
     invalidate_source_list_cache,
     set_cached_source_list,
 )
-import app.services.weread_materials as weread_materials
 from app.services.weread_materials import normalize_weread_entries, redact_weread_sync_error
 
 
@@ -235,20 +233,18 @@ async def test_weread_fetch_full_sync_paginates_until_no_more(monkeypatch):
             assert url == weread_materials.WEREAD_GATEWAY_URL
             call_count["n"] += 1
             if call_count["n"] == 1:
-                return FakeResponse({
-                    "books": [
-                        {"title": f"书{i}", "sort": i, "bookId": f"b{i}"}
-                        for i in range(1, 4)
-                    ],
-                    "hasMore": 1,
-                })
-            return FakeResponse({
-                "books": [
-                    {"title": f"书{i}", "sort": i, "bookId": f"b{i}"}
-                    for i in range(4, 6)
-                ],
-                "hasMore": 0,
-            })
+                return FakeResponse(
+                    {
+                        "books": [{"title": f"书{i}", "sort": i, "bookId": f"b{i}"} for i in range(1, 4)],
+                        "hasMore": 1,
+                    }
+                )
+            return FakeResponse(
+                {
+                    "books": [{"title": f"书{i}", "sort": i, "bookId": f"b{i}"} for i in range(4, 6)],
+                    "hasMore": 0,
+                }
+            )
 
     monkeypatch.setattr(weread_materials.httpx, "Client", FakeClient)
 
@@ -289,13 +285,12 @@ async def test_weread_fetch_limit_caps_total_entries(monkeypatch):
         def post(self, url, *, headers, json):
             call_count["n"] += 1
             n = call_count["n"]
-            return FakeResponse({
-                "books": [
-                    {"title": f"页{n}-{i}", "sort": n * 10 + i, "bookId": f"b{n}-{i}"}
-                    for i in range(3)
-                ],
-                "hasMore": 1,
-            })
+            return FakeResponse(
+                {
+                    "books": [{"title": f"页{n}-{i}", "sort": n * 10 + i, "bookId": f"b{n}-{i}"} for i in range(3)],
+                    "hasMore": 1,
+                }
+            )
 
     monkeypatch.setattr(weread_materials.httpx, "Client", FakeClient)
 
@@ -379,6 +374,7 @@ async def test_weread_integration_is_scoped_to_current_user(monkeypatch):
 @pytest.mark.asyncio
 async def test_weread_sync_gateway_error_persists_and_key_change_resets(monkeypatch):
     """同步失败时错误状态持久化；换 Key 后状态重置。"""
+
     async def failed_sync(db, integration, *, user_id, api_key, limit=0):
         raise RuntimeError("无法连接微信读书服务: connection refused")
 

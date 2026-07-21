@@ -9,16 +9,18 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import fanqie as fanqie_api
-from app.api.v1 import llm_models as llm_models_api
-from app.api.v1 import qimao as qimao_api
-from app.api.v1 import scheduler as scheduler_api
-from app.api.v1 import settings as settings_api
-from app.api.v1 import sources as sources_api
-from app.api.v1 import topics as topics_api
-from app.api.v1 import webnovel_reports as webnovel_reports_api
-from app.api.v1 import zhihu as zhihu_api
+from app.api.v1 import (
+    auth as auth_api,
+    fanqie as fanqie_api,
+    llm_models as llm_models_api,
+    qimao as qimao_api,
+    scheduler as scheduler_api,
+    settings as settings_api,
+    sources as sources_api,
+    topics as topics_api,
+    webnovel_reports as webnovel_reports_api,
+    zhihu as zhihu_api,
+)
 from app.core.database import Base
 from app.models.topic import TopicGroup
 from app.services.auth_service import create_session, create_user

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest

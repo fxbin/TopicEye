@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.api.v1.sources as sources_api
 import app.main  # noqa: F401 - import all models for Base.metadata
 import app.services.content_pipeline as content_pipeline
-from app.api.v1.auth import get_current_admin_user
+from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.api.v1.sources import create_source, router as sources_router, update_source
-from app.core.database import Base
-from app.core.database import get_db
+from app.core.database import Base, get_db
 from app.models.source import Source, SourceStatus, SourceType
+from app.models.user import User
 from app.repositories.source_repo import SourceRepository
 from app.schemas.source import SourceCreate, SourceUpdate
 from app.services.content_pipeline import ingest_from_source, redact_source_sync_error
@@ -948,9 +948,6 @@ async def test_source_list_cache_header_and_sync_error_invalidation(
 
 # ── Dual-track endpoint tests (/me series) ────────────────────────────
 
-from app.api.v1.auth import get_current_user
-from app.models.user import User as UserModel
-
 
 @pytest_asyncio.fixture
 async def dual_track_client(monkeypatch):
@@ -962,10 +959,10 @@ async def dual_track_client(monkeypatch):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    pro_user = UserModel(
+    pro_user = User(
         id=10, email="pro@example.com", password_hash="x", plan="pro", role="user", is_active=True, display_name="Pro"
     )
-    free_user = UserModel(
+    free_user = User(
         id=11,
         email="free@example.com",
         password_hash="x",
@@ -974,7 +971,7 @@ async def dual_track_client(monkeypatch):
         is_active=True,
         display_name="Free",
     )
-    admin_user = UserModel(
+    admin_user = User(
         id=1,
         email="admin@example.com",
         password_hash="x",
@@ -988,7 +985,7 @@ async def dual_track_client(monkeypatch):
     app.include_router(sources_router)
     user_by_id = {10: pro_user, 11: free_user, 1: admin_user}
 
-    def current_user_dep() -> UserModel:
+    def current_user_dep() -> User:
         return pro_user  # default
 
     app.dependency_overrides[get_current_user] = lambda: pro_user
@@ -1063,7 +1060,6 @@ async def test_free_user_cannot_create_private_source(dual_track_client):
 @pytest.mark.asyncio
 async def test_user_cannot_see_or_modify_other_users_private_source(dual_track_client):
     client, factory, users = dual_track_client
-    pro = users[10]
     other = users[11]
 
     # Pro creates a private source
@@ -1096,7 +1092,6 @@ async def test_user_cannot_see_or_modify_other_users_private_source(dual_track_c
 @pytest.mark.asyncio
 async def test_admin_does_not_see_user_private_sources(dual_track_client):
     client, factory, _ = dual_track_client
-    pro = _[10] if False else None  # ignore; we'll re-fetch
 
     # Pro creates a private source
     create = await client.post(

@@ -1,11 +1,12 @@
-from datetime import datetime, timedelta, timezone, UTC
-from types import SimpleNamespace
+# ruff: noqa: I001
 import asyncio
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 
@@ -18,8 +19,7 @@ from app.models.metrics import ContentMetrics  # noqa: F401
 from app.models.source import Source  # noqa: F401
 from app.models.topic import TopicGroup  # noqa: F401
 from app.repositories.content_repo import ANALYSIS_STALE_MINUTES, ContentRepo
-from app.services import analysis
-from app.services import analysis_jobs
+from app.services import analysis, analysis_jobs
 from app.services.analysis_jobs import (
     create_analysis_job,
     finish_analysis_job,
@@ -27,14 +27,14 @@ from app.services.analysis_jobs import (
     mark_analysis_job_running,
     reset_analysis_jobs,
 )
-from app import scheduler as scheduler_module
-from app import _post_sync_pipeline as post_sync_pipeline_module
 from app.services.scoring_flow import (
     build_empty_payload,
     cache_payload,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
 )
+from app import scheduler as scheduler_module
+from app import _post_sync_pipeline as post_sync_pipeline_module
 
 
 async def _session_factory():
@@ -1515,7 +1515,7 @@ async def test_analyze_single_failure_sets_error_cooldown_timestamp(monkeypatch)
         )
         await db.commit()
 
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await analyses_api.analyze_single(1, db=db)
 
         stored_content = await db.get(ContentItem, 1)

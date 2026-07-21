@@ -1,5 +1,5 @@
-from types import SimpleNamespace
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 

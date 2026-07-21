@@ -88,7 +88,7 @@ def _user_to_item(user: User, oauth_providers: list[str]) -> UserListItem:
 
 async def _load_user_or_404(db: AsyncSession, user_id: int) -> User:
     """按 user_id 加载用户，不存在则抛 404。"""
-    user = await db.get(User, user_id)
+    user = await UserRepository(db).get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
     return user

@@ -48,6 +48,14 @@ class LlmModelRepository(BaseRepository[LlmModel]):
         """
         self.db.add(model)
 
+    async def delete_instance(self, model: LlmModel) -> None:
+        """删除已加载的 LlmModel 实例并 flush。
+
+        供 delete_model 端点使用，与 add_instance 对称。
+        """
+        await self.db.delete(model)
+        await self.db.flush()
+
     async def list_enabled_by_ids(self, model_ids: list[int]) -> Sequence[LlmModel]:
         """按 id 列表查询已启用的 LlmModel，用于 A/B 测评选择参与模型。
 

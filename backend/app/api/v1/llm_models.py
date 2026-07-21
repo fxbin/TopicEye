@@ -611,12 +611,12 @@ async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a model configuration."""
 
     async def _delete():
-        model = await LlmModelRepository(db).get_by_id(model_id)
+        repo = LlmModelRepository(db)
+        model = await repo.get_by_id(model_id)
         if not model:
             raise HTTPException(404, f"Model {model_id} not found")
         name = model.name
-        await db.delete(model)
-        await db.flush()
+        await repo.delete_instance(model)
         logger.info("LLM model deleted: id=%d, name=%s", model_id, name)
         return {"message": f"模型 {name} 已删除"}
 

@@ -57,13 +57,9 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 |---|---|---|
 | ![favorites](docs/screenshots/screenshot-favorites.png) | ![my-topics](docs/screenshots/screenshot-my-topics.png) | ![my-topics-config](docs/screenshots/screenshot-my-topics-config.png) |
 
-| My Sources | Login | Plans |
+| Login | Profile | |
 |---|---|---|
-| ![sources-me](docs/screenshots/screenshot-sources-me.png) | ![login](docs/screenshots/screenshot-login.png) | ![plans](docs/screenshots/screenshot-plans.png) |
-
-| Profile | | |
-|---|---|---|
-| ![profile](docs/screenshots/screenshot-profile.png) | | |
+| ![login](docs/screenshots/screenshot-login.png) | ![profile](docs/screenshots/screenshot-profile.png) | |
 
 ### Admin Console
 
@@ -78,16 +74,6 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 | Release Notes | Feedback Workbench | System Settings |
 |---|---|---|
 | ![admin-updates](docs/screenshots/screenshot-admin-updates.png) | ![admin-feedback](docs/screenshots/screenshot-admin-feedback.png) | ![admin-settings](docs/screenshots/screenshot-admin-settings.png) |
-
-### Mobile Responsive (iPhone 14 / 390 × 844)
-
-| Today's Picks | Daily Report | Trending Radar |
-|---|---|---|
-| ![mobile-today](docs/screenshots/screenshot-mobile-today.png) | ![mobile-daily](docs/screenshots/screenshot-mobile-daily.png) | ![mobile-trending](docs/screenshots/screenshot-mobile-trending.png) |
-
-| WeRead | Low-Follower Viral | Admin | Login |
-|---|---|---|---|
-| ![mobile-weread](docs/screenshots/screenshot-mobile-weread.png) | ![mobile-lfv](docs/screenshots/screenshot-mobile-low-follower-viral.png) | ![mobile-admin](docs/screenshots/screenshot-mobile-admin.png) | ![mobile-login](docs/screenshots/screenshot-mobile-login.png) |
 
 ## Features
 

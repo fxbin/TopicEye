@@ -55,13 +55,9 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 |---|---|---|
 | ![favorites](docs/screenshots/screenshot-favorites.png) | ![my-topics](docs/screenshots/screenshot-my-topics.png) | ![my-topics-config](docs/screenshots/screenshot-my-topics-config.png) |
 
-| 我的信源 | 登录 | 权益规划 |
+| 登录 | 个人资料 | |
 |---|---|---|
-| ![sources-me](docs/screenshots/screenshot-sources-me.png) | ![login](docs/screenshots/screenshot-login.png) | ![plans](docs/screenshots/screenshot-plans.png) |
-
-| 个人资料 | | |
-|---|---|---|
-| ![profile](docs/screenshots/screenshot-profile.png) | | |
+| ![login](docs/screenshots/screenshot-login.png) | ![profile](docs/screenshots/screenshot-profile.png) | |
 
 ### 后台管理
 
@@ -76,16 +72,6 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 | 发版记录 | 反馈工作台 | 系统设置 |
 |---|---|---|
 | ![admin-updates](docs/screenshots/screenshot-admin-updates.png) | ![admin-feedback](docs/screenshots/screenshot-admin-feedback.png) | ![admin-settings](docs/screenshots/screenshot-admin-settings.png) |
-
-### 移动端适配（iPhone 14 / 390 × 844）
-
-| 今日选题 | 日报 | 趋势雷达 |
-|---|---|---|
-| ![mobile-today](docs/screenshots/screenshot-mobile-today.png) | ![mobile-daily](docs/screenshots/screenshot-mobile-daily.png) | ![mobile-trending](docs/screenshots/screenshot-mobile-trending.png) |
-
-| 微信读书 | 低粉爆文 | 后台管理 | 登录 |
-|---|---|---|---|
-| ![mobile-weread](docs/screenshots/screenshot-mobile-weread.png) | ![mobile-lfv](docs/screenshots/screenshot-mobile-low-follower-viral.png) | ![mobile-admin](docs/screenshots/screenshot-mobile-admin.png) | ![mobile-login](docs/screenshots/screenshot-mobile-login.png) |
 
 ## 功能模块
 

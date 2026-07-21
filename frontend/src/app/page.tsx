@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import {
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   ExternalLink,
   PenLine,
@@ -59,6 +61,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('全部');
+  const [categoryExpanded, setCategoryExpanded] = useState(false);
   const [activeRecommendLevel, setActiveRecommendLevel] = useState<RecommendLevel | '全部'>('全部');
   const [activeTag, setActiveTag] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
@@ -327,11 +330,14 @@ export default function HomePage() {
         </Toolbar>
       </div>
 
-      {/* Filters - Category */}
+      {/* Filters - Category (first row + expand) */}
       <div className="mb-3 max-w-[820px]">
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-xs font-medium text-gray-500">分类</span>
-          {categoryOptions.map((c) => (
+          {(categoryExpanded
+            ? categoryOptions
+            : categoryOptions.slice(0, 6)
+          ).map((c) => (
             <CategoryChip
               key={c}
               name={c}
@@ -343,6 +349,16 @@ export default function HomePage() {
               }}
             />
           ))}
+          {categoryOptions.length > 6 && (
+            <button
+              type="button"
+              onClick={() => setCategoryExpanded((v) => !v)}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-normal text-gray-500 transition hover:border-primary-border hover:text-primary-text"
+            >
+              {categoryExpanded ? '收起' : `更多 ${categoryOptions.length - 6}`}
+              {categoryExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
         </div>
       </div>
 

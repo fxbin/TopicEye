@@ -184,6 +184,8 @@ export function FilterPanel({
   onTimeRange: (range: string) => void;
   onClear: () => void;
 }) {
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+
   return (
     <Panel className="p-4">
       <PanelTitle icon={SlidersHorizontal} title="筛选台" />
@@ -218,7 +220,10 @@ export function FilterPanel({
         <div>
           <FilterLabel icon={Filter}>分类</FilterLabel>
           <div className="flex flex-wrap gap-1.5">
-            {(CATEGORIES as readonly string[]).map((cat) => (
+            {(categoriesExpanded
+              ? (CATEGORIES as readonly string[])
+              : (CATEGORIES as readonly string[]).slice(0, 5)
+            ).map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -233,6 +238,16 @@ export function FilterPanel({
                 {cat}
               </button>
             ))}
+            {(CATEGORIES as readonly string[]).length > 5 && (
+              <button
+                type="button"
+                onClick={() => setCategoriesExpanded((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary-border hover:text-primary-text"
+              >
+                {categoriesExpanded ? '收起' : `更多 ${(CATEGORIES as readonly string[]).length - 5}`}
+                {categoriesExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+            )}
           </div>
         </div>
         {activeFilterCount > 0 && (

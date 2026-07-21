@@ -65,4 +65,5 @@ htmlcov/
 .playwright-mcp/
 
 .zcode/
+.workbuddy/
 .brooks-lint-history.json

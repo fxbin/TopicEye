@@ -56,12 +56,8 @@ def _valid_analysis_result(result: Any) -> bool:
     if not isinstance(scores, dict) or not isinstance(curation, dict):
         return False
     # scores 至少含一个 0-100 的有效数值
-    has_valid_score = any(
-        isinstance(v, (int, float)) and 0 <= v <= 100 for v in scores.values()
-    )
-    if not has_valid_score:
-        return False
-    return True
+    has_valid_score = any(isinstance(v, int | float) and 0 <= v <= 100 for v in scores.values())
+    return has_valid_score
 
 
 def _normalize_deep_read(raw: Any) -> dict[str, Any] | None:
@@ -80,10 +76,7 @@ def _normalize_deep_read(raw: Any) -> dict[str, Any] | None:
         score = 0.0
     # worth_deep_read 显式 bool 解析（bool("false") 是 True 的陷阱）
     raw_worth = raw.get("worth_deep_read", False)
-    if isinstance(raw_worth, bool):
-        worth = raw_worth
-    else:
-        worth = str(raw_worth).strip().lower() in ("true", "1", "yes")
+    worth = raw_worth if isinstance(raw_worth, bool) else str(raw_worth).strip().lower() in ("true", "1", "yes")
     # 调和矛盾：以 score≥70 为准（prompt 约定）
     worth = worth or score >= 70
     return {
@@ -130,7 +123,7 @@ def _normalize_string_list(
     if isinstance(value, str):
         parsed = _parse_json_list(value)
         candidates: Any = parsed if parsed is not None else [value]
-    elif isinstance(value, (list, tuple, set)):
+    elif isinstance(value, list | tuple | set):
         candidates = value
     else:
         return []

@@ -8,13 +8,12 @@ to the Pro analysis route.
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import re
-import asyncio
-from datetime import datetime, timedelta, timezone, UTC
-from typing import Any, Optional
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,19 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
-from app.models.content import ContentItem, ContentStatus
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem, ContentStatus
 from app.repositories.content_repo import ANALYSIS_STALE_MINUTES
-from app.services.llm import call_llm_json, call_llm_json_with_metadata
-from app.services.llm.prompts.analysis import (
-    SYSTEM_PROMPT,
-    ANALYSIS_PROMPT,
-    SYSTEM_PROMPT_EN,
-    ANALYSIS_PROMPT_EN,
-    PAPER_SYSTEM_PROMPT,
-    PAPER_ANALYSIS_PROMPT,
-)
-from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.analysis_normalize import (
     _clamp_score,
     _detect_lang,
@@ -43,6 +32,16 @@ from app.services.analysis_normalize import (
     _normalize_string_list,
     _normalize_text,
     _valid_analysis_result,
+)
+from app.services.content_read_cache import invalidate_content_read_caches
+from app.services.llm import call_llm_json, call_llm_json_with_metadata
+from app.services.llm.prompts.analysis import (
+    ANALYSIS_PROMPT,
+    ANALYSIS_PROMPT_EN,
+    PAPER_ANALYSIS_PROMPT,
+    PAPER_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_EN,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,8 +75,6 @@ PRESCREEN_PROMPT = """
 """
 
 # ── Language detection (no external deps) ─────────────────────────────
-
-
 
 
 def _normalize_prescreen_result(result: Any) -> dict[str, Any] | None:
@@ -223,7 +220,7 @@ def _local_analysis_result(content: ContentItem, *, lang: str, is_arxiv: bool = 
     if is_arxiv:
         # 论文 LLM 兜底：用标题生成中文占位概述，避免英文原文直接展示
         summary = f"《{title}》是 arXiv 上的学术论文。LLM 暂不可用，建议查看原文获取详细方法与结论。"
-        recommendation = f"这篇论文来自 arXiv，涉及前沿研究。LLM 限流未能生成详细中文解读，可先收藏待精读。"
+        recommendation = "这篇论文来自 arXiv，涉及前沿研究。LLM 限流未能生成详细中文解读，可先收藏待精读。"
     elif lang == "en":
         recommendation = f"这条内容来自 {content.source_name or '外部信源'}，适合作为跨市场趋势素材先观察，再结合中文语境提炼选题角度。"
     else:
@@ -274,9 +271,7 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
     )
 
 
-def _select_analysis_prompts(
-    content: ContentItem, *, title: str, content_text: str
-) -> tuple[str, str, str, bool]:
+def _select_analysis_prompts(content: ContentItem, *, title: str, content_text: str) -> tuple[str, str, str, bool]:
     """按内容特征选择分析 prompt。
 
     优先级：arXiv 论文 > 英文内容 > 中文内容。
@@ -297,9 +292,7 @@ def _select_analysis_prompts(
     return SYSTEM_PROMPT, ANALYSIS_PROMPT, lang, False
 
 
-def _apply_cross_market_bonus(
-    content: ContentItem, *, lang: str, curation_score: float
-) -> float:
+def _apply_cross_market_bonus(content: ContentItem, *, lang: str, curation_score: float) -> float:
     """英文跨境内容给中文创作者更高的早期信号价值，curation_score 加分。
 
     触发条件：source/platform 命中 hacker/reddit/techcrunch/arxiv/github 且原 curation≥55。
@@ -482,7 +475,11 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             # 但要区分"格式漂移"（原始有 scores/curation 字段，值异常）和"空壳响应"
             # （原始根本没有 scores/curation 字段，如 {"raw_response":""}）。
             # 后者必须走 fallback，否则 normalize 会填默认值 50 让空壳静默入库。
-            has_raw_contract = isinstance(result, dict) and isinstance(result.get("scores"), dict) and isinstance(result.get("curation"), dict)
+            has_raw_contract = (
+                isinstance(result, dict)
+                and isinstance(result.get("scores"), dict)
+                and isinstance(result.get("curation"), dict)
+            )
             result = _normalize_analysis_result(result)
             if not has_raw_contract or not _valid_analysis_result(result):
                 logger.warning(

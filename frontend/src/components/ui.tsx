@@ -138,7 +138,8 @@ export function PanelTitle({
   hint,
   className,
 }: {
-  icon: LucideIcon;
+  /** 可选。不传则不渲染图标——用于图标密度高的模块区，降低视觉噪音。 */
+  icon?: LucideIcon;
   title: string;
   hint?: string;
   className?: string;
@@ -146,7 +147,7 @@ export function PanelTitle({
   return (
     <div className={cx('mb-3 flex items-center justify-between gap-3', className)}>
       <div className="flex min-w-0 items-center gap-2">
-        <Icon size={15} className="text-primary" strokeWidth={2.2} />
+        {Icon && <Icon size={15} className="text-primary" strokeWidth={2.2} />}
         <span className="text-sm font-black text-gray-900">{title}</span>
       </div>
       {hint && <span className="whitespace-nowrap text-[11px] text-gray-400">{hint}</span>}
@@ -166,7 +167,8 @@ export function Surface({
   children,
   className,
 }: {
-  icon: LucideIcon;
+  /** 可选。不传则不渲染图标——用于图标密度高的模块区，降低视觉噪音。 */
+  icon?: LucideIcon;
   title: string;
   hint?: string;
   children: React.ReactNode;
@@ -176,7 +178,7 @@ export function Surface({
     <Panel className={cx('p-4.5 sm:p-5', className)}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />
+          {Icon && <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />}
           <span className="truncate text-sm font-black text-gray-900">{title}</span>
         </div>
         {hint && <span className="shrink-0 text-[11px] text-gray-400">{hint}</span>}

@@ -4,13 +4,9 @@ import React, { useState } from 'react';
 import {
   Activity,
   BarChart3,
-  BookOpen,
-  CalendarDays,
   Database,
   Gauge,
-  Layers3,
   PieChart,
-  RadioTower,
   RefreshCw,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -438,29 +434,28 @@ function NovelPlatformStats({ platforms }: { platforms: StatsNovelPlatform[] }) 
     return <div className="text-[13px] text-gray-400">暂无数据</div>;
   }
 
+  // 统一到主色系 *-light / *-border / *-text 三层，与全局设计 token 对齐，
+  // 不再引入主色板之外的独立蓝色。
   const platformColors = [
-    { bg: 'bg-primary-light', color: 'text-primary', border: 'border-primary-border', dot: 'bg-primary' },
-    { bg: 'bg-teal-light', color: 'text-teal', border: 'border-teal-border', dot: 'bg-teal' },
-    { bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE' },
+    { bg: 'bg-primary-light', color: 'text-primary', border: 'border-primary-border' },
+    { bg: 'bg-teal-light', color: 'text-teal', border: 'border-teal-border' },
+    { bg: 'bg-purple-light', color: 'text-purple', border: 'border-purple-border' },
+    { bg: 'bg-amber-light', color: 'text-amber', border: 'border-amber-border' },
   ];
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
       {platforms.map((platform, i) => {
         const pc = platformColors[i % platformColors.length];
-        const customStyle = typeof pc.bg === 'string' && pc.bg.startsWith('#')
-          ? { background: pc.bg, borderColor: pc.border, color: pc.color }
-          : undefined;
         return (
           <div
             key={platform.table}
-            className={cx('flex min-w-0 flex-col rounded-sm border px-4 py-3.5', !customStyle && pc.bg, !customStyle && pc.border)}
-            style={customStyle}
+            className={cx('flex min-w-0 flex-col rounded-sm border px-4 py-3.5', pc.bg, pc.border)}
           >
-            <div className={cx('mb-2 text-[13px] font-black', !customStyle && pc.color)}>
+            <div className={cx('mb-2 text-[13px] font-black', pc.color)}>
               {platform.name}
             </div>
-            <div className={cx('font-mono text-3xl font-black leading-none', !customStyle && pc.color)}>
+            <div className={cx('font-mono text-3xl font-black leading-none', pc.color)}>
               {platform.count}
               <span className="ml-1 text-xs font-medium text-gray-400">条</span>
             </div>
@@ -549,7 +544,7 @@ export default function StatsPage() {
                 </Badge>
                 <span className="text-xs font-bold text-gray-500">最近 {days} 天</span>
               </div>
-              <h1 className="m-0 text-[28px] font-black leading-[1.12] text-gray-900">
+              <h1 className="display-title m-0 text-[28px] leading-[1.12] text-gray-900">
                 数据统计工作台
               </h1>
               <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-gray-500">
@@ -618,11 +613,11 @@ export default function StatsPage() {
             <div
               className="mb-3.5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-3.5"
             >
-              <Surface title="每日入库趋势" icon={CalendarDays} hint={`最近 ${days} 天`}>
+              <Surface title="每日入库趋势" hint={`最近 ${days} 天`}>
                 <ContributionHeatmap data={trend} days={days} />
               </Surface>
 
-              <Surface title="网文雷达统计" icon={BookOpen}>
+              <Surface title="网文雷达统计">
                 <NovelPlatformStats platforms={novelPlatforms} />
               </Surface>
             </div>
@@ -664,9 +659,9 @@ export default function StatsPage() {
                   label: '精选率',
                   value: curatedRate,
                   unit: '%',
-                  color: '#D97706',
+                  color: '#374151',
                   sub: `${overview?.curated ?? 0} / ${overview?.total ?? 0}`,
-                  tone: 'amber' as const,
+                  tone: 'neutral' as const,
                 },
               ].map(card => <KpiCard key={card.label} {...card} />)}
             </div>
@@ -676,7 +671,7 @@ export default function StatsPage() {
                 ═══════════════════════════════════════════════════ */}
             <div className="mb-3.5 grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] items-start gap-3.5">
               {/* B. 信源分布 */}
-              <Surface title="信源分布" icon={RadioTower} hint={`${sources.length} 个信源`}>
+              <Surface title="信源分布" hint={`${sources.length} 个信源`}>
                 <SourcePieChart sources={sources} />
 
                 {/* Source table */}
@@ -733,7 +728,7 @@ export default function StatsPage() {
               </Surface>
 
               {/* C. 分类分布 */}
-              <Surface title="分类分布" icon={Layers3} hint={`${categories.length} 个分类 · Top10 + 蓝海`}>
+              <Surface title="分类分布" hint={`${categories.length} 个分类 · Top10 + 蓝海`}>
                 <CategoryDistribution categories={categories} />
               </Surface>
             </div>

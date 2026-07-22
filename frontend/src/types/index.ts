@@ -604,3 +604,50 @@ export interface MonthlyDigestListResponse {
 export interface MonthlyDigestMonthsResponse {
   months: MonthlyDigestMonthSummary[];
 }
+
+// ─── Yesterday Tracking（昨日追踪卡，一期补连续性闭环）───
+
+/** 昨日单选题今日的状态：兑现 / 反转 / 仍在榜 / 掉出榜单 */
+export type YesterdayPickStatus = 'confirmed' | 'reversed' | 'persisted' | 'dropped';
+
+export interface YesterdayTrackingPick {
+  /** 观点化标题（日报叙事用） */
+  title: string;
+  /** 稳定键：原文标题（跨版本一致，与 pickKey 对齐） */
+  source_title: string;
+  /** 昨日榜单名次（0 起） */
+  rank: number;
+  /** 昨日得分 */
+  old_score: number | null;
+  /** 昨日 lifecycle */
+  yesterday_lifecycle: string | null;
+  /** 今日得分（null = 今日未再上榜） */
+  today_score: number | null;
+  /** 今日 lifecycle（null = 今日未再上榜） */
+  today_lifecycle: string | null;
+  /** 24h 热度变化率（百分比，正涨负跌；null = 数据不足） */
+  heat_delta_pct: number | null;
+  /** 今日状态判定 */
+  status: YesterdayPickStatus;
+}
+
+/** 仅 scope=mine 时非空：昨日 write/watch 标记的选题今日进展 */
+export interface YesterdayYourMarked {
+  title: string;
+  mark: 'write' | 'watch';
+  category: string | null;
+  today_score: number | null;
+  today_lifecycle: string | null;
+  status: YesterdayPickStatus;
+}
+
+export interface YesterdayTrackingData {
+  /** 是否存在昨日报告（false 时 picks/your_marked 为空） */
+  has_yesterday: boolean;
+  /** 昨日报告日期 YYYY-MM-DD */
+  report_date: string;
+  /** 昨日 top picks 的今日追踪 */
+  picks: YesterdayTrackingPick[];
+  /** 我标过的昨日选题（仅 /me） */
+  your_marked: YesterdayYourMarked[];
+}

@@ -13,6 +13,7 @@ import {
   Inbox,
   KeyRound,
   Lightbulb,
+  ListChecks,
   Loader2,
   Newspaper,
   Pin,
@@ -24,6 +25,8 @@ import {
 } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
 import { dailyReportApi } from '@/lib/api';
+import YesterdayTracking from './_yesterday-tracking';
+import SelectedDrawer from './_selected-drawer';
 import Sparkline, { SparklineData } from '@/components/Sparkline';
 import { AutoLink } from '@/components/AutoLink';
 import {
@@ -389,6 +392,9 @@ export default function DailyReportPage() {
   const handleMark = useCallback(
     async (pickTitle: string, action: 'write' | 'watch' | 'skip', category?: string, sourceUrl?: string) => {
       if (!report) return;
+      // 记住标记前的状态，用于失败回滚（修掉原静默失败）
+      const prevAction = pickMarks[pickTitle];
+      const willUnmark = prevAction === action;
       // 乐观更新
       setPickMarks((prev) => {
         const next = { ...prev };
@@ -399,8 +405,7 @@ export default function DailyReportPage() {
         }
         return next;
       });
-      // 当前标记（乐观更新后判断是否 toggle off）
-      const willUnmark = pickMarks[pickTitle] === action;
+      setMarkError(null);
       try {
         if (willUnmark) {
           await dailyReportApi.unmarkPick(report.report_date, pickTitle);
@@ -414,7 +419,17 @@ export default function DailyReportPage() {
           });
         }
       } catch {
-        // 静默失败，乐观更新已生效
+        // 失败回滚乐观更新，并给出轻量内联提示（不再静默）
+        setPickMarks((prev) => {
+          const next = { ...prev };
+          if (prevAction) {
+            next[pickTitle] = prevAction;
+          } else {
+            delete next[pickTitle];
+          }
+          return next;
+        });
+        setMarkError(willUnmark ? '取消标记失败，已还原' : '标记失败，已还原');
       }
     },
     [report, pickMarks],
@@ -460,6 +475,15 @@ export default function DailyReportPage() {
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
   // 原文标题展示语言：默认中文翻译，可切换英文原文
   const [showOriginalLang, setShowOriginalLang] = useState(false);
+  // 今日已选抽屉开关（一期补行动闭环）
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 标记失败的轻量内联提示（修掉原 handleMark 静默失败）
+  const [markError, setMarkError] = useState<string | null>(null);
+  // 今日「已选」标记数（action=write），用于工具栏 badge
+  const writeCount = useMemo(
+    () => Object.values(pickMarks).filter((a) => a === 'write').length,
+    [pickMarks],
+  );
 
 
   const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -532,6 +556,28 @@ export default function DailyReportPage() {
           >
             我的日报
           </a>
+          {/* 今日已选入口（一期补行动闭环）：点击打开抽屉 */}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            disabled={writeCount === 0}
+            className={cx(
+              'ml-2 inline-flex items-center gap-1 rounded px-2 py-1 transition',
+              writeCount > 0
+                ? 'bg-primary-light text-primary hover:bg-primary/15'
+                : 'text-gray-300',
+            )}
+            title={writeCount > 0 ? `今日已选 ${writeCount} 个选题` : '今日还未选选题'}
+          >
+            <ListChecks size={12} />
+            <span className="tabular-nums">{writeCount}</span>
+            <span className="hidden sm:inline">已选</span>
+          </button>
+          {markError && (
+            <span className="text-[10px] font-bold text-red" title={markError}>
+              ⚠
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -641,6 +687,12 @@ export default function DailyReportPage() {
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2 text-[11px] font-black text-gray-400">
                       <span>{report.report_date} {report.weekday}</span>
+                      {/* 版本标签（复活死代码 EDITION_LABELS，区分午间快照/完整复盘） */}
+                      {report.edition && EDITION_LABELS[report.edition] && (
+                        <span className="rounded-xs border border-primary-border bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                          {EDITION_LABELS[report.edition]}
+                        </span>
+                      )}
                       {generatedAt && <span>· 更新于 {generatedAt}</span>}
                       <span>· {pickList.length} 个选题 · 约 {readMinutes} 分钟</span>
                     </div>
@@ -656,6 +708,9 @@ export default function DailyReportPage() {
                   </div>
                 </div>
               </div>
+
+              {/* 昨日追踪卡（一期补连续性闭环）：昨日 top picks 的 24h 热度 delta + lifecycle 验证 */}
+              <YesterdayTracking scope={reportScope} reportDate={report.report_date} />
 
               {/* 今日看点 TOC（可点击跳转，仅深度精讲） */}
               {featureGroups.length > 1 && (
@@ -1108,6 +1163,16 @@ export default function DailyReportPage() {
           )}
         </div>
       </div>
+
+      {/* 今日已选抽屉（一期补行动闭环）：fixed 定位，挂在根容器内即可 */}
+      {report && (
+        <SelectedDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          picks={pickList}
+          pickMarks={pickMarks}
+        />
+      )}
     </div>
   );
 }

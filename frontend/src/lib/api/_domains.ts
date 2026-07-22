@@ -5,7 +5,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
+import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
 import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
 import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
@@ -618,6 +618,11 @@ export const dailyReportApi = {
     return request(`/daily-reports/generate-version${query ? `?${query}` : ''}`, { method: 'POST' });
   },
 
+  /** 昨日追踪（公共日报）：昨日 top picks 的 24h 热度 delta + lifecycle 验证 */
+  getYesterdayTracking(reportDate: string): Promise<YesterdayTrackingData> {
+    return request(`/daily-reports/yesterday-tracking?report_date=${encodeURIComponent(reportDate)}`);
+  },
+
   // ── /me series: user-owned private daily reports (T2) ──
 
   /** 获取今日我的专属日报（不存在则自动生成；需 Pro+） */
@@ -638,6 +643,11 @@ export const dailyReportApi = {
   /** 强制重新生成我的今日日报 */
   regenerateMy(): Promise<Record<string, unknown>> {
     return request('/daily-reports/me/generate', { method: 'POST' });
+  },
+
+  /** 昨日追踪（我的日报，Pro+）：额外返回 your_marked（昨日 write/watch 标记的今日进展） */
+  getMyYesterdayTracking(reportDate: string): Promise<YesterdayTrackingData> {
+    return request(`/daily-reports/me/yesterday-tracking?report_date=${encodeURIComponent(reportDate)}`);
   },
 };
 

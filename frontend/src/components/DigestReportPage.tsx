@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUp,
   BarChart3,
+  BookOpen,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
@@ -26,6 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button, Panel, cx } from '@/components/ui';
+import { ReaderDrawer } from '@/components/ReaderDrawer';
 import {
   CurrentPeriodButton,
   PlatformHeading,
@@ -58,6 +60,7 @@ interface DigestPick {
   category?: string;
   platforms: string[];
   score?: number;
+  content_id?: number;
 }
 
 interface DigestActionItem {
@@ -224,6 +227,8 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   const [periodsLoading, setPeriodsLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 站内阅读：点选题标题旁的 BookOpen 打开 ReaderDrawer（与日报/今日精选一致）
+  const [readerContentId, setReaderContentId] = useState<number | null>(null);
 
   const loadPeriods = useCallback(async () => {
     try {
@@ -509,7 +514,20 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
                         {index + 1}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[15px] font-black leading-6 text-gray-900">{pick.title}</div>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 text-[15px] font-black leading-6 text-gray-900">{pick.title}</div>
+                          {/* 站内阅读：有 content_id 时点开 ReaderDrawer；历史数据无 content_id 不显示入口 */}
+                          {pick.content_id && (
+                            <button
+                              type="button"
+                              onClick={() => setReaderContentId(pick.content_id!)}
+                              className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                              title="站内阅读"
+                            >
+                              <BookOpen size={15} />
+                            </button>
+                          )}
+                        </div>
                         <div className="mt-1 text-xs leading-5 text-gray-500">{pick.reason}</div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {pick.source && <span className="text-[10px] text-gray-400">信源 {pick.source}</span>}
@@ -601,6 +619,9 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
           <ReportStatusPanel icon={Inbox}>{emptyText}</ReportStatusPanel>
         )}
       </main>
+
+      {/* 站内阅读抽屉：复用 ReaderDrawer，按 content_id 取正文（与日报/今日精选一致） */}
+      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </div>
   );
 }

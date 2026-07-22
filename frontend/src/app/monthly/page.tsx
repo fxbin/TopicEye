@@ -1,12 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { CalendarDays } from 'lucide-react';
 import DigestReportPage from '@/components/DigestReportPage';
 import { monthlyDigestApi } from '@/lib/api';
+import { useReadTracking } from '@/hooks/useReadTracking';
 import type { MonthlyDigest, MonthlyDigestMonthSummary } from '@/types';
 
 export default function MonthlyDigestPage() {
+  const [currentMonthKey, setCurrentMonthKey] = useState<string | undefined>();
+  const handleDigestChange = useCallback((digest: MonthlyDigest | null) => {
+    setCurrentMonthKey(digest?.month_key);
+  }, []);
+
+  // 阅读时长追踪：切换月刊/离开页面时上报累计停留时长（行为偏好数据）
+  useReadTracking('monthly_digest', currentMonthKey);
+
   return (
     <DigestReportPage<MonthlyDigest, MonthlyDigestMonthSummary>
       title="AI 月刊"
@@ -38,6 +47,7 @@ export default function MonthlyDigestPage() {
       getDigestEnd={(digest) => digest.month_end}
       getSummaryKey={(summary) => summary.month_key}
       getSummaryLabel={(summary) => summary.month_label}
+      onDigestChange={handleDigestChange}
     />
   );
 }

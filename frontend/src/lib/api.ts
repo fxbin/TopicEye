@@ -325,6 +325,8 @@ export { sourcesApi, contentsApi, contentCategoriesApi, favoritesApi, topicsApi,
 export type { SourceBatchImportItem, ApiTokenItem } from './api/_domains';
 export { settingsApi, statsApi, statsJobsApi, trendsApi, feedbackApi, productFeedbackApi } from './api/_analytics';
 export { weeklyDigestApi, monthlyDigestApi } from './api/_digests';
+export { readRecordApi } from './api/_read-records';
+export type { ReadTargetType, ReadRecordReportPayload, ReadRecordResponse } from './api/_read-records';
 export { trendingApi } from './api/_trending';
 export { motherTopicsApi } from './api/_mother-topics';
 export { fanqieApi, webnovelReportsApi, qimaoApi, zhihuApi } from './api/_mother-topics';

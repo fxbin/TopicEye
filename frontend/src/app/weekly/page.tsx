@@ -5,6 +5,7 @@ import { ClipboardList } from 'lucide-react';
 import DigestReportPage from '@/components/DigestReportPage';
 import WeeklyPickTracking from '@/components/WeeklyPickTracking';
 import { weeklyDigestApi } from '@/lib/api';
+import { useReadTracking } from '@/hooks/useReadTracking';
 import type { WeeklyDigest, WeeklyDigestWeekSummary } from '@/types';
 
 export default function WeeklyDigestPage() {
@@ -12,6 +13,9 @@ export default function WeeklyDigestPage() {
   const handleDigestChange = useCallback((digest: WeeklyDigest | null) => {
     setCurrentWeekKey(digest?.week_key);
   }, []);
+
+  // 阅读时长追踪：切换周刊/离开页面时上报累计停留时长（行为偏好数据）
+  useReadTracking('weekly_digest', currentWeekKey);
 
   return (
     <>

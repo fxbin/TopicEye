@@ -27,6 +27,7 @@ import {
 import { Panel, cx } from '@/components/ui';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { dailyReportApi } from '@/lib/api';
+import { useReadTracking } from '@/hooks/useReadTracking';
 import YesterdayTracking from './_yesterday-tracking';
 import SelectedDrawer from './_selected-drawer';
 import Sparkline, { SparklineData } from '@/components/Sparkline';
@@ -488,6 +489,14 @@ export default function DailyReportPage() {
   const writeCount = useMemo(
     () => Object.values(pickMarks).filter((a) => a === 'write').length,
     [pickMarks],
+  );
+
+  // 阅读时长追踪：仅在报告完成（DONE）时计时，生成中/错误状态不计时；
+  // 切换日期或离开页面时上报累计停留时长（行为偏好数据）
+  useReadTracking(
+    'daily_report',
+    report?.status === 'DONE' ? report.report_date : undefined,
+    report?.status === 'DONE' ? report.id : undefined,
   );
 
 

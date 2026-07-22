@@ -38,6 +38,7 @@ _VALID_LIFECYCLE = {"上升期", "见顶", "退潮"}
 _BRIEF_ALLOWED_FIELDS = {
     "source_idx", "source_title", "source_title_zh", "editorial_title", "title",
     "tier", "category", "reason", "platforms", "source_url", "score",
+    "content_id",  # 站内阅读所需：ReaderDrawer 按 content_id 取正文
 }
 
 SYSTEM_PROMPT = """你是 TopicEye 的资深内容主编，为内容创作者编写每日 AI 选题日报。读者是公众号、小红书、视频号的创作者，他们需要"今天写什么、怎么写、为什么值得写"。
@@ -386,6 +387,9 @@ def _match_picks_to_curated(
         pick["source_title"] = pick.get("source_title") or matched_item["title"]
         pick["title"] = pick.get("editorial_title") or matched_item["title"]
         pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
+        # 站内阅读：注入底层 content_id（= ContentItem.id），供前端 ReaderDrawer 取正文。
+        # 在 feature/brief 分支之前注入，保证两条路径都带上；已加入 _BRIEF_ALLOWED_FIELDS。
+        pick["content_id"] = matched_item["id"]
         # —— 后端兜底校验（不信任 LLM 输出的枚举/字段约束）——
         tier = pick.get("tier") or "feature"
         pick["tier"] = tier

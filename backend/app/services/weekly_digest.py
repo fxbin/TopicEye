@@ -17,6 +17,7 @@ from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
 from app.services.digest_base import (
     apply_llm_result,
+    apply_llm_result_with_matching,
     commit_digest_error,
     is_active_generating,
     push_digest_notification,
@@ -198,13 +199,22 @@ async def generate_weekly_digest(
 
         # Validate LLM returned useful content — empty dict is a failure
         overview = result.get("overview", "")
+        used_fallback = False
         if not overview or "raw_response" in result:
             logger.warning("Weekly digest LLM returned invalid content, using fallback: %s", str(result)[:200])
             result = build_digest_fallback(items_data, label=week_label)
             overview = result.get("overview", "")
+            used_fallback = True
 
         digest.overview = overview
-        apply_llm_result(digest, result)
+        # fallback 已自带 content_id（digest_fallback 从 item 直接构造）；
+        # LLM 路径按 source_idx 回引匹配注入 content_id。注意：source_idx 对齐 prompt
+        # 的前 25 条，但 title 兜底需搜索全量 items_data（LLM 可能选到非前 25 的素材，
+        # 实测其 title 常接近原文，全量搜索命中率更高）。
+        if used_fallback:
+            apply_llm_result(digest, result)
+        else:
+            apply_llm_result_with_matching(digest, result, items_data)
         digest.status = "DONE"
         digest.updated_at = utc_now()
         await db.commit()

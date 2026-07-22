@@ -18,6 +18,7 @@ from app.core.time import utc_now
 from app.models.monthly_digest import MonthlyDigest
 from app.services.digest_base import (
     apply_llm_result,
+    apply_llm_result_with_matching,
     commit_digest_error,
     is_active_generating,
     push_digest_notification,
@@ -165,13 +166,20 @@ async def generate_monthly_digest(
         )
 
         overview = result.get("overview", "")
+        used_fallback = False
         if not overview or "raw_response" in result:
             logger.warning("Monthly digest LLM returned invalid content, using fallback: %s", str(result)[:200])
             result = build_digest_fallback(items_data, label=month_label)
             overview = result.get("overview", "")
+            used_fallback = True
 
         digest.overview = overview
-        apply_llm_result(digest, result)
+        # fallback 已自带 content_id；LLM 路径按 source_idx 回引匹配注入。
+        # title 兜底搜索全量 items_data（LLM 可能选到非前 40 的素材）。
+        if used_fallback:
+            apply_llm_result(digest, result)
+        else:
+            apply_llm_result_with_matching(digest, result, items_data)
         digest.status = "DONE"
         digest.updated_at = utc_now()
         await db.commit()

@@ -19,7 +19,7 @@ MONTHLY_DIGEST_PROMPT = """你是一位资深内容策划顾问。请根据以�
     {{"title": "月度趋势标题", "desc": "趋势描述（60字内）", "color": "#3B82F6", "momentum": "up"}}
   ],
   "top_picks": [
-    {{"rank": 1, "title": "选题标题", "source": "来源名称", "category": "分类", "reason": "中文摘要式推荐理由（70字内，概括核心信息+为什么值得写）", "score": 85, "platforms": ["公众号", "小红书"]}}
+    {{"rank": 1, "source_idx": 1, "source_title": "上方数据的原文标题（逐字复制，勿改写）", "title": "观点化选题标题（可改写为更吸引创作者的标题）", "source": "来源名称", "category": "分类", "reason": "中文摘要式推荐理由（70字内，概括核心信息+为什么值得写）", "score": 85, "platforms": ["公众号", "小红书"]}}
   ],
   "category_summary": {{
     "AI": {{"count": 5, "avg_score": 78, "top_title": "最热标题"}},
@@ -42,6 +42,9 @@ MONTHLY_DIGEST_PROMPT = """你是一位资深内容策划顾问。请根据以�
 要求：
 - trends 给出 4-6 个本月内容趋势，momentum 为 up/down/stable
 - top_picks 从上面数据中选 10-12 个最值得写的选题，按推荐度排序
+- top_picks.source_idx 必须是上方数据中对应选题的序号（1-based），后端据此回链原文；source_title 必须逐字复制该序号对应的原文标题，不要改写或翻译
+- top_picks.title 是你可以改写的观点化标题，source_title 是原文标题的精确引用，两者分开
+- 不要编造 source_url，URL 由后端注入
 - top_picks.reason 必须是中文摘要式推荐理由：先概括这条内容讲了什么，再说明为什么值得写；不要输出英文、不要营销夸张词、不要只写“建议关注/可以写”
 - category_summary 按分类统计本月内容（count=数量, avg_score=平均创作分, top_title=该分类最热内容）
 - platform_tips 给出各平台下月可执行的创作建议（每平台2-3条）

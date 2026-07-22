@@ -63,6 +63,7 @@ def build_digest_fallback(
                 "score": round(_score(item), 1),
                 "platforms": ["公众号", "小红书", "短视频"],
                 "source_url": _text(item.get("url")),
+                "content_id": item.get("id"),
             }
         )
 

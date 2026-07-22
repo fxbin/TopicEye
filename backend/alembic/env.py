@@ -39,6 +39,7 @@ import app.models.mother_topic  # noqa: F401, E402
 import app.models.notification  # noqa: F401, E402
 import app.models.product_feedback  # noqa: F401, E402
 import app.models.qimao  # noqa: F401, E402
+import app.models.read_record  # noqa: F401, E402
 import app.models.scheduled_job  # noqa: F401, E402
 import app.models.trending  # noqa: F401, E402
 import app.models.user  # noqa: F401, E402

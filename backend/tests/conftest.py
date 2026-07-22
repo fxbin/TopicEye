@@ -73,6 +73,7 @@ import app.models.llm_model  # noqa: F401
 import app.models.monthly_digest  # noqa: F401
 import app.models.mother_topic  # noqa: F401
 import app.models.notification  # noqa: F401
+import app.models.read_record  # noqa: F401
 import app.models.source  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401

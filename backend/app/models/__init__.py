@@ -17,6 +17,7 @@ from app.models.article_snapshot import ArticleSnapshot
 from app.models.article_reader_event import ArticleReaderEvent
 from app.models.metrics_snapshot import MetricsSnapshotRecord
 from app.models.weread_stats_cache import WeReadStatsCache
+from app.models.read_record import ReadRecord
 
 __all__ = [
     "Source",
@@ -41,4 +42,5 @@ __all__ = [
     "ArticleReaderEvent",
     "MetricsSnapshotRecord",
     "WeReadStatsCache",
+    "ReadRecord",
 ]

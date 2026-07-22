@@ -31,6 +31,7 @@ import app.models.weekly_digest  # noqa: F401
 import app.models.fanqie  # noqa: F401
 import app.models.metrics_snapshot  # noqa: F401
 import app.models.qimao  # noqa: F401
+import app.models.read_record  # noqa: F401
 import app.models.zhihu  # noqa: F401
 from app.api.v1.router import router as v1_router
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings

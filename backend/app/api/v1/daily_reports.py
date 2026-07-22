@@ -400,6 +400,249 @@ async def get_sparkline(
     }
 
 
+# ── 昨日追踪（一期补连续性闭环）──────────────────────────────
+
+
+def _pick_key(pick: dict) -> str:
+    """选题稳定键：优先 source_title（跨版本稳定），回退 title。与前端 pickKey 对齐。"""
+    return pick.get("source_title") or pick.get("title") or ""
+
+
+def _lifecycle_status(
+    yesterday_lc: str | None,
+    today_lc: str | None,
+    on_board_today: bool,
+) -> str:
+    """判定昨日选题今日的状态。
+
+    - ``confirmed``：上升期今日转见顶或仍上升期（趋势兑现）
+    - ``reversed``：上升期今日转退潮（趋势反转）
+    - ``persisted``：仍在榜但无 lifecycle 变化可判断
+    - ``dropped``：今日已掉出榜单
+    """
+    if not on_board_today:
+        return "dropped"
+    if yesterday_lc == "上升期":
+        if today_lc == "退潮":
+            return "reversed"
+        if today_lc in ("见顶", "上升期"):
+            return "confirmed"
+    return "persisted"
+
+
+def _heat_delta_pct(
+    raw: list[tuple[datetime, int]],
+    *,
+    today_iso: str,
+) -> float | None:
+    """根据 sparkline pipeline 返回的小时桶数据，算「昨日 vs 今日」热度变化率。
+
+    取昨日桶均值作 baseline，今日桶均值作对比，返回百分比变化：
+    (today_avg - yesterday_avg) / max(1, yesterday_avg) * 100。
+    任一侧无数据返回 None（前端显示「—」）。
+    """
+    if not raw:
+        return None
+    yesterday_counts: list[int] = []
+    today_counts: list[int] = []
+    for ts, cnt in raw:
+        if ts.date().isoformat() == today_iso:
+            today_counts.append(cnt)
+        else:
+            yesterday_counts.append(cnt)
+    if not yesterday_counts or not today_counts:
+        return None
+    y_avg = sum(yesterday_counts) / len(yesterday_counts)
+    t_avg = sum(today_counts) / len(today_counts)
+    if y_avg <= 0:
+        return None
+    return round((t_avg - y_avg) / y_avg * 100, 1)
+
+
+async def _build_yesterday_tracking(
+    db: AsyncSession,
+    *,
+    today_report,
+    report_repo: DailyReportRepository,
+    content_repo: ContentRepo,
+    owner_user_id: int | None = None,
+    user_id: int | None = None,
+) -> dict:
+    """组装昨日追踪卡数据。纯只读，不改任何数据。
+
+    复用既有资产：DailyReport.source_item_ids / top_picks、ContentRepo
+    .count_hourly_by_title_keywords（sparkline pipeline）、PickMarkRepository
+    （周报 pick-tracking）。不引入新表/字段。
+    """
+    # 1. 算昨天日期（基于今日报告日期，避免跨时区漂移）
+    try:
+        today_date = datetime.fromisoformat(today_report.report_date).date()
+    except (ValueError, TypeError):
+        today_date = datetime.now(LOCAL_TZ).date()
+    yesterday_iso = (today_date - timedelta(days=1)).isoformat()
+
+    yesterday_report = await report_repo.get_yesterday_report(
+        yesterday_iso, owner_user_id=owner_user_id
+    )
+    base: dict = {
+        "has_yesterday": False,
+        "report_date": yesterday_iso,
+        "picks": [],
+        "your_marked": [],
+    }
+    if not yesterday_report:
+        return base
+
+    # 2. 解析昨日 top_picks
+    try:
+        yesterday_picks = _safe_json_loads(yesterday_report.top_picks) or []
+    except Exception:
+        yesterday_picks = []
+    if not yesterday_picks:
+        return base
+
+    base["has_yesterday"] = True
+
+    # 3. 今日上榜 source_title 集合（用于 dropped 判定 + 今日 lifecycle/score）
+    try:
+        today_picks = _safe_json_loads(today_report.top_picks) or []
+    except Exception:
+        today_picks = []
+    today_by_key: dict[str, dict] = {}
+    for tp in today_picks:
+        key = _pick_key(tp)
+        if key:
+            today_by_key[key] = tp
+
+    # 4. 组装每个昨日 pick 的追踪项
+    items: list[dict] = []
+    for rank, yp in enumerate(yesterday_picks):
+        key = _pick_key(yp)
+        if not key:
+            continue
+        today_pick = today_by_key.get(key)
+        on_board_today = today_pick is not None
+        yesterday_lc = yp.get("lifecycle")
+        today_lc = today_pick.get("lifecycle") if today_pick else None
+
+        # 热度 delta：复用 sparkline pipeline（48h 覆盖昨日+今日）
+        keywords = _extract_sparkline_keywords(yp.get("source_title") or yp.get("title") or "")
+        heat_delta = None
+        if keywords:
+            cutoff = datetime.now() - timedelta(hours=48)
+            raw = await content_repo.count_hourly_by_title_keywords(keywords, cutoff)
+            heat_delta = _heat_delta_pct(raw, today_iso=today_report.report_date)
+
+        items.append(
+            {
+                "title": yp.get("title") or yp.get("source_title") or "",
+                "source_title": yp.get("source_title") or "",
+                "rank": rank,
+                "old_score": yp.get("score"),
+                "yesterday_lifecycle": yesterday_lc,
+                "today_score": today_pick.get("score") if today_pick else None,
+                "today_lifecycle": today_lc,
+                "heat_delta_pct": heat_delta,
+                "status": _lifecycle_status(yesterday_lc, today_lc, on_board_today),
+            }
+        )
+    base["picks"] = items
+
+    # 5. scope=mine 时，附「我标过的」昨日选题进展（二期个性化的数据预留）
+    if user_id is not None:
+        from datetime import date as date_type
+
+        mark_repo = PickMarkRepository(db)
+        marks = await mark_repo.list_by_user(user_id, date_type.fromisoformat(yesterday_iso))
+        # 复用与 picks 相同的今日匹配逻辑
+        for m in marks:
+            if m.action == "skip":
+                continue
+            key = m.pick_title
+            today_pick = today_by_key.get(key)
+            on_board_today = today_pick is not None
+            base["your_marked"].append(
+                {
+                    "title": m.pick_title,
+                    "mark": m.action,
+                    "category": m.pick_category,
+                    "today_score": today_pick.get("score") if today_pick else None,
+                    "today_lifecycle": today_pick.get("lifecycle") if today_pick else None,
+                    "status": "dropped" if not on_board_today else "persisted",
+                }
+            )
+
+    return base
+
+
+def _safe_json_loads(value) -> list | dict | None:
+    """容忍 None / 已是 list / JSON 字符串三种情况。"""
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return value
+    import json
+
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/yesterday-tracking")
+async def get_yesterday_tracking(
+    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """昨日 top picks 的 24h 热度 delta + lifecycle 验证（公共日报）。
+
+    纯只读聚合，不改数据。无昨日报告返回 ``{has_yesterday: false}``。
+    """
+    return await _build_yesterday_tracking_public(db, report_date=report_date, owner_user_id=None)
+
+
+@router.get("/me/yesterday-tracking")
+async def get_my_yesterday_tracking(
+    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """昨日追踪（我的日报，Pro+）。额外返回 your_marked（昨日 write/watch 标记的今日进展）。"""
+    if not plan_allows_private_source(user.plan):
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+    return await _build_yesterday_tracking_public(
+        db, report_date=report_date, owner_user_id=user.id, user_id=user.id
+    )
+
+
+async def _build_yesterday_tracking_public(
+    db: AsyncSession,
+    *,
+    report_date: str,
+    owner_user_id: int | None,
+    user_id: int | None = None,
+) -> dict:
+    """昨日追踪组装的公共路径：取今日报告 → 取昨日报告 → 组装。"""
+    import types
+
+    report_repo = DailyReportRepository(db)
+    content_repo = ContentRepo(db)
+    # 今日报告：按传入日期取（final 优先，回退最新），不触发生成
+    today_report = await report_repo.get_by_date(report_date, owner_user_id=owner_user_id)
+    if today_report is None:
+        # 无今日报告时仍可追踪昨日（picks 里 today_*=null）。
+        # 用 SimpleNamespace 而非内联 class，避免类体名字解析捕获不到函数参数。
+        today_report = types.SimpleNamespace(report_date=report_date, top_picks=None)
+    return await _build_yesterday_tracking(
+        db,
+        today_report=today_report,
+        report_repo=report_repo,
+        content_repo=content_repo,
+        owner_user_id=owner_user_id,
+        user_id=user_id,
+    )
+
+
 # ── 选题标记（写这个/观察/跳过）──────────────────────────────
 
 

@@ -20,6 +20,7 @@ from app.api.v1.trending import router as trending_router
 from app.api.v1.mother_topics import router as mother_topics_router
 from app.api.v1.fanqie import router as fanqie_router
 from app.api.v1.qimao import router as qimao_router
+from app.api.v1.read_records import router as read_records_router
 from app.api.v1.zhihu import router as zhihu_router
 from app.api.v1.webnovel_reports import router as webnovel_reports_router
 from app.api.v1.notifications import router as notifications_router
@@ -76,3 +77,4 @@ router.include_router(scheduler_router)
 router.include_router(llm_models_router)
 router.include_router(llm_evaluations_router)
 router.include_router(favorites_router)
+router.include_router(read_records_router)

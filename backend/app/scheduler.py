@@ -433,6 +433,27 @@ async def _cleanup_old_trending_snapshots() -> None:
         logger.exception("Scheduler: cleanup_old_trending_snapshots failed")
 
 
+@track_job(
+    "cleanup_old_read_records",
+    name="清理过期报告阅读记录",
+    timeout=60,
+    description="每日03:45清理180天前的阅读记录（行为偏好数据保留期）",
+)
+async def _cleanup_old_read_records() -> None:
+    """Delete read records older than retention window at 03:45."""
+    logger.info("Scheduler: cleanup_old_read_records started")
+    try:
+        async with async_session() as db:
+            from app.services.read_record_service import cleanup_old_records
+
+            count = await cleanup_old_records(db)
+            await db.commit()
+        logger.info("Scheduler: cleanup_old_read_records removed %d records", count)
+        return f"removed={count}"
+    except Exception:
+        logger.exception("Scheduler: cleanup_old_read_records failed")
+
+
 @track_job("sync_fanqie", name="番茄小说榜单抓取", timeout=300, description="每日凌晨1点抓取番茄小说34个分类榜单")
 async def _sync_fanqie() -> None:
     """番茄小说榜单每日抓取（凌晨1点）。任务永远注册，运行时由 flag 决定是否执行。"""
@@ -756,6 +777,15 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=3, minute=30),
         id="cleanup_old_notifications",
         name="Cleanup old notifications",
+        replace_existing=True,
+    )
+
+    # Read records cleanup at 03:45 (行为偏好数据保留 180 天，错开其他 cleanup 抢 SQLite 写锁)
+    scheduler.add_job(
+        _cleanup_old_read_records,
+        trigger=CronTrigger(hour=3, minute=45),
+        id="cleanup_old_read_records",
+        name="Cleanup old read records (180d retention)",
         replace_existing=True,
     )
 

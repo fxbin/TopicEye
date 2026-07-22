@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
+  BookOpen,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -24,6 +25,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
+import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { dailyReportApi } from '@/lib/api';
 import YesterdayTracking from './_yesterday-tracking';
 import SelectedDrawer from './_selected-drawer';
@@ -72,6 +74,7 @@ interface DailyReportData {
     source_title_zh?: string;
     editorial_title?: string;
     tier?: 'feature' | 'brief';
+    content_id?: number;
   }> | null;
   platform_tips: Record<string, string[]> | null;
   topic_count: number;
@@ -465,7 +468,7 @@ export default function DailyReportPage() {
       source_url?: string; angles?: string[]; pitfall?: string;
       lifecycle?: string; time_window?: string; category?: string;
       source_idx?: number; source_title?: string; source_title_zh?: string; editorial_title?: string;
-      tier?: 'feature' | 'brief';
+      tier?: 'feature' | 'brief'; content_id?: number;
     }>
     : [];
   const platformTipEntries = platformTips && typeof platformTips === 'object'
@@ -479,6 +482,8 @@ export default function DailyReportPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 标记失败的轻量内联提示（修掉原 handleMark 静默失败）
   const [markError, setMarkError] = useState<string | null>(null);
+  // 站内阅读：点选题卡片标题旁的 BookOpen 打开 ReaderDrawer（与 today-picks 一致）
+  const [readerContentId, setReaderContentId] = useState<number | null>(null);
   // 今日「已选」标记数（action=write），用于工具栏 badge
   const writeCount = useMemo(
     () => Object.values(pickMarks).filter((a) => a === 'write').length,
@@ -785,7 +790,17 @@ export default function DailyReportPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2">
                                   <h3 className="min-w-0 flex-1 break-words text-sm font-bold leading-6 text-gray-900 sm:text-[15px]">{pick.title}</h3>
-                                  {pick.source_url && (
+                                  {/* 站内阅读：有 content_id 时点开 ReaderDrawer；历史数据无 content_id 回退外链 */}
+                                  {pick.content_id ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setReaderContentId(pick.content_id!); }}
+                                      className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                                      title="站内阅读"
+                                    >
+                                      <BookOpen size={14} />
+                                    </button>
+                                  ) : pick.source_url && (
                                     <a
                                       href={pick.source_url}
                                       target="_blank"
@@ -933,6 +948,19 @@ export default function DailyReportPage() {
                                   >
                                     跳过
                                   </button>
+                                  {/* 去原站（次要入口）：标题已主推站内阅读，此处保留外链给需要看原页面的场景 */}
+                                  {pick.source_url && (
+                                    <a
+                                      href={pick.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="ml-auto flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-primary"
+                                      title="在新标签打开原文站点"
+                                    >
+                                      <ExternalLink size={12} /> 去原站
+                                    </a>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -972,7 +1000,17 @@ export default function DailyReportPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2">
                                   <h3 className="min-w-0 flex-1 break-words text-[13px] font-bold leading-5 text-gray-800">{pick.title}</h3>
-                                  {pick.source_url && (
+                                  {/* 站内阅读：有 content_id 时点开 ReaderDrawer；历史数据无 content_id 回退外链 */}
+                                  {pick.content_id ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setReaderContentId(pick.content_id!); }}
+                                      className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                                      title="站内阅读"
+                                    >
+                                      <BookOpen size={13} />
+                                    </button>
+                                  ) : pick.source_url && (
                                     <a
                                       href={pick.source_url}
                                       target="_blank"
@@ -1173,6 +1211,9 @@ export default function DailyReportPage() {
           pickMarks={pickMarks}
         />
       )}
+
+      {/* 站内阅读抽屉：复用 ReaderDrawer，按 content_id 取正文（与 today-picks 一致） */}
+      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
-from typing import Optional, Any
-from pydantic import BaseModel, Field, field_serializer
+from typing import Any, Literal
+
+from pydantic import BaseModel, field_serializer
 
 from app.schemas.analysis import AiAnalysisResponse
 from app.services.zhihu_url import normalize_zhihu_url

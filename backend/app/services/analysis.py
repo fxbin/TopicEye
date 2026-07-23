@@ -455,15 +455,19 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             )
             final_model = final_metadata.get("actual_model") or final_model
         except Exception as llm_exc:
-            # Only CircuitOpenError (breaker tripped) triggers fallback —
-            # other LLM failures (timeout, network, RuntimeError) still
+            # CircuitOpenError (breaker tripped) and BadRequestError (400,
+            # e.g. GLM contentFilter code=1301) trigger local fallback.
+            # Other LLM failures (timeout, network, RuntimeError) still
             # propagate up so the caller can record ERROR status + retry.
+            from litellm.exceptions import BadRequestError
+
             from app.services.llm.circuit_breaker import CircuitOpenError
 
-            if isinstance(llm_exc, CircuitOpenError):
+            if isinstance(llm_exc, CircuitOpenError | BadRequestError):
                 logger.warning(
-                    "LLM circuit breaker open for content id=%d, using local fallback",
+                    "LLM call failed for content id=%d (%s), using local fallback",
                     content.id,
+                    type(llm_exc).__name__,
                 )
                 result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
                 fallback_used = True

@@ -1,14 +1,17 @@
-"""LLM provider 重试谓词单测: 验证限流错误(类型 + 字符串)不被重试。
+"""LLM provider 重试谓词单测: 验证限流错误(类型 + 字符串)与 400 错误不被重试。
 
 修复前 retry_if_not_exception_type((RateLimitError,)) 只排除 RateLimitError 类型,
 非 OpenAI 原生 provider (DeepSeek/GLM/智谱) 的 429 抛通用 APIError, 消息含 "429",
 仍被重试。修复后用 _should_retry 字符串+类型双检测。
+
+BadRequestError (400) 同样不重试：内容过滤等确定性错误重试只会浪费时间。
 """
 
 from __future__ import annotations
 
 import pytest
 from litellm import RateLimitError
+from litellm.exceptions import BadRequestError
 
 from app.services.llm._call_engine import _call_with_retry, _should_retry
 
@@ -76,16 +79,52 @@ async def test_string_429_error_not_retried(monkeypatch):
 
 
 def test_should_retry_predicate():
-    """谓词函数单元测试: 限流(类型+字符串)不重试, 其他重试。"""
+    """谓词函数单元测试: 限流(类型+字符串)与 400 不重试, 其他重试。"""
     # RateLimitError 类型
     assert _should_retry(RateLimitError("429", model="m", llm_provider="openai")) is False
     # 字符串 429 (非类型)
     assert _should_retry(RuntimeError("Error 429 rate limit")) is False
     assert _should_retry(RuntimeError("请求过于频繁")) is False
     assert _should_retry(RuntimeError("quota exceeded")) is False
-    # 非限流错误应重试
+    # BadRequestError 类型不重试
+    assert _should_retry(BadRequestError("400", model="m", llm_provider="openai")) is False
+    # 字符串 400 (非类型, GLM contentFilter)
+    assert _should_retry(RuntimeError("Error code: 400 - contentFilter")) is False
+    # 非限流/非 400 错误应重试
     assert _should_retry(ConnectionError("timeout")) is True
     assert _should_retry(ValueError("bad json")) is True
+
+
+@pytest.mark.asyncio
+async def test_bad_request_error_not_retried(monkeypatch):
+    """BadRequestError (400) 不重试，立即抛出。"""
+    call_count = 0
+
+    async def fake_single_call(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise BadRequestError(
+            message="Error code: 400 - contentFilter",
+            model="test-model",
+            llm_provider="openai",
+        )
+
+    monkeypatch.setattr(
+        "app.services.llm._call_engine._call_llm_single", fake_single_call
+    )
+
+    with pytest.raises(BadRequestError):
+        await _call_with_retry(
+            messages=[],
+            model="test-model",
+            api_key="k",
+            api_base=None,
+            temperature=0.3,
+            max_tokens=100,
+            response_format=None,
+        )
+
+    assert call_count == 1, f"BadRequestError should NOT retry, but called {call_count} times"
 
 
 @pytest.mark.asyncio

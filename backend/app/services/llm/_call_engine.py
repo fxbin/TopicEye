@@ -16,7 +16,8 @@ import logging
 import time
 from typing import Any
 
-from litellm import completion, RateLimitError
+from litellm import RateLimitError, completion
+from litellm.exceptions import BadRequestError  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
 from tenacity import (
     retry,
     retry_if_exception,
@@ -40,6 +41,18 @@ def _is_rate_limit_error(exc: Exception) -> bool:
         k in msg
         for k in ["429", "rate limit", "rate_limit", "quota exceeded", "请求过于频繁", "调用额度", "额度用完", "已达"]
     )
+
+
+def _is_bad_request_error(exc: Exception) -> bool:
+    """Detect if an exception is a bad request (400) error.
+
+    400 是确定性错误（请求格式错误或内容被过滤），重试不会改变结果。
+    典型场景：GLM/智谱 contentFilter code=1301 触发内容安全过滤。
+    """
+    if isinstance(exc, BadRequestError):
+        return True
+    msg = str(exc).lower()
+    return "error code: 400" in msg or ("contentfilter" in msg and "400" in msg)
 
 
 def _parse_reset_time(exc: Exception):
@@ -173,10 +186,12 @@ def _should_retry(exc: BaseException) -> bool:
 
     RateLimitError 类型 + 字符串检测(429/rate limit/额度)双保险,
     覆盖 DeepSeek/GLM/智谱等通过 openai-compat 抛通用 APIError 的场景。
+
+    BadRequestError (400) 也不重试：内容过滤等确定性错误重试只会浪费时间。
     """
-    if isinstance(exc, RateLimitError):
+    if isinstance(exc, RateLimitError | BadRequestError):
         return False
-    return not _is_rate_limit_error(exc)
+    return not _is_rate_limit_error(exc) and not _is_bad_request_error(exc)
 
 
 @retry(

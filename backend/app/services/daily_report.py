@@ -219,6 +219,19 @@ def _normalize_edition(edition: str | None, target: date, cutoff_at: datetime | 
     return _edition_for_now(cutoff_at)
 
 
+def _owner_filter(owner_user_id: int | None):
+    """构建归属过滤子句（Postgres 安全）。
+
+    ``None`` → 公共日报（``owner_user_id IS NULL``）；``int`` → 严格匹配该用户
+    私有日报（``owner_user_id == <int>``）。与 ``DailyReportRepository._owner_clause``
+    同口径——不能用 ``.is_(int)``，Postgres 的 ``IS`` 操作符不接受整数会报
+    syntax error（SQLite 容忍故未暴露）。
+    """
+    if owner_user_id is None:
+        return DailyReport.owner_user_id.is_(None)
+    return DailyReport.owner_user_id == owner_user_id
+
+
 def _is_active_generating(report: DailyReport, now: datetime) -> bool:
     if report.status != "GENERATING":
         return False
@@ -325,7 +338,7 @@ async def get_latest_today_report(
     result = await db.execute(
         select(DailyReport)
         .where(DailyReport.report_date == today)
-        .where(DailyReport.owner_user_id.is_(owner_user_id))
+        .where(_owner_filter(owner_user_id))
         .order_by(DailyReport.cutoff_at.desc(), DailyReport.updated_at.desc())
         .limit(1)
     )
@@ -508,7 +521,7 @@ async def generate_daily_report(
             .where(DailyReport.report_date == report_date)
             .where(DailyReport.edition == normalized_edition)
             .where(DailyReport.cutoff_at == window_end)
-            .where(DailyReport.owner_user_id.is_(owner_user_id))
+            .where(_owner_filter(owner_user_id))
         )
         if database_profile.is_postgresql:
             existing_stmt = existing_stmt.with_for_update()

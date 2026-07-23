@@ -98,7 +98,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         """
         stmt = (
             select(self.model)
-            .where(self.model.owner_user_id.is_(owner_user_id))
+            .where(self._owner_clause(owner_user_id))
             .order_by(self.model.report_date.desc(), self.model.cutoff_at.desc())
             .limit(limit)
         )
@@ -124,7 +124,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
                 self.model.generated_at,
                 self.model.cutoff_at,
             )
-            .where(self.model.owner_user_id.is_(owner_user_id))
+            .where(self._owner_clause(owner_user_id))
             .order_by(self.model.report_date.desc(), self.model.cutoff_at.desc())
         )
         result = await self.db.execute(stmt)
@@ -200,7 +200,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
             .where(
                 self.model.report_date == report_date_iso,
                 self.model.edition == edition,
-                self.model.owner_user_id.is_(owner_user_id),
+                self._owner_clause(owner_user_id),
             )
             .order_by(self.model.id.desc())
             .limit(1)

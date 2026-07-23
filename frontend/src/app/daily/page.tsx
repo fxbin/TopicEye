@@ -25,7 +25,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
-import { ReaderDrawer } from '@/components/ReaderDrawer';
+import { useAppContext } from '@/components/ClientLayout';
 import { dailyReportApi } from '@/lib/api';
 import { useReadTracking } from '@/hooks/useReadTracking';
 import YesterdayTracking from './_yesterday-tracking';
@@ -483,8 +483,8 @@ export default function DailyReportPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 标记失败的轻量内联提示（修掉原 handleMark 静默失败）
   const [markError, setMarkError] = useState<string | null>(null);
-  // 站内阅读：点选题卡片标题旁的 BookOpen 打开 ReaderDrawer（与 today-picks 一致）
-  const [readerContentId, setReaderContentId] = useState<number | null>(null);
+  // 站内阅读：点选题卡片标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
+  const { openReader } = useAppContext();
   // 今日「已选」标记数（action=write），用于工具栏 badge
   const writeCount = useMemo(
     () => Object.values(pickMarks).filter((a) => a === 'write').length,
@@ -803,7 +803,7 @@ export default function DailyReportPage() {
                                   {pick.content_id ? (
                                     <button
                                       type="button"
-                                      onClick={(e) => { e.stopPropagation(); setReaderContentId(pick.content_id!); }}
+                                      onClick={(e) => { e.stopPropagation(); openReader(pick.content_id!); }}
                                       className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
                                       title="站内阅读"
                                     >
@@ -1013,7 +1013,7 @@ export default function DailyReportPage() {
                                   {pick.content_id ? (
                                     <button
                                       type="button"
-                                      onClick={(e) => { e.stopPropagation(); setReaderContentId(pick.content_id!); }}
+                                      onClick={(e) => { e.stopPropagation(); openReader(pick.content_id!); }}
                                       className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
                                       title="站内阅读"
                                     >
@@ -1220,9 +1220,6 @@ export default function DailyReportPage() {
           pickMarks={pickMarks}
         />
       )}
-
-      {/* 站内阅读抽屉：复用 ReaderDrawer，按 content_id 取正文（与 today-picks 一致） */}
-      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </div>
   );
 }

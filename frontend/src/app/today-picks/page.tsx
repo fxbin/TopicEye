@@ -13,7 +13,6 @@ import AnalysisPanel from '@/components/AnalysisPanel';
 import RadarSignature from '@/components/RadarSignature';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
-import { ReaderDrawer } from '@/components/ReaderDrawer';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
 import { useFetch } from '@/hooks/useFetch';
 import { getRecommendLevelLabel } from '@/lib/utils';
@@ -47,14 +46,13 @@ export default function TodayPicksPageWrapper() {
 function TodayPicksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { toggleFavorite, currentUser, reportTodayPicksTotal } = useAppContext();
+  const { toggleFavorite, currentUser, reportTodayPicksTotal, openReader } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
   const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
   const [selectedAnalysis, setSelectedAnalysis] = useState<(ContentAnalysis & { _content_id?: number }) | null>(null);
-  const [readerContentId, setReaderContentId] = useState<number | null>(null);
   const [groupByTopic, setGroupByTopic] = useState(true);
   const [expandedTopics, setExpandedTopics] = useState<Set<number>>(new Set());
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
@@ -254,7 +252,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
-              onRead={setReaderContentId}
+              onRead={openReader}
               workflowPending={workflowPendingId === leadItem.id}
             />
           )}
@@ -282,7 +280,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
-              onRead={setReaderContentId}
+              onRead={openReader}
               workflowPendingId={workflowPendingId}
             />
           ) : (
@@ -296,7 +294,7 @@ function TodayPicksPage() {
                   onFav={handleFav}
                   onOpen={setSelectedAnalysis}
                   onStartWorkflow={handleStartWorkflow}
-                  onRead={setReaderContentId}
+                  onRead={openReader}
                   workflowPending={workflowPendingId === item.id}
                 />
               ))}
@@ -332,8 +330,6 @@ function TodayPicksPage() {
       </div>
 
       {selectedAnalysis && <AnalysisPanel analysis={selectedAnalysis} onClose={() => setSelectedAnalysis(null)} />}
-
-      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </div>
   );
 }

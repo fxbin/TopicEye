@@ -93,18 +93,23 @@ export default function YesterdayTracking({
       scope === 'mine'
         ? dailyReportApi.getMyYesterdayTracking
         : dailyReportApi.getYesterdayTracking;
-    fetcher(reportDate)
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch(() => {
-        if (!cancelled) setData(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    // 错开主报告 + sparkline 的瞬时并发（它们在父组件 mount 时全并发），
+    // 延迟 800ms 再发昨日追踪请求，避免叠加触发 429 限流。
+    const timer = setTimeout(() => {
+      fetcher(reportDate)
+        .then((res) => {
+          if (!cancelled) setData(res);
+        })
+        .catch(() => {
+          if (!cancelled) setData(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 800);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [scope, reportDate]);
 

@@ -52,6 +52,7 @@ Run the smallest relevant verification:
 - Backend tests: `python -m pytest <relevant-tests> -q`
 - Shell scripts: `bash -n <script>`
 - Frontend type check: `cd frontend && npx tsc --noEmit`
+- Full quality gate (manual): `make lint`（ruff + 分层检查 + 前端类型检查）
 
 Note: `frontend` currently has an `npm run lint` script that invokes `next lint`,
 which may fail under the installed Next.js version by treating `lint` as a
@@ -124,11 +125,22 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 
 ### 存量违规与迁移策略
 
-当前 `api/v1/` 层存在 30 个文件直接 `import sqlalchemy` 或 `from app.models import <ORMModel>`，属历史存量。迁移策略：
+`api/v1/` 层的**硬违规（直接写 ORM 查询）已基本清零**：目前仅剩 `_db_write.py`
+一处刻意保留（SQLite 低层写入助手，PRAGMA busy_timeout 用 `text()` + `db.execute`），
+它是分层的合法边界，已在检查中豁免。剩余的 `import sqlalchemy` 绝大多数是
+`AsyncSession` 类型注解与 `sqlalchemy.exc` 异常类等**已列入例外**的用法。
+
+**机器强制**：`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`
+出现在 `api/v1/*.py` 会被 CI 的 `backend-layering` 作业阻断（本地跑 `make layering`
+或 `python scripts/check_layering.py`），无需再靠人工数文件。符号级的
+`from app.models import <ORMModel>`（ORM 模型类混在 Enum/User 依赖里）因与允许项同模块，
+自动判定会误报，仍靠下面的评审 checklist 兜底。
+
+迁移策略（仍适用于符号级存量清理）：
 
 1. **新增代码必须遵循分层约束**，PR 评审时强制检查。
 2. **存量按风险等级打包迁移**，每个 commit 迁移 3-5 个相关的 api 文件（避免单 commit 过碎、也避免大批量混合）。打包维度：同类查询模式（如纯 list / 含 JOIN / 含聚合）或同业务域（如 trending 系列）。
-3. **迁移优先级**：含复杂 JOIN / 子查询 / N+1 的 endpoint 优先（如 `sources_health.py`、`topics.py`、`trending.py`）；纯 `get_by_id` 类简单查询可后迁。
+3. **迁移优先级**：含复杂 JOIN / 子查询 / N+1 的 endpoint 优先；纯 `get_by_id` 类简单查询可后迁。
 4. 迁移时行为必须完全等价，**不优化性能、不改变返回字段**，避免混合关注点。
 
 ### 评审 checklist
@@ -175,3 +187,14 @@ async def list_topics(db: AsyncSession = Depends(get_db)):
     items = await repo.list_ordered_by_best_score()
     return {"items": items}
 ```
+
+## 迁移与高风险变更
+
+数据库迁移属高风险操作，执行前先备份、出问题有回滚路径：
+
+- **前置备份**：`cd backend && ./scripts/backup_db.sh`（SQLite 在线热备 / PG pg_dump，默认保留 7 份）。
+- **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。会先自动备份，再执行
+  `alembic downgrade <target>`（`target` 可选，默认 `-1` 回退一格；也可传具体 revision 或 `base`）。
+- **验证**：先在测试环境跑 `alembic downgrade -1`，确认上一版 schema 被恢复且应用能启动，再到生产执行。
+- SQLite 缺大多数 ALTER 能力，迁移依赖 batch 模式重建表（见 `alembic/env.py` 的 `render_as_batch`），
+  因此回滚前的备份尤为重要。

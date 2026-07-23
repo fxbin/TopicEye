@@ -774,6 +774,7 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
             id INTEGER,
             source_id INTEGER,
             title VARCHAR,
+            url VARCHAR,
             category VARCHAR,
             source_name VARCHAR,
             platform VARCHAR,
@@ -824,11 +825,11 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
     now = datetime.now(UTC).replace(tzinfo=None).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (10, 4)")
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (1, 10, '反馈后的最新分析', 'AI', '测试信源', 'rss', ?)",
+        "INSERT INTO oltp_db.content_items VALUES (1, 10, '反馈后的最新分析', 'https://example.com/1', 'AI', '测试信源', 'rss', ?)",
         [now],
     )
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (2, NULL, '无反馈样本', 'AI', '测试信源', 'rss', ?)",
+        "INSERT INTO oltp_db.content_items VALUES (2, NULL, '无反馈样本', 'https://example.com/2', 'AI', '测试信源', 'rss', ?)",
         [now],
     )
     conn.execute(

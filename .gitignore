@@ -66,4 +66,5 @@ htmlcov/
 
 .zcode/
 .workbuddy/
+.qoder/
 .brooks-lint-history.json

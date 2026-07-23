@@ -61,9 +61,12 @@ class ContentDetailResponse(ContentResponse):
 class ArticleReaderBlock(BaseModel):
     """A safe semantic block extracted from publisher content."""
 
-    type: Literal["heading", "paragraph", "quote", "list_item", "code"]
-    text: str
+    type: Literal["heading", "paragraph", "quote", "list_item", "code", "image"]
+    # 图片 block 只有 src/alt、没有正文，因此 text 允许缺省为空串
+    text: str = ""
     level: int | None = None
+    src: str | None = None
+    alt: str | None = None
 
 
 class ArticleReaderResponse(BaseModel):

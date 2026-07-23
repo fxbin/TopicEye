@@ -273,9 +273,11 @@ export interface ContentMetrics {
 }
 
 export interface ArticleReaderBlock {
-  type: 'heading' | 'paragraph' | 'quote' | 'list_item' | 'code';
-  text: string;
+  type: 'heading' | 'paragraph' | 'quote' | 'list_item' | 'code' | 'image';
+  text?: string;
   level?: number | null;
+  src?: string | null;
+  alt?: string | null;
 }
 
 export interface ArticleReaderSnapshot {

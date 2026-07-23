@@ -223,7 +223,8 @@ def _clean_inline_text(value: str) -> str:
 
 
 def _blocks_to_text(blocks: list[dict[str, str | int]]) -> str:
-    return "\n\n".join(str(block["text"]) for block in blocks)
+    # 图片 block 没有 text 字段，跳过它们（不计入正文、阅读时长与内容 hash）
+    return "\n\n".join(str(block["text"]) for block in blocks if block.get("text"))
 
 
 def blocks_from_text(value: str) -> list[dict[str, str | int]]:
@@ -246,15 +247,82 @@ def blocks_from_text(value: str) -> list[dict[str, str | int]]:
     ]
 
 
-def _extract_semantic_blocks(root: BeautifulSoup) -> list[dict[str, str | int]]:
+def _resolve_img_src(node, base_url: str) -> str | None:
+    """Resolve an <img> to a single absolute http(s) URL.
+
+    Handles common lazy-loading attributes and srcset, and rejects inline
+    data: URIs (usually spacers / placeholders) and non-http schemes.
+    """
+    raw = (
+        node.get("src")
+        or node.get("data-src")
+        or node.get("data-original")
+        or node.get("data-actualsrc")
+        or node.get("data-lazy-src")
+    )
+    if not raw:
+        srcset = node.get("srcset") or node.get("data-srcset")
+        if isinstance(srcset, str) and srcset.strip():
+            raw = srcset.split(",", 1)[0].strip().split(" ", 1)[0]
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    raw = raw.strip()
+    if raw.startswith("data:"):
+        return None
+    try:
+        absolute = urljoin(base_url, raw)
+    except ValueError:
+        return None
+    parsed = urlparse(absolute)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    return absolute[:2048]
+
+
+def _image_block(node, base_url: str) -> dict[str, str | int] | None:
+    """Build an image block from an <img>, resolving URL and caption.
+
+    Skips 1px tracking pixels; falls back to a wrapping <figure> caption when
+    the image itself carries no alt text.
+    """
+    for dim in ("width", "height"):
+        value = node.get(dim)
+        if isinstance(value, str):
+            digits = value.strip().rstrip("px").strip()
+            if digits.isdigit() and int(digits) <= 1:
+                return None
+    src = _resolve_img_src(node, base_url)
+    if not src:
+        return None
+    alt_attr = node.get("alt")
+    alt = _clean_inline_text(alt_attr) if isinstance(alt_attr, str) else ""
+    if not alt:
+        figure = node.find_parent("figure")
+        caption = figure.find("figcaption") if figure is not None else None
+        if caption is not None:
+            alt = _clean_inline_text(caption.get_text(" ", strip=True))
+    block: dict[str, str | int] = {"type": "image", "src": src}
+    if alt:
+        block["alt"] = alt[:300]
+    return block
+
+
+def _extract_semantic_blocks(root: BeautifulSoup, base_url: str = "") -> list[dict[str, str | int]]:
     """Extract visible editorial structure, never publisher markup.
 
     Nested block tags are skipped so a list item containing a paragraph, for
-    example, renders once.  The frontend can then style the resulting safe
-    primitives without inheriting third-party CSS or scripts.
+    example, renders once.  ``<img>`` is captured in document order and is
+    exempt from the nested-skip rule (which only governs text blocks) so inline
+    article 图片 survive extraction.  The frontend can then style the resulting
+    safe primitives without inheriting third-party CSS or scripts.
     """
     blocks: list[dict[str, str | int]] = []
-    for node in root.find_all(_BLOCK_TAGS):
+    for node in root.find_all(_BLOCK_TAGS + ("img",)):
+        if node.name == "img":
+            image_block = _image_block(node, base_url)
+            if image_block and (not blocks or blocks[-1] != image_block):
+                blocks.append(image_block)
+            continue
         if any(parent is not root and parent.name in _BLOCK_TAGS for parent in node.parents):
             continue
         text = _clean_inline_text(node.get_text(" ", strip=True))
@@ -337,7 +405,17 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     excerpt = _first_meta(soup, ("name", "description"), ("property", "og:description"))
 
     article = soup.find("article") or soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
-    blocks = _without_duplicate_title(_extract_semantic_blocks(article), title)
+    # 解析相对图片地址的基准：优先 <base href>，否则用实际抓取到的 URL
+    base_url = final_url
+    base_tag = soup.find("base", href=True)
+    if base_tag is not None:
+        base_href = base_tag.get("href")
+        if isinstance(base_href, str) and base_href.strip():
+            try:
+                base_url = urljoin(final_url, base_href.strip())
+            except ValueError:
+                base_url = final_url
+    blocks = _without_duplicate_title(_extract_semantic_blocks(article, base_url), title)
     text_content = _blocks_to_text(blocks)
     if len(text_content) < _MIN_READER_TEXT_CHARS:
         raise ArticleReaderError("not_readerable", "该页面没有可提取的正文，请打开来源网站查看。")
@@ -364,7 +442,7 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
         soup = BeautifulSoup(raw, "html.parser")
         for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
             node.decompose()
-        blocks = _extract_semantic_blocks(soup)
+        blocks = _extract_semantic_blocks(soup, content.url or "")
     else:
         blocks = blocks_from_text(raw)
     blocks = _without_duplicate_title(blocks, content.title or "")
@@ -521,7 +599,7 @@ async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleS
                 tb["text"] = trans_map[i]
             translated_blocks.append(tb)
         snapshot.content_blocks_zh = translated_blocks
-        snapshot.text_content_zh = "\n\n".join(str(b.get("text", "")) for b in translated_blocks)
+        snapshot.text_content_zh = "\n\n".join(str(b.get("text", "")) for b in translated_blocks if b.get("text"))
 
     await db.commit()
     return snapshot

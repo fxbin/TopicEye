@@ -37,10 +37,27 @@ function ReaderBody({ blocks }: { blocks: ArticleReaderBlock[] }) {
 
   blocks.forEach((block, index) => {
     if (block.type === 'list_item') {
-      pendingList.push(block.text);
+      pendingList.push(block.text ?? '');
       return;
     }
     flushList(`list-${index}`);
+    if (block.type === 'image') {
+      if (!block.src) return;
+      rendered.push(
+        <figure key={index} className="my-8">
+          <img
+            src={block.src}
+            alt={block.alt ?? ''}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(e) => { const fig = e.currentTarget.parentElement; if (fig) fig.style.display = 'none'; }}
+            className="mx-auto max-h-[72vh] w-auto max-w-full rounded-lg border border-[#ece7e0] bg-[#faf8f5]"
+          />
+          {block.alt && <figcaption className="mt-2.5 text-center text-[13px] leading-6 text-[#8a8279]">{block.alt}</figcaption>}
+        </figure>,
+      );
+      return;
+    }
     if (block.type === 'heading') {
       const isPrimary = (block.level || 2) <= 2;
       rendered.push(
@@ -53,7 +70,7 @@ function ReaderBody({ blocks }: { blocks: ArticleReaderBlock[] }) {
     if (block.type === 'quote') {
       rendered.push(
         <blockquote key={index} className="my-9 border-l-[3px] border-primary bg-[#fff7ef] px-5 py-4 text-[16px] leading-8 text-[#625c54] sm:text-[17px]">
-          <AutoLink text={block.text} />
+          <AutoLink text={block.text ?? ''} />
         </blockquote>,
       );
       return;

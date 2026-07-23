@@ -76,7 +76,9 @@ async def test_reader_creates_text_snapshot_and_keeps_private_content_hidden(mon
     assert first.status_code == 200
     assert first.json()["extraction_method"] == "ingested"
     assert first.json()["text_content"] == public_text
-    assert first.json()["content_blocks"] == [{"type": "paragraph", "text": public_text, "level": None}]
+    assert first.json()["content_blocks"] == [
+        {"type": "paragraph", "text": public_text, "level": None, "src": None, "alt": None}
+    ]
     assert first.json()["cache_status"] == "miss"
     assert second.status_code == 200
     assert second.json()["cache_status"] == "hit"
@@ -187,6 +189,32 @@ def test_extract_html_preserves_headings_quotes_and_lists():
     assert {"type": "heading", "text": "关键要点", "level": 2} in extracted.content_blocks
     assert {"type": "list_item", "text": "第一项"} in extracted.content_blocks
     assert {"type": "quote", "text": "需要强调的观点。"} in extracted.content_blocks
+
+
+def test_extract_html_captures_inline_images_with_absolute_urls():
+    body = "配图说明正文内容。" * 30
+    extracted = article_reader._extract_from_html(
+        f"""
+        <html><head></head><body><article>
+          <p>{body}</p>
+          <figure><img src="/media/pic.png" alt="示意图"><figcaption>图注</figcaption></figure>
+          <p><img src="https://cdn.example.com/a.jpg"></p>
+          <img src="data:image/gif;base64,AAAA">
+          <img src="/tracker.gif" width="1" height="1">
+        </article></body></html>
+        """.encode(),
+        "https://news.example.com/post/1",
+    )
+
+    image_blocks = [b for b in extracted.content_blocks if b["type"] == "image"]
+    # 相对地址按抓取 URL 解析为绝对地址，并保留 alt
+    assert {"type": "image", "src": "https://news.example.com/media/pic.png", "alt": "示意图"} in image_blocks
+    assert {"type": "image", "src": "https://cdn.example.com/a.jpg"} in image_blocks
+    # data: URI 与 1px 追踪像素被丢弃
+    assert all(not str(b["src"]).startswith("data:") for b in image_blocks)
+    assert all("tracker.gif" not in str(b["src"]) for b in image_blocks)
+    # 图片不计入正文文本
+    assert "pic.png" not in extracted.text_content
 
 
 @pytest.mark.asyncio

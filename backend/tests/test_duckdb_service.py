@@ -4,8 +4,8 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
-from app.core.db_backend import duckdb_attach_sql
-from app.services import duckdb_service
+from app.core.db_backend import duckdb_attach_sql  # noqa: E402
+from app.services import duckdb_service  # noqa: E402
 
 
 def create_ignored_items_table(conn):

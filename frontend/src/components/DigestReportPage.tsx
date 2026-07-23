@@ -239,9 +239,11 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
     }
   }, [api]);
 
+  // mount-only：api 是父组件内联对象，每次 render 新引用，放依赖会无谓重查。
   useEffect(() => {
     void loadPeriods();
-  }, [loadPeriods]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchDigest = useCallback(async (periodKey?: string) => {
     try {
@@ -265,9 +267,13 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
     }
   }, [api, getDigestKey, periodName]);
 
+  // 仅 mount 时加载当前期——不依赖 fetchDigest（其依赖 api/getDigestKey 是父组件
+  // 内联传参，每次 render 新引用，若放依赖会重跑此 effect 拉回 current 覆盖用户切换）。
+  // 后续切换由 handlePeriodSelect 主动调 fetchDigest(periodKey)。
   useEffect(() => {
     void fetchDigest();
-  }, [fetchDigest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePeriodSelect = useCallback((periodKey: string) => {
     if (periodKey === selectedPeriod) return;

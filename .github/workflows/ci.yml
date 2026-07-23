@@ -155,3 +155,19 @@ jobs:
       - name: Ruff format check (changed files)
         if: steps.diff.outputs.files != ''
         run: ruff format --check ${{ steps.diff.outputs.files }}
+
+  # ── 分层纪律：api/v1 禁止直接 ORM 查询 / 禁用 import（对应 AGENTS.md）──
+  # 规则本是纯人工评审，容易漏；这一步把符号级的硬违规做成阻断门，
+  # 防止清理成果被新代码回退。检查全量 api/v1 很快，无需 diff 化。
+  backend-layering:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check API layering
+        run: python scripts/check_layering.py

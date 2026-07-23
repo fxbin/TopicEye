@@ -13,6 +13,7 @@ import {
   type FavoriteTargetRef,
 } from '@/lib/favorites';
 import { canAccessPath, isAdmin, requiredAccessForPath } from '@/lib/navigation';
+import { ReaderDrawer } from '@/components/ReaderDrawer';
 import type { AuthTokenResponse, AuthUser, FavoriteItem } from '@/types';
 
 // App context - shared across pages
@@ -38,6 +39,8 @@ interface AppContextType {
   toggleFavoriteTarget: (target: FavoriteCreatePayload, options?: { throwOnError?: boolean }) => Promise<boolean>;
   toggleFavorite: (id: number, options?: { throwOnError?: boolean }) => Promise<boolean>;
   refreshCounts: () => void;
+  /** 全局站内阅读抽屉：任意页面调用即可从右侧滑出正文（统一交互入口） */
+  openReader: (contentId: number) => void;
 }
 
 const AppContext = createContext<AppContextType>({
@@ -59,6 +62,7 @@ const AppContext = createContext<AppContextType>({
   toggleFavoriteTarget: async () => false,
   toggleFavorite: async () => false,
   refreshCounts: () => {},
+  openReader: () => {},
 });
 
 export function useAppContext() {
@@ -157,12 +161,18 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [favoriteTotal, setFavoriteTotal] = useState(0);
   const [todayPicksCount, setTodayPicksCount] = useState(0);
   const [compactNav, setCompactNav] = useState(false);
+  // 全局站内阅读抽屉：contentId 非空即打开、null 关闭；挂在根层，所有页面共用一个实例
+  const [readerContentId, setReaderContentId] = useState<number | null>(null);
   const isChromelessPath = CHROMELESS_PATHS.has(pathname);
   const isAdminPath = pathname === ADMIN_PATH_PREFIX || pathname.startsWith(`${ADMIN_PATH_PREFIX}/`);
 
   const applyAuthSession = useCallback((session: AuthTokenResponse) => {
     setAuthToken(session.access_token);
     setCurrentUser(session.user);
+  }, []);
+
+  const openReader = useCallback((contentId: number) => {
+    setReaderContentId(contentId);
   }, []);
 
   const updateEnabledFeatures = useCallback((flags: Record<string, boolean>) => {
@@ -495,6 +505,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         toggleFavoriteTarget,
         toggleFavorite,
         refreshCounts,
+        openReader,
       }}
     >
       {isChromelessPath ? (
@@ -529,6 +540,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           </main>
         </div>
       )}
+      {/* 全局站内阅读抽屉：所有页面统一从这里滑出，页面只需调用 openReader(contentId) */}
+      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
     </AppContext.Provider>
   );
 }

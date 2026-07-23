@@ -209,6 +209,7 @@ export function EditorialItem({
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
   workflowPending: boolean;
 }) {
+  const { openReader } = useAppContext();
   const handleCardClick = useCallback(() => {
     if (item.analysis) {
       onShowAnalysis(item.analysis);
@@ -308,15 +309,15 @@ export function EditorialItem({
             {workflowPending ? '推进中' : '推进'}
           </Button>
           {item.url && (
-            <a
-              href={`/contents/${item.id}/reader`}
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary-text no-underline transition hover:border-primary-text"
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); openReader(item.id); }}
+              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary-text transition hover:border-primary-text"
               title="在系统内阅读提取后的正文"
             >
               <BookOpen size={13} strokeWidth={2} />
               阅读
-            </a>
+            </button>
           )}
           {item.url && (
             <a

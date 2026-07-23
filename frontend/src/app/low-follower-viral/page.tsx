@@ -325,6 +325,7 @@ function ActionRow({
   dark?: boolean;
 }) {
   const analysis = getAnalysis(item);
+  const { openReader } = useAppContext();
   return (
     <Toolbar className={cx('gap-2', dark && 'mt-4')}>
       {analysis && (
@@ -341,13 +342,13 @@ function ActionRow({
         </Button>
       )}
       {item.url && (
-        <a
-          href={`/contents/${item.id}/reader`}
-          onClick={(event) => event.stopPropagation()}
-          className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1 text-[11px] font-extrabold text-primary no-underline transition hover:border-primary"
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); openReader(item.id); }}
+          className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1 text-[11px] font-extrabold text-primary transition hover:border-primary"
         >
           <BookOpen size={13} /> 阅读
-        </a>
+        </button>
       )}
       {item.url && (
         <a

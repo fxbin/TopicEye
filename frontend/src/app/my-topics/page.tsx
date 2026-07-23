@@ -145,10 +145,12 @@ function ContentCard({
   item,
   isFavorite,
   onToggle,
+  onRead,
 }: {
   item: ScoredContent;
   isFavorite: boolean;
   onToggle: (id: number) => void | Promise<void>;
+  onRead: (id: number) => void;
 }) {
   const score = normalizeScore(item.scoring?.final_score || 0);
   const tone = toneClass[getScoreTone(score)];
@@ -214,12 +216,13 @@ function ContentCard({
 
         <Toolbar>
           {item.content.url && (
-            <a
-              href={`/contents/${item.content.id}/reader`}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1.5 text-xs font-black text-primary no-underline"
+            <button
+              type="button"
+              onClick={() => onRead(item.content.id)}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1.5 text-xs font-black text-primary"
             >
               <BookOpen size={13} /> 阅读
-            </a>
+            </button>
           )}
           {item.content.url && (
             <a
@@ -253,7 +256,7 @@ type TopicsPayload = { topics: MotherTopic[]; scored: ScoredContent[] };
 export default function MyTopicsPage() {
   const [selectedTopic, setSelectedTopic] = useState('');
   const [filterMinScore, setFilterMinScore] = useState(45);
-  const { toggleFavorite } = useAppContext();
+  const { toggleFavorite, openReader } = useAppContext();
 
   const { data, loading, refetch } = useFetch<TopicsPayload>(async () => {
     const [topicList, contentPage] = await Promise.all([
@@ -479,6 +482,7 @@ export default function MyTopicsPage() {
                   item={item}
                   isFavorite={contentFavoriteState.isFavorited(item.content.id)}
                   onToggle={handleToggleFavorite}
+                  onRead={openReader}
                 />
               ))}
             </div>

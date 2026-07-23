@@ -4,6 +4,7 @@ import React from 'react';
 import { BookOpen, ExternalLink, Star } from 'lucide-react';
 import { Button, Panel, cx } from '@/components/ui';
 import LevelBadge from '@/components/LevelBadge';
+import { useAppContext } from '@/components/ClientLayout';
 import type { ContentItem, ContentAnalysis, RecommendLevel } from '@/types';
 
 interface TopicHeaderCardProps {
@@ -27,6 +28,7 @@ export default function TopicHeaderCard({
   onToggleFavorite,
   timeAgoStr,
 }: TopicHeaderCardProps) {
+  const { openReader } = useAppContext();
   return (
     <Panel className="mb-5 p-8">
       {/* Level + Tags */}
@@ -75,13 +77,14 @@ export default function TopicHeaderCard({
         </Button>
 
         {item.url && (
-          <a
-            href={`/contents/${item.id}/reader`}
-            className={cx('inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm border border-primary-border bg-primary-light px-3 py-2 text-xs font-bold text-primary no-underline transition')}
+          <button
+            type="button"
+            onClick={() => openReader(item.id)}
+            className={cx('inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm border border-primary-border bg-primary-light px-3 py-2 text-xs font-bold text-primary transition')}
           >
             <BookOpen size={13} strokeWidth={2} />
             站内阅读
-          </a>
+          </button>
         )}
 
         {item.url && (

@@ -21,6 +21,7 @@ import { LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { motherTopicsApi, contentsApi, type MotherTopic, type ContentItem } from '@/lib/api';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
+import { parseUTC } from '@/lib/datetime';
 import { useEffect, useRef } from 'react';
 
 interface TopicScore {
@@ -86,7 +87,9 @@ function getScoreTone(score: number): ScoreTone {
 
 function formatDate(value?: string | null) {
   if (!value) return '未知时间';
-  const date = new Date(value.endsWith('Z') ? value : `${value}Z`);
+  // 后端 datetime 经 isoformat 序列化会带 +00:00 时区偏移，直接补 'Z' 会得到非法串；
+  // 统一走 parseUTC（兼容裸串 / Z / +00:00 三种形态），避免解析失败被误判成「未知时间」。
+  const date = parseUTC(value);
   if (Number.isNaN(date.getTime())) return '未知时间';
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
 }
@@ -170,7 +173,7 @@ function ContentCard({
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="text-xs font-black text-gray-600">{item.content.source_name || '未知来源'}</span>
             <span className="text-xs text-gray-300">/</span>
-            <span className="text-xs text-gray-400">{formatDate(item.content.published_at || item.content.crawled_at)}</span>
+            <span className="text-xs text-gray-400">{formatDate(item.content.published_at || item.content.crawled_at || item.content.created_at)}</span>
             {topTopic && <Badge tone="primary" className="px-2 py-0.5">{topTopic}</Badge>}
           </div>
 

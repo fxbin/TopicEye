@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 import enum
 from datetime import datetime, timezone, UTC
-from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Boolean, String, Integer, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.enum_types import value_enum
@@ -54,6 +54,7 @@ class Source(Base):
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
+    hidden: Mapped[bool] = mapped_column(default=False, comment="True=系统自动创建的信源，对用户不可见且不计入配额")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

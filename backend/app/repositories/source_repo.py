@@ -21,12 +21,17 @@ class SourceRepository(BaseRepository[Source]):
     model = Source
 
     async def get_enabled_sources(self) -> Sequence[Source]:
-        """Return syncable sources in the user-managed order."""
+        """Return syncable sources in the user-managed order.
+
+        Excludes hidden sources (e.g. WeRead auto-created virtual source)
+        that are synced via their own integration path, not the batch scraper.
+        """
         stmt = (
             select(Source)
             .where(
                 Source.enabled.is_(True),
                 Source.status != SourceStatus.DISABLED,
+                Source.hidden.is_(False),
             )
             .order_by(Source.sort_order.asc(), Source.id.asc())
         )
@@ -57,9 +62,18 @@ class SourceRepository(BaseRepository[Source]):
         return result.scalar()
 
     async def count_user_owned(self, user_id: int) -> int:
-        """统计用户私有信源数量，供私有信源配额检查使用。"""
+        """统计用户私有信源数量，供私有信源配额检查使用。
+
+        排除 hidden=True 的系统自动创建信源（如微信读书虚拟信源），
+        因为它们不是用户创建的，不应占用用户的私有信源配额。
+        """
         result = await self.db.execute(
-            select(func.count()).select_from(Source).where(Source.owner_user_id == user_id)
+            select(func.count())
+            .select_from(Source)
+            .where(
+                Source.owner_user_id == user_id,
+                Source.hidden.is_(False),
+            )
         )
         return result.scalar() or 0
 
@@ -120,11 +134,23 @@ class SourceRepository(BaseRepository[Source]):
     ) -> tuple[Sequence[Source], int]:
         """用户私有信源（owner_user_id=user_id）分页查询，返回 (items, total)。
 
+        排除 hidden=True 的系统自动创建信源（如微信读书虚拟信源）。
+
         keyword 模糊匹配 name/url/platform/category/keyword 字段（OR ILIKE）。
         排序：sort_order ASC。与 list_my_sources 端点历史行为等价。
         """
-        stmt = select(Source).where(Source.owner_user_id == user_id)
-        count_stmt = select(func.count()).select_from(Source).where(Source.owner_user_id == user_id)
+        stmt = select(Source).where(
+            Source.owner_user_id == user_id,
+            Source.hidden.is_(False),
+        )
+        count_stmt = (
+            select(func.count())
+            .select_from(Source)
+            .where(
+                Source.owner_user_id == user_id,
+                Source.hidden.is_(False),
+            )
+        )
         filters = []
         if source_type is not None:
             filters.append(Source.source_type == source_type)

@@ -646,6 +646,7 @@ async def ensure_weread_source(db: AsyncSession, *, user_id: int) -> Source:
         weight=4,
         status=SourceStatus.ACTIVE,
         enabled=True,
+        hidden=True,  # 系统自动创建，对用户不可见、不计配额
         owner_user_id=user_id,
         scope="user",
     )

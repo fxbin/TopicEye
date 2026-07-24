@@ -382,6 +382,8 @@ export interface EvidenceMark {
   platforms: string[];
   evidence_count: number;
   independent_publisher_count: number;
+  has_primary_source: boolean;
+  has_official_source: boolean;
 }
 
 export interface EvidenceLink {

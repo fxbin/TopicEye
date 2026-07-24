@@ -67,6 +67,12 @@ export default function EvidencePanel({ contentId }: EvidencePanelProps) {
         <span className={cx('rounded px-2 py-0.5 text-[11px] font-bold', meta.color)}>
           {meta.label}
         </span>
+        {mark.has_primary_source && (
+          <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-600">原始发布</span>
+        )}
+        {mark.has_official_source && (
+          <span className="rounded bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-600">官方链接</span>
+        )}
         <span className="text-[11px] text-gray-400">
           {mark.platform_count} 平台 · {mark.evidence_count} 条证据
         </span>

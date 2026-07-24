@@ -1,38 +1,22 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { Globe } from 'lucide-react';
-import { contentsApi } from '@/lib/api';
 import type { EvidenceMark } from '@/types';
 import { cx } from '@/components/ui';
 
 interface EvidenceTagProps {
-  contentId: number;
+  /** Pre-loaded mark (from batch fetch) to avoid N+1 API calls */
+  mark?: EvidenceMark | null;
 }
 
-export default function EvidenceTag({ contentId }: EvidenceTagProps) {
-  const [mark, setMark] = useState<EvidenceMark | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const result = await contentsApi.getEvidence(contentId);
-      setMark(result.evidence_mark);
-    } catch {
-      // silent fail — evidence is optional
-    } finally {
-      setLoaded(true);
-    }
-  }, [contentId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  if (!loaded || !mark || mark.cross_source_level === 'none') {
+export default function EvidenceTag({ mark }: EvidenceTagProps) {
+  if (!mark || mark.cross_source_level === 'none') {
     return null;
   }
 
   const isStrong = mark.cross_source_level === 'strong_cross_source';
-  const label = `${mark.platform_count} 个来源报道`;
+  const label = `${mark.platform_count} 来源报道`;
 
   return (
     <span

@@ -268,6 +268,11 @@ export const contentsApi = {
     return request(`/contents/${id}/evidence`);
   },
 
+  /** 批量获取证据标记（避免 N+1） */
+  getEvidenceBatch(ids: number[]): Promise<{ marks: Record<string, EvidenceMark> }> {
+    return request(`/contents/evidence-batch?ids=${ids.join(',')}`);
+  },
+
   /** 当日计数（今日选题 + 当日精选的 badge 数字） */
   todayCount(): Promise<{ today_content: number; today_picks: number }> {
     return request('/contents/today-count');

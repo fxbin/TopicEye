@@ -9,6 +9,7 @@ import { Button, Panel } from '@/components/ui';
 import type { ContentAnalysis } from '@/types';
 import CreationPlanDisplay from '@/components/CreationPlanDisplay';
 import RelationPanel from '@/components/RelationPanel';
+import EvidencePanel from '@/components/EvidencePanel';
 
 interface AnalysisPanelProps {
   analysis: ContentAnalysis & { _content_id?: number };
@@ -165,6 +166,11 @@ export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps)
               <CreationPlanDisplay plan={creationPlan} platform={activePlatform || ''} />
             )}
           </Panel>
+        )}
+
+        {/* Cross-source evidence */}
+        {contentId > 0 && (
+          <EvidencePanel contentId={contentId} />
         )}
 
         {/* Related content */}

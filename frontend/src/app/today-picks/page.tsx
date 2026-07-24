@@ -8,6 +8,7 @@ import {
   List,
 } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
+import type { EvidenceMark } from '@/types';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import RadarSignature from '@/components/RadarSignature';
@@ -106,6 +107,17 @@ function TodayPicksPage() {
   const total = data?.total || 0;
   const topics = data?.topics || [];
   const dupCount = data?.duplicates_hidden || 0;
+
+  // 批量获取证据标记（避免每张卡片单独 API 调用 N+1）
+  const [evidenceMarks, setEvidenceMarks] = useState<Record<string, EvidenceMark>>({});
+  useEffect(() => {
+    if (items.length === 0) return;
+    let cancelled = false;
+    contentsApi.getEvidenceBatch(items.map((i) => i.id)).then((res) => {
+      if (!cancelled) setEvidenceMarks(res.marks || {});
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [items]);
 
   // 副作用：上报当日精选总数到全局 context（原在 fetchPicks 内同步调用）。
   useEffect(() => { reportTodayPicksTotal(total); }, [reportTodayPicksTotal, total]);
@@ -254,6 +266,7 @@ function TodayPicksPage() {
               onStartWorkflow={handleStartWorkflow}
               onRead={openReader}
               workflowPending={workflowPendingId === leadItem.id}
+              evidenceMark={evidenceMarks[String(leadItem.id)]}
             />
           )}
 
@@ -282,6 +295,7 @@ function TodayPicksPage() {
               onStartWorkflow={handleStartWorkflow}
               onRead={openReader}
               workflowPendingId={workflowPendingId}
+              evidenceMarks={evidenceMarks}
             />
           ) : (
             <div className="flex flex-col gap-2.5 pb-10">
@@ -296,6 +310,7 @@ function TodayPicksPage() {
                   onStartWorkflow={handleStartWorkflow}
                   onRead={openReader}
                   workflowPending={workflowPendingId === item.id}
+                  evidenceMark={evidenceMarks[String(item.id)]}
                 />
               ))}
             </div>

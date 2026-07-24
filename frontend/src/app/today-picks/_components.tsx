@@ -48,7 +48,7 @@ import {
 } from './_today-picks-utils';
 import { getTagColor, timeAgo } from '@/lib/utils';
 import { getRecommendationReason } from '@/lib/recommendation';
-import type { ContentAnalysis, ContentItem, TopicInfo } from '@/types';
+import type { ContentAnalysis, ContentItem, EvidenceMark, TopicInfo } from '@/types';
 
 // ─── OverviewStrip ───────────────────────────────────────────────────
 
@@ -105,6 +105,7 @@ export function LeadPick({
   onStartWorkflow,
   onRead,
   workflowPending,
+  evidenceMark,
 }: {
   item: ContentItem;
   isFav: boolean;
@@ -113,6 +114,7 @@ export function LeadPick({
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
   onRead: (id: number) => void;
   workflowPending: boolean;
+  evidenceMark?: EvidenceMark | null;
 }) {
   const analysis = getAnalysis(item);
   const score = scoreOf(item);
@@ -321,6 +323,7 @@ export function TopicBoard({
   onStartWorkflow,
   onRead,
   workflowPendingId,
+  evidenceMarks,
 }: {
   topics: TopicInfo[];
   topicMap: Map<number | null, ContentItem[]>;
@@ -333,6 +336,7 @@ export function TopicBoard({
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
   onRead: (id: number) => void;
   workflowPendingId: number | null;
+  evidenceMarks: Record<string, EvidenceMark>;
 }) {
   return (
     <div className="flex flex-col gap-3.5 pb-10">
@@ -369,6 +373,7 @@ export function TopicBoard({
                   onStartWorkflow={onStartWorkflow}
                   onRead={onRead}
                   workflowPending={workflowPendingId === item.id}
+                  evidenceMark={evidenceMarks[String(item.id)]}
                   flush
                 />
               ))}
@@ -386,19 +391,20 @@ export function TopicBoard({
         <section>
           {topics.length > 0 && <SectionHeading title="其他精选" count={standaloneItems.length} />}
           <div className="flex flex-col gap-2.5">
-            {[...standaloneItems].sort((a, b) => scoreOf(b) - scoreOf(a)).map((item, idx) => (
-              <PickCard
-                key={item.id}
-                item={item}
-                rank={idx + 1}
-                isFav={isFavorited(item.id)}
-                onFav={onFav}
-                onOpen={onOpen}
-                onStartWorkflow={onStartWorkflow}
-                onRead={onRead}
-                workflowPending={workflowPendingId === item.id}
-              />
-            ))}
+              {[...standaloneItems].sort((a, b) => scoreOf(b) - scoreOf(a)).map((item, idx) => (
+                <PickCard
+                  key={item.id}
+                  item={item}
+                  rank={idx + 1}
+                  isFav={isFavorited(item.id)}
+                  onFav={onFav}
+                  onOpen={onOpen}
+                  onStartWorkflow={onStartWorkflow}
+                  onRead={onRead}
+                  workflowPending={workflowPendingId === item.id}
+                  evidenceMark={evidenceMarks[String(item.id)]}
+                />
+              ))}
           </div>
         </section>
       )}
@@ -417,6 +423,7 @@ export function PickCard({
   onStartWorkflow,
   onRead,
   workflowPending,
+  evidenceMark,
   flush = false,
 }: {
   item: ContentItem;
@@ -427,6 +434,7 @@ export function PickCard({
   onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
   onRead: (id: number) => void;
   workflowPending: boolean;
+  evidenceMark?: EvidenceMark | null;
   flush?: boolean;
 }) {
   const analysis = getAnalysis(item);
@@ -468,7 +476,7 @@ export function PickCard({
               {tag}
             </span>
           ))}
-          <EvidenceTag contentId={item.id} />
+          <EvidenceTag mark={evidenceMark} />
         </div>
         <h3 className={cx('text-[15px] font-black leading-[1.45] text-gray-900', recommendation && 'mb-2')}>
           {item.title}

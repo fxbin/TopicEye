@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   AlertTriangle,
+  Globe,
   Loader2,
   Plus,
   RadioTower,
@@ -19,6 +20,8 @@ import { timeAgo } from '@/lib/utils';
 import { LoadingState, EmptyState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 
+type Tab = 'private' | 'public';
+
 // ─── Page Component ───
 //
 // User-facing page for managing private (user-owned) sources.
@@ -33,6 +36,7 @@ type FormMode = 'create' | 'edit';
 const PAGE_SIZE = 50;
 
 export default function MySourcesPage() {
+  const [tab, setTab] = useState<Tab>('private');
   const [searchKeyword, setSearchKeyword] = useState('');
 
   // Fetch state via useFetch (aligned with project convention)
@@ -40,6 +44,14 @@ export default function MySourcesPage() {
     items: BackendSource[];
     total: number;
   }>(async () => {
+    if (tab === 'public') {
+      const res = await sourcesApi.list({
+        page: 1,
+        page_size: PAGE_SIZE,
+        keyword: searchKeyword.trim() || undefined,
+      });
+      return { items: (res?.items || []) as BackendSource[], total: res?.total ?? 0 };
+    }
     const res = await sourcesApi.listMine({
       page: 1,
       page_size: PAGE_SIZE,
@@ -47,7 +59,7 @@ export default function MySourcesPage() {
     });
     const list = (res?.items || []) as BackendSource[];
     return { items: list, total: res?.total ?? list.length };
-  }, [searchKeyword]);
+  }, [searchKeyword, tab]);
 
   // Action-level state (separate from fetch state)
   const [actionError, setActionError] = useState<string | null>(null);
@@ -178,21 +190,41 @@ export default function MySourcesPage() {
               <Badge tone="teal" className="font-mono text-[10px]">{total}</Badge>
             </div>
             <p className="mt-1.5 text-xs leading-5 text-gray-500">
-              私有信源仅自己可见，抓取的内容不会出现在全局信源池中
+              {tab === 'private'
+                ? '私有信源仅自己可见，抓取的内容不会出现在全局信源池中'
+                : '系统维护的公共信源，所有用户可见，只读浏览'}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <SearchBox value={searchKeyword} onChange={setSearchKeyword} />
-            <Button
-              type="button"
-              variant="primary"
-              onClick={handleOpenCreate}
-              className="min-h-9 whitespace-nowrap"
-            >
-              <Plus size={14} strokeWidth={2.2} />
-              新建信源
-            </Button>
+            {tab === 'private' && (
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleOpenCreate}
+                className="min-h-9 whitespace-nowrap"
+              >
+                <Plus size={14} strokeWidth={2.2} />
+                新建信源
+              </Button>
+            )}
           </div>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="mx-auto mt-3 flex max-w-[860px] gap-1">
+          <TabButton
+            active={tab === 'private'}
+            onClick={() => setTab('private')}
+            icon={RadioTower}
+            label="私有信源"
+          />
+          <TabButton
+            active={tab === 'public'}
+            onClick={() => setTab('public')}
+            icon={Globe}
+            label="公共信源"
+          />
         </div>
       </header>
 
@@ -236,12 +268,18 @@ export default function MySourcesPage() {
           </Panel>
         ) : items.length === 0 ? (
           <EmptyState
-            icon={RadioTower}
-            title={searchKeyword ? `没有匹配「${searchKeyword}」的私有信源` : '还没有私有信源'}
-            desc={searchKeyword ? undefined : '创建私有信源来抓取专属内容（仅你可见，不进全局池）'}
-            actions={searchKeyword ? undefined : [{ label: '创建第一个私有信源', onClick: handleOpenCreate, variant: 'primary' }]}
+            icon={tab === 'public' ? Globe : RadioTower}
+            title={searchKeyword ? `没有匹配「${searchKeyword}」的${tab === 'public' ? '公共' : '私有'}信源` : tab === 'public' ? '暂无公共信源' : '还没有私有信源'}
+            desc={searchKeyword ? undefined : tab === 'public' ? '系统尚未配置公共信源' : '创建私有信源来抓取专属内容（仅你可见，不进全局池）'}
+            actions={searchKeyword || tab === 'public' ? undefined : [{ label: '创建第一个私有信源', onClick: handleOpenCreate, variant: 'primary' }]}
             minHeight="180px"
           />
+        ) : tab === 'public' ? (
+          <div className="flex flex-col gap-3">
+            {items.map((source) => (
+              <PublicSourceCard key={source.id} source={source} />
+            ))}
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {items.map((source) => (
@@ -278,6 +316,34 @@ export default function MySourcesPage() {
 }
 
 // ─── Sub-components ───
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'flex items-center gap-1.5 rounded-sm border px-3.5 py-1.5 text-[13px] font-bold transition',
+        active
+          ? 'border-primary bg-primary-light text-primary'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
+      )}
+    >
+      <Icon size={13} />
+      {label}
+    </button>
+  );
+}
 
 function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
@@ -460,6 +526,65 @@ function PrivateSourceCard({
         >
           删除
         </Button>
+      </div>
+    </Panel>
+  );
+}
+
+// ─── Public Source Card (read-only) ───
+
+function PublicSourceCard({ source }: { source: BackendSource }) {
+  const typeClass = TYPE_COLORS[source.source_type] || 'border-gray-200 bg-gray-100 text-gray-600';
+  const isActive = source.status === 'active' && source.enabled;
+  const sourceDisabled = !source.enabled;
+
+  return (
+    <Panel className="p-4 transition hover:border-primary-border/40">
+      {/* Row 1: name + type + status */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[15px] font-black text-gray-900">{source.name}</span>
+        <span className={cx('rounded border px-2 py-0.5 text-[11px] font-bold', typeClass)}>
+          {source.source_type}
+        </span>
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className={cx('h-2 w-2 rounded-full', isActive ? 'bg-teal' : sourceDisabled ? 'bg-gray-300' : 'bg-red')} />
+          <span className={cx('text-[11px] font-bold', isActive ? 'text-teal' : sourceDisabled ? 'text-gray-400' : 'text-red')}>
+            {sourceDisabled ? '已禁用' : source.status === 'active' ? '正常' : source.status}
+          </span>
+        </span>
+      </div>
+
+      {/* Row 2: url (human-readable, clickable for verifiability) */}
+      {source.url && (
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 block truncate font-mono text-[11px] text-gray-400 transition hover:text-primary"
+          title={source.url}
+        >
+          {source.url}
+        </a>
+      )}
+
+      {/* Row 3: meta tags */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="text-gray-400">分类</span>
+          <span className="font-bold text-gray-700">{source.category || '未分类'}</span>
+        </span>
+        {source.platform && (
+          <span className="flex items-center gap-1">
+            <span className="text-gray-400">平台</span>
+            <span className="font-bold text-gray-700">{source.platform}</span>
+          </span>
+        )}
+        <span className="flex items-center gap-1" title={source.last_sync_at ? `最近同步：${timeAgo(source.last_sync_at)}` : undefined}>
+          <span className="text-gray-400">同步</span>
+          <span className={cx('font-bold', source.sync_error ? 'text-red' : 'text-gray-700')}>
+            {source.sync_error ? '失败' : timeAgo(source.last_sync_at)}
+          </span>
+        </span>
       </div>
     </Panel>
   );

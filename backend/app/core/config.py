@@ -81,7 +81,10 @@ class Settings(BaseSettings):
     ARTICLE_READER_SNAPSHOT_TTL_SECONDS: int = 86_400
     ARTICLE_READER_ROBOTS_CACHE_SECONDS: int = 3_600
     ARTICLE_READER_ALLOWED_HOSTS: str = ""
-    ARTICLE_READER_USER_AGENT: str = "TopicEyeReader/0.1 (+https://topiceye.local)"
+    ARTICLE_READER_USER_AGENT: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
     POST_SYNC_ANALYSIS_BATCH_SIZE: int = 10
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520
     POST_SYNC_MIN_REMAINING_SECONDS: int = 90

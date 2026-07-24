@@ -1,28 +1,46 @@
 """
 Web page main-content extractor.
 
-Uses BeautifulSoup to strip boilerplate and return the core article text.
+Uses trafilatura for high-quality boilerplate removal and article text
+extraction, with a BeautifulSoup fallback for edge cases.
 """
 
-from typing import Optional
+from __future__ import annotations
+
+import logging
+
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 def extract_main_content(html: str) -> str:
-    """Extract the main textual content from an HTML page."""
-    soup = BeautifulSoup(html, "html.parser")
+    """Extract the main textual content from an HTML page.
 
-    # Remove noise tags
+    Primary: trafilatura (trained extraction with boilerplate removal).
+    Fallback: BeautifulSoup manual extraction for resilience.
+    """
+    import trafilatura
+
+    text = trafilatura.extract(
+        html,
+        include_comments=False,
+        include_tables=True,
+        favor_precision=True,
+    )
+    if text and len(text.strip()) >= 60:
+        return text.strip()
+
+    # Fallback: manual BeautifulSoup extraction
+    soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript"]):
         tag.decompose()
 
-    # Try common article containers first
     for selector in ["article", "[role='main']", ".post-content", ".article-content", ".entry-content", "main"]:
         container = soup.select_one(selector)
         if container:
             return container.get_text(separator="\n", strip=True)
 
-    # Fallback: body text
     body = soup.find("body")
     if body:
         return body.get_text(separator="\n", strip=True)

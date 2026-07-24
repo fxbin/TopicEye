@@ -378,6 +378,8 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
+    import trafilatura
+
     soup = BeautifulSoup(payload, "html.parser")
     for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
         node.decompose()
@@ -404,7 +406,6 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     published_at = _parse_datetime(_first_meta(soup, ("property", "article:published_time"), ("name", "date")))
     excerpt = _first_meta(soup, ("name", "description"), ("property", "og:description"))
 
-    article = soup.find("article") or soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
     # 解析相对图片地址的基准：优先 <base href>，否则用实际抓取到的 URL
     base_url = final_url
     base_tag = soup.find("base", href=True)
@@ -415,7 +416,28 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
                 base_url = urljoin(final_url, base_href.strip())
             except ValueError:
                 base_url = final_url
-    blocks = _without_duplicate_title(_extract_semantic_blocks(article, base_url), title)
+
+    # Use trafilatura for high-quality boilerplate removal; fall back to
+    # manual BeautifulSoup extraction when trafilatura returns nothing.
+    blocks: list[dict[str, str | int]]
+    try:
+        clean_html = trafilatura.extract(
+            payload,
+            output_format="html",
+            include_comments=False,
+            include_tables=True,
+            favor_precision=True,
+        )
+    except Exception:
+        clean_html = None
+
+    if clean_html:
+        soup_clean = BeautifulSoup(clean_html, "html.parser")
+        blocks = _without_duplicate_title(_extract_semantic_blocks(soup_clean, base_url), title)
+    else:
+        article = soup.find("article") or soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
+        blocks = _without_duplicate_title(_extract_semantic_blocks(article, base_url), title)
+
     text_content = _blocks_to_text(blocks)
     if len(text_content) < _MIN_READER_TEXT_CHARS:
         raise ArticleReaderError("not_readerable", "该页面没有可提取的正文，请打开来源网站查看。")
@@ -434,15 +456,33 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
 
 
 def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | None:
+    import trafilatura
+
     raw = (content.raw_content or "").strip()
     if len(raw) < _MIN_READER_TEXT_CHARS:
         return None
     blocks: list[dict[str, str | int]]
     if "<" in raw and ">" in raw:
-        soup = BeautifulSoup(raw, "html.parser")
-        for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
-            node.decompose()
-        blocks = _extract_semantic_blocks(soup, content.url or "")
+        # Try trafilatura for better boilerplate removal on HTML content
+        try:
+            clean_html = trafilatura.extract(
+                raw,
+                output_format="html",
+                include_comments=False,
+                include_tables=True,
+                favor_precision=True,
+            )
+        except Exception:
+            clean_html = None
+
+        if clean_html:
+            soup = BeautifulSoup(clean_html, "html.parser")
+            blocks = _extract_semantic_blocks(soup, content.url or "")
+        else:
+            soup = BeautifulSoup(raw, "html.parser")
+            for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
+                node.decompose()
+            blocks = _extract_semantic_blocks(soup, content.url or "")
     else:
         blocks = blocks_from_text(raw)
     blocks = _without_duplicate_title(blocks, content.title or "")

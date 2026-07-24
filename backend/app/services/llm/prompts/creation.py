@@ -2,8 +2,122 @@
 Creation prompts — extracted from app.services.creation.
 
 Used by:
-    - app.services.creation.generate_creation_plan
+    - app.services.creation.generate_creation_plan          (快速模式)
+    - app.services.creation_explore.generate_explore_directions (探索模式-探索期)
+    - app.services.creation_explore.generate_focus_questions    (探索模式-聚焦期)
+    - app.services.creation_explore.generate_converge_plan      (探索模式-收敛期)
 """
+
+# ── 探索模式：三段式衰减式脚手架提示词 ──────────────────────────────
+
+EXPLORE_PROMPT = """我是一条待创作的素材，请帮我发现自己看不到的角度。
+
+你的任务分三步：
+1. 找出当前素材所属领域中，最常被默认但从未被质疑的3个假设。
+2. 对每个假设提出一个"如果反过来会怎样"的挑战。
+3. 基于每个挑战生成一个创作方向，标注：独特价值是什么、最容易掉进什么陷阱。
+
+自检规则：
+- 如果3个方向全是已有模式的延伸（关键词与素材高度重合），重新生成。
+- 方向之间必须互不相同，不能是同一角度的换皮。
+
+防幻觉规则：
+- 所有假设和方向必须基于下方素材内容派生，不能凭空编造。
+- 如果素材信息不足以支撑3个方向，就少输出，不要硬凑。
+
+素材标题：{title}
+素材来源：{source_name}
+素材摘要：{summary}
+核心观点：{key_points}
+标签：{tags}
+创作角度（已有）：{creator_angles}
+
+只输出JSON，不要其他内容：
+{{
+  "assumptions": [
+    {{
+      "assumption": "常被默认的假设",
+      "challenge": "如果反过来会怎样",
+      "direction": "基于挑战的创作方向",
+      "unique_value": "独特价值",
+      "pitfall": "最容易掉进的陷阱"
+    }}
+  ]
+}}"""
+
+
+FOCUS_PROMPT = """用户已从探索期的方向中选择了一个。你的任务是逐轮追问，帮用户把模糊的直觉变成可操作的方案。
+
+规则：
+- 每轮只问一个维度的问题，等用户回答后再追问下一个。
+- 允许用户拒绝你的问题方向并自行重定向——如果用户说"方向不对"，换一个维度问。
+- 不要替用户回答，只提问。
+- 当用户能用一句话说清楚要做什么时，进入收敛期。
+
+追问维度顺序：
+1. 目标受众：具体是谁？他们在什么场景下会看这个内容？
+2. 核心冲突：这个内容要解决的矛盾或痛点是什么？
+3. 差异化：与已有同类内容相比，独特在哪？
+
+用户选择的方向：{selected_direction}
+方向的独特价值：{unique_value}
+方向的陷阱：{pitfall}
+素材摘要：{summary}
+素材核心观点：{key_points}
+
+只输出JSON：
+{{
+  "question": "本轮追问的问题",
+  "dimension": "audience|conflict|differentiation",
+  "round": 1,
+  "can_converge": false,
+  "reason": "为什么还需要继续追问 / 为什么可以收敛了"
+}}"""
+
+
+CONVERGE_PROMPT = """基于前面的探索和追问对话，输出结构化创作方案。
+
+规则：
+- 每个关键决策必须标注置信度（high/medium/low）和理由。
+- 标注的假设中，必须区分"已验证"和"待验证"。待验证>60%时标注风险提示。
+- 标题要基于素材中的核心实体或数字，不得凭空拔高。
+- 所有文本用中文。
+
+平台：{platform_name}
+用户选择的方向：{selected_direction}
+用户回答的追问：{focus_answers}
+素材标题：{title}
+素材摘要：{summary}
+素材核心观点：{key_points}
+
+输出JSON格式：
+{{
+  "titles": ["标题1", "标题2", "标题3"],
+  "platform_structure": {{
+    "hook": "开头hook",
+    "body": ["要点1", "要点2", "要点3"],
+    "cta": "结尾互动引导"
+  }},
+  "decisions": [
+    {{
+      "decision": "做了什么决策",
+      "confidence": "high|medium|low",
+      "reason": "为什么这么决定"
+    }}
+  ],
+  "assumptions_status": [
+    {{
+      "assumption": "假设描述",
+      "status": "verified|unverified",
+      "evidence": "验证依据或空字符串"
+    }}
+  ],
+  "risk_warning": "风险提示文本或空字符串（待验证假设>60%时必填）",
+  "tone": "建议语气/风格"
+}}"""
+
+
+# ── 快速模式：现有一次性生成提示词（保持不变） ──────────────────────
 
 PLATFORM_PROMPTS = {
     "xiaohongshu": {

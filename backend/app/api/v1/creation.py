@@ -1,7 +1,15 @@
 """
 Creation plan API endpoints.
 
-- POST /creation/plan       生成新方案（同步写入 creation_plans 历史）
+快速模式（现有）：
+- POST /creation/plan       一次性生成方案（同步写入 creation_plans 历史）
+
+探索模式（新增，三段式衰减脚手架）：
+- POST /creation/explore     探索期：假设挑战 + 方向生成
+- POST /creation/focus       聚焦期：苏格拉底追问（逐轮）
+- POST /creation/converge    收敛期：结构化方案输出（带置信度标注）
+
+公共：
 - GET  /creation/platforms  可用平台
 - GET  /creation/plans      列出当前用户的历史方案
 - GET  /creation/plans/{id} 获取单条历史方案详情
@@ -15,13 +23,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import async_session
 from app.models.user import User
 from app.repositories.creation_repo import CreationPlanRepository
-from app.services.creation import generate_creation_plan, PLATFORM_PROMPTS
+from app.services.creation import PLATFORM_PROMPTS, generate_creation_plan
+from app.services.creation_explore import (
+    generate_converge_plan,
+    generate_explore_directions,
+    generate_focus_questions,
+)
 
 router = APIRouter(prefix="/creation", tags=["creation"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
@@ -49,6 +61,99 @@ async def create_plan(
         raise HTTPException(status_code=400, detail=result["error"])
     logger.info("Creation plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform)
     return result
+
+
+# ── 探索模式：三段式衰减脚手架 ──────────────────────────────────────
+
+
+class ExploreRequest(BaseModel):
+    content_id: int
+
+
+@router.post("/explore")
+async def explore_directions(
+    req: ExploreRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """探索期：AI 找出 3 个领域假设并挑战，生成创作方向。"""
+    async with async_session() as db:
+        result = await generate_explore_directions(db, req.content_id)
+    if "error" in result:
+        logger.warning("Explore failed: user_id=%d, content_id=%d, error=%s", current_user.id, req.content_id, result["error"])
+        raise HTTPException(status_code=400, detail=result["error"])
+    logger.info("Explore directions generated: user_id=%d, content_id=%d", current_user.id, req.content_id)
+    return result
+
+
+class FocusRequest(BaseModel):
+    content_id: int
+    selected_direction: str
+    unique_value: str = ""
+    pitfall: str = ""
+    focus_round: int = 1
+    previous_qa: list[dict[str, Any]] | None = None
+    user_redirect: str | None = None
+
+
+@router.post("/focus")
+async def focus_questions(
+    req: FocusRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """聚焦期：AI 逐轮追问目标受众→核心冲突→差异化。用户可重定向。"""
+    async with async_session() as db:
+        result = await generate_focus_questions(
+            db,
+            req.content_id,
+            req.selected_direction,
+            req.unique_value,
+            req.pitfall,
+            focus_round=req.focus_round,
+            previous_qa=req.previous_qa,
+            user_redirect=req.user_redirect,
+        )
+    if "error" in result:
+        logger.warning("Focus failed: user_id=%d, content_id=%d, round=%d, error=%s", current_user.id, req.content_id, req.focus_round, result["error"])
+        raise HTTPException(status_code=400, detail=result["error"])
+    logger.info("Focus question generated: user_id=%d, content_id=%d, round=%d", current_user.id, req.content_id, req.focus_round)
+    return result
+
+
+class ConvergeRequest(BaseModel):
+    content_id: int
+    platform: str
+    selected_direction: str
+    focus_answers: list[dict[str, Any]]
+
+
+@router.post("/converge")
+async def converge_plan(
+    req: ConvergeRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """收敛期：AI 输出带置信度标注的结构化创作方案。"""
+    if req.platform not in PLATFORM_PROMPTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported platform: {req.platform}. Supported: {list(PLATFORM_PROMPTS.keys())}",
+        )
+    async with async_session() as db:
+        result = await generate_converge_plan(
+            db,
+            req.content_id,
+            req.platform,
+            req.selected_direction,
+            req.focus_answers,
+            user_id=current_user.id,
+        )
+    if "error" in result:
+        logger.warning("Converge failed: user_id=%d, content_id=%d, platform=%s, error=%s", current_user.id, req.content_id, req.platform, result["error"])
+        raise HTTPException(status_code=400, detail=result["error"])
+    logger.info("Converge plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform)
+    return result
+
+
+# ── 公共端点 ────────────────────────────────────────────────────────
 
 
 @router.get("/platforms")

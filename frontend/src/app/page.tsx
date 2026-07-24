@@ -106,7 +106,7 @@ export default function HomePage() {
           hours: TIME_RANGE_HOURS[activeTimeRange],
           source_type: activeSourceType === '全部' ? undefined : activeSourceType,
           category: activeCategory === '全部' ? undefined : activeCategory,
-          keyword: searchQuery.trim() || undefined,
+          q: searchQuery.trim() || undefined,
           include_trend_sources: false,
         });
         if (!cancelled) {
@@ -176,10 +176,7 @@ export default function HomePage() {
       if (activeCategory !== '全部' && item.category !== activeCategory) return false;
       if (activeRecommendLevel !== '全部' && explainRecommendation(item.analysis).level !== activeRecommendLevel) return false;
       if (activeTag !== '全部' && !getItemTags(item).includes(activeTag)) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        if (!item.title.toLowerCase().includes(q)) return false;
-      }
+      // Search is now server-side (q parameter); no client-side title filtering
       return true;
     });
     // Sort by published_at descending
@@ -268,7 +265,7 @@ export default function HomePage() {
       <div className="mb-4 max-w-[820px]">
         <input
           type="text"
-          placeholder="搜索标题..."
+          placeholder="搜索标题、摘要、标签、AI分析..."
           value={searchQuery}
           onChange={(e) => {
             resetContentLimit();

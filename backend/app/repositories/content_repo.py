@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import Text, cast, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -352,14 +352,34 @@ class ContentRepo(BaseRepository[ContentItem]):
                     stmt = stmt.where(col == value)
                     count_stmt = count_stmt.where(col == value)
 
-        # Full-text-ish search across title + summary + raw_content (OR)
+        # Enhanced full-text-ish search across content + AI analysis fields (OR)
+        # Content-level: title, summary, raw_content, tags (JSON), source_name, author
+        # Analysis-level: ai_analyses.summary, tags, recommendation (via EXISTS, no row dup)
         if search_query:
+            from app.models.analysis import AiAnalysis
+
             pattern = f"%{search_query}%"
-            search_clause = or_(
+            content_search = or_(
                 self.model.title.ilike(pattern),
                 self.model.summary.ilike(pattern),
                 self.model.raw_content.ilike(pattern),
+                cast(self.model.tags, Text).ilike(pattern),
+                self.model.source_name.ilike(pattern),
+                self.model.author.ilike(pattern),
             )
+            analysis_search = exists(
+                select(1)
+                .select_from(AiAnalysis)
+                .where(AiAnalysis.content_id == self.model.id)
+                .where(
+                    or_(
+                        AiAnalysis.summary.ilike(pattern),
+                        cast(AiAnalysis.tags, Text).ilike(pattern),
+                        AiAnalysis.recommendation.ilike(pattern),
+                    )
+                )
+            )
+            search_clause = or_(content_search, analysis_search)
             stmt = stmt.where(search_clause)
             count_stmt = count_stmt.where(search_clause)
 

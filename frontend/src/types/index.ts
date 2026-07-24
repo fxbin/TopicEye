@@ -524,6 +524,7 @@ export interface ContentFilterParams {
   include_trend_sources?: boolean;
   source_type?: string;
   keyword?: string;
+  q?: string; // enhanced full-text search (title + summary + raw_content + tags + AI analysis fields)
   [key: string]: unknown; // allow any extra params for URLSearchParams
 }
 

@@ -23,6 +23,7 @@ class ContentListCacheParams:
     status: str | None = None
     category: str | None = None
     keyword: str | None = None
+    q: str | None = None
     source_id: int | None = None
     include_trend_sources: bool = False
     hours: int | None = None
@@ -50,6 +51,7 @@ class ContentListCacheParams:
             "status": self.status,
             "category": self.category,
             "keyword": (self.keyword or "").strip(),
+            "q": (self.q or "").strip(),
             "source_id": self.source_id,
             "hours": self.hours,
         }

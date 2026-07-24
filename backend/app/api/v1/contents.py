@@ -163,6 +163,7 @@ async def list_contents(
         status=status,
         category=category,
         keyword=keyword,
+        q=q,
         source_id=source_id,
         include_trend_sources=include_trend_sources,
         hours=hours,

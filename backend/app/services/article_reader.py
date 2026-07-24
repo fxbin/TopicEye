@@ -15,6 +15,7 @@ import ipaddress
 import logging
 import re
 import random
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -565,6 +566,95 @@ async def _fetch_remote_article(
     raise ArticleReaderError("too_many_redirects", "原文跳转次数过多，请打开原文。", 502)
 
 
+async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
+    """Tier 2: TLS-fingerprint-impersonating fetcher for WAF-blocked sites.
+
+    Uses curl_cffi to impersonate a real browser's TLS ClientHello (JA3/JA4),
+    which bypasses WAF/bot-detection systems that block httpx's Python TLS
+    fingerprint.  Redirects are followed automatically by curl_cffi.
+    """
+    from curl_cffi.requests import AsyncSession
+
+    current_url = await _validate_public_url(url)
+    ua_pool = [ua.strip() for ua in settings.ARTICLE_READER_USER_AGENT.split(",") if ua.strip()]
+    headers = {
+        "User-Agent": random.choice(ua_pool) if ua_pool else "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+    }
+
+    impersonate = settings.ARTICLE_READER_CURL_CFFI_IMPERSONATE or "chrome"
+    timeout_val = settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS
+
+    async with AsyncSession(impersonate=impersonate, timeout=timeout_val, allow_redirects=True) as client:
+        response = await client.get(current_url, headers=headers)
+        if response.status_code >= 400:
+            raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法提供正文，请打开原文。", 502)
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise ArticleReaderError("unsupported_content", "该原文不是可阅读的网页内容。")
+        payload = response.content
+        if len(payload) > settings.ARTICLE_READER_MAX_RESPONSE_BYTES:
+            raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
+        final_url = str(response.url)
+        if content_type == "text/plain":
+            text = _clean_text(payload.decode(response.encoding or "utf-8", errors="replace"))
+            if len(text) < _MIN_READER_TEXT_CHARS:
+                raise ArticleReaderError("not_readerable", "该页面没有可提取的正文，请打开来源网站查看。")
+            return ExtractedArticle(
+                canonical_url=final_url,
+                title="原文内容",
+                byline=None,
+                published_at=None,
+                excerpt=text[:240] + ("…" if len(text) > 240 else ""),
+                text_content=text[: settings.ARTICLE_READER_MAX_TEXT_CHARS],
+                content_blocks=blocks_from_text(text),
+                extraction_method="curl_cffi",
+            )
+        return _extract_from_html(payload, final_url)
+
+
+async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]:
+    """Three-tier fetch: httpx → curl_cffi.
+
+    Returns ``(article, tier_name)`` where tier_name is ``'httpx'`` or
+    ``'curl_cffi'``.  Tier 2 is only attempted when Tier 1 fails with an
+    error that could be caused by TLS-fingerprint-based blocking (e.g.
+    403 from a WAF).  URL-level and robots.txt errors are not retried.
+    """
+    # Errors that won't be fixed by a different TLS stack
+    _no_retry = {
+        "blocked_url",
+        "unsupported_url",
+        "robots_disallowed",
+        "unsupported_content",
+        "response_too_large",
+        "too_many_redirects",
+        "invalid_redirect",
+        "redirect_loop",
+        "unresolvable_host",
+        "host_not_allowed",
+        "reader_disabled",
+    }
+
+    tier1_error: ArticleReaderError | None = None
+    try:
+        article = await _fetch_remote_article(url)
+        return article, "httpx"
+    except ArticleReaderError as e:
+        if e.code in _no_retry or not settings.ARTICLE_READER_CURL_CFFI_FALLBACK:
+            raise
+        tier1_error = e
+        logger.info("Tier 1 (httpx) failed for %s: %s, trying curl_cffi", url, e.code)
+
+    # Tier 2: curl_cffi (TLS impersonation)
+    try:
+        article = await _fetch_with_curl_cffi(url)
+        return article, "curl_cffi"
+    except ArticleReaderError as e:
+        logger.warning("Tier 2 (curl_cffi) also failed for %s: %s", url, e.code)
+        raise
+
+
 def _snapshot_is_fresh(snapshot: ArticleSnapshot, now: datetime) -> bool:
     return snapshot.fetch_status == "ready" and as_utc(snapshot.expires_at) > now
 
@@ -670,9 +760,23 @@ async def read_or_create_snapshot(
         if not settings.ARTICLE_READER_ENABLED:
             raise ArticleReaderError("reader_disabled", "站内阅读暂未启用。", 503)
 
+        fetch_started = time.perf_counter()
+        fetch_tier = "ingested"
         extracted = _extract_from_ingested_content(content)
         if extracted is None:
-            extracted = await _fetch_remote_article(content.url)
+            try:
+                extracted, fetch_tier = await _fetch_remote_article_tiered(content.url)
+            except ArticleReaderError as e:
+                fetch_elapsed_ms = int((time.perf_counter() - fetch_started) * 1000)
+                await record_reader_event(
+                    db,
+                    content_id=content.id,
+                    outcome="error",
+                    duration_ms=fetch_elapsed_ms,
+                    error_code=e.code,
+                )
+                raise
+        fetch_elapsed_ms = int((time.perf_counter() - fetch_started) * 1000)
 
         reading_minutes = max(1, (len(extracted.text_content) + _WORDS_PER_MINUTE - 1) // _WORDS_PER_MINUTE)
         expires_at = now + timedelta(seconds=settings.ARTICLE_READER_SNAPSHOT_TTL_SECONDS)
@@ -698,6 +802,13 @@ async def read_or_create_snapshot(
             for field, value in values.items():
                 setattr(existing, field, value)
         await db.flush()
+        await record_reader_event(
+            db,
+            content_id=content.id,
+            outcome="success",
+            extraction_method=fetch_tier,
+            duration_ms=fetch_elapsed_ms,
+        )
         return existing, "miss"
 
 

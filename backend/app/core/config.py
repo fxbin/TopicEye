@@ -91,6 +91,11 @@ class Settings(BaseSettings):
         " Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15,"
         " Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
+    # Tier 2 fallback: curl_cffi for TLS fingerprint impersonation.
+    # When httpx gets 403/blocked by WAF, curl_cffi retries with a real
+    # browser TLS fingerprint (JA3/JA4).
+    ARTICLE_READER_CURL_CFFI_FALLBACK: bool = True
+    ARTICLE_READER_CURL_CFFI_IMPERSONATE: str = "chrome"
     POST_SYNC_ANALYSIS_BATCH_SIZE: int = 10
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520
     POST_SYNC_MIN_REMAINING_SECONDS: int = 90

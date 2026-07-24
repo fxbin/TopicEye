@@ -26,3 +26,4 @@ itsdangerous==2.2.0
 # 注: 包名 mini-racer (新版), import 仍走 py_mini_racer.MiniRacer
 mini-racer==0.14.1
 trafilatura>=2.1.0
+curl_cffi>=0.15.0

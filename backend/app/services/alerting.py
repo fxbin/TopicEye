@@ -15,7 +15,7 @@ webhook URL 来源（两条独立通道，任一启用即发）：
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 
 import httpx
 
@@ -31,8 +31,9 @@ _DEDUP_WINDOW_SECONDS = 3600  # 1 小时内同 key 不重复发
 # source_failure: 信源连续抓取失败告警（默认场景）
 # daily_report: 日报生成完成推送
 # weekly_digest: 周报生成完成推送
+# today_picks: 今日精选内容推送（分析+聚类完成后触发）
 # test: 测试发送（POST /settings/notification-webhook/test）
-EVENT_TYPES = {"source_failure", "daily_report", "weekly_digest", "test"}
+EVENT_TYPES = {"source_failure", "daily_report", "weekly_digest", "today_picks", "test"}
 # 默认事件类型（配置未指定 event_types 时回退）
 DEFAULT_EVENT_TYPES = ["source_failure"]
 
@@ -384,3 +385,53 @@ async def alert_source_failures(failed_sources: list[dict]) -> None:
         alert_key=f"source_failures:{datetime.now(UTC).strftime('%Y-%m-%d-%H')}",
         severity="warning",
     )
+
+
+async def push_today_picks(picks: list[dict], total: int) -> None:
+    """今日精选内容推送：站内通知 + webhook 卡片。
+
+    在分析+聚类完成后调用，推送今日 Top 3 精选内容到飞书/钉钉/Slack。
+    两条通道独立、互不阻塞，任一失败仅记录 warning。
+    """
+    if not picks:
+        return
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    # ── 站内通知 ──
+    try:
+        from app.services.notification_service import push_notification
+
+        top_title = picks[0].get("title", "")[:40]
+        await push_notification(
+            "success",
+            "today_picks",
+            "今日精选更新",
+            f"共 {total} 条选题，Top 1：{top_title}",
+        )
+    except Exception:
+        logger.warning("today_picks in-app notification failed", exc_info=True)
+
+    # ── webhook 卡片 ──
+    try:
+        top3_lines: list[str] = []
+        for i, pick in enumerate(picks[:3], start=1):
+            title = pick.get("title", f"选题 {i}")[:60]
+            score = pick.get("adjusted_curation_score") or pick.get("curation_score") or 0
+            source = pick.get("source_name", "")
+            top3_lines.append(f"**{i}. {title}** ({source}) · {round(score)}分")
+
+        card_content = f"今日共 {total} 条精选选题\n---\n" + "\n".join(top3_lines)
+        if total > 3:
+            card_content += f"\n…共 {total} 条"
+
+        await send_alert(
+            title=f"📰 今日精选 · {today}",
+            message=f"今日共 {total} 条精选选题",
+            alert_key=f"today_picks:{today}",
+            severity="info",
+            event_type="today_picks",
+            card={"content": card_content, "link": "/today-picks"},
+        )
+    except Exception:
+        logger.warning("today_picks webhook push failed (non-fatal)", exc_info=True)

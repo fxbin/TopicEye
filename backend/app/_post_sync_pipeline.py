@@ -183,6 +183,21 @@ async def _run_post_sync_pipeline_once() -> None:
     except Exception:
         logger.exception("Scheduler: trend snapshot failed")
 
+    # ── 今日精选推送（分析+聚类+快照全部完成后触发） ──
+    try:
+        async with app.scheduler.async_session() as db:
+            from app.services.alerting import push_today_picks
+            from app.services.today_picks import build_today_picks
+
+            payload = await build_today_picks(db, hours=24, limit=5)
+            items = payload.get("items", [])
+            total = payload.get("total", 0)
+            if items and total > 0:
+                await push_today_picks(items, total)
+                logger.info("Scheduler: today_picks push sent — %d items", total)
+    except Exception:
+        logger.warning("Scheduler: today_picks push failed (non-fatal)", exc_info=True)
+
 
 async def _drain_pending_analysis(
     *,

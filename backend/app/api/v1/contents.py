@@ -855,6 +855,41 @@ async def unignore_content(
     return {"content_id": content_id, "ignored": False, "removed": removed}
 
 
+@router.get("/evidence-batch")
+async def get_evidence_batch(
+    ids: str = Query(..., description="Comma-separated content IDs"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """Batch get evidence marks for multiple content items (avoids N+1 in today-picks)."""
+    from app.repositories.evidence_repo import EvidenceRepository
+
+    try:
+        content_ids = [int(x.strip()) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ids format") from None
+
+    if not content_ids or len(content_ids) > 200:
+        raise HTTPException(status_code=400, detail="ids must be 1-200 items")
+
+    owner_user_id = current_user.id if current_user else None
+    repo = EvidenceRepository(db)
+    marks = await repo.batch_get_marks(content_ids, owner_user_id)
+
+    return {
+        "marks": {
+            str(cid): {
+                "cross_source_level": m.cross_source_level,
+                "platform_count": m.platform_count,
+                "platforms": m.platforms or [],
+                "evidence_count": m.evidence_count,
+                "independent_publisher_count": m.independent_publisher_count,
+            }
+            for cid, m in marks.items()
+        }
+    }
+
+
 @router.get("/{content_id}/evidence")
 async def get_content_evidence(
     content_id: int,

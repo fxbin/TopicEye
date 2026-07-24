@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_evidence import CrossSourceLevel, EvidenceType
+from app.models.source_evidence_profile import PublisherKind, SourceEvidenceProfile
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.evidence_repo import EvidenceRepository
 
@@ -119,6 +120,18 @@ async def discover_cross_source_evidence(
         return {"groups": 0, "marks": 0, "links": 0, "total": 0}
 
     # Build item dicts
+    # Load source evidence profiles for credible lead classification
+    profile_rows = await db.execute(select(SourceEvidenceProfile))
+    profiles_by_source: dict[int, dict[str, Any]] = {}
+    for p in profile_rows.scalars().all():
+        profiles_by_source[p.source_id] = {
+            "publisher_identity": p.publisher_identity,
+            "publisher_family": p.publisher_family,
+            "platform": p.platform,
+            "publisher_kind": p.publisher_kind,
+            "official_domains": p.official_domains or [],
+        }
+
     items: list[dict[str, Any]] = []
     for content, analysis in rows:
         tags = _extract_tag_set(analysis.tags)
@@ -136,6 +149,7 @@ async def discover_cross_source_evidence(
                 "published_at": content.published_at,
                 "tags": tags,
                 "keywords": keywords,
+                "profile": profiles_by_source.get(content.source_id),
             }
         )
 
@@ -208,6 +222,25 @@ async def discover_cross_source_evidence(
         independent_count = len(source_ids)
 
         # Persist marks for all items in the group (bidirectional)
+        # Determine credible leads from source profiles
+        group_families = set()
+        for item in group:
+            fam = (item.get("profile") or {}).get("publisher_family") or item.get("source_name") or "unknown"
+            group_families.add(fam)
+
+        has_primary = any(
+            (item.get("profile") or {}).get("publisher_kind") == PublisherKind.PRIMARY
+            for item in group
+        )
+        has_official = False
+        for item in group:
+            prof = item.get("profile") or {}
+            domains = prof.get("official_domains") or []
+            item_url = item.get("url") or ""
+            if domains and any(d in item_url for d in domains):
+                has_official = True
+                break
+
         for item in group:
             mark = await repo.upsert_mark(
                 content_id=item["id"],
@@ -217,6 +250,8 @@ async def discover_cross_source_evidence(
                 platforms=platform_list,
                 evidence_count=len(group) - 1,
                 independent_publisher_count=independent_count,
+                has_primary_source=has_primary,
+                has_official_source=has_official,
             )
 
             # Delete old links and re-add
@@ -234,12 +269,24 @@ async def discover_cross_source_evidence(
                 shared = item["tags"] & other["tags"]
                 basis = "tags" if len(shared) >= TAG_OVERLAP_SAME_EVENT else "title_keywords"
 
+                # Determine evidence type from profile
+                other_prof = other.get("profile") or {}
+                other_kind = other_prof.get("publisher_kind", PublisherKind.UNKNOWN)
+                if other_kind == PublisherKind.PRIMARY:
+                    ev_type = EvidenceType.PRIMARY_SOURCE
+                elif other_kind == PublisherKind.OFFICIAL:
+                    ev_type = EvidenceType.OFFICIAL_LINK
+                elif len(group_families) >= 3:
+                    ev_type = EvidenceType.INDEPENDENT_REPORT
+                else:
+                    ev_type = EvidenceType.CROSS_SOURCE
+
                 await repo.add_link(
                     mark_id=mark.id,
                     evidence_content_id=other["id"],
                     evidence_url=other.get("url"),
-                    evidence_type=EvidenceType.CROSS_SOURCE,
-                    publisher_family=other.get("source_name"),
+                    evidence_type=ev_type,
+                    publisher_family=other_prof.get("publisher_family") or other.get("source_name"),
                     source_id=other.get("source_id"),
                     similarity_score=round(len(shared) / max(len(item["tags"] | other["tags"]), 1), 3) if shared else 0.3,
                     time_delta_minutes=delta_min,

@@ -884,6 +884,8 @@ async def get_evidence_batch(
                 "platforms": m.platforms or [],
                 "evidence_count": m.evidence_count,
                 "independent_publisher_count": m.independent_publisher_count,
+                "has_primary_source": bool(m.has_primary_source),
+                "has_official_source": bool(m.has_official_source),
             }
             for cid, m in marks.items()
         }
@@ -914,6 +916,8 @@ async def get_content_evidence(
             "platforms": mark.platforms or [],
             "evidence_count": mark.evidence_count,
             "independent_publisher_count": mark.independent_publisher_count,
+            "has_primary_source": bool(mark.has_primary_source),
+            "has_official_source": bool(mark.has_official_source),
         },
         "evidence_links": [
             {
@@ -928,3 +932,26 @@ async def get_content_evidence(
             for link in links
         ],
     }
+
+
+@router.post("/{content_id}/evidence-interaction")
+async def record_evidence_interaction(
+    content_id: int,
+    interaction_type: str = Query(..., description="click|favorite|unfavorite|adopt|feedback_positive|feedback_negative"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """Record a user interaction on evidence-labeled content (Phase 3 validation)."""
+    from app.repositories.evidence_repo import EvidenceRepository
+
+    user_id = current_user.id if current_user else None
+    repo = EvidenceRepository(db)
+    mark, _ = await repo.get_mark_with_links(content_id, user_id)
+    await repo.record_interaction(
+        content_id=content_id,
+        user_id=user_id,
+        interaction_type=interaction_type,
+        cross_source_level=mark.cross_source_level if mark else None,
+    )
+    await db.commit()
+    return {"content_id": content_id, "recorded": True}

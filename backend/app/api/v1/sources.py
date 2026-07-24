@@ -397,6 +397,53 @@ async def sync_my_source(
     )
 
 
+# ── Source Evidence Profiles (admin-managed credible lead config) ───────
+
+@router.get("/{source_id}/evidence-profile", dependencies=[Depends(get_current_admin_user)])
+async def get_evidence_profile(source_id: int, db: AsyncSession = Depends(get_db)):
+    """Get the evidence profile for a source."""
+    from app.repositories.evidence_profile_repo import SourceEvidenceProfileRepository
+
+    profile = await SourceEvidenceProfileRepository(db).get_by_source_id(source_id)
+    if not profile:
+        return {"source_id": source_id, "profile": None}
+    return {
+        "source_id": source_id,
+        "profile": {
+            "publisher_identity": profile.publisher_identity,
+            "publisher_family": profile.publisher_family,
+            "platform": profile.platform,
+            "publisher_kind": profile.publisher_kind,
+            "official_domains": profile.official_domains or [],
+            "verification_proof_url": profile.verification_proof_url,
+            "reviewed_at": profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+        },
+    }
+
+
+@router.put("/{source_id}/evidence-profile", dependencies=[Depends(get_current_admin_user)])
+async def upsert_evidence_profile(source_id: int, data: dict, db: AsyncSession = Depends(get_db)):
+    """Create or update the evidence profile for a source."""
+    from app.models.source_evidence_profile import PublisherKind
+    from app.repositories.evidence_profile_repo import SourceEvidenceProfileRepository
+
+    kind_str = data.get("publisher_kind", "unknown")
+    if kind_str not in [k.value for k in PublisherKind]:
+        kind_str = "unknown"
+
+    await SourceEvidenceProfileRepository(db).upsert(
+        source_id=source_id,
+        publisher_identity=data.get("publisher_identity", ""),
+        publisher_family=data.get("publisher_family", ""),
+        platform=data.get("platform", "website"),
+        publisher_kind=kind_str,
+        official_domains=data.get("official_domains"),
+        verification_proof_url=data.get("verification_proof_url"),
+    )
+    await db.commit()
+    return {"source_id": source_id, "updated": True}
+
+
 @router.post("/reorder", dependencies=[Depends(get_current_admin_user)])
 async def reorder_sources(data: SourceReorderRequest, db: AsyncSession = Depends(get_db)):
     """Persist source order for one kanban lane or the current ordered subset."""

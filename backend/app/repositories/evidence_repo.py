@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark
+from app.models.evidence_interaction import EvidenceInteraction
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +109,21 @@ class EvidenceRepository:
         )
         links = list(link_result.scalars().all())
         return mark, links
+
+    async def record_interaction(
+        self,
+        *,
+        content_id: int,
+        user_id: int | None,
+        interaction_type: str,
+        cross_source_level: str | None = None,
+    ) -> None:
+        """Record a user interaction on evidence-labeled content."""
+        interaction = EvidenceInteraction(
+            content_id=content_id,
+            user_id=user_id,
+            interaction_type=interaction_type,
+            cross_source_level=cross_source_level,
+        )
+        self.db.add(interaction)
+        await self.db.flush()

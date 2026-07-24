@@ -37,6 +37,7 @@ import type {
   ContentItem,
   WeReadSearchBook,
   WeReadShelfSync,
+  WeReadReadData,
 } from '@/types';
 import {
   BookCard,
@@ -214,6 +215,8 @@ export interface StatsTabProps {
   showCharts: boolean;
   onToggleCharts: () => void;
   chartData: { topNotes: Array<{ label: string; value: number; sub: string }>; topAuthors: Array<{ label: string; value: number; sub: string }> };
+  initialReadData?: WeReadReadData | null;
+  initialShelfData?: WeReadShelfSync | null;
   onShelfData: (shelfData: WeReadShelfSync) => void;
 }
 
@@ -223,6 +226,8 @@ export function StatsTab({
   showCharts,
   onToggleCharts,
   chartData,
+  initialReadData,
+  initialShelfData,
   onShelfData,
 }: StatsTabProps) {
   return (
@@ -281,8 +286,8 @@ export function StatsTab({
       )}
 
       {/* 阅读统计 + 书架对比 */}
-      <ReadingStatsCard />
-      <ShelfComparison notebookCount={itemsWithMeta.length} onShelfData={onShelfData} />
+      <ReadingStatsCard initialData={initialReadData} />
+      <ShelfComparison notebookCount={itemsWithMeta.length} onShelfData={onShelfData} initialData={initialShelfData} />
     </>
   );
 }

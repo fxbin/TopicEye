@@ -975,8 +975,8 @@ export function BestBookmarksSection({ item }: { item: ContentItem }) {
 
 
 /** 阅读统计卡片 — 按需加载阅读时长、天数等 */
-export function ReadingStatsCard() {
-  const [data, setData] = useState<WeReadReadData | null>(null);
+export function ReadingStatsCard({ initialData }: { initialData?: WeReadReadData | null }) {
+  const [data, setData] = useState<WeReadReadData | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readType, setReadType] = useState<'all' | 'week' | 'month' | 'year'>('all');
@@ -994,11 +994,16 @@ export function ReadingStatsCard() {
     }
   }, [readType]);
 
-  // 切换周期时自动刷新
+  // 切换周期时自动刷新（已有数据时）
   useEffect(() => {
     if (data) handleFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readType]);
+
+  // 页面预取数据到达时自动填充
+  useEffect(() => {
+    if (initialData) setData(initialData);
+  }, [initialData]);
 
   // 格式化阅读时长（秒 → 小时分钟）
   const formatTime = (seconds: number) => {
@@ -1142,7 +1147,7 @@ export function ReadingStatsCard() {
 
       {!data && !error && !loading && (
         <p className="mt-2 text-[11px] text-gray-400">
-          点击「获取」从微信读书拉取阅读统计数据
+          正在从微信读书拉取阅读统计数据…
         </p>
       )}
     </Surface>
@@ -1151,11 +1156,12 @@ export function ReadingStatsCard() {
 
 
 /** 书架对比 — 拉取完整书架与笔记本对比 */
-export function ShelfComparison({ notebookCount, onShelfData }: {
+export function ShelfComparison({ notebookCount, onShelfData, initialData }: {
   notebookCount: number;
   onShelfData?: (data: WeReadShelfSync) => void;
+  initialData?: WeReadShelfSync | null;
 }) {
-  const [data, setData] = useState<WeReadShelfSync | null>(null);
+  const [data, setData] = useState<WeReadShelfSync | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1175,18 +1181,11 @@ export function ShelfComparison({ notebookCount, onShelfData }: {
 
   if (!data && !loading && !error) {
     return (
-      <Surface icon={Layers} title="书架 vs 笔记本对比" hint="完整书架 vs 有笔记的书">
-        <button
-          type="button"
-          onClick={handleFetch}
-          className="flex items-center gap-1.5 rounded-md border border-primary-border bg-primary-light px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary-light/80"
-        >
-          <RefreshCw size={11} />
-          获取完整书架
-        </button>
-        <p className="mt-2 text-[11px] text-gray-400">
-          对比完整书架与笔记本（有笔记的书），分析囤书习惯
-        </p>
+      <Surface icon={Layers} title="书架 vs 笔记本对比" hint="加载中…">
+        <div className="flex items-center gap-2 py-4">
+          <Loader2 size={16} className="animate-spin text-primary" />
+          <span className="text-xs text-gray-500">正在拉取完整书架…</span>
+        </div>
       </Surface>
     );
   }

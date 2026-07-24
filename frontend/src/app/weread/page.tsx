@@ -15,6 +15,7 @@ import { useFetch } from '@/hooks/useFetch';
 import type {
   WeReadSearchBook,
   WeReadShelfSync,
+  WeReadReadData,
 } from '@/types';
 import {
   SHELF_PAGE_SIZE,
@@ -46,6 +47,14 @@ export default function WeReadPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const [showCharts, setShowCharts] = useState(false);
+
+  // ── 页面进入时自动预取统计/书架数据（后台静默，不阻塞书架列表）──
+  const [autoReadData, setAutoReadData] = useState<WeReadReadData | null>(null);
+  const [autoShelfData, setAutoShelfData] = useState<WeReadShelfSync | null>(null);
+  useEffect(() => {
+    integrationsApi.getWeReadReadData('all', true).then(setAutoReadData).catch(() => {});
+    integrationsApi.getWeReadShelf().then(setAutoShelfData).catch(() => {});
+  }, []);
 
   // ── 书架分类映射（由 ShelfComparison 组件填充）──
   const [shelfCategoryMap, setShelfCategoryMap] = useState<Map<string, string>>(new Map());
@@ -441,6 +450,8 @@ export default function WeReadPage() {
             showCharts={showCharts}
             onToggleCharts={() => setShowCharts((v) => !v)}
             chartData={chartData}
+            initialReadData={autoReadData}
+            initialShelfData={autoShelfData}
             onShelfData={(shelfData: WeReadShelfSync) => {
               const m = new Map<string, string>();
               for (const book of shelfData.books) {

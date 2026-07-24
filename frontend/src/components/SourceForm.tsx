@@ -55,6 +55,65 @@ interface SourceFormProps {
 
 const inputClass = 'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light';
 
+// ─── Per-type URL placeholder + hint ────────────────────────────────────
+const URL_PLACEHOLDERS: Record<string, string> = {
+  RSS: 'https://example.com/feed',
+  RSSHub: 'xiaohongshu/user/profile/xxx',
+  Reddit: 'https://www.reddit.com/r/ai/hot/.rss',
+  API: 'https://example.com/api/items',
+  '网站': 'https://example.com',
+  YouTube: 'https://www.youtube.com/@handle',
+  Podcast: 'https://xxx.substack.com',
+  Newsletter: 'https://xxx.substack.com',
+  X: 'https://x.com/search',
+  TwitterRSS: 'https://xgo.ing/username/rss',
+};
+
+const TYPE_HINTS: Record<string, string> = {
+  TwitterRSS: '通过 xgo.ing 将 X 用户时间线转为 RSS。格式：https://xgo.ing/{用户名}/rss。粘贴 URL 后自动识别类型。',
+  X: '通过 Apify 直连 X API，需配置环境变量 APIFY_TOKEN。下方配置填写搜索关键词或 JSON 格式的用户列表。',
+  RSSHub: '填写 RSSHub 路由（不含域名），如 weibo/user/123 或 bilibili/user/456。系统自动尝试多个 RSSHub 实例。',
+};
+
+// ─── Per-type keyword/config field ─────────────────────────────────────
+type KeywordFieldConfig = {
+  show: boolean;
+  label: string;
+  hint?: string;
+  placeholder: string;
+  isJson?: boolean;
+};
+
+function getKeywordFieldConfig(sourceType: string): KeywordFieldConfig {
+  switch (sourceType) {
+    case 'API':
+      return {
+        show: true,
+        label: 'API 配置',
+        hint: 'JSON 格式，可选',
+        placeholder: '{"items_path":"data.items","fields":{"title":"title","url":"url","summary":"summary"}}',
+        isJson: true,
+      };
+    case 'TwitterRSS':
+      return {
+        show: true,
+        label: '高级配置',
+        hint: 'JSON 格式，可选（留空使用默认）',
+        placeholder: '{"fetch_limit":50,"include_retweets":false,"api_key":"可选"}',
+        isJson: true,
+      };
+    case 'X':
+      return {
+        show: true,
+        label: '搜索关键词 / 用户列表',
+        hint: '直接填搜索词（如 AI agents），或 JSON 格式配置',
+        placeholder: 'AI agents\n或\n{"users":["elonmusk","openai"],"fetch_limit":50}',
+      };
+    default:
+      return { show: false, label: '', placeholder: '' };
+  }
+}
+
 export default function SourceForm({ form, setForm }: SourceFormProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -84,7 +143,7 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
         <FieldLabel>URL / 地址</FieldLabel>
         <input
           type="text"
-          placeholder={form.source_type === 'API' ? 'https://example.com/api/items' : 'https://example.com/feed'}
+          placeholder={URL_PLACEHOLDERS[form.source_type] || 'https://example.com/feed'}
           value={form.url}
           onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
           onBlur={async (e) => {
@@ -104,23 +163,33 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
           }}
           className={cx(inputClass, 'font-mono')}
         />
-        <p className="mt-1 text-[11px] text-gray-400">粘贴 URL 后自动识别类型（失焦触发）</p>
+        {TYPE_HINTS[form.source_type] ? (
+          <p className="mt-1 text-[11px] leading-4 text-gray-400">{TYPE_HINTS[form.source_type]}</p>
+        ) : (
+          <p className="mt-1 text-[11px] text-gray-400">粘贴 URL 后自动识别类型（失焦触发）</p>
+        )}
       </div>
 
-      {form.source_type === 'API' && (
-        <div>
-          <FieldLabel>
-            API 配置
-            <span className="ml-2 text-[11px] font-normal text-gray-400">JSON，可选</span>
-          </FieldLabel>
-          <textarea
-            value={form.keyword}
-            onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
-            placeholder={'{"items_path":"data.items","fields":{"title":"title","url":"url","summary":"summary"}}'}
-            className="min-h-28 w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-          />
-        </div>
-      )}
+      {(() => {
+        const kwConfig = getKeywordFieldConfig(form.source_type);
+        if (!kwConfig.show) return null;
+        return (
+          <div>
+            <FieldLabel>
+              {kwConfig.label}
+              {kwConfig.hint && (
+                <span className="ml-2 text-[11px] font-normal text-gray-400">{kwConfig.hint}</span>
+              )}
+            </FieldLabel>
+            <textarea
+              value={form.keyword}
+              onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
+              placeholder={kwConfig.placeholder}
+              className="min-h-28 w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light"
+            />
+          </div>
+        );
+      })()}
 
       <div>
         <FieldLabel>分类</FieldLabel>

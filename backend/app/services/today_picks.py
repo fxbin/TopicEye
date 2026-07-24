@@ -14,8 +14,7 @@ from app.models.content import ContentItem
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.duckdb_service import query_today_picks, query_topics
 from app.services.feedback_signal import get_feedback_scores
-from app.services.scoring_engine import CONFIG as SCORING_CONFIG
-from app.services.scoring_engine import ScoreBreakdown, ScoringInput, score_items
+from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +233,16 @@ async def _build_today_picks_via_oltp(
                 "recommendation": latest.recommendation,
                 "ai_summary": latest.summary,
                 "ai_tags": latest.tags,
+                "key_points": latest.key_points,
+                "audience_emotion": latest.audience_emotion,
+                "creator_angles": latest.creator_angles,
+                "title_suggestions": latest.title_suggestions,
+                "outline_suggestions": latest.outline_suggestions,
+                "xiaohongshu_plan": latest.xiaohongshu_plan,
+                "short_video_plan": latest.short_video_plan,
+                "risk_notes": latest.risk_notes,
+                "platform_fit": latest.platform_fit,
+                "summary_source": latest.summary_source,
                 "enrichment_status": latest.enrichment_status,
                 "enrichment": latest.enrichment,
                 "analysis_source_weight": latest.source_weight,
@@ -314,17 +323,17 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "creator_score": row.get("creator_score") or 0,
         "viral_score": row.get("viral_score") or 0,
         "risk_score": row.get("risk_score") or 0,
-        "platform_fit": None,
+        "platform_fit": _decode_json_value(row.get("platform_fit")),
         "recommended_reason": row.get("recommended_reason"),
         "summary": row.get("ai_summary"),
-        "key_points": None,
-        "audience_emotion": None,
-        "creator_angles": None,
-        "title_suggestions": None,
-        "outline_suggestions": None,
-        "xiaohongshu_plan": None,
-        "short_video_plan": None,
-        "risk_notes": None,
+        "key_points": _decode_json_value(row.get("key_points")),
+        "audience_emotion": row.get("audience_emotion"),
+        "creator_angles": _decode_json_value(row.get("creator_angles")),
+        "title_suggestions": _decode_json_value(row.get("title_suggestions")),
+        "outline_suggestions": _decode_json_value(row.get("outline_suggestions")),
+        "xiaohongshu_plan": _decode_json_value(row.get("xiaohongshu_plan")),
+        "short_video_plan": _decode_json_value(row.get("short_video_plan")),
+        "risk_notes": _decode_json_value(row.get("risk_notes")),
         "curation_score": row.get("curation_score") or 0,
         "tags": analysis_tags,
         "recommendation": row.get("recommendation"),

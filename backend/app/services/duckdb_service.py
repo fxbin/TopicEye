@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 import threading
-from datetime import date, datetime, timedelta, timezone, UTC
-from typing import Any, Dict, List, Optional
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 from app.core.config import settings
 from app.core.db_backend import (
@@ -34,7 +34,6 @@ from app.core.db_backend import (
     duckdb_extension_name,
     redact_database_secrets,
 )
-from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoringInput, score_items
 from app.services._duckdb_sql import (  # noqa: F401 — re-export for backward compat
     EMPTY_FEEDBACK_SCORES_CTE,
     IGNORED_CONTENT_CTE,
@@ -43,12 +42,13 @@ from app.services._duckdb_sql import (  # noqa: F401 — re-export for backward 
     STATS_CURATION_FALLBACK_THRESHOLD,
 )
 from app.services._duckdb_stats_helpers import (  # noqa: F401 — re-export
-    stats_row_to_scoring_input,
-    stats_threshold_from_scored,
     selected_stats_items,
     stats_date_key,
+    stats_row_to_scoring_input,
     stats_source_key,
+    stats_threshold_from_scored,
 )
+from app.services.scoring_engine import CONFIG as SCORING_CONFIG, score_items
 
 logger = logging.getLogger(__name__)
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
@@ -272,6 +272,10 @@ class DuckDBAnalytics:
                 {analysis_source_weight_expr},
                 a.recommended_reason, a.recommendation,
                 a.summary AS ai_summary, a.tags AS ai_tags,
+                a.key_points, a.audience_emotion, a.creator_angles,
+                a.title_suggestions, a.outline_suggestions,
+                a.xiaohongshu_plan, a.short_video_plan,
+                a.risk_notes, a.platform_fit, a.summary_source,
                 a.enrichment_status, a.enrichment,
                 COALESCE(s.weight, 3) AS source_weight_db,
                 COALESCE(f.feedback_score, 0) AS feedback_score,
@@ -339,6 +343,16 @@ class DuckDBAnalytics:
             "recommendation",
             "ai_summary",
             "ai_tags",
+            "key_points",
+            "audience_emotion",
+            "creator_angles",
+            "title_suggestions",
+            "outline_suggestions",
+            "xiaohongshu_plan",
+            "short_video_plan",
+            "risk_notes",
+            "platform_fit",
+            "summary_source",
             "enrichment_status",
             "enrichment",
             "source_weight_db",
@@ -348,7 +362,7 @@ class DuckDBAnalytics:
 
         items: list[dict[str, Any]] = []
         for row in results:
-            item = dict(zip(columns, row))
+            item = dict(zip(columns, row, strict=False))
             if item["adjusted_curation_score"] < curation_threshold:
                 continue
             # Serialize datetime fields
@@ -396,7 +410,6 @@ class DuckDBAnalytics:
 
         Returns (page_items, total).
         """
-        import math
 
         conn = self._get_conn()
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
@@ -510,7 +523,7 @@ class DuckDBAnalytics:
 
         items: list[dict[str, Any]] = []
         for row in results:
-            item = dict(zip(columns, row))
+            item = dict(zip(columns, row, strict=False))
             # Compute final LFV score
             lfv_final = round(
                 float(item["content_score"])
@@ -693,7 +706,7 @@ class DuckDBAnalytics:
             "source_weight_db",
             "feedback_score",
         ]
-        item_rows = [dict(zip(columns, row)) for row in rows]
+        item_rows = [dict(zip(columns, row, strict=False)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}
         scored = score_items([stats_row_to_scoring_input(row) for row in item_rows])
         scored_items: list[dict[str, Any]] = []

@@ -852,3 +852,43 @@ async def unignore_content(
     removed = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()
     return {"content_id": content_id, "ignored": False, "removed": removed}
+
+
+@router.get("/{content_id}/evidence")
+async def get_content_evidence(
+    content_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """Get cross-source evidence mark and links for a content item."""
+    from app.repositories.evidence_repo import EvidenceRepository
+
+    owner_user_id = current_user.id if current_user else None
+    repo = EvidenceRepository(db)
+    mark, links = await repo.get_mark_with_links(content_id, owner_user_id)
+
+    if not mark:
+        return {"content_id": content_id, "evidence_mark": None, "evidence_links": []}
+
+    return {
+        "content_id": content_id,
+        "evidence_mark": {
+            "cross_source_level": mark.cross_source_level,
+            "platform_count": mark.platform_count,
+            "platforms": mark.platforms or [],
+            "evidence_count": mark.evidence_count,
+            "independent_publisher_count": mark.independent_publisher_count,
+        },
+        "evidence_links": [
+            {
+                "evidence_content_id": link.evidence_content_id,
+                "evidence_url": link.evidence_url,
+                "evidence_type": link.evidence_type,
+                "publisher_family": link.publisher_family,
+                "similarity_score": link.similarity_score,
+                "time_delta_minutes": link.time_delta_minutes,
+                "match_basis": link.match_basis,
+            }
+            for link in links
+        ],
+    }

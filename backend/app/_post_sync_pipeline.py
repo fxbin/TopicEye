@@ -165,6 +165,18 @@ async def _run_post_sync_pipeline_once() -> None:
     except Exception:
         logger.exception("Scheduler: clustering failed")
 
+    # ── Cross-source evidence discovery (after clustering, zero LLM cost) ──
+    try:
+        async with app.scheduler.async_session() as db:
+            from app.services.evidence_service import discover_cross_source_evidence
+
+            ev_stats = await discover_cross_source_evidence(db, hours=24)
+            await db.commit()
+        if ev_stats.get("marks", 0) > 0:
+            logger.info("Scheduler: cross-source evidence — %s", ev_stats)
+    except Exception:
+        logger.warning("Scheduler: cross-source evidence failed (non-fatal)", exc_info=True)
+
     # 批量分析+聚类完成后刷新 stats 缓存（不再在单条内容增删时失效）
     try:
         from app.services.stats_cache import invalidate_stats_cache

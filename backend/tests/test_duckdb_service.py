@@ -73,8 +73,8 @@ def test_stats_queries_use_latest_analysis_only(monkeypatch):
             freshness_score DOUBLE,
             quality_score DOUBLE,
             hot_score DOUBLE,
-            risk_score DOUBLE,
-            created_at TIMESTAMP
+risk_score DOUBLE,
+created_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -169,8 +169,8 @@ def test_dashboard_stats_uses_unified_scorer_for_curated_counts(monkeypatch):
             freshness_score DOUBLE,
             quality_score DOUBLE,
             hot_score DOUBLE,
-            risk_score DOUBLE,
-            created_at TIMESTAMP
+risk_score DOUBLE,
+created_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -386,6 +386,16 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
             recommendation VARCHAR,
             summary VARCHAR,
             tags VARCHAR,
+            key_points VARCHAR,
+            audience_emotion VARCHAR,
+            creator_angles VARCHAR,
+            title_suggestions VARCHAR,
+            outline_suggestions VARCHAR,
+            xiaohongshu_plan VARCHAR,
+            short_video_plan VARCHAR,
+            risk_notes VARCHAR,
+            platform_fit VARCHAR,
+            summary_source VARCHAR,
             enrichment_status VARCHAR,
             enrichment VARCHAR,
             created_at TIMESTAMP
@@ -418,7 +428,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
         """
         INSERT INTO oltp_db.ai_analyses VALUES (
             1, 1, 50, 50, 50, 50, 50, 10, 20, 50, 50, 40,
-            '旧理由', '旧推荐', '旧摘要', '["旧"]', 'pending', NULL, ?
+            '旧理由', '旧推荐', '旧摘要', '["旧"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, ?
         )
         """,
         [now - timedelta(hours=2)],
@@ -427,7 +437,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
         """
         INSERT INTO oltp_db.ai_analyses VALUES (
             2, 1, 88, 80, 90, 86, 78, 12, 90, 85, 82, 0,
-            '新理由', '新推荐', '新摘要', '["新"]', 'pending', NULL, ?
+            '新理由', '新推荐', '新摘要', '["新"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, ?
         )
         """,
         [now - timedelta(hours=1)],
@@ -502,6 +512,16 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             recommendation VARCHAR,
             summary VARCHAR,
             tags VARCHAR,
+            key_points VARCHAR,
+            audience_emotion VARCHAR,
+            creator_angles VARCHAR,
+            title_suggestions VARCHAR,
+            outline_suggestions VARCHAR,
+            xiaohongshu_plan VARCHAR,
+            short_video_plan VARCHAR,
+            risk_notes VARCHAR,
+            platform_fit VARCHAR,
+            summary_source VARCHAR,
             enrichment_status VARCHAR,
             enrichment VARCHAR,
             created_at TIMESTAMP
@@ -535,7 +555,7 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             """
             INSERT INTO oltp_db.ai_analyses VALUES (
                 ?, ?, 80, 80, 80, 80, 80, 10, 80, 80, 80,
-                '理由', '推荐', '摘要', '["AI"]', 'pending', NULL, ?
+                '理由', '推荐', '摘要', '["AI"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, ?
             )
             """,
             [content_id, content_id, now],
@@ -612,6 +632,16 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             recommendation VARCHAR,
             summary VARCHAR,
             tags VARCHAR,
+            key_points VARCHAR,
+            audience_emotion VARCHAR,
+            creator_angles VARCHAR,
+            title_suggestions VARCHAR,
+            outline_suggestions VARCHAR,
+            xiaohongshu_plan VARCHAR,
+            short_video_plan VARCHAR,
+            risk_notes VARCHAR,
+            platform_fit VARCHAR,
+            summary_source VARCHAR,
             enrichment_status VARCHAR,
             enrichment VARCHAR,
             created_at TIMESTAMP
@@ -645,7 +675,7 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             """
             INSERT INTO oltp_db.ai_analyses VALUES (
                 ?, ?, 90, 90, 90, 90, 90, ?, 90, 90, 90,
-                '理由', '推荐', '摘要', '["AI"]', 'pending', NULL, ?
+                '理由', '推荐', '摘要', '["AI"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, ?
             )
             """,
             [content_id, content_id, risk_score, now],
@@ -716,6 +746,16 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             recommendation VARCHAR,
             summary VARCHAR,
             tags VARCHAR,
+            key_points VARCHAR,
+            audience_emotion VARCHAR,
+            creator_angles VARCHAR,
+            title_suggestions VARCHAR,
+            outline_suggestions VARCHAR,
+            xiaohongshu_plan VARCHAR,
+            short_video_plan VARCHAR,
+            risk_notes VARCHAR,
+            platform_fit VARCHAR,
+            summary_source VARCHAR,
             enrichment_status VARCHAR,
             enrichment VARCHAR,
             created_at TIMESTAMP
@@ -749,7 +789,7 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             """
             INSERT INTO oltp_db.ai_analyses VALUES (
                 ?, ?, 90, 90, 90, 90, 90, 10, 90, 90, 90,
-                '理由', '推荐', '摘要', '["AI"]', 'pending', NULL, ?
+                '理由', '推荐', '摘要', '["AI"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pending', NULL, ?
             )
             """,
             [content_id, content_id, now],
@@ -1055,8 +1095,8 @@ def test_daily_stats_uses_latest_analysis_and_unified_curated_count(monkeypatch)
             freshness_score DOUBLE,
             quality_score DOUBLE,
             hot_score DOUBLE,
-            risk_score DOUBLE,
-            created_at TIMESTAMP
+risk_score DOUBLE,
+created_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -1142,8 +1182,8 @@ def test_daily_stats_uses_unified_risk_threshold(monkeypatch):
             freshness_score DOUBLE,
             quality_score DOUBLE,
             hot_score DOUBLE,
-            risk_score DOUBLE,
-            created_at TIMESTAMP
+risk_score DOUBLE,
+created_at TIMESTAMP
         )
     """)
     conn.execute("""

@@ -72,6 +72,7 @@ export const NOTIFICATION_EVENT_TYPES: Array<{ value: string; label: string; des
   { value: 'source_failure', label: '信源失败告警', desc: '信源连续抓取失败时推送' },
   { value: 'daily_report', label: '日报生成完成', desc: '每日午间/晚间/复盘日报生成后推送' },
   { value: 'weekly_digest', label: '周报生成完成', desc: '每周一周报生成后推送' },
+  { value: 'today_picks', label: '今日精选推送', desc: '分析+聚类完成后推送今日 Top 精选内容' },
   { value: 'test', label: '测试发送', desc: '点击「发送测试」按钮时推送' },
 ];
 

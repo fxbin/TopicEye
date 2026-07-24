@@ -5,7 +5,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
+import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, ContentRelation, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
 import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
 import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
@@ -227,6 +227,11 @@ export const contentsApi = {
   /** 切换收藏状态 */
   toggleFavorite(id: number): Promise<{ is_favorited: boolean; favorite_id?: number | null }> {
     return request(`/contents/${id}/favorite`, { method: 'POST' });
+  },
+
+  /** 获取内容的关联内容列表 */
+  getRelations(id: number, limit = 20): Promise<{ content_id: number; relations: ContentRelation[]; count: number }> {
+    return request(`/contents/${id}/relations?limit=${limit}`);
   },
 
   /** 获取收藏列表 */

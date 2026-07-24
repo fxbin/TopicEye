@@ -359,6 +359,21 @@ export function getRecommendLevel(analysis: ContentAnalysis): RecommendLevel {
   return explainRecommendation(analysis).level;
 }
 
+// ─── Content Relation (内容关联) ───
+
+export interface ContentRelation {
+  relation_id: number;
+  source_id: number;
+  target_id: number;
+  relation_type: string;
+  confidence: number;
+  evidence: string | null;
+  target_title: string;
+  target_source_name: string | null;
+  target_category: string | null;
+  target_crawled_at: string | null;
+}
+
 // ─── Topic (选题) ───
 
 export interface Topic {

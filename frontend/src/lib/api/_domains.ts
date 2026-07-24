@@ -652,7 +652,7 @@ export const dailyReportApi = {
 };
 
 export const creationApi = {
-  /** 生成创作方案 */
+  /** 生成创作方案（快速模式） */
   generatePlan(contentId: number, platform: string): Promise<Record<string, unknown>> {
     return request('/creation/plan', {
       method: 'POST',
@@ -663,6 +663,43 @@ export const creationApi = {
   /** 获取可用平台列表 */
   listPlatforms(): Promise<Record<string, unknown>> {
     return request('/creation/platforms');
+  },
+
+  /** 探索期：假设挑战 + 方向生成（探索模式 Step 1） */
+  exploreDirections(contentId: number): Promise<Record<string, unknown>> {
+    return request('/creation/explore', {
+      method: 'POST',
+      body: JSON.stringify({ content_id: contentId }),
+    });
+  },
+
+  /** 聚焦期：苏格拉底追问（探索模式 Step 2） */
+  focusQuestions(params: {
+    content_id: number;
+    selected_direction: string;
+    unique_value?: string;
+    pitfall?: string;
+    focus_round: number;
+    previous_qa?: Array<Record<string, unknown>>;
+    user_redirect?: string;
+  }): Promise<Record<string, unknown>> {
+    return request('/creation/focus', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  /** 收敛期：结构化方案输出（探索模式 Step 3） */
+  convergePlan(params: {
+    content_id: number;
+    platform: string;
+    selected_direction: string;
+    focus_answers: Array<Record<string, unknown>>;
+  }): Promise<Record<string, unknown>> {
+    return request('/creation/converge', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
   },
 };
 

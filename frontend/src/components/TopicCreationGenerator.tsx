@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, FileText, PenLine, Video } from 'lucide-react';
+import { BookOpen, Compass, FileText, PenLine, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import SectionTitle from '@/components/SectionTitle';
 import { Button, Panel, Toolbar, cx } from '@/components/ui';
 import CreationPlanDisplay, { type CreationPlan } from '@/components/CreationPlanDisplay';
+import ExploreModeDialog from '@/components/ExploreModeDialog';
 
 interface TopicCreationGeneratorProps {
   contentId: number;
@@ -18,6 +19,7 @@ export default function TopicCreationGenerator({ contentId }: TopicCreationGener
   const [creating, setCreating] = useState(false);
   const [creatingPlatform, setCreatingPlatform] = useState<string | null>(null);
   const [creationError, setCreationError] = useState<string | null>(null);
+  const [showExplore, setShowExplore] = useState(false);
 
   const platforms: Array<{ id: string; name: string; icon: LucideIcon }> = [
     { id: 'xiaohongshu', name: '小红书', icon: BookOpen },
@@ -55,10 +57,23 @@ export default function TopicCreationGenerator({ contentId }: TopicCreationGener
         </span>
       </SectionTitle>
       <p className="mb-4 text-[13px] text-gray-500">
-        选择平台，基于此内容生成完整的创作方案
+        选择平台快速生成方案，或用探索模式先找到差异化角度
       </p>
 
-      {/* Platform buttons */}
+      {/* Explore mode entry */}
+      <Toolbar className="mb-2.5 gap-2.5">
+        <Button
+          type="button"
+          onClick={() => setShowExplore(true)}
+          variant="secondary"
+          className="px-[18px] py-2.5 text-[13px] font-medium"
+        >
+          <Compass size={14} strokeWidth={2} />
+          探索模式
+        </Button>
+      </Toolbar>
+
+      {/* Fast mode: platform buttons */}
       <Toolbar className="gap-2.5">
         {platforms.map((p) => {
           const Icon = p.icon;
@@ -94,6 +109,11 @@ export default function TopicCreationGenerator({ contentId }: TopicCreationGener
           </div>
           <CreationPlanDisplay plan={creationPlan} platform={creationPlan._meta?.platform ?? creatingPlatform ?? ''} />
         </Panel>
+      )}
+
+      {/* Explore mode dialog */}
+      {showExplore && (
+        <ExploreModeDialog contentId={contentId} onClose={() => setShowExplore(false)} />
       )}
     </Panel>
   );

@@ -118,8 +118,19 @@ export function LeadPick({
   const tags = tagsOf(analysis);
   const recommendation = getRecommendationReason(analysis, item.summary);
 
+  const handleCardClick = () => {
+    if (analysis) {
+      onOpen({ ...analysis, _content_id: item.id });
+    } else if (item.url) {
+      onRead(item.id);
+    }
+  };
+
   return (
-    <Panel className="relative mb-4 overflow-hidden p-6 shadow-[0_16px_38px_rgba(15,23,42,0.06)] before:absolute before:bottom-0 before:left-0 before:top-0 before:w-1 before:bg-gradient-to-b before:from-primary before:to-teal">
+    <Panel
+      onClick={handleCardClick}
+      className="relative mb-4 cursor-pointer overflow-hidden p-6 shadow-[0_16px_38px_rgba(15,23,42,0.06)] transition hover:shadow-[0_20px_44px_rgba(15,23,42,0.09)] before:absolute before:bottom-0 before:left-0 before:top-0 before:w-1 before:bg-gradient-to-b before:from-primary before:to-teal"
+    >
       <div className="relative grid grid-cols-[minmax(0,1fr)_110px] gap-5 max-md:grid-cols-1">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -425,12 +436,20 @@ export function PickCard({
   const [showBreakdown, setShowBreakdown] = useState(false);
   const breakdown = analysis?.score_breakdown;
 
+  const handleCardClick = () => {
+    if (analysis) {
+      onOpen({ ...analysis, _content_id: item.id });
+    } else if (item.url) {
+      onRead(item.id);
+    }
+  };
+
   return (
     <article
-      onClick={() => analysis && onOpen({ ...analysis, _content_id: item.id })}
+      onClick={handleCardClick}
       className={cx(
         'grid grid-cols-[42px_minmax(0,1fr)_52px] items-start gap-3 px-4.5 py-3.5 transition hover:border-primary-border',
-        analysis ? 'cursor-pointer' : 'cursor-default',
+        'cursor-pointer',
         flush ? 'border-b border-gray-100 bg-transparent hover:bg-[#FBFCFE]' : 'rounded-lg border border-gray-200 bg-white',
       )}
     >

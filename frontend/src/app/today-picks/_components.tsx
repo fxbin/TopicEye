@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Panel, PanelTitle, Segmented, FilterLabel, cx } from '@/components/ui';
 import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
+import EvidenceTag from '@/components/EvidenceTag';
 import {
   CATEGORIES,
   RECOMMEND_LEVELS,
@@ -467,6 +468,7 @@ export function PickCard({
               {tag}
             </span>
           ))}
+          <EvidenceTag contentId={item.id} />
         </div>
         <h3 className={cx('text-[15px] font-black leading-[1.45] text-gray-900', recommendation && 'mb-2')}>
           {item.title}

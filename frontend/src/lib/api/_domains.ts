@@ -5,7 +5,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, ContentRelation, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
+import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, ContentRelation, EvidenceMark, EvidenceLink, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
 import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
 import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
@@ -261,6 +261,11 @@ export const contentsApi = {
         ).toString()
       : '';
     return request(`/contents/today-picks${query}`);
+  },
+
+  /** 获取跨源证据 */
+  getEvidence(id: number): Promise<{ content_id: number; evidence_mark: EvidenceMark | null; evidence_links: EvidenceLink[] }> {
+    return request(`/contents/${id}/evidence`);
   },
 
   /** 当日计数（今日选题 + 当日精选的 badge 数字） */

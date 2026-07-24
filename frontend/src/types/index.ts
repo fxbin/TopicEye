@@ -374,6 +374,26 @@ export interface ContentRelation {
   target_crawled_at: string | null;
 }
 
+// ─── Cross-Source Evidence (跨源证据) ───
+
+export interface EvidenceMark {
+  cross_source_level: string;
+  platform_count: number;
+  platforms: string[];
+  evidence_count: number;
+  independent_publisher_count: number;
+}
+
+export interface EvidenceLink {
+  evidence_content_id: number | null;
+  evidence_url: string | null;
+  evidence_type: string;
+  publisher_family: string | null;
+  similarity_score: number | null;
+  time_delta_minutes: number | null;
+  match_basis: string | null;
+}
+
 // ─── Topic (选题) ───
 
 export interface Topic {

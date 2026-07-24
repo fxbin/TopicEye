@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { GitBranch, Loader2, Zap } from 'lucide-react';
+import { GitBranch, List, Loader2, Network } from 'lucide-react';
 import type { ContentRelation } from '@/types';
 import { contentsApi } from '@/lib/api';
 import { Badge, Panel, cx } from '@/components/ui';
+import RelationGraph from '@/components/RelationGraph';
 
 interface RelationPanelProps {
   contentId: number;
@@ -23,6 +24,7 @@ export default function RelationPanel({ contentId }: RelationPanelProps) {
   const [relations, setRelations] = useState<ContentRelation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,48 +73,72 @@ export default function RelationPanel({ contentId }: RelationPanelProps) {
 
   return (
     <Panel className="p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <GitBranch size={15} className="text-primary" />
-        <span className="text-sm font-bold text-gray-800">关联内容</span>
-        <span className="text-[11px] text-gray-400">({relations.length}条)</span>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <GitBranch size={15} className="text-primary" />
+          <span className="text-sm font-bold text-gray-800">关联内容</span>
+          <span className="text-[11px] text-gray-400">({relations.length}条)</span>
+        </div>
+        <div className="flex items-center gap-1 rounded-md border border-gray-200 p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={cx('flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition', viewMode === 'list' ? 'bg-primary-light text-primary-text' : 'text-gray-500 hover:bg-gray-50')}
+          >
+            <List size={12} />
+            列表
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('graph')}
+            className={cx('flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition', viewMode === 'graph' ? 'bg-primary-light text-primary-text' : 'text-gray-500 hover:bg-gray-50')}
+          >
+            <Network size={12} />
+            关系图
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {Object.entries(grouped).map(([type, items]) => {
-          const meta = RELATION_LABELS[type] || { label: type, color: 'text-gray-600 bg-gray-100' };
-          return (
-            <div key={type}>
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Badge className={cx('rounded px-2 py-0.5 text-[11px] font-bold', meta.color)}>
-                  {meta.label}
-                </Badge>
-                <span className="text-[11px] text-gray-400">{items.length}条</span>
+      {viewMode === 'graph' ? (
+        <RelationGraph contentId={contentId} contentTitle="当前内容" relations={relations} />
+      ) : (
+        <div className="space-y-3">
+          {Object.entries(grouped).map(([type, items]) => {
+            const meta = RELATION_LABELS[type] || { label: type, color: 'text-gray-600 bg-gray-100' };
+            return (
+              <div key={type}>
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Badge className={cx('rounded px-2 py-0.5 text-[11px] font-bold', meta.color)}>
+                    {meta.label}
+                  </Badge>
+                  <span className="text-[11px] text-gray-400">{items.length}条</span>
+                </div>
+                <div className="space-y-1">
+                  {items.map((r) => (
+                    <a
+                      key={r.relation_id}
+                      href={`/contents/${r.target_id}/reader`}
+                      className="block rounded-md border border-gray-100 px-2.5 py-1.5 transition hover:border-primary-border hover:bg-primary-light/20"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="line-clamp-1 text-[13px] font-medium text-gray-800">
+                          {r.target_title}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-gray-400">
+                          {r.target_source_name}
+                        </span>
+                      </div>
+                      {r.evidence && (
+                        <div className="mt-0.5 text-[10px] text-gray-400">{r.evidence}</div>
+                      )}
+                    </a>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-1">
-                {items.map((r) => (
-                  <a
-                    key={r.relation_id}
-                    href={`/contents/${r.target_id}/reader`}
-                    className="block rounded-md border border-gray-100 px-2.5 py-1.5 transition hover:border-primary-border hover:bg-primary-light/20"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="line-clamp-1 text-[13px] font-medium text-gray-800">
-                        {r.target_title}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-gray-400">
-                        {r.target_source_name}
-                      </span>
-                    </div>
-                    {r.evidence && (
-                      <div className="mt-0.5 text-[10px] text-gray-400">{r.evidence}</div>
-                    )}
-                  </a>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </Panel>
   );
 }

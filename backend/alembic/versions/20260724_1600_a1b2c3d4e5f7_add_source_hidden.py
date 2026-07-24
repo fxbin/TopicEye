@@ -25,14 +25,14 @@ def upgrade() -> None:
                 "hidden",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 comment="True=系统自动创建的信源，对用户不可见且不计入配额",
             )
         )
 
     # Mark existing WeRead auto-created sources as hidden
     op.execute(
-        "UPDATE sources SET hidden = 1 WHERE url = 'https://weread.qq.com/r/weread-skills'"
+        "UPDATE sources SET hidden = true WHERE url = 'https://weread.qq.com/r/weread-skills'"
     )
 
 

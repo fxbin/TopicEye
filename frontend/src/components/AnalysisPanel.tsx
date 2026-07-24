@@ -8,6 +8,7 @@ import { creationApi } from '@/lib/api';
 import { Button, Panel } from '@/components/ui';
 import type { ContentAnalysis } from '@/types';
 import CreationPlanDisplay from '@/components/CreationPlanDisplay';
+import RelationPanel from '@/components/RelationPanel';
 
 interface AnalysisPanelProps {
   analysis: ContentAnalysis & { _content_id?: number };
@@ -164,6 +165,11 @@ export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps)
               <CreationPlanDisplay plan={creationPlan} platform={activePlatform || ''} />
             )}
           </Panel>
+        )}
+
+        {/* Related content */}
+        {contentId > 0 && (
+          <RelationPanel contentId={contentId} />
         )}
       </div>
     </>

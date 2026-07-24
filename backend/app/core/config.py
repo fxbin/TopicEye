@@ -81,9 +81,15 @@ class Settings(BaseSettings):
     ARTICLE_READER_SNAPSHOT_TTL_SECONDS: int = 86_400
     ARTICLE_READER_ROBOTS_CACHE_SECONDS: int = 3_600
     ARTICLE_READER_ALLOWED_HOSTS: str = ""
+    # Comma-separated browser UA pool. Each reader fetch picks one at random
+    # to reduce per-request fingerprinting by WAF / bot-detection systems.
+    # Override via env var to customise; a single value works as a 1-element pool.
     ARTICLE_READER_USER_AGENT: str = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36,"
+        " Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36,"
+        " Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0,"
+        " Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15,"
+        " Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
     POST_SYNC_ANALYSIS_BATCH_SIZE: int = 10
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520

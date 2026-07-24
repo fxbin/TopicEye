@@ -14,6 +14,7 @@ import json
 import ipaddress
 import logging
 import re
+import random
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -509,8 +510,9 @@ async def _fetch_remote_article(
     current_url = await _validate_public_url(url)
     visited = {current_url}
     timeout = httpx.Timeout(settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS)
+    ua_pool = [ua.strip() for ua in settings.ARTICLE_READER_USER_AGENT.split(",") if ua.strip()]
     headers = {
-        "User-Agent": settings.ARTICLE_READER_USER_AGENT,
+        "User-Agent": random.choice(ua_pool) if ua_pool else "Mozilla/5.0",
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
     }
 

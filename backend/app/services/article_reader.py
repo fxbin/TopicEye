@@ -167,10 +167,10 @@ async def _read_limited(response: httpx.Response) -> bytes:
 async def _robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
     """Respect a site's crawl policy when it is available.
 
-    A temporary network error does not turn a single user-requested read into a
-    hard failure; an explicit 401/403 or a parsed disallow rule does.  The
-    result is cached briefly per origin to avoid a robots request for every
-    reader click.
+    A temporary network error or WAF block on robots.txt does not turn a
+    single user-requested read into a hard failure; an explicit parsed
+    Disallow rule does.  The result is cached briefly per origin to avoid
+    a robots request for every reader click.
     """
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -178,20 +178,21 @@ async def _robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
     now = _utcnow()
     if cached and cached[0] > now:
         parser, fallback_allowed = cached[1], cached[2]
-        return parser.can_fetch(settings.ARTICLE_READER_USER_AGENT, url) if parser is not None else fallback_allowed
+        return parser.can_fetch("Mozilla", url) if parser is not None else fallback_allowed
 
     robots_url = f"{origin}/robots.txt"
     parser: robotparser.RobotFileParser | None = None
     fallback_allowed = True
     try:
         async with client.stream("GET", robots_url) as response:
-            if response.status_code in {401, 403}:
-                fallback_allowed = False
-            elif response.status_code == 200:
+            if response.status_code == 200:
                 payload = await _read_limited(response)
                 parser = robotparser.RobotFileParser()
                 parser.set_url(robots_url)
                 parser.parse(payload.decode(response.encoding or "utf-8", errors="replace").splitlines())
+            # 401/403 on robots.txt is usually a WAF blocking our TLS
+            # fingerprint, not an intentional crawl policy.  Fail open so
+            # the actual article fetch is the authority on accessibility.
     except (httpx.HTTPError, ArticleReaderError) as exc:
         logger.info("Article reader robots check skipped for %s: %s", origin, exc)
 
@@ -200,7 +201,7 @@ async def _robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
         parser,
         fallback_allowed,
     )
-    return parser.can_fetch(settings.ARTICLE_READER_USER_AGENT, url) if parser is not None else fallback_allowed
+    return parser.can_fetch("Mozilla", url) if parser is not None else fallback_allowed
 
 
 def _first_meta(soup: BeautifulSoup, *keys: tuple[str, str]) -> str | None:

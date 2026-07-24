@@ -19,16 +19,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Optional
 from collections.abc import Callable
+from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.models.content import ContentItem
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem
 from app.models.topic import TopicGroup
 from app.repositories.analysis_queries import (
     latest_analysis_id_for_content_id,
@@ -124,7 +124,7 @@ async def enrich_content(
     if not row:
         raise ValueError(f"No analysis found for content_id={content_id}")
 
-    analysis, content, topic = row[0], row[1], row[2]
+    analysis, content, _topic = row[0], row[1], row[2]
 
     # Fetch related items from same topic group
     related_items: list[dict] = []
@@ -188,6 +188,7 @@ async def enrich_content(
             "related_angles": result_data.get("related_angles", [])[:3],
             "creator_tips": result_data.get("creator_tips", [])[:3],
             "story_hooks": result_data.get("story_hooks", [])[:3],
+            "related_items": related_items,
         }
 
         logger.info(

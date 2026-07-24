@@ -765,6 +765,21 @@ async def get_content(
     return d
 
 
+@router.get("/{content_id}/relations")
+async def get_content_relations(
+    content_id: int,
+    limit: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """获取内容的关联内容列表（规则引擎发现的关系）。"""
+    from app.repositories.relation_repo import RelationRepository
+
+    repo = RelationRepository(db)
+    relations = await repo.list_relations_for_content(content_id, limit=limit)
+    return {"content_id": content_id, "relations": relations, "count": len(relations)}
+
+
 @router.post("/{content_id}/favorite")
 async def toggle_favorite(
     content_id: int,

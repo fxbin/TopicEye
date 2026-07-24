@@ -511,9 +511,8 @@ async def _fetch_remote_article(
     current_url = await _validate_public_url(url)
     visited = {current_url}
     timeout = httpx.Timeout(settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS)
-    ua_pool = [ua.strip() for ua in settings.ARTICLE_READER_USER_AGENT.split(",") if ua.strip()]
     headers = {
-        "User-Agent": random.choice(ua_pool) if ua_pool else "Mozilla/5.0",
+        "User-Agent": _resolve_ua(),
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
     }
 
@@ -566,45 +565,111 @@ async def _fetch_remote_article(
     raise ArticleReaderError("too_many_redirects", "原文跳转次数过多，请打开原文。", 502)
 
 
-# Lazily-discovered pool of latest Chrome TLS impersonate targets.
-# Populated on first use from curl_cffi's BrowserType enum, so it stays
-# fresh when curl_cffi is upgraded (pip install --upgrade curl_cffi).
-_impersonate_pool: list[str] | None = None
+# ── Dynamic browser fingerprint discovery ──────────────────────────
+# Shared discovery: curl_cffi's BrowserType enum is the single source of
+# truth for the latest Chrome versions. Both the TLS impersonate target
+# and the User-Agent string are derived from this pool, ensuring they
+# stay version-consistent (WAFs cross-check JA3 fingerprint vs UA).
+#
+# When curl_cffi is upgraded, new Chrome versions appear automatically.
+# When curl_cffi is not installed, falls back to the configured static
+# ARTICLE_READER_USER_AGENT pool.
+
+_chrome_versions: list[tuple[int, str]] | None = None  # [(146, "chrome146"), ...]
+_ua_pool: list[str] | None = None
+
+_OS_VARIANTS = [
+    "Windows NT 10.0; Win64; x64",
+    "Macintosh; Intel Mac OS X 10_15_7",
+    "X11; Linux x86_64",
+]
 
 
-def _resolve_impersonate() -> str:
-    """Resolve the curl_cffi impersonate target.
+def _discover_chrome_versions() -> list[tuple[int, str]]:
+    """Discover the latest Chrome versions from curl_cffi's BrowserType.
 
-    When configured as ``'auto'`` (default), discovers the latest Chrome
-    versions supported by the installed curl_cffi at runtime and rotates
-    through the top 4.  When a specific value is configured (e.g.
-    ``'firefox'``, ``'safari'``), uses it directly.
+    Returns a list of ``(version_number, impersonate_name)`` tuples sorted
+    descending, e.g. ``[(146, "chrome146"), (145, "chrome145"), ...]``.
+    Cached after first call.  Empty list when curl_cffi is not installed.
     """
-    global _impersonate_pool
+    global _chrome_versions
+    if _chrome_versions is not None:
+        return _chrome_versions
+    try:
+        from curl_cffi.requests import BrowserType
 
+        versions: list[tuple[int, str]] = []
+        for member in BrowserType:
+            name = member.value
+            if not name.startswith("chrome") or "android" in name:
+                continue
+            m = re.match(r"chrome(\d+)", name)
+            if m:
+                versions.append((int(m.group(1)), name))
+        versions.sort(key=lambda x: x[0], reverse=True)
+        _chrome_versions = versions[:4]
+        logger.info("Chrome versions discovered: %s", [v[1] for v in _chrome_versions])
+    except Exception:
+        _chrome_versions = []
+    return _chrome_versions
+
+
+def _resolve_ua() -> str:
+    """Pick a random User-Agent.
+
+    In ``auto`` mode, generates UAs from the discovered Chrome versions
+    × OS variants so the UA version stays fresh with curl_cffi upgrades.
+    Falls back to the configured ``ARTICLE_READER_USER_AGENT`` static pool
+    when curl_cffi is not installed or impersonate is set to a fixed value.
+    """
+    global _ua_pool
+
+    if _ua_pool is None:
+        configured_imp = settings.ARTICLE_READER_CURL_CFFI_IMPERSONATE
+        if configured_imp == "auto":
+            versions = _discover_chrome_versions()
+            if versions:
+                _ua_pool = []
+                for ver_num, _ in versions:
+                    for os_str in _OS_VARIANTS:
+                        _ua_pool.append(
+                            f"Mozilla/5.0 ({os_str}) AppleWebKit/537.36 "
+                            f"(KHTML, like Gecko) Chrome/{ver_num}.0.0.0 Safari/537.36"
+                        )
+        # Fallback: configured static pool
+        if not _ua_pool:
+            _ua_pool = [
+                ua.strip()
+                for ua in settings.ARTICLE_READER_USER_AGENT.split(",")
+                if ua.strip()
+            ] or ["Mozilla/5.0"]
+        logger.info("UA pool: %d entries", len(_ua_pool))
+
+    return random.choice(_ua_pool)
+
+
+def _resolve_impersonate_with_ua() -> tuple[str, str]:
+    """Pick a version-consistent ``(impersonate_target, user_agent)`` pair.
+
+    In ``auto`` mode, picks a Chrome version and generates a matching UA
+    so the TLS JA3 fingerprint and the UA header report the same version.
+    This prevents WAFs from detecting version mismatches.
+    """
     configured = settings.ARTICLE_READER_CURL_CFFI_IMPERSONATE
     if configured and configured != "auto":
-        return configured
+        return configured, _resolve_ua()
 
-    if _impersonate_pool is None:
-        try:
-            from curl_cffi.requests import BrowserType
+    versions = _discover_chrome_versions()
+    if versions:
+        ver_num, ver_name = random.choice(versions)
+        os_str = random.choice(_OS_VARIANTS)
+        ua = (
+            f"Mozilla/5.0 ({os_str}) AppleWebKit/537.36 "
+            f"(KHTML, like Gecko) Chrome/{ver_num}.0.0.0 Safari/537.36"
+        )
+        return ver_name, ua
 
-            versions: list[tuple[int, str]] = []
-            for member in BrowserType:
-                name = member.value
-                if not name.startswith("chrome") or "android" in name:
-                    continue
-                m = re.match(r"chrome(\d+)", name)
-                if m:
-                    versions.append((int(m.group(1)), name))
-            versions.sort(key=lambda x: x[0], reverse=True)
-            _impersonate_pool = [name for _, name in versions[:4]] or ["chrome"]
-        except Exception:
-            _impersonate_pool = ["chrome"]
-        logger.info("curl_cffi impersonate pool: %s", _impersonate_pool)
-
-    return random.choice(_impersonate_pool)
+    return "chrome", _resolve_ua()
 
 
 async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
@@ -617,13 +682,11 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
     from curl_cffi.requests import AsyncSession
 
     current_url = await _validate_public_url(url)
-    ua_pool = [ua.strip() for ua in settings.ARTICLE_READER_USER_AGENT.split(",") if ua.strip()]
+    impersonate, ua = _resolve_impersonate_with_ua()
     headers = {
-        "User-Agent": random.choice(ua_pool) if ua_pool else "Mozilla/5.0",
+        "User-Agent": ua,
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
     }
-
-    impersonate = _resolve_impersonate()
     timeout_val = settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS
 
     async with AsyncSession(impersonate=impersonate, timeout=timeout_val, allow_redirects=True) as client:

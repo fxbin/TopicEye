@@ -9,17 +9,17 @@ Algorithm:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import asyncio
 from collections import defaultdict
-from typing import Optional
+from datetime import UTC
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.content import ContentItem, ContentStatus
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.repositories.analysis_queries import latest_analysis_id_subquery
@@ -218,6 +218,14 @@ async def cluster_and_dedup_with_lease(
     status = "SUCCESS"
     try:
         stats = await cluster_and_dedup(db, days=days, use_dedup=use_dedup, use_llm_naming=use_llm_naming)
+        # After clustering, discover content relations (zero LLM cost, runs in same session)
+        try:
+            from app.services.relation_engine import discover_relations
+
+            relation_stats = await discover_relations(db, hours=days * 24)
+            stats["relations"] = relation_stats
+        except Exception:
+            logger.warning("Relation discovery failed after clustering", exc_info=True)
         return stats, True
     except Exception:
         status = "FAILED"
@@ -263,9 +271,9 @@ async def cluster_and_dedup(
     """
 
     # 1. Fetch recent analyzed items that still lack a topic_id
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
     result = await db.execute(
         select(ContentItem, AiAnalysis, Source.weight.label("source_weight_db"))

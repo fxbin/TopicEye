@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # When httpx gets 403/blocked by WAF, curl_cffi retries with a real
     # browser TLS fingerprint (JA3/JA4).
     ARTICLE_READER_CURL_CFFI_FALLBACK: bool = True
-    ARTICLE_READER_CURL_CFFI_IMPERSONATE: str = "chrome"
+    ARTICLE_READER_CURL_CFFI_IMPERSONATE: str = "auto"
     POST_SYNC_ANALYSIS_BATCH_SIZE: int = 10
     POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS: int = 520
     POST_SYNC_MIN_REMAINING_SECONDS: int = 90

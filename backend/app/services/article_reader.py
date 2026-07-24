@@ -566,6 +566,47 @@ async def _fetch_remote_article(
     raise ArticleReaderError("too_many_redirects", "原文跳转次数过多，请打开原文。", 502)
 
 
+# Lazily-discovered pool of latest Chrome TLS impersonate targets.
+# Populated on first use from curl_cffi's BrowserType enum, so it stays
+# fresh when curl_cffi is upgraded (pip install --upgrade curl_cffi).
+_impersonate_pool: list[str] | None = None
+
+
+def _resolve_impersonate() -> str:
+    """Resolve the curl_cffi impersonate target.
+
+    When configured as ``'auto'`` (default), discovers the latest Chrome
+    versions supported by the installed curl_cffi at runtime and rotates
+    through the top 4.  When a specific value is configured (e.g.
+    ``'firefox'``, ``'safari'``), uses it directly.
+    """
+    global _impersonate_pool
+
+    configured = settings.ARTICLE_READER_CURL_CFFI_IMPERSONATE
+    if configured and configured != "auto":
+        return configured
+
+    if _impersonate_pool is None:
+        try:
+            from curl_cffi.requests import BrowserType
+
+            versions: list[tuple[int, str]] = []
+            for member in BrowserType:
+                name = member.value
+                if not name.startswith("chrome") or "android" in name:
+                    continue
+                m = re.match(r"chrome(\d+)", name)
+                if m:
+                    versions.append((int(m.group(1)), name))
+            versions.sort(key=lambda x: x[0], reverse=True)
+            _impersonate_pool = [name for _, name in versions[:4]] or ["chrome"]
+        except Exception:
+            _impersonate_pool = ["chrome"]
+        logger.info("curl_cffi impersonate pool: %s", _impersonate_pool)
+
+    return random.choice(_impersonate_pool)
+
+
 async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
     """Tier 2: TLS-fingerprint-impersonating fetcher for WAF-blocked sites.
 
@@ -582,7 +623,7 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
     }
 
-    impersonate = settings.ARTICLE_READER_CURL_CFFI_IMPERSONATE or "chrome"
+    impersonate = _resolve_impersonate()
     timeout_val = settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS
 
     async with AsyncSession(impersonate=impersonate, timeout=timeout_val, allow_redirects=True) as client:

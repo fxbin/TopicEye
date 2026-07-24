@@ -209,10 +209,10 @@ async def discover_cross_source_evidence(
         # Count distinct source_ids (independent publishers)
         source_ids = {item["source_id"] for item in group if item["source_id"]}
 
-        if len(platforms) < MIN_PLATFORMS_FOR_SIGNAL:
+        if len(platforms) < MIN_PLATFORMS_FOR_SIGNAL and len(source_ids) < MIN_PLATFORMS_FOR_SIGNAL:
             continue
 
-        # Determine cross_source_level
+        # Determine cross_source_level: 3+ platforms = strong, else cross_source
         if len(platforms) >= MIN_PLATFORMS_FOR_STRONG:
             level = CrossSourceLevel.STRONG_CROSS_SOURCE
         else:

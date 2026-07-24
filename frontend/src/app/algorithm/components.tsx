@@ -149,7 +149,7 @@ export function AlgorithmHeader({
           </div>
           <h1 className="display-title m-0 text-[28px] leading-tight text-gray-900">算法流程</h1>
           <p className="mt-2 max-w-3xl text-sm leading-7 text-gray-500">
-            从候选样本进入评分漏斗，沿质量、风险、时效和多样性路径扣分或加权，最终形成精选输出；人工反馈会回写到样本的路径分。
+            从候选样本进入评分漏斗，沿质量、风险、时效和多样性路径扣分或加权，最终形成精选输出。评分完成后，跨源证据发现自动为多来源同事件内容标注「N 来源报道」证据链；人工反馈会回写到样本的路径分。
           </p>
         </div>
 

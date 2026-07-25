@@ -12,7 +12,7 @@ from app.services.json_cache import get_cached_json, invalidate_json_cache, set_
 from app.services.llm.model_list_cache import MODEL_LIST_CACHE_KEY, invalidate_model_list_cache
 from app.services.scoring_flow import (
     build_empty_payload,
-    cache_payload,
+    _cache_and_return,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
 )
@@ -168,8 +168,8 @@ def test_content_read_cache_invalidation_covers_content_derived_views():
     set_cached_json("contents:favorites:list:1:20", {"items": []})
     set_cached_json("stats:overview:7", {"total": 1})
     set_cached_json("stats:dashboard:7", {"kpi": {}})
-    cache_payload(
-        (48, 160, 80, None),
+    _cache_and_return(
+        48, 160, 80, None,
         build_empty_payload(
             hours=48,
             analyzed_total=0,

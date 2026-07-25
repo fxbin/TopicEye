@@ -17,7 +17,7 @@ from app.services.scoring_flow import (
     build_sample_payload,
     build_scoring_config_summary,
     build_stage_counts,
-    cache_payload,
+    _cache_and_return,
     debug_window_hours,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
@@ -255,10 +255,9 @@ def test_build_scoring_config_summary_exposes_readonly_thresholds():
 
 def test_scoring_flow_cache_can_be_invalidated():
     invalidate_scoring_flow_cache()
-    cache_key = (48, 160, 80, None)
 
-    cache_payload(
-        cache_key,
+    _cache_and_return(
+        48, 160, 80, None,
         build_empty_payload(
             hours=48,
             analyzed_total=0,
@@ -276,10 +275,9 @@ def test_scoring_flow_cache_can_be_invalidated():
 
 def test_scoring_flow_cache_uses_explicit_invalidation():
     invalidate_scoring_flow_cache()
-    cache_key = (24, 160, 80, None)
 
-    cache_payload(
-        cache_key,
+    _cache_and_return(
+        24, 160, 80, None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -334,8 +332,8 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
 
     async def fake_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
         calls["count"] += 1
-        return cache_payload(
-            (hours, limit, 80, visible_user_id),
+        return _cache_and_return(
+            hours, limit, 80, visible_user_id,
             build_empty_payload(
                 hours=hours,
                 analyzed_total=0,

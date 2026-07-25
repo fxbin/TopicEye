@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timedelta, timezone, UTC
-import json
-import time
 from typing import Optional, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.content_repo import ContentRepo, ScoringContentRow
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.feedback_signal import get_feedback_scores
+from app.services.json_cache import (
+    get_cached_json as _get_cached_json,
+    get_cached_value as _get_cached_value,
+    invalidate_json_cache as _invalidate_json_cache,
+    set_cached_json as _set_cached_json,
+)
 from app.services.scoring_engine import CONFIG, ScoreBreakdown, ScoringInput, score_items
 
 
@@ -25,13 +29,20 @@ SCORING_FLOW_WARMUP_TARGETS = (
     (DEFAULT_SCORING_FLOW_HOURS, DEFAULT_SCORING_FLOW_LIMIT),
     (48, DEFAULT_SCORING_FLOW_LIMIT),
 )
-# cache key: (hours, limit, sample_limit, visible_user_id) — visible_user_id 入 key，
-# 避免不同用户拿到彼此的漏斗（count 已按 owner 收敛，缓存必须分桶）。
-_CACHE: dict[tuple[int, int, int, int | None], tuple[float, dict[str, Any], bytes]] = {}
+# Cache delegates to the shared json_cache with a "scoring_flow:" prefix.
+# Eviction is invalidation-based (no TTL) — callers call
+# invalidate_scoring_flow_cache() when content changes.
+SCORING_FLOW_CACHE_PREFIX = "scoring_flow:"
+# Eviction is invalidation-based; TTL is effectively infinite.
+SCORING_FLOW_CACHE_TTL = float('inf')
 
 
-def _cache_key(hours: int, limit: int, sample_limit: int, visible_user_id: int | None) -> tuple[int, int, int, int | None]:
-    return (hours, limit, sample_limit, visible_user_id)
+def _cache_key_str(
+    hours: int, limit: int, sample_limit: int, visible_user_id: int | None
+) -> str:
+    """Build a string cache key for json_cache (was tuple before migration)."""
+    uid = visible_user_id if visible_user_id is not None else ""
+    return f"{SCORING_FLOW_CACHE_PREFIX}hours={hours}&limit={limit}&sample={sample_limit}&uid={uid}"
 
 
 def get_cached_scoring_flow_json(
@@ -42,16 +53,12 @@ def get_cached_scoring_flow_json(
     visible_user_id: int | None = None,
 ) -> tuple[bytes, float] | None:
     """Return pre-serialized cached payload for hot scoring-flow requests."""
-    cached = _CACHE.get(_cache_key(hours, limit, sample_limit, visible_user_id))
-    if not cached:
-        return None
-    cached_at, _payload, json_bytes = cached
-    age_seconds = time.monotonic() - cached_at
-    return json_bytes, age_seconds
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    return _get_cached_json(key, ttl_seconds=SCORING_FLOW_CACHE_TTL)
 
 
 def invalidate_scoring_flow_cache() -> None:
-    _CACHE.clear()
+    _invalidate_json_cache(SCORING_FLOW_CACHE_PREFIX)
 
 
 async def build_scoring_flow_payload(
@@ -63,10 +70,10 @@ async def build_scoring_flow_payload(
     visible_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Return scoring funnel stages, candidate samples, and mix pressure data."""
-    cache_key = _cache_key(hours, limit, sample_limit, visible_user_id)
-    cached = _CACHE.get(cache_key)
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    cached = _get_cached_value(key, ttl_seconds=SCORING_FLOW_CACHE_TTL)
     if cached:
-        return cached[1]
+        return cached[0]
 
     time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
@@ -115,7 +122,7 @@ async def build_scoring_flow_payload(
             limit=limit,
             sample_limit=sample_limit,
         )
-        return cache_payload(cache_key, payload)
+        return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload)
 
     analyzed_total = window_total
     items = await content_repo.list_scoring_rows(
@@ -165,7 +172,7 @@ async def build_scoring_flow_payload(
         "category_mix": [{"label": k, "count": v} for k, v in category_counts.most_common(8)],
         "source_mix": [{"label": k, "count": v} for k, v in source_counts.most_common(8)],
     }
-    return cache_payload(cache_key, payload)
+    return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload)
 
 
 async def build_window_counts(
@@ -215,9 +222,18 @@ def debug_window_hours(requested_hours: int | None = None) -> tuple[int, ...]:
     return tuple(sorted({*DEBUG_WINDOW_HOURS, requested_hours}))
 
 
-def cache_payload(
-    cache_key: tuple[int, int, int, int | None], payload: dict[str, Any]
+def _cache_and_return(
+    hours: int,
+    limit: int,
+    sample_limit: int,
+    visible_user_id: int | None,
+    payload: dict[str, Any],
 ) -> dict[str, Any]:
+    """Store payload in the shared json_cache and return a cold copy.
+
+    The cached copy gets ``cache.hit = True``; the returned cold copy gets
+    ``cache.hit = False`` so the caller sees a fresh (non-cached) response.
+    """
     cold_payload = dict(payload)
     cold_payload["cache"] = {
         "hit": False,
@@ -230,8 +246,8 @@ def cache_payload(
         "mode": "invalidation",
         "age_ms": 0,
     }
-    json_bytes = json.dumps(cached_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    _CACHE[cache_key] = (time.monotonic(), cached_payload, json_bytes)
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    _set_cached_json(key, cached_payload)
     return cold_payload
 
 

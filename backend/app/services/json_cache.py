@@ -10,6 +10,7 @@ _CACHE: dict[str, tuple[float, bytes]] = {}
 
 
 def get_cached_json(cache_key: str, *, ttl_seconds: float) -> tuple[bytes, float] | None:
+    """Return raw cached JSON bytes and age (for fast-path API responses)."""
     cached = _CACHE.get(cache_key)
     if not cached:
         return None
@@ -19,6 +20,19 @@ def get_cached_json(cache_key: str, *, ttl_seconds: float) -> tuple[bytes, float
         _CACHE.pop(cache_key, None)
         return None
     return content, age_seconds
+
+
+def get_cached_value(cache_key: str, *, ttl_seconds: float) -> tuple[Any, float] | None:
+    """Return deserialized cached value and age (for in-process dict consumers)."""
+    cached = _CACHE.get(cache_key)
+    if not cached:
+        return None
+    cached_at, content = cached
+    age_seconds = time.monotonic() - cached_at
+    if age_seconds > ttl_seconds:
+        _CACHE.pop(cache_key, None)
+        return None
+    return json.loads(content), age_seconds
 
 
 def set_cached_json(cache_key: str, payload: Any) -> bytes:

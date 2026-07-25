@@ -17,7 +17,7 @@ from app.models.user import User
 from app.services.favorite_cache import invalidate_favorite_cache
 from app.services.scoring_flow import (
     build_empty_payload,
-    cache_payload,
+    _cache_and_return,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
 )
@@ -150,8 +150,8 @@ async def test_favorites_api_create_state_list_and_cache_invalidation(favorites_
 
 
 def _prime_scoring_flow_cache() -> None:
-    cache_payload(
-        (24, 160, 80, None),
+    _cache_and_return(
+        24, 160, 80, None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,

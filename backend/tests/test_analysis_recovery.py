@@ -29,7 +29,7 @@ from app.services.analysis_jobs import (
 )
 from app.services.scoring_flow import (
     build_empty_payload,
-    cache_payload,
+    _cache_and_return,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
 )
@@ -1296,8 +1296,8 @@ async def test_analyze_batch_commits_analyzing_status_before_llm_call(monkeypatc
 async def test_analyze_batch_invalidates_scoring_cache_after_commit(monkeypatch):
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
-    cache_payload(
-        (24, 160, 80, None),
+    _cache_and_return(
+        24, 160, 80, None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1438,8 +1438,8 @@ async def test_analyze_single_rejects_fresh_analyzing_claim(monkeypatch):
 async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch):
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
-    cache_payload(
-        (24, 160, 80, None),
+    _cache_and_return(
+        24, 160, 80, None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,

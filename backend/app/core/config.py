@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # ── Alerting ──
     ALERT_WEBHOOK_URL: str = ""  # 飞书/钉钉/Slack incoming webhook URL
+    # 站点根 URL，用于 webhook 卡片中的"查看全部"按钮生成绝对链接。
+    # 留空时按钮链接省略（仅推送原文链接，不推站内跳转）。
+    SITE_BASE_URL: str = ""
 
     # ── Startup behavior ──
     AUTO_CREATE_TABLES_ON_STARTUP: bool = True

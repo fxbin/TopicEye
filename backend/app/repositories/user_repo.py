@@ -16,12 +16,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserOAuthAccount
 from app.repositories.base import BaseRepository
+from app.services.auth_service import normalize_email
 
 
 class UserRepository(BaseRepository[User]):
     """用户表 CRUD + 管理后台所需的查询封装。"""
 
     model = User
+
+    async def get_by_email(self, email: str) -> User | None:
+        """按邮箱查找用户（normalized），用于唯一性检查。"""
+        result = await self.db.execute(
+            select(User).where(User.email == normalize_email(email))
+        )
+        return result.scalar_one_or_none()
 
     async def count_active_admins(self) -> int:
         """统计当前活跃 admin 数量。

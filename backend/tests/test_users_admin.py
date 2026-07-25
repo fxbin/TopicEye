@@ -94,6 +94,121 @@ async def test_missing_token_rejected(users_client):
     assert resp.status_code == 401
 
 
+# ── 创建用户 ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_success(users_client):
+    """管理员成功创建用户，被创建用户可用设定密码登录。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "newuser@x.com", "password": "Abc12345", "display_name": "新用户"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["email"] == "newuser@x.com"
+    assert body["display_name"] == "新用户"
+    assert body["role"] == "user"
+    assert body["plan"] == "free"
+    assert body["is_active"] is True
+
+    # 新用户可登录
+    login = await users_client["client"].post(
+        "/auth/login", json={"email": "newuser@x.com", "password": "Abc12345"}
+    )
+    assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_create_user_email_conflict_409(users_client):
+    """邮箱已存在返回 409。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "alice@x.com", "password": "Abc12345"},
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_user_weak_password_422(users_client):
+    """弱密码被拒。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "weak@x.com", "password": "short"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_user_invalid_role_422(users_client):
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "bad@x.com", "password": "Abc12345", "role": "superadmin"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_user_invalid_plan_422(users_client):
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "bad@x.com", "password": "Abc12345", "plan": "studio"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_user_with_role_and_plan(users_client):
+    """管理员创建时可指定 role=admin, plan=pro。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "vip@x.com", "password": "Abc12345", "role": "admin", "plan": "pro"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "admin"
+    assert resp.json()["plan"] == "pro"
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_create_user(users_client):
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers={"Authorization": f"Bearer {users_client['user1_token']}"},
+        json={"email": "hack@x.com", "password": "Abc12345"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_user_email_normalized(users_client):
+    """邮箱自动小写化 + 去空格。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "  CaseTest@X.COM  ", "password": "Abc12345"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["email"] == "casetest@x.com"
+
+
+@pytest.mark.asyncio
+async def test_create_user_default_display_name(users_client):
+    """不传 display_name 时取 email 前缀。"""
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "noname@x.com", "password": "Abc12345"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["display_name"] == "noname"
+
+
 # ── 列表 / 搜索 / 筛选 ───────────────────────────────────────────────
 
 

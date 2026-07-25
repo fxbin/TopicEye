@@ -1,6 +1,7 @@
 """
 Admin 用户管理 API。
 
+- POST   /admin/users               管理员直接创建用户（跳过邮箱验证）
 - GET    /admin/users               分页列出用户（支持 keyword/role/plan/is_active 筛选）
 - PATCH  /admin/users/{id}          改 role / is_active / plan（仅 free↔pro）
 - POST   /admin/users/{id}/reset-password   管理员重置密码（撤销该用户所有 session）
@@ -13,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, is_admin
@@ -22,7 +23,7 @@ from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.core.validators import validate_password_strength
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
-from app.services.auth_service import hash_password, revoke_all_user_sessions
+from app.services.auth_service import hash_password, normalize_email, revoke_all_user_sessions
 
 router = APIRouter(
     prefix="/admin/users",
@@ -69,6 +70,28 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
+class UserCreateRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: str | None = Field(None, max_length=100)
+    role: str = Field("user", description="user / admin")
+    plan: str = Field("free", description="free / pro")
+    is_active: bool = True
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or "." not in normalized.rsplit("@", 1)[-1]:
+            raise ValueError("Invalid email")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+
 def _user_to_item(user: User, oauth_providers: list[str]) -> UserListItem:
     return UserListItem(
         id=user.id,
@@ -107,6 +130,55 @@ async def _assert_not_last_admin(repo: UserRepository, target: User) -> None:
 
 
 # ── Endpoints ────────────────────────────────────────────────────────
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_user(
+    req: UserCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """管理员直接创建用户（跳过邮箱验证码）。
+
+    - 管理员设定初始密码，需自行转交用户
+    - 不创建 session，用户需自行登录
+    """
+    if req.role not in {"user", "admin"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="角色仅支持 user / admin")
+    if req.plan not in _ALLOWED_PLAN_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="套餐仅支持 free / pro",
+        )
+
+    repo = UserRepository(db)
+
+    async def _apply():
+        existing = await repo.get_by_email(req.email)
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
+
+        user = await repo.create(
+            email=normalize_email(req.email),
+            password_hash=hash_password(req.password),
+            display_name=req.display_name or normalize_email(req.email).split("@", 1)[0],
+            role=req.role,
+            plan=req.plan,
+            is_active=req.is_active,
+        )
+        return user
+
+    user = await _retry_write(db, _apply)
+    await db.commit()
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "role": user.role,
+        "plan": user.plan,
+        "is_active": user.is_active,
+        "message": "用户已创建",
+    }
 
 
 @router.get("", response_model=UserListResponse)

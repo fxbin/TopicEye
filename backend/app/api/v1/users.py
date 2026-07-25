@@ -15,6 +15,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, is_admin
@@ -158,14 +159,18 @@ async def create_user(
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
 
-        user = await repo.create(
-            email=normalize_email(req.email),
-            password_hash=hash_password(req.password),
-            display_name=req.display_name or normalize_email(req.email).split("@", 1)[0],
-            role=req.role,
-            plan=req.plan,
-            is_active=req.is_active,
-        )
+        try:
+            user = await repo.create(
+                email=normalize_email(req.email),
+                password_hash=hash_password(req.password),
+                display_name=req.display_name or normalize_email(req.email).split("@", 1)[0],
+                role=req.role,
+                plan=req.plan,
+                is_active=req.is_active,
+            )
+        except IntegrityError:
+            # 并发场景：两个请求同时通过了邮箱 pre-check，或 PG 序列未同步导致 PK 冲突
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
         return user
 
     user = await _retry_write(db, _apply)

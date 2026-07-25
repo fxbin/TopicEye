@@ -209,6 +209,19 @@ async def test_create_user_default_display_name(users_client):
     assert resp.json()["display_name"] == "noname"
 
 
+@pytest.mark.asyncio
+async def test_create_user_duplicate_email_returns_409_not_500(users_client):
+    """直接用已存在邮箱创建，返回 409 而非 500（IntegrityError 兜底）。"""
+    # alice@x.com 已在 fixture 中预置
+    resp = await users_client["client"].post(
+        "/admin/users",
+        headers=_auth(users_client),
+        json={"email": "ALICE@x.com", "password": "Abc12345"},  # 大小写不同但 normalize 后相同
+    )
+    assert resp.status_code == 409
+    assert "已注册" in resp.json()["detail"]
+
+
 # ── 列表 / 搜索 / 筛选 ───────────────────────────────────────────────
 
 

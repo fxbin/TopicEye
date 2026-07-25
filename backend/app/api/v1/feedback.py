@@ -104,6 +104,8 @@ async def submit_feedback(
 
     feedback = await write_with_503(db, _write)
     invalidate_content_read_caches()
+    from app.services.interest_vector_service import trigger_vector_rebuild
+    trigger_vector_rebuild(current_user.id)
     return feedback
 
 

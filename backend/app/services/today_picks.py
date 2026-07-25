@@ -92,6 +92,19 @@ async def build_today_picks(
     total = len(scored_rows)
     visible_rows = scored_rows[:limit] if limit else scored_rows
     response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
+
+    # Apply personalization boost (async, non-blocking for new users)
+    if owner_user_id is not None:
+        from app.services.interest_vector_service import apply_personalization_boost
+        response_items = await apply_personalization_boost(db, owner_user_id, response_items)
+        # Re-sort by boosted adjusted_curation_score
+        response_items.sort(
+            key=lambda item: (item.get("analysis") or {}).get("adjusted_curation_score", 0),
+            reverse=True,
+        )
+    else:
+        for item in response_items:
+            item["personalization_boost"] = 0.0
     try:
         topic_map = {topic["id"]: topic for topic in query_topics()}
     except Exception as exc:

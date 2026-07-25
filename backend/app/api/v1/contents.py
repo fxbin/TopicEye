@@ -811,6 +811,8 @@ async def toggle_favorite(
         return favorite_id
 
     favorite_id = await write_with_503_low_latency(db, _write)
+    from app.services.interest_vector_service import trigger_vector_rebuild
+    trigger_vector_rebuild(current_user.id)
     return {"is_favorited": next_value, "favorite_id": favorite_id}
 
 
@@ -835,6 +837,8 @@ async def ignore_content(
 
     ignored = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()
+    from app.services.interest_vector_service import trigger_vector_rebuild
+    trigger_vector_rebuild(current_user.id)
     return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
 
 

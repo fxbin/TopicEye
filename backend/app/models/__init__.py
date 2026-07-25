@@ -17,6 +17,7 @@ from app.models.read_record import ReadRecord
 from app.models.scheduled_job import JobExecutionLog, ScheduledJob
 from app.models.source import Source
 from app.models.source_evidence_profile import PublisherKind, SourceEvidenceProfile
+from app.models.user_interest_vector import UserInterestVector
 from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend
 from app.models.trending import TrendingItem, TrendingSnapshot
@@ -56,4 +57,5 @@ __all__ = [
     "CrossSourceLevel",
     "EvidenceType",
     "EvidenceInteraction",
+    "UserInterestVector",
 ]

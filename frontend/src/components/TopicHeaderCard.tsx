@@ -4,6 +4,7 @@ import React from 'react';
 import { BookOpen, ExternalLink, Star } from 'lucide-react';
 import { Button, Panel, cx } from '@/components/ui';
 import LevelBadge from '@/components/LevelBadge';
+import SourceBadge from '@/components/SourceBadge';
 import { useAppContext } from '@/components/ClientLayout';
 import type { ContentItem, ContentAnalysis, RecommendLevel } from '@/types';
 
@@ -49,13 +50,9 @@ export default function TopicHeaderCard({
       {/* Meta */}
       <div className="flex flex-wrap items-center gap-4 text-[13px] text-gray-400">
         {item.source_name && (
-          <span>
-            <b className="text-gray-600">{item.source_name}</b>
-          </span>
+          <SourceBadge name={item.source_name} type={item.source_type} />
         )}
         {timeAgoStr && <span>{timeAgoStr}</span>}
-        <span className="text-gray-300">|</span>
-        {item.source_type && <span>{item.source_type}</span>}
         {item.author && (
           <>
             <span className="text-gray-300">|</span>

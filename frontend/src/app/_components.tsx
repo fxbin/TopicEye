@@ -36,6 +36,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/components/ClientLayout';
+import SourceBadge from '@/components/SourceBadge';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { feedbackApi } from '@/lib/api';
 import type { FeedbackType } from '@/lib/api';
@@ -233,9 +234,7 @@ export function EditorialItem({
     >
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xs font-semibold text-gray-600">
-            {item.source_name}
-          </span>
+          <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-xs text-gray-300">/</span>
           <span className="shrink-0 text-xs text-gray-500">{timeLabel || time}</span>
           {level && <RecommendBadge level={level} />}

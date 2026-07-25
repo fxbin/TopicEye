@@ -16,6 +16,7 @@ import {
   Target,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
+import SourceBadge from '@/components/SourceBadge';
 import { Badge, Button, Metric, Panel, Toolbar, cx } from '@/components/ui';
 import { LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
@@ -171,7 +172,7 @@ function ContentCard({
 
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-black text-gray-600">{item.content.source_name || '未知来源'}</span>
+            <SourceBadge name={item.content.source_name} type={item.content.source_type} fallback="未知来源" compact />
             <span className="text-xs text-gray-300">/</span>
             <span className="text-xs text-gray-400">{formatDate(item.content.published_at || item.content.crawled_at || item.content.created_at)}</span>
             {topTopic && <Badge tone="primary" className="px-2 py-0.5">{topTopic}</Badge>}

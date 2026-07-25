@@ -35,6 +35,7 @@ import {
   Clock3,
 } from 'lucide-react';
 import { Badge, Button, Panel, PanelTitle, Segmented, FilterLabel, cx } from '@/components/ui';
+import SourceBadge from '@/components/SourceBadge';
 import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
 import EvidenceTag from '@/components/EvidenceTag';
 import {
@@ -467,7 +468,7 @@ export function PickCard({
       </div>
       <div className="min-w-0">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-gray-500">{item.source_name}</span>
+          <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-[11px] text-gray-300">/</span>
           <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
           {item.category && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{item.category}</span>}

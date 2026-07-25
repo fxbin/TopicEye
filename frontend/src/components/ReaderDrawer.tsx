@@ -6,6 +6,7 @@ import { contentsApi } from '@/lib/api';
 import type { ArticleReaderBlock, ArticleReaderSnapshot, ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
 import { cx } from '@/components/ui';
+import SourceBadge from '@/components/SourceBadge';
 import { AutoLink } from '@/components/AutoLink';
 
 // ─── 正文渲染（从 reader/page.tsx 抽出，保持一致）──
@@ -282,7 +283,7 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
               <article>
                 <header className="mb-7">
                   <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                    {content?.source_name && <span className="font-semibold text-gray-500">{content.source_name}</span>}
+                    {content?.source_name && <SourceBadge name={content.source_name} type={content.source_type} />}
                     <span>·</span>
                     <span>约 {snapshot.reading_minutes} 分钟</span>
                   </div>

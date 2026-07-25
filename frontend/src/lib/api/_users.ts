@@ -4,7 +4,7 @@
  */
 
 import { request } from './_core';
-import type { UserListResponse, UserUpdatePayload } from '@/types/users';
+import type { UserCreatePayload, UserCreateResponse, UserListResponse, UserUpdatePayload } from '@/types/users';
 
 export interface ListUsersParams {
   page?: number;
@@ -16,6 +16,10 @@ export interface ListUsersParams {
 }
 
 export const usersApi = {
+  create(data: UserCreatePayload): Promise<UserCreateResponse> {
+    return request('/admin/users', { method: 'POST', body: JSON.stringify(data) });
+  },
+
   list(params: ListUsersParams = {}): Promise<UserListResponse> {
     const qs = new URLSearchParams();
     if (params.page) qs.set('page', String(params.page));

@@ -27,3 +27,22 @@ export interface UserUpdatePayload {
   /** 仅允许 free / pro 互转 */
   plan?: 'free' | 'pro';
 }
+
+export interface UserCreatePayload {
+  email: string;
+  password: string;
+  display_name?: string;
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'pro';
+  is_active?: boolean;
+}
+
+export interface UserCreateResponse {
+  id: number;
+  email: string;
+  display_name: string | null;
+  role: string;
+  plan: string;
+  is_active: boolean;
+  message: string;
+}

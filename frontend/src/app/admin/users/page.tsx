@@ -10,6 +10,7 @@ import {
   Ban,
   CheckCircle2,
   Users,
+  UserPlus,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel } from '@/components/ui';
@@ -43,6 +44,17 @@ export default function UsersAdminPage() {
   const [resetTarget, setResetTarget] = useState<UserListItem | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
+
+  // 创建用户 Modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    email: '',
+    password: '',
+    display_name: '',
+    role: 'user' as 'user' | 'admin',
+    plan: 'free' as 'free' | 'pro',
+  });
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,6 +152,39 @@ export default function UsersAdminPage() {
     }
   };
 
+  const submitCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createForm.email.includes('@')) {
+      setError('请输入有效邮箱');
+      return;
+    }
+    if (createForm.password.length < 8) {
+      setError('密码至少 8 位');
+      return;
+    }
+    setCreating(true);
+    setNotice(null);
+    setError(null);
+    try {
+      await usersApi.create({
+        email: createForm.email.trim(),
+        password: createForm.password,
+        display_name: createForm.display_name.trim() || undefined,
+        role: createForm.role,
+        plan: createForm.plan,
+      });
+      setNotice(`用户「${createForm.email.trim()}」已创建`);
+      setCreateOpen(false);
+      setCreateForm({ email: '', password: '', display_name: '', role: 'user', plan: 'free' });
+      setPage(1);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建失败');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // admin 守卫已收敛到 app/admin/layout.tsx
   // layout 保证到达此处时 currentUser 非 null 且 role === 'admin'
   if (!currentUser) return null;
@@ -161,10 +206,16 @@ export default function UsersAdminPage() {
         icon={ShieldCheck}
         description="管理账号角色、套餐、状态与密码"
         actions={
-          <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            刷新
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="primary" onClick={() => { setCreateOpen(true); setError(null); }}>
+              <UserPlus size={14} />
+              创建用户
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading}>
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              刷新
+            </Button>
+          </div>
         }
       />
 
@@ -345,6 +396,82 @@ export default function UsersAdminPage() {
           )}
         </Panel>
       </AdminPageShell>
+
+      {/* 创建用户 Modal */}
+      {createOpen && (
+        <AdminModal title="创建用户" onClose={() => setCreateOpen(false)}>
+          <p className="mb-4 text-[13px] leading-6 text-gray-500">
+            直接创建一个新账号，跳过邮箱验证。请将设定的密码安全转交给用户。
+          </p>
+          <form onSubmit={submitCreate} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-[12px] font-bold text-gray-600">邮箱 *</label>
+              <input
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                autoFocus
+                placeholder="user@example.com"
+                className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-bold text-gray-600">密码 *（至少 8 位，含字母和数字）</label>
+              <input
+                type="text"
+                value={createForm.password}
+                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                placeholder="如 Abc12345"
+                className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-bold text-gray-600">昵称（可选）</label>
+              <input
+                type="text"
+                value={createForm.display_name}
+                onChange={(e) => setCreateForm({ ...createForm, display_name: e.target.value })}
+                placeholder="留空则取邮箱前缀"
+                className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="mb-1 block text-[12px] font-bold text-gray-600">角色</label>
+                <select
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as 'user' | 'admin' })}
+                  className="h-9 w-full rounded-sm border border-gray-200 px-2 text-sm text-gray-700 outline-none focus:border-primary"
+                >
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="mb-1 block text-[12px] font-bold text-gray-600">套餐</label>
+                <select
+                  value={createForm.plan}
+                  onChange={(e) => setCreateForm({ ...createForm, plan: e.target.value as 'free' | 'pro' })}
+                  className="h-9 w-full rounded-sm border border-gray-200 px-2 text-sm text-gray-700 outline-none focus:border-primary"
+                >
+                  <option value="free">free</option>
+                  <option value="pro">pro</option>
+                </select>
+              </div>
+            </div>
+            {error && <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>}
+            <AdminModalFooter>
+              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)} disabled={creating}>
+                取消
+              </Button>
+              <Button type="submit" variant="primary" disabled={creating || !createForm.email || createForm.password.length < 8}>
+                {creating ? <Loader2 size={14} className="animate-spin" /> : null}
+                创建
+              </Button>
+            </AdminModalFooter>
+          </form>
+        </AdminModal>
+      )}
 
       {/* 重置密码 Modal */}
       {resetTarget && (

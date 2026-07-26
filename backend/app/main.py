@@ -23,6 +23,7 @@ import app.models.mother_topic  # noqa: F401
 import app.models.notification  # noqa: F401
 import app.models.pick_mark  # noqa: F401
 import app.models.product_feedback  # noqa: F401
+import app.models.prompt_registry  # noqa: F401
 import app.models.scheduled_job  # noqa: F401
 import app.models.trending  # noqa: F401
 import app.models.user  # noqa: F401
@@ -303,6 +304,16 @@ async def lifespan(app: FastAPI):
             logger.info("Default sources seeded (%d new)", added)
 
     await _run_seed_step("Default source", enabled=seed_enabled, run=_seed_default_sources)
+
+    # Sync prompt registry (Sprint 3: read-only prompt catalog for admin)
+    try:
+        from app.services.prompt_registry_service import sync_prompt_registry
+
+        async with async_session() as prompt_db:
+            await sync_prompt_registry(prompt_db)
+            await prompt_db.commit()
+    except Exception as exc:
+        logger.warning("Prompt registry sync skipped (non-fatal): %s", exc)
 
     # Initialize DuckDB analytical layer (in-memory + ATTACH SQLite/Postgres)
     # 关键:analytics.available 是同步 @property,内部要执行 INSTALL/LOAD 扩展 +

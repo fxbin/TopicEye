@@ -853,81 +853,23 @@ async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleS
         await db.commit()
         return snapshot
 
+    # ── 分层翻译引擎链：Google → Azure(可选) → LLM ──
+    from app.services.translate import translate_blocks, translate_text
+
     original_blocks = snapshot.content_blocks or []
 
-    # ── 第一优先：Google Translate 免费 API（~1-2s）──
-    try:
-        from app.services.fast_translate import translate_blocks_fast, translate_text_fast
-
-        if original_blocks:
-            fast_blocks = await translate_blocks_fast(original_blocks)
-            if fast_blocks is not None:
-                snapshot.content_blocks_zh = fast_blocks
-                snapshot.text_content_zh = "\n\n".join(
-                    str(b.get("text", "")) for b in fast_blocks if b.get("text")
-                )[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
-                await db.commit()
-                logger.info("Translated via Google Translate (blocks): content_id=%d", content.id)
-                return snapshot
-        else:
-            fast_text = await translate_text_fast(snapshot.text_content[:8000])
-            if fast_text:
-                snapshot.text_content_zh = fast_text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
-                await db.commit()
-                logger.info("Translated via Google Translate (text): content_id=%d", content.id)
-                return snapshot
-    except Exception:
-        logger.warning("Fast translate failed, falling back to LLM", exc_info=True)
-
-    # ── 降级：LLM 翻译（15-60s，质量更高）──
-    from app.services.llm.provider import call_llm_json
-
-    if not original_blocks:
-        # fallback：翻译纯文本
-        result = await call_llm_json(
-            [
-                {"role": "system", "content": "你是专业翻译。把英文翻译成流畅的中文，保留技术术语和专有名词原文。只输出译文，不要解释。"},
-                {"role": "user", "content": snapshot.text_content[:8000]},
-            ],
-            scene="reader_translate",
-            temperature=0.3,
-            max_tokens=6000,
-        )
-        # call_llm_json 可能返回 dict 或 list；纯文本翻译期望 dict
-        if isinstance(result, dict):
-            translated_text = result.get("translation") or result.get("text") or result.get("raw_response") or ""
-            if not translated_text and "raw_response" not in result:
-                translated_text = str(result)
-        else:
-            # list 或其他类型 → 取第一个元素或整体转字符串
-            translated_text = str(result[0]) if isinstance(result, list) and result else str(result)
-        snapshot.text_content_zh = translated_text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+    if original_blocks:
+        result = await translate_blocks(original_blocks)
     else:
-        # 逐块翻译，保留 block 结构
-        blocks_for_llm = [{"i": i, "type": b.get("type"), "text": b.get("text", "")} for i, b in enumerate(original_blocks) if b.get("text")]
-        result = await call_llm_json(
-            [
-                {"role": "system", "content": "你是专业翻译。把英文 block 数组翻译成中文，保留 type/level 结构。技术术语和专有名词保留英文原文。输出 JSON 数组 [{\"i\":0,\"text\":\"中文\"},...]。只输出 JSON。"},
-                {"role": "user", "content": json.dumps(blocks_for_llm, ensure_ascii=False)[:8000]},
-            ],
-            scene="reader_translate",
-            temperature=0.3,
-            max_tokens=6000,
-        )
-        translated_blocks = []
-        if isinstance(result, list):
-            trans_map = {item.get("i"): item.get("text", "") for item in result if isinstance(item, dict)}
-        elif isinstance(result, dict) and "translations" in result:
-            trans_map = {item.get("i"): item.get("text", "") for item in result["translations"] if isinstance(item, dict)}
-        else:
-            trans_map = {}
-        for i, b in enumerate(original_blocks):
-            tb = dict(b)
-            if i in trans_map and trans_map[i]:
-                tb["text"] = trans_map[i]
-            translated_blocks.append(tb)
-        snapshot.content_blocks_zh = translated_blocks
-        snapshot.text_content_zh = "\n\n".join(str(b.get("text", "")) for b in translated_blocks if b.get("text"))
+        result = await translate_text(snapshot.text_content[:8000])
+
+    if result is None:
+        raise RuntimeError("翻译失败：所有翻译引擎均不可用，请稍后重试")
+
+    snapshot.text_content_zh = result.text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+    if result.blocks:
+        snapshot.content_blocks_zh = result.blocks
+    logger.info("Translated via %s: content_id=%d", result.provider, content.id)
 
     await db.commit()
     return snapshot

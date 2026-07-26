@@ -198,22 +198,11 @@ async def _run_post_sync_pipeline_once() -> None:
         except Exception:
             logger.exception("Scheduler: trend snapshot failed")
 
-    # ── 今日精选推送（无论本次是否有新内容分析，都尝试推送） ──
-    # send_alert 内部按 alert_key 做了 1 小时去重，所以多次调用安全。
-    # 之前此块在 early-return 守护内，导致无新 pending 时永远不推送。
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.alerting import push_today_picks
-            from app.services.today_picks import build_today_picks
-
-            payload = await build_today_picks(db, hours=24, limit=5)
-            items = payload.get("items", [])
-            total = payload.get("total", 0)
-            if items and total > 0:
-                await push_today_picks(items, total)
-                logger.info("Scheduler: today_picks push sent — %d items", total)
-    except Exception:
-        logger.warning("Scheduler: today_picks push failed (non-fatal)", exc_info=True)
+    # 今日精选推送已移除。
+    # 日报生成流程（daily_report.py _push_daily_report_success）已有独立的飞书推送，
+    # 推送的是 LLM 编辑筛选后的 top_picks（6-9 条，带 editorial_title/tier/angles）。
+    # 此处之前推的 build_today_picks 是原始评分列表，与 /daily 页面展示内容不一致，
+    # 会导致用户在飞书看到的内容和站内日报对不上。
 
 
 async def _drain_pending_analysis(

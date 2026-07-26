@@ -38,6 +38,58 @@ from app.services.llm.prompts.creation import (
 
 logger = logging.getLogger(__name__)
 
+# ── Self-evaluation quality threshold ───────────────────────────────
+SELF_EVAL_PASS_THRESHOLD = 60.0
+
+
+def _extract_self_evaluation(plan: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract and validate the self_evaluation block from an LLM plan.
+
+    Returns a normalized dict with structure_score, executability_score,
+    differentiation_score, overall_score (floats 0-100) and warnings (list[str]),
+    or ``None`` if the block is absent / unparseable.
+    """
+    raw = plan.get("self_evaluation")
+    if not isinstance(raw, dict):
+        return None
+
+    def _clamp(val: Any) -> float:
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(100.0, v))
+
+    warnings = raw.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    return {
+        "structure_score": _clamp(raw.get("structure_score")),
+        "executability_score": _clamp(raw.get("executability_score")),
+        "differentiation_score": _clamp(raw.get("differentiation_score")),
+        "overall_score": _clamp(raw.get("overall_score")),
+        "warnings": [str(w) for w in warnings if w],
+    }
+
+
+def _attach_self_evaluation(plan: dict[str, Any]) -> dict[str, Any]:
+    """Normalize self_evaluation and attach a quality flag to the plan."""
+    se = _extract_self_evaluation(plan)
+    if se is None:
+        # LLM didn't return self_evaluation — don't block the plan,
+        # but mark it as missing so frontend can show a neutral state.
+        plan["self_evaluation"] = None
+        plan["_quality_flag"] = "unevaluated"
+        return plan
+
+    plan["self_evaluation"] = se
+    if se["overall_score"] >= SELF_EVAL_PASS_THRESHOLD:
+        plan["_quality_flag"] = "passed"
+    else:
+        plan["_quality_flag"] = "warning"
+    return plan
+
 
 # ── shared helpers ──────────────────────────────────────────────────
 
@@ -275,6 +327,9 @@ async def generate_converge_plan(
     if not titles:
         return {"error": "收敛期未返回可用标题"}
     plan["titles"] = titles
+
+    # Extract and validate self-evaluation (Sprint 3: 创作方案自评)
+    plan = _attach_self_evaluation(plan)
 
     plan["_meta"] = {
         "content_id": content_id,

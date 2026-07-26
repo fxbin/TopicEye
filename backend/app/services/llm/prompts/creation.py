@@ -113,7 +113,14 @@ CONVERGE_PROMPT = """基于前面的探索和追问对话，输出结构化创�
     }}
   ],
   "risk_warning": "风险提示文本或空字符串（待验证假设>60%时必填）",
-  "tone": "建议语气/风格"
+  "tone": "建议语气/风格",
+  "self_evaluation": {{
+    "structure_score": <0-100, 方案结构完整性：标题/hook/正文/结尾是否齐备且逻辑连贯>,
+    "executability_score": <0-100, 可执行性：用户拿到方案后能否直接开始创作，还是需要大量补充>,
+    "differentiation_score": <0-100, 差异化：与同类内容的已有角度相比是否有新意>,
+    "overall_score": <0-100, 综合质量分 = structure*0.3 + executability*0.35 + differentiation*0.35>,
+    "warnings": ["具体问题1", "具体问题2"]
+  }}
 }}"""
 
 
@@ -141,7 +148,14 @@ PLATFORM_PROMPTS = {
     "cta": "结尾互动引导"
   },
   "tags": ["标签1", "标签2"],
-  "tone": "建议语气/风格"
+  "tone": "建议语气/风格",
+  "self_evaluation": {
+    "structure_score": <0-100, 结构完整性>,
+    "executability_score": <0-100, 可执行性>,
+    "differentiation_score": <0-100, 差异化>,
+    "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
+    "warnings": ["具体问题1"]
+  }
 }""",
     },
     "short_video": {
@@ -169,7 +183,14 @@ PLATFORM_PROMPTS = {
   ],
   "hook": "开头3秒hook文案",
   "cta": "结尾互动引导",
-  "bgm_suggestion": "背景音乐建议"
+  "bgm_suggestion": "背景音乐建议",
+  "self_evaluation": {
+    "structure_score": <0-100, 结构完整性>,
+    "executability_score": <0-100, 可执行性>,
+    "differentiation_score": <0-100, 差异化>,
+    "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
+    "warnings": ["具体问题1"]
+  }
 }""",
     },
     "wechat": {
@@ -198,7 +219,14 @@ PLATFORM_PROMPTS = {
   "opening": "开头引入方式",
   "closing": "结尾金句",
   "word_count_estimate": 2000,
-  "key_quote": "文内可引用的金句"
+  "key_quote": "文内可引用的金句",
+  "self_evaluation": {
+    "structure_score": <0-100, 结构完整性>,
+    "executability_score": <0-100, 可执行性>,
+    "differentiation_score": <0-100, 差异化>,
+    "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
+    "warnings": ["具体问题1"]
+  }
 }""",
     },
 }

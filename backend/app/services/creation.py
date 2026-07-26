@@ -10,14 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.content import ContentItem
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem
 from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.services.creation_explore import _attach_self_evaluation
 from app.services.llm import call_llm_json  # noqa: E402
 from app.services.llm.prompts.creation import PLATFORM_PROMPTS
 
@@ -55,6 +55,9 @@ def _validate_creation_plan(plan, platform: str) -> dict:
         outline = plan.get("outline")
         if not isinstance(outline, list) or not outline:
             return {"error": "创作方案生成失败：公众号方案缺少文章大纲"}
+
+    # Extract and validate self-evaluation (Sprint 3: 创作方案自评)
+    plan = _attach_self_evaluation(plan)
 
     return plan
 

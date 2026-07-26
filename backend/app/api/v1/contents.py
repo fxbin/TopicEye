@@ -694,7 +694,7 @@ async def translate_reader_content(
     current_user: User | None = Depends(get_optional_current_user),
 ):
     """翻译站内阅读正文为中文。已有缓存直接返回，否则调 LLM 翻译并落库。"""
-    from app.services.article_reader import translate_snapshot
+    from app.services.article_reader import as_utc, blocks_from_text, translate_snapshot
 
     content = await ContentRepo(db).get_detail(
         content_id,
@@ -723,8 +723,8 @@ async def translate_reader_content(
         content_blocks_zh=snapshot.content_blocks_zh,
         reading_minutes=snapshot.reading_minutes,
         extraction_method=snapshot.extraction_method,
-        fetched_at=snapshot.fetched_at,
-        expires_at=snapshot.expires_at,
+        fetched_at=as_utc(snapshot.fetched_at),
+        expires_at=as_utc(snapshot.expires_at),
         cache_status="translated",
     )
 

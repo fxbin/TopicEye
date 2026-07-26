@@ -261,8 +261,13 @@ async def call_llm_json_with_metadata(
     max_tokens: int = 2000,
     scene: str = "general",
     routing_group: str = "default",
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Call LLM, parse JSON response, and return selected route metadata."""
+) -> tuple[dict[str, Any] | list[Any], dict[str, Any]]:
+    """Call LLM, parse JSON response, and return selected route metadata.
+
+    Accepts both JSON objects (dict) and JSON arrays (list) as valid responses.
+    The translate endpoint asks the LLM to output a JSON array, so lists must
+    be accepted to avoid unnecessary retries that double the call duration.
+    """
     raw = ""
     metadata: dict[str, Any] = {}
     max_attempts = 1 if scene == "content_analysis" else 2
@@ -293,8 +298,8 @@ async def call_llm_json_with_metadata(
 
         try:
             result = json.loads(text)
-            if not isinstance(result, dict) or not result:
-                logger.warning("LLM JSON is empty or not a dict (attempt %d): %s", attempt + 1, str(result)[:200])
+            if not isinstance(result, (dict, list)) or not result:
+                logger.warning("LLM JSON is empty or not a dict/list (attempt %d): %s", attempt + 1, str(result)[:200])
                 if attempt < max_attempts - 1:
                     continue
                 return {"raw_response": raw}, metadata
@@ -313,8 +318,13 @@ async def call_llm_json(
     max_tokens: int = 2000,
     scene: str = "general",
     routing_group: str = "default",
-) -> dict[str, Any]:
-    """Call LLM and parse JSON response."""
+) -> dict[str, Any] | list[Any]:
+    """Call LLM and parse JSON response.
+
+    Returns a dict for JSON objects or a list for JSON arrays.
+    Callers that expect only dicts should check ``isinstance(result, dict)``
+    before accessing dict-specific methods like ``.get()``.
+    """
     result, _metadata = await call_llm_json_with_metadata(
         messages,
         temperature=temperature,

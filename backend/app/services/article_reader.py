@@ -868,10 +868,14 @@ async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleS
             temperature=0.3,
             max_tokens=6000,
         )
-        translated_text = result.get("translation") or result.get("text") or result.get("raw_response") or ""
-        # call_llm_json 返回的不是 JSON 而是纯文本时的兜底
-        if not translated_text and "raw_response" not in result:
-            translated_text = str(result)
+        # call_llm_json 可能返回 dict 或 list；纯文本翻译期望 dict
+        if isinstance(result, dict):
+            translated_text = result.get("translation") or result.get("text") or result.get("raw_response") or ""
+            if not translated_text and "raw_response" not in result:
+                translated_text = str(result)
+        else:
+            # list 或其他类型 → 取第一个元素或整体转字符串
+            translated_text = str(result[0]) if isinstance(result, list) and result else str(result)
         snapshot.text_content_zh = translated_text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
     else:
         # 逐块翻译，保留 block 结构

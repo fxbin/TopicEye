@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Check, Clipboard, Download, MessageSquare, MousePointer2, Music2, Paperclip, Pin, Video } from 'lucide-react';
+import { AlertTriangle, Check, Clipboard, Download, Gauge, MessageSquare, MousePointer2, Music2, Paperclip, Pin, Video } from 'lucide-react';
 import { formatPlanText } from '@/lib/utils';
 import { Badge, Button, cx } from '@/components/ui';
 
@@ -19,6 +19,14 @@ interface OutlineSection {
   evidence?: string;
 }
 
+export interface SelfEvaluation {
+  structure_score: number;
+  executability_score: number;
+  differentiation_score: number;
+  overall_score: number;
+  warnings: string[];
+}
+
 export interface CreationPlan {
   titles?: string[];
   tone?: string;
@@ -33,6 +41,8 @@ export interface CreationPlan {
   word_count_estimate?: number;
   key_quote?: string;
   closing?: string;
+  self_evaluation?: SelfEvaluation | null;
+  _quality_flag?: 'passed' | 'warning' | 'unevaluated';
   _meta?: { platform: string; platform_name: string; content_id: number };
   [key: string]: unknown;
 }
@@ -216,6 +226,82 @@ export default function CreationPlanDisplay({ plan, platform }: CreationPlanDisp
 
       {plan.tone && (
         <div className="text-center text-[11px] text-gray-400">风格建议：{plan.tone}</div>
+      )}
+
+      {/* Self-evaluation panel (Sprint 3: 创作方案自评) */}
+      {plan.self_evaluation && (
+        <SelfEvaluationPanel evaluation={plan.self_evaluation} qualityFlag={plan._quality_flag} />
+      )}
+    </div>
+  );
+}
+
+function SelfEvaluationPanel({
+  evaluation,
+  qualityFlag,
+}: {
+  evaluation: SelfEvaluation;
+  qualityFlag?: 'passed' | 'warning' | 'unevaluated';
+}) {
+  const isWarning = qualityFlag === 'warning';
+  const scores = [
+    { label: '结构完整性', value: evaluation.structure_score },
+    { label: '可执行性', value: evaluation.executability_score },
+    { label: '差异化', value: evaluation.differentiation_score },
+  ];
+
+  return (
+    <div
+      className={cx(
+        'rounded-xs border p-3',
+        isWarning ? 'border-amber/30 bg-amber-light/40' : 'border-teal/20 bg-teal-light/30',
+      )}
+      role="region"
+      aria-label="方案自评"
+    >
+      <div className="mb-2 flex items-center gap-1.5">
+        <Gauge size={13} className={isWarning ? 'text-amber' : 'text-teal'} strokeWidth={2} />
+        <span className={cx('text-[11px] font-bold', isWarning ? 'text-amber' : 'text-teal-text')}>
+          AI 自评{isWarning ? ' · 需关注' : ''}
+        </span>
+        {isWarning && (
+          <AlertTriangle size={12} className="text-amber" strokeWidth={2} aria-label="质量警告" />
+        )}
+      </div>
+
+      <div className="mb-2 flex items-center gap-3">
+        <div className={cx('font-mono text-2xl font-black', isWarning ? 'text-amber' : 'text-teal-text')}>
+          {Math.round(evaluation.overall_score)}
+        </div>
+        <div className="text-[11px] text-gray-500">综合质量分</div>
+      </div>
+
+      <div className="mb-2 flex gap-3">
+        {scores.map((s) => (
+          <div key={s.label} className="flex-1">
+            <div className="mb-0.5 text-[10px] text-gray-400">{s.label}</div>
+            <div className="flex items-center gap-1">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className={cx('h-full rounded-full', s.value >= 70 ? 'bg-teal' : s.value >= 50 ? 'bg-amber' : 'bg-red')}
+                  style={{ width: `${Math.min(100, s.value)}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono text-gray-500">{Math.round(s.value)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {evaluation.warnings.length > 0 && (
+        <ul className="space-y-0.5">
+          {evaluation.warnings.map((w, i) => (
+            <li key={i} className="flex items-start gap-1 text-[11px] text-gray-500">
+              <span className="mt-0.5 text-amber">•</span>
+              <span>{w}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

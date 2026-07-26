@@ -36,6 +36,8 @@ from app.api.v1.integrations import router as integrations_router
 from app.api.v1.scoring import router as scoring_router
 from app.api.v1.skill import router as skill_router
 from app.api.v1.users import router as users_router
+from app.api.v1.admin_prompts import router as admin_prompts_router
+from app.api.v1.admin_scoring_dashboard import router as admin_scoring_dashboard_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth_router)
@@ -78,3 +80,5 @@ router.include_router(llm_models_router)
 router.include_router(llm_evaluations_router)
 router.include_router(favorites_router)
 router.include_router(read_records_router)
+router.include_router(admin_prompts_router)
+router.include_router(admin_scoring_dashboard_router)

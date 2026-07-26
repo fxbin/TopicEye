@@ -4,6 +4,7 @@ Weekly Digest service — generate AI-powered weekly curated newsletter.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timedelta
 
@@ -226,22 +227,42 @@ async def generate_weekly_digest(
         try:
             from app.services.alerting import send_alert
 
-            # 构造卡片内容：overview 摘要 + top 3 picks
             overview_text = (digest.overview or "")[:200]
             top_picks_raw = json.loads(digest.top_picks or "[]")
-            top3_lines: list[str] = []
-            for i, pick in enumerate(top_picks_raw[:3], start=1):
-                title = pick.get("title") or f"选题 {i}"
-                category = pick.get("category", "")
-                cat_tag = f" `[{category}]`" if category else ""
-                top3_lines.append(f"**{i}. {title}**{cat_tag}")
 
+            # ── 飞书富卡片：overview + Top 3 精选，每段独立 div + HR 分割 ──
+            feishu_elements: list[dict] = []
+            if overview_text:
+                feishu_elements.append(
+                    {"tag": "div", "text": {"tag": "lark_md", "content": overview_text}}
+                )
+            if top_picks_raw:
+                feishu_elements.append({"tag": "hr"})
+                feishu_elements.append(
+                    {"tag": "div", "text": {"tag": "lark_md", "content": "**本周精选 Top 3：**"}}
+                )
+                for i, pick in enumerate(top_picks_raw[:3], start=1):
+                    title = pick.get("title") or f"选题 {i}"
+                    category = pick.get("category", "")
+                    cat_str = f" · {category}" if category else ""
+                    feishu_elements.append(
+                        {"tag": "div", "text": {"tag": "lark_md", "content": f"**{i}. {title}**{cat_str}"}}
+                    )
+
+            # 降级 markdown content（不支持卡片的平台用）
             card_content_parts = [overview_text]
-            if top3_lines:
-                card_content_parts.append("\n---\n**本周精选 Top 3：**\n" + "\n".join(top3_lines))
+            if top_picks_raw:
+                card_content_parts.append("本周精选 Top 3：")
+                for i, pick in enumerate(top_picks_raw[:3], start=1):
+                    title = pick.get("title") or f"选题 {i}"
+                    card_content_parts.append(f"{i}. {title}")
+            card_content = "\n".join(p for p in card_content_parts if p)
 
-            card_content = "\n".join(card_content_parts)
-            card_link = "/weekly"
+            # 卡片链接：必须是绝对 URL
+            from app.core.config import settings
+
+            site_base = getattr(settings, "SITE_BASE_URL", "") or ""
+            card_link = f"{site_base.rstrip('/')}/weekly" if site_base else ""
 
             await send_alert(
                 title=f"📚 AI 周刊 · {week_label}",
@@ -249,7 +270,12 @@ async def generate_weekly_digest(
                 alert_key=f"weekly_digest:{week_key}",
                 severity="info",
                 event_type="weekly_digest",
-                card={"content": card_content, "link": card_link},
+                card={
+                    "content": card_content,
+                    "link": card_link,
+                    "elements": feishu_elements,
+                    "button_text": "查看完整周刊",
+                },
             )
         except Exception:
             logger.warning("weekly_digest webhook push failed (non-fatal)", exc_info=True)

@@ -164,6 +164,7 @@ def _build_card_payload(
     link: str = "",
     severity: str = "warning",
     card_elements: list[dict] | None = None,
+    button_text: str = "查看详情",
 ) -> dict:
     """构造卡片消息 payload（飞书 interactive / 钉钉 actionCard / Slack blocks）。
 
@@ -177,6 +178,7 @@ def _build_card_payload(
     severity : info / warning / error，决定卡片颜色
     card_elements : 可选的飞书卡片 elements 列表。提供时直接用于飞书卡片，
         替换默认的单 div 元素，支持多段内容 + 分割线 + 多按钮等富卡片布局。
+    button_text : 按钮文案，默认「查看详情」。
     """
     platform = _detect_platform(webhook_url)
 
@@ -193,7 +195,7 @@ def _build_card_payload(
                     "actions": [
                         {
                             "tag": "button",
-                            "text": {"tag": "plain_text", "content": "查看全部精选"},
+                            "text": {"tag": "plain_text", "content": button_text},
                             "url": link,
                             "type": "primary",
                         }
@@ -311,6 +313,7 @@ async def send_alert(
                     link=card.get("link", ""),
                     severity=severity,
                     card_elements=card.get("elements"),
+                    button_text=card.get("button_text", "查看详情"),
                 )
             else:
                 payload = _build_payload(webhook_url, text)
@@ -395,90 +398,4 @@ async def alert_source_failures(failed_sources: list[dict]) -> None:
     )
 
 
-async def push_today_picks(picks: list[dict], total: int) -> None:
-    """今日精选内容推送：站内通知 + webhook 卡片。
 
-    在分析+聚类完成后调用，推送今日精选内容到飞书/钉钉/Slack。
-    每条精选包含标题、信源、评分和原文链接，用户可直接点击跳转原文。
-    """
-    if not picks:
-        return
-
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-
-    # ── 站内通知 ──
-    try:
-        from app.services.notification_service import push_notification
-
-        top_title = picks[0].get("title", "")[:40]
-        await push_notification(
-            "success",
-            "today_picks",
-            "今日精选更新",
-            f"共 {total} 条选题，Top 1：{top_title}",
-        )
-    except Exception:
-        logger.warning("today_picks in-app notification failed", exc_info=True)
-
-    # ── webhook 卡片 ──
-    try:
-        # 推送全部精选（上限 10 条，避免卡片过长）
-        push_limit = min(len(picks), 10)
-        pick_lines: list[str] = []
-        for i, pick in enumerate(picks[:push_limit], start=1):
-            title = pick.get("title", f"选题 {i}")[:80]
-            score = pick.get("adjusted_curation_score") or pick.get("curation_score") or 0
-            source = pick.get("source_name", "")
-            url = pick.get("url", "")
-            # 每条精选：标题 + 信源 + 评分 + 原文链接
-            line = f"**{i}. {title}**\n{source} · {round(score)}分"
-            if url:
-                line += f"\n[📄 查看原文]({url})"
-            pick_lines.append(line)
-
-        card_content = f"今日共 {total} 条精选选题\n---\n" + "\n\n".join(pick_lines)
-        if total > push_limit:
-            card_content += f"\n\n…共 {total} 条，完整列表见站内"
-
-        # 卡片底部"查看全部"按钮：需要绝对 URL
-        site_base = getattr(settings, "SITE_BASE_URL", "") or ""
-        card_link = f"{site_base.rstrip('/')}/today-picks" if site_base else ""
-
-        # 飞书富卡片：每条精选独立 div + 分割线，原文链接可直接点击
-        feishu_elements: list[dict] = [
-            {"tag": "div", "text": {"tag": "lark_md", "content": f"今日共 **{total}** 条精选选题"}},
-            {"tag": "hr"},
-        ]
-        for i, pick in enumerate(picks[:push_limit], start=1):
-            title = pick.get("title", f"选题 {i}")[:80]
-            score = pick.get("adjusted_curation_score") or pick.get("curation_score") or 0
-            source = pick.get("source_name", "")
-            url = pick.get("url", "")
-            # 每条精选：标题加粗 + 信源 + 评分 + 原文链接
-            md = f"**{i}. {title}**\n{source} · {round(score)}分"
-            if url:
-                md += f"\n[📄 查看原文]({url})"
-            feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": md}})
-            if i < push_limit:
-                feishu_elements.append({"tag": "hr"})
-        if total > push_limit:
-            feishu_elements.append({"tag": "hr"})
-            feishu_elements.append({
-                "tag": "div",
-                "text": {"tag": "lark_md", "content": f"…共 {total} 条，完整列表见站内"},
-            })
-
-        await send_alert(
-            title=f"📰 今日精选 · {today}",
-            message=f"今日共 {total} 条精选选题",
-            alert_key=f"today_picks:{today}",
-            severity="info",
-            event_type="today_picks",
-            card={
-                "content": card_content,
-                "link": card_link,
-                "elements": feishu_elements,
-            },
-        )
-    except Exception:
-        logger.warning("today_picks webhook push failed (non-fatal)", exc_info=True)

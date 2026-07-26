@@ -853,10 +853,35 @@ async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleS
         await db.commit()
         return snapshot
 
-    # 调 LLM 翻译 content_blocks（保留结构）
+    original_blocks = snapshot.content_blocks or []
+
+    # ── 第一优先：Google Translate 免费 API（~1-2s）──
+    try:
+        from app.services.fast_translate import translate_blocks_fast, translate_text_fast
+
+        if original_blocks:
+            fast_blocks = await translate_blocks_fast(original_blocks)
+            if fast_blocks is not None:
+                snapshot.content_blocks_zh = fast_blocks
+                snapshot.text_content_zh = "\n\n".join(
+                    str(b.get("text", "")) for b in fast_blocks if b.get("text")
+                )[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+                await db.commit()
+                logger.info("Translated via Google Translate (blocks): content_id=%d", content.id)
+                return snapshot
+        else:
+            fast_text = await translate_text_fast(snapshot.text_content[:8000])
+            if fast_text:
+                snapshot.text_content_zh = fast_text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+                await db.commit()
+                logger.info("Translated via Google Translate (text): content_id=%d", content.id)
+                return snapshot
+    except Exception:
+        logger.warning("Fast translate failed, falling back to LLM", exc_info=True)
+
+    # ── 降级：LLM 翻译（15-60s，质量更高）──
     from app.services.llm.provider import call_llm_json
 
-    original_blocks = snapshot.content_blocks or []
     if not original_blocks:
         # fallback：翻译纯文本
         result = await call_llm_json(

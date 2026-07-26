@@ -4,13 +4,14 @@ import React, { useState } from 'react';
 import {
   BarChart3,
   BookOpen,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Flame,
   Gauge,
   Inbox,
   Layers3,
+  PenLine,
   Radar,
   SlidersHorizontal,
   Star,
@@ -18,15 +19,21 @@ import {
   Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { viralApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
 import CategoryChip from '@/components/CategoryChip';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import SourceBadge from '@/components/SourceBadge';
+import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
 import { Pagination } from '@/components/Pagination';
 import { Badge, Button, Panel, PanelTitle, Toolbar, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
+import { timeAgo, getTagColor } from '@/lib/utils';
+import { getRecommendationReason } from '@/lib/recommendation';
+import { startContentWorkflow } from '@/lib/workflow';
 import type { ContentAnalysis, ContentItem } from '@/types';
 
 const TIME_RANGES = [
@@ -42,10 +49,12 @@ type AnalysisWithMeta = ContentAnalysis & { _content_id?: number };
 
 export default function LowFollowerViralPage() {
   const { toggleFavorite } = useAppContext();
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [hours, setHours] = useState<number>(48);
   const [category, setCategory] = useState('');
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisWithMeta | null>(null);
+  const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
 
   // hours / category 切换时回到第 1 页
   React.useEffect(() => { setPage(1); }, [hours, category]);
@@ -80,6 +89,23 @@ export default function LowFollowerViralPage() {
   const openAnalysis = (item: ContentItem) => {
     const analysis = getAnalysis(item);
     if (analysis) setSelectedAnalysis({ ...analysis, _content_id: item.id });
+  };
+
+  const handleStartWorkflow = async (item: ContentItem, isFavorited: boolean) => {
+    setWorkflowPendingId(item.id);
+    try {
+      await startContentWorkflow({
+        contentId: item.id,
+        title: item.title,
+        isFavorited,
+        toggleFavorite,
+        router,
+      });
+    } catch {
+      // 静默失败：workflow 是辅助操作，不阻塞浏览
+    } finally {
+      setWorkflowPendingId(null);
+    }
   };
 
   return (
@@ -128,10 +154,17 @@ export default function LowFollowerViralPage() {
           </section>
 
           {topItem && !loading && (
-            <HeroBreakout item={topItem} isFav={contentFavoriteState.isFavorited(topItem.id)} onFav={async (id) => {
-              await toggleFavorite(id);
-              contentFavoriteState.refresh();
-            }} onOpen={openAnalysis} />
+            <HeroBreakout
+              item={topItem}
+              isFav={contentFavoriteState.isFavorited(topItem.id)}
+              onFav={async (id) => {
+                await toggleFavorite(id);
+                contentFavoriteState.refresh();
+              }}
+              onOpen={openAnalysis}
+              onStartWorkflow={handleStartWorkflow}
+              workflowPending={workflowPendingId === topItem.id}
+            />
           )}
 
           {loading ? (
@@ -151,6 +184,8 @@ export default function LowFollowerViralPage() {
                     contentFavoriteState.refresh();
                   }}
                   onOpen={openAnalysis}
+                  onStartWorkflow={handleStartWorkflow}
+                  workflowPending={workflowPendingId === item.id}
                 />
               ))}
             </div>
@@ -210,17 +245,22 @@ function HeroBreakout({
   isFav,
   onFav,
   onOpen,
+  onStartWorkflow,
+  workflowPending,
 }: {
   item: ContentItem;
   isFav: boolean;
   onFav: (id: number) => void;
   onOpen: (item: ContentItem) => void;
+  onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  workflowPending: boolean;
 }) {
   const analysis = getAnalysis(item);
   const score = lfvScore(item);
   const obscure = obscureFactor(item);
   const authority = sourceWeight(item);
-  const reason = analysis?.recommendation || analysis?.recommended_reason || item.summary || '';
+  const reason = getRecommendationReason(analysis, item.summary);
+  const tags = tagsOf(analysis);
 
   return (
     <Panel className="relative mb-4 overflow-hidden p-6 shadow-lg">
@@ -231,7 +271,14 @@ function HeroBreakout({
             <Badge tone="primary" className="gap-1 text-[11px]">
               <Flame size={13} /> 最强突破
             </Badge>
-            <span className="text-[11px] text-gray-500">{item.source_name}</span>
+            <SourceBadge name={item.source_name} type={item.source_type} compact />
+            <span className="text-[11px] text-gray-300">/</span>
+            <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
+            {tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: getTagColor(tag), background: `${getTagColor(tag)}12` }}>
+                {tag}
+              </span>
+            ))}
             <SignalPill label={`隐蔽 x${obscure.toFixed(2)}`} />
             <SignalPill label={`源权威 ${Math.round(authority)}`} />
           </div>
@@ -239,7 +286,14 @@ function HeroBreakout({
             {item.title}
           </h2>
           {reason && <p className="max-w-[680px] text-[13px] leading-7 text-gray-600">{reason}</p>}
-          <ActionRow item={item} isFav={isFav} onFav={onFav} onOpen={onOpen} />
+          <ActionRow
+            item={item}
+            isFav={isFav}
+            onFav={onFav}
+            onOpen={onOpen}
+            onStartWorkflow={onStartWorkflow}
+            workflowPending={workflowPending}
+          />
         </div>
         <div className="flex self-stretch flex-col items-center justify-center rounded-sm border border-primary-border bg-primary-light">
           <div className="mb-1.5 text-[11px] text-gray-500">LFV</div>
@@ -258,18 +312,25 @@ function BreakoutCard({
   isFav,
   onFav,
   onOpen,
+  onStartWorkflow,
+  workflowPending,
 }: {
   item: ContentItem;
   rank: number;
   isFav: boolean;
   onFav: (id: number) => void;
   onOpen: (item: ContentItem) => void;
+  onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  workflowPending: boolean;
 }) {
   const analysis = getAnalysis(item);
   const score = lfvScore(item);
   const authority = sourceWeight(item);
   const obscure = obscureFactor(item);
-  const reason = analysis?.recommendation || analysis?.recommended_reason || item.summary || '';
+  const reason = getRecommendationReason(analysis, item.summary);
+  const tags = tagsOf(analysis);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const breakdown = analysis?.score_breakdown;
   const rankTone = score >= 40 ? 'bg-primary-light text-primary' : score >= 25 ? 'bg-amber-light text-amber' : 'bg-gray-100 text-gray-500';
   const scoreTone = score >= 40 ? 'text-primary' : score >= 25 ? 'text-amber' : 'text-teal';
 
@@ -286,8 +347,15 @@ function BreakoutCard({
       </div>
       <div className="min-w-0">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-extrabold text-gray-500">{item.source_name}</span>
+          <SourceBadge name={item.source_name} type={item.source_type} compact />
+          <span className="text-[11px] text-gray-300">/</span>
+          <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
           {item.category && <SignalPill label={item.category} />}
+          {tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: getTagColor(tag), background: `${getTagColor(tag)}12` }}>
+              {tag}
+            </span>
+          ))}
           <SignalPill label={`源权威 ${Math.round(authority)}`} />
           <SignalPill label={`隐蔽 x${obscure.toFixed(2)}`} tone={authority <= 35 ? 'good' : 'muted'} />
         </div>
@@ -299,13 +367,36 @@ function BreakoutCard({
             {reason}
           </p>
         )}
-        <ActionRow item={item} isFav={isFav} onFav={onFav} onOpen={onOpen} />
+        <ActionRow
+          item={item}
+          isFav={isFav}
+          onFav={onFav}
+          onOpen={onOpen}
+          onStartWorkflow={onStartWorkflow}
+          workflowPending={workflowPending}
+        />
+        {showBreakdown && breakdown && (
+          <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/50 p-3" onClick={(e) => e.stopPropagation()}>
+            <ScoreBreakdownChart breakdown={breakdown} />
+          </div>
+        )}
       </div>
       <div className="text-right">
         <div className={cx('font-mono text-2xl font-black leading-none', scoreTone)}>
           {score.toFixed(1)}
         </div>
         <div className="mt-1 text-[10px] text-gray-400">LFV</div>
+        {breakdown && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setShowBreakdown((v) => !v); }}
+            className="mt-2 inline-flex items-center gap-0.5 rounded-xs border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-500 transition hover:border-primary-border hover:text-primary"
+            title={showBreakdown ? '收起评分解释' : '展开评分解释'}
+          >
+            <BarChart3 size={11} />
+            {showBreakdown ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </button>
+        )}
       </div>
     </article>
   );
@@ -316,16 +407,24 @@ function ActionRow({
   isFav,
   onFav,
   onOpen,
+  onStartWorkflow,
+  workflowPending,
   dark = false,
 }: {
   item: ContentItem;
   isFav: boolean;
   onFav: (id: number) => void;
   onOpen: (item: ContentItem) => void;
+  onStartWorkflow: (item: ContentItem, isFavorited: boolean) => void;
+  workflowPending: boolean;
   dark?: boolean;
 }) {
   const analysis = getAnalysis(item);
   const { openReader } = useAppContext();
+  const actionClass = dark
+    ? 'border-white/15 bg-white/10 text-gray-200 hover:bg-white/15'
+    : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border hover:text-primary';
+
   return (
     <Toolbar className={cx('gap-2', dark && 'mt-4')}>
       {analysis && (
@@ -345,7 +444,7 @@ function ActionRow({
         <button
           type="button"
           onClick={(event) => { event.stopPropagation(); openReader(item.id); }}
-          className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2.5 py-1 text-[11px] font-extrabold text-primary transition hover:border-primary"
+          className={cx('inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1 text-[11px] font-extrabold no-underline transition', actionClass)}
         >
           <BookOpen size={13} /> 阅读
         </button>
@@ -356,7 +455,7 @@ function ActionRow({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(event) => event.stopPropagation()}
-          className="inline-flex items-center gap-1.5 rounded-xs border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-extrabold text-gray-600 no-underline transition hover:border-primary-border hover:text-primary"
+          className={cx('inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1 text-[11px] font-extrabold no-underline transition', actionClass)}
         >
           原文 <ExternalLink size={13} />
         </a>
@@ -368,11 +467,27 @@ function ActionRow({
           onFav(item.id);
         }}
         className={cx(
-          'inline-flex items-center gap-1.5 rounded-xs border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-extrabold transition hover:border-primary-border',
-          isFav ? 'text-primary' : 'text-gray-400 hover:text-primary',
+          'inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1 text-[11px] font-extrabold transition hover:border-primary-border',
+          dark ? 'border-white/15 bg-white/10 hover:bg-white/15' : 'border-gray-200 bg-white hover:border-amber-border',
+          isFav ? 'text-amber' : dark ? 'text-gray-300' : 'text-gray-400',
         )}
       >
-        <Star size={13} fill={isFav ? '#FF6B35' : 'none'} /> 收藏
+        <Star size={13} fill={isFav ? '#F59E0B' : 'none'} /> 收藏
+      </button>
+      <button
+        type="button"
+        disabled={workflowPending}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartWorkflow(item, isFav);
+        }}
+        className={cx(
+          'inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60',
+          dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-primary-solid bg-primary-solid text-white hover:opacity-90',
+        )}
+      >
+        <PenLine size={13} />
+        {workflowPending ? '推进中' : '推进'}
       </button>
     </Toolbar>
   );
@@ -449,6 +564,8 @@ function SignalPill({
   );
 }
 
+// ── 工具函数（与 today-picks 对齐）──
+
 function getAnalysis(item: ContentItem): ContentAnalysis | undefined {
   return item.analysis || item.analyses?.[0];
 }
@@ -464,4 +581,11 @@ function sourceWeight(item: ContentItem): number {
 
 function obscureFactor(item: ContentItem): number {
   return getAnalysis(item)?.score_breakdown?.dimension_scores?.obscure_factor ?? 0;
+}
+
+function tagsOf(analysis?: ContentAnalysis | null): string[] {
+  const rawTags = analysis?.tags as string | string[] | null | undefined;
+  if (Array.isArray(rawTags)) return rawTags;
+  if (typeof rawTags === 'string' && rawTags) return rawTags.split(',').map((tag) => tag.trim()).filter(Boolean);
+  return [];
 }

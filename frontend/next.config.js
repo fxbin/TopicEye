@@ -9,6 +9,10 @@ const nextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // LLM 翻译等长请求需要超过 Next.js rewrite proxy 默认 30s 超时
+  experimental: {
+    proxyTimeout: 120000,
+  },
   // macOS Docker bind mount 下 inotify 不穿透，强制 webpack 轮询以启用 HMR
   webpack: (config) => {
     config.watchOptions = {

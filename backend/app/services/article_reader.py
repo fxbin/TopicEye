@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
-_ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
+_ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/pdf"}
 _MIN_READER_TEXT_CHARS = 60
 _WORDS_PER_MINUTE = 300  # Chinese characters or space-delimited words: deliberately conservative.
 _BLOCK_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre", "code")
@@ -458,6 +458,55 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     )
 
 
+def _extract_from_pdf(payload: bytes, final_url: str) -> ExtractedArticle:
+    """Extract readable text from a PDF document.
+
+    Targets text-based PDFs (reports, papers).  Scanned/image-only PDFs
+    yield little or no text and fail closed to the original-source link.
+    """
+    import io
+
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(io.BytesIO(payload), strict=False)
+        # 加密 PDF 无法直接读取文本；回退到外链由调用方处理。
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception:
+                raise ArticleReaderError("not_readerable", "该 PDF 已加密，请打开原文查看。")
+        text_parts = [page.extract_text() or "" for page in reader.pages]
+    except ArticleReaderError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 任何解析异常都回退外链
+        logger.warning("PDF 解析失败 url=%s err=%s", final_url, exc)
+        raise ArticleReaderError("not_readerable", "该 PDF 暂时无法解析，请打开原文查看。")
+
+    text = _clean_text("\n\n".join(part for part in text_parts if part))
+    if len(text) < _MIN_READER_TEXT_CHARS:
+        raise ArticleReaderError("not_readerable", "该 PDF 没有可提取的文字（可能是扫描件），请打开原文查看。")
+
+    title = "PDF 文档"
+    try:
+        meta_title = reader.metadata.title if reader.metadata else None
+    except Exception:
+        meta_title = None
+    if isinstance(meta_title, str) and meta_title.strip():
+        title = _clean_text(meta_title)[:500]
+
+    return ExtractedArticle(
+        canonical_url=final_url,
+        title=title,
+        byline=None,
+        published_at=None,
+        excerpt=text[:240] + ("…" if len(text) > 240 else ""),
+        text_content=text[: settings.ARTICLE_READER_MAX_TEXT_CHARS],
+        content_blocks=blocks_from_text(text),
+        extraction_method="pdf",
+    )
+
+
 def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | None:
     import trafilatura
 
@@ -547,6 +596,8 @@ async def _fetch_remote_article(
                 if content_type not in _ALLOWED_CONTENT_TYPES:
                     raise ArticleReaderError("unsupported_content", "该原文不是可阅读的网页内容。")
                 payload = await _read_limited(response)
+                if content_type == "application/pdf":
+                    return _extract_from_pdf(payload, current_url)
                 if content_type == "text/plain":
                     text = _clean_text(payload.decode(response.encoding or "utf-8", errors="replace"))
                     if len(text) < _MIN_READER_TEXT_CHARS:
@@ -701,6 +752,8 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
         if len(payload) > settings.ARTICLE_READER_MAX_RESPONSE_BYTES:
             raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
         final_url = str(response.url)
+        if content_type == "application/pdf":
+            return _extract_from_pdf(payload, final_url)
         if content_type == "text/plain":
             text = _clean_text(payload.decode(response.encoding or "utf-8", errors="replace"))
             if len(text) < _MIN_READER_TEXT_CHARS:

@@ -12,6 +12,7 @@ from app.models.ignored import IgnoredItem
 from app.models.metrics import ContentMetrics
 from app.models.metrics_snapshot import MetricsSnapshotRecord
 from app.models.product_feedback import IssueFeedback, ProductUpdate
+from app.models.prompt_registry import PromptRegistry
 from app.models.qimao import QimaoBook
 from app.models.read_record import ReadRecord
 from app.models.scheduled_job import JobExecutionLog, ScheduledJob
@@ -58,4 +59,5 @@ __all__ = [
     "EvidenceType",
     "EvidenceInteraction",
     "UserInterestVector",
+    "PromptRegistry",
 ]

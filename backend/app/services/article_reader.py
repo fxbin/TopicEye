@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import ipaddress
 import logging
-import re
 import random
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -476,13 +475,13 @@ def _extract_from_pdf(payload: bytes, final_url: str) -> ExtractedArticle:
             try:
                 reader.decrypt("")
             except Exception:
-                raise ArticleReaderError("not_readerable", "该 PDF 已加密，请打开原文查看。")
+                raise ArticleReaderError("not_readerable", "该 PDF 已加密，请打开原文查看。") from None
         text_parts = [page.extract_text() or "" for page in reader.pages]
     except ArticleReaderError:
         raise
     except Exception as exc:  # noqa: BLE001 — 任何解析异常都回退外链
         logger.warning("PDF 解析失败 url=%s err=%s", final_url, exc)
-        raise ArticleReaderError("not_readerable", "该 PDF 暂时无法解析，请打开原文查看。")
+        raise ArticleReaderError("not_readerable", "该 PDF 暂时无法解析，请打开原文查看。") from exc
 
     text = _clean_text("\n\n".join(part for part in text_parts if part))
     if len(text) < _MIN_READER_TEXT_CHARS:
@@ -803,14 +802,12 @@ async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]
         "reader_disabled",
     }
 
-    tier1_error: ArticleReaderError | None = None
     try:
         article = await _fetch_remote_article(url)
         return article, "httpx"
     except ArticleReaderError as e:
         if e.code in _no_retry or not settings.ARTICLE_READER_CURL_CFFI_FALLBACK:
             raise
-        tier1_error = e
         logger.info("Tier 1 (httpx) failed for %s: %s, trying curl_cffi", url, e.code)
 
     # Tier 2: curl_cffi (TLS impersonation)

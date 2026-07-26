@@ -14,6 +14,7 @@ import {
   Newspaper,
   RadioTower,
   Rocket,
+  ScrollText,
   Settings,
   ShieldCheck,
   Users,
@@ -39,6 +40,8 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit },
   { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen },
   { id: 'updates', label: '发版记录', href: '/admin/updates', icon: Rocket },
+  { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', icon: ScrollText },
+  { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', icon: BarChart3 },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings },
 ];

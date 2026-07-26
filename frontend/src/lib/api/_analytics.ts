@@ -328,3 +328,89 @@ export const productFeedbackApi = {
   },
 };
 
+// ─── Admin Prompts API (Sprint 3: read-only prompt catalog) ───
+
+export interface PromptRegistryItem {
+  id: number;
+  name: string;
+  scene: string;
+  description: string;
+  source_file: string;
+  content_preview: string;
+  version_hash: string;
+  updated_at: string | null;
+  stats_7d: {
+    call_count_7d: number;
+    total_cost_7d: number;
+    avg_duration_ms_7d: number;
+  };
+}
+
+export interface PromptRegistryListResponse {
+  items: PromptRegistryItem[];
+  total: number;
+}
+
+export interface PromptDetailResponse {
+  id: number;
+  name: string;
+  scene: string;
+  description: string;
+  source_file: string;
+  full_content: string;
+  version_hash: string;
+  updated_at: string | null;
+  stats_30d: {
+    call_count: number;
+    total_cost: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    avg_duration_ms: number;
+  };
+  daily_trend: Array<{ date: string; calls: number; cost: number }>;
+}
+
+export const adminPromptsApi = {
+  list(scene?: string): Promise<PromptRegistryListResponse> {
+    const query = scene ? `?scene=${encodeURIComponent(scene)}` : '';
+    return request(`/admin/prompts${query}`);
+  },
+
+  detail(id: number): Promise<PromptDetailResponse> {
+    return request(`/admin/prompts/${id}`);
+  },
+};
+
+// ─── Admin Scoring Dashboard API (Sprint 3: feedback analytics) ───
+
+export interface ScoringDashboardSummary {
+  analyzed_count: number;
+  favorites_count: number;
+  ignores_count: number;
+  total_feedback: number;
+  favorite_rate: number;
+  ignore_rate: number;
+  feedback_rate: number;
+  users_with_vectors: number;
+}
+
+export interface ScoringDashboardResponse {
+  period_days: number;
+  summary: ScoringDashboardSummary;
+  feedback_distribution: Record<string, number>;
+  top_tags: Array<{
+    tag: string;
+    avg_weight: number;
+    total_weight: number;
+    user_count: number;
+  }>;
+  daily_feedback: Array<{ date: string; count: number }>;
+  daily_favorites: Array<{ date: string; count: number }>;
+}
+
+export const scoringDashboardApi = {
+  get(days = 7): Promise<ScoringDashboardResponse> {
+    return request(`/admin/scoring-dashboard?days=${days}`);
+  },
+};
+

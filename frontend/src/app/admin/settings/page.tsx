@@ -586,7 +586,7 @@ export default function AdminSettingsPage() {
             <li>支持配置多个 webhook，每个独立配置推送事件类型</li>
             <li>支持飞书 / 钉钉 / Slack 群机器人 incoming webhook</li>
             <li>webhook URL 含 token，以加密方式存储，不会明文保存</li>
-            <li>推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 测试发送</li>
+            <li>推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 今日精选推送 / 测试发送</li>
             <li>环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，不参与事件过滤）</li>
           </ul>
         </Panel>

@@ -136,66 +136,71 @@ async def _run_post_sync_pipeline() -> None:
 
 
 async def _run_post_sync_pipeline_once() -> None:
-    """Analyze pending, cluster, and snapshot trends once."""
+    """Analyze pending, cluster, snapshot trends, and push today's picks.
+
+    The today-picks push runs **unconditionally** at the end of each cycle
+    (dedup is handled inside ``send_alert``).  Previously it was nested
+    inside the analysis/clustering success path, which meant that if there
+    was no *new* pending content the push was never reached — even though
+    perfectly good picks from a previous run were already available.
+    """
     analysis_stats = await _drain_pending_analysis()
     if analysis_stats["attempted"] == 0:
         logger.info("Scheduler: post-sync pipeline skipped — no pending content")
-        return
-
-    if analysis_stats["analyzed"] == 0:
+    elif analysis_stats["analyzed"] == 0:
         logger.info("Scheduler: post-sync pipeline analyzed no items — %s", analysis_stats)
-        return
-
-    if analysis_stats["remaining"]:
+    elif analysis_stats["remaining"]:
         logger.info(
             "Scheduler: post-sync pipeline deferred clustering while analysis backlog remains — %s",
             analysis_stats,
         )
-        return
+    else:
+        # ── Clustering ──
+        try:
+            async with app.scheduler.async_session() as db:
+                from app.services.topic_clustering import cluster_and_dedup_with_lease
 
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
+                stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
+            if claimed:
+                logger.info("Scheduler: clustering done — %s", stats)
+            else:
+                logger.info("Scheduler: clustering skipped because another run holds the lease")
+        except Exception:
+            logger.exception("Scheduler: clustering failed")
 
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
-        if claimed:
-            logger.info("Scheduler: clustering done — %s", stats)
-        else:
-            logger.info("Scheduler: clustering skipped because another run holds the lease")
-    except Exception:
-        logger.exception("Scheduler: clustering failed")
+        # ── Cross-source evidence discovery (after clustering, zero LLM cost) ──
+        try:
+            async with app.scheduler.async_session() as db:
+                from app.services.evidence_service import discover_cross_source_evidence
 
-    # ── Cross-source evidence discovery (after clustering, zero LLM cost) ──
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.evidence_service import discover_cross_source_evidence
+                ev_stats = await discover_cross_source_evidence(db, hours=24)
+                await db.commit()
+            if ev_stats.get("marks", 0) > 0:
+                logger.info("Scheduler: cross-source evidence — %s", ev_stats)
+        except Exception:
+            logger.warning("Scheduler: cross-source evidence failed (non-fatal)", exc_info=True)
 
-            ev_stats = await discover_cross_source_evidence(db, hours=24)
-            await db.commit()
-        if ev_stats.get("marks", 0) > 0:
-            logger.info("Scheduler: cross-source evidence — %s", ev_stats)
-    except Exception:
-        logger.warning("Scheduler: cross-source evidence failed (non-fatal)", exc_info=True)
+        # 批量分析+聚类完成后刷新 stats 缓存（不再在单条内容增删时失效）
+        try:
+            from app.services.stats_cache import invalidate_stats_cache
+            invalidate_stats_cache()
+            logger.info("Scheduler: stats cache invalidated after post-sync pipeline")
+        except Exception:
+            logger.warning("Scheduler: failed to invalidate stats cache", exc_info=True)
 
-    # 批量分析+聚类完成后刷新 stats 缓存（不再在单条内容增删时失效）
-    try:
-        from app.services.stats_cache import invalidate_stats_cache
-        invalidate_stats_cache()
-        logger.info("Scheduler: stats cache invalidated after post-sync pipeline")
-    except Exception:
-        logger.warning("Scheduler: failed to invalidate stats cache", exc_info=True)
+        try:
+            async with app.scheduler.async_session() as db:
+                from app.services.trends import snapshot_daily_trends
 
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.trends import snapshot_daily_trends
+                stats = await snapshot_daily_trends(db)
+                await db.commit()
+            logger.info("Scheduler: trend snapshot done — %s", stats)
+        except Exception:
+            logger.exception("Scheduler: trend snapshot failed")
 
-            stats = await snapshot_daily_trends(db)
-            await db.commit()
-        logger.info("Scheduler: trend snapshot done — %s", stats)
-    except Exception:
-        logger.exception("Scheduler: trend snapshot failed")
-
-    # ── 今日精选推送（分析+聚类+快照全部完成后触发） ──
+    # ── 今日精选推送（无论本次是否有新内容分析，都尝试推送） ──
+    # send_alert 内部按 alert_key 做了 1 小时去重，所以多次调用安全。
+    # 之前此块在 early-return 守护内，导致无新 pending 时永远不推送。
     try:
         async with app.scheduler.async_session() as db:
             from app.services.alerting import push_today_picks

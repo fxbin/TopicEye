@@ -295,8 +295,6 @@ async def send_alert(
     if last is not None and (now - last) < _DEDUP_WINDOW_SECONDS:
         return True  # 去重跳过
 
-    _LAST_SENT[alert_key] = now
-
     ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     emoji = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(severity, "⚠️")
     text = f"{emoji} [{severity.upper()}] {title}\n{message}\n\n_{ts}_"
@@ -329,6 +327,12 @@ async def send_alert(
                     )
             except Exception as exc:
                 logger.warning("Alert webhook failed (non-fatal): %s", exc)
+
+    # 仅在至少一个 webhook 发送成功时才记录去重 key，
+    # 避免首次发送失败后 1 小时内重试被静默跳过。
+    if any_sent:
+        _LAST_SENT[alert_key] = now
+
     return any_sent
 
 

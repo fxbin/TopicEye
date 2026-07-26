@@ -145,11 +145,12 @@ async def _validate_public_url(url: str) -> str:
     return normalized
 
 
-async def _read_limited(response: httpx.Response) -> bytes:
+async def _read_limited(response: httpx.Response, *, max_bytes: int | None = None) -> bytes:
+    limit = max_bytes if max_bytes is not None else settings.ARTICLE_READER_MAX_RESPONSE_BYTES
     declared_length = response.headers.get("content-length")
     if declared_length:
         try:
-            if int(declared_length) > settings.ARTICLE_READER_MAX_RESPONSE_BYTES:
+            if int(declared_length) > limit:
                 raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
         except ValueError:
             pass
@@ -158,7 +159,7 @@ async def _read_limited(response: httpx.Response) -> bytes:
     total = 0
     async for chunk in response.aiter_bytes():
         total += len(chunk)
-        if total > settings.ARTICLE_READER_MAX_RESPONSE_BYTES:
+        if total > limit:
             raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
         chunks.append(chunk)
     return b"".join(chunks)
@@ -595,9 +596,11 @@ async def _fetch_remote_article(
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                 if content_type not in _ALLOWED_CONTENT_TYPES:
                     raise ArticleReaderError("unsupported_content", "该原文不是可阅读的网页内容。")
-                payload = await _read_limited(response)
+                # PDF 体积远大于 HTML，单独放宽字节上限。
                 if content_type == "application/pdf":
+                    payload = await _read_limited(response, max_bytes=settings.ARTICLE_READER_MAX_PDF_BYTES)
                     return _extract_from_pdf(payload, current_url)
+                payload = await _read_limited(response)
                 if content_type == "text/plain":
                     text = _clean_text(payload.decode(response.encoding or "utf-8", errors="replace"))
                     if len(text) < _MIN_READER_TEXT_CHARS:
@@ -749,7 +752,13 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
         if content_type not in _ALLOWED_CONTENT_TYPES:
             raise ArticleReaderError("unsupported_content", "该原文不是可阅读的网页内容。")
         payload = response.content
-        if len(payload) > settings.ARTICLE_READER_MAX_RESPONSE_BYTES:
+        # PDF 体积远大于 HTML，单独放宽字节上限。
+        max_bytes = (
+            settings.ARTICLE_READER_MAX_PDF_BYTES
+            if content_type == "application/pdf"
+            else settings.ARTICLE_READER_MAX_RESPONSE_BYTES
+        )
+        if len(payload) > max_bytes:
             raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
         final_url = str(response.url)
         if content_type == "application/pdf":

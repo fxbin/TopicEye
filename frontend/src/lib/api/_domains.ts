@@ -664,6 +664,13 @@ export const dailyReportApi = {
     return request(`/daily-reports/generate-version${query ? `?${query}` : ''}`, { method: 'POST' });
   },
 
+  /** 手动推送日报到 webhook（管理员） */
+  pushWebhook(date: string, edition?: string): Promise<{ sent: boolean; message: string }> {
+    const params = new URLSearchParams({ date });
+    if (edition) params.set('edition', edition);
+    return request(`/daily-reports/push-webhook?${params}`, { method: 'POST' });
+  },
+
   /** 昨日追踪（公共日报）：昨日 top picks 的 24h 热度 delta + lifecycle 验证 */
   getYesterdayTracking(reportDate: string): Promise<YesterdayTrackingData> {
     return request(`/daily-reports/yesterday-tracking?report_date=${encodeURIComponent(reportDate)}`);

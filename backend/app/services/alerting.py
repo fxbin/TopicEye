@@ -264,6 +264,7 @@ async def send_alert(
     severity: str = "warning",
     event_type: str = "source_failure",
     card: dict | None = None,
+    force: bool = False,
 ) -> bool:
     """发送告警到外部 webhook。
 
@@ -282,6 +283,7 @@ async def send_alert(
     card : 可选卡片消息。传 dict 时发卡片（各平台适配），否则发 text。
         格式: {"content": "...", "link": "..."}，title/severity 复用外层参数。
         不支持卡片的平台自动降级为 text。
+    force : 跳过去重检查（手动触发场景使用）。
 
     Returns: True 如果发送成功或跳过（去重/未配置），False 如果所有 webhook 发送失败。
     """
@@ -291,11 +293,12 @@ async def send_alert(
     if not webhook_urls:
         return False  # 未配置 webhook，静默跳过
 
-    # 去重检查
+    # 去重检查（force=True 时跳过）
     now = time.monotonic()
-    last = _LAST_SENT.get(alert_key)
-    if last is not None and (now - last) < _DEDUP_WINDOW_SECONDS:
-        return True  # 去重跳过
+    if not force:
+        last = _LAST_SENT.get(alert_key)
+        if last is not None and (now - last) < _DEDUP_WINDOW_SECONDS:
+            return True  # 去重跳过
 
     ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     emoji = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(severity, "⚠️")

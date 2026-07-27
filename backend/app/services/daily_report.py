@@ -431,6 +431,181 @@ def _match_picks_to_curated(
     return picks, selected_source_ids
 
 
+def build_daily_report_card(
+    report: DailyReport,
+    picks: list[dict],
+    report_date: str,
+    normalized_edition: str,
+) -> dict:
+    """构建日报 webhook 卡片 payload（飞书 elements + 降级 markdown + 链接）。
+
+    自动推送和手动推送共用此函数，保证格式一致。
+    """
+    overview_text = (report.overview or "")[:200]
+    takeaway = (report.takeaway or "")[:60]
+
+    # ── 飞书富卡片：takeaway + overview + 全部精选（feature 分层 + brief 速览）──
+    # 当选题总数 ≤ 10 时全部展示，否则只展示 Top 10 + 汇总。
+    max_display = 10
+    show_count = min(len(picks), max_display)
+    display_picks = picks[:show_count]
+
+    # 按层级分组：feature 深度精讲，brief 速览
+    feature_picks = [p for p in display_picks if p.get("tier") == "feature"]
+    brief_picks = [p for p in display_picks if p.get("tier") != "feature"]
+
+    feishu_elements: list[dict] = []
+
+    # 1. takeaway — 一句话推送标题
+    if takeaway:
+        feishu_elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**{takeaway}**"}}
+        )
+        feishu_elements.append({"tag": "hr"})
+
+    # 2. overview — 主编判断
+    if overview_text:
+        feishu_elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": overview_text}}
+        )
+
+    # 3. 深度精讲 section
+    if feature_picks:
+        feishu_elements.append({"tag": "hr"})
+        feishu_elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"🔥 **深度精讲**（{len(feature_picks)} 篇）"}}
+        )
+        for i, pick in enumerate(feature_picks, start=1):
+            title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+            category = pick.get("category", "")
+            reason = (pick.get("reason") or "")[:120]
+            angles = pick.get("angles") or []
+            time_window = pick.get("time_window", "")
+            source_url = pick.get("source_url") or ""
+
+            meta_parts: list[str] = []
+            if category:
+                meta_parts.append(category)
+            if time_window:
+                meta_parts.append(f"⏰ {time_window}")
+            meta_str = f" · {' · '.join(meta_parts)}" if meta_parts else ""
+            feishu_elements.append(
+                {"tag": "div", "text": {"tag": "lark_md", "content": f"**{i}. {title}**{meta_str}"}}
+            )
+            if reason:
+                feishu_elements.append(
+                    {"tag": "note", "elements": [
+                        {"tag": "plain_text", "content": f"💡 {reason}"}
+                    ]}
+                )
+            if angles:
+                angles_text = " | ".join(angles[:3])
+                feishu_elements.append(
+                    {"tag": "note", "elements": [
+                        {"tag": "plain_text", "content": f"✍️ {angles_text}"}
+                    ]}
+                )
+            if source_url:
+                feishu_elements.append(
+                    {"tag": "div", "text": {"tag": "lark_md", "content": f"[📄 查看原文]({source_url})"}}
+                )
+
+    # 4. 速览 section
+    if brief_picks:
+        feishu_elements.append({"tag": "hr"})
+        feishu_elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"📋 **速览**（{len(brief_picks)} 篇）"}}
+        )
+        brief_start = len(feature_picks) + 1
+        for i, pick in enumerate(brief_picks, start=brief_start):
+            title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+            category = pick.get("category", "")
+            source_url = pick.get("source_url") or ""
+            meta_str = f" · {category}" if category else ""
+            if source_url:
+                meta_str += f" · [📄 原文]({source_url})"
+            feishu_elements.append(
+                {"tag": "div", "text": {"tag": "lark_md", "content": f"{i}. {title}{meta_str}"}}
+            )
+
+    # 5. 如果有更多未展示的
+    if len(picks) > show_count:
+        feishu_elements.append({"tag": "hr"})
+        feishu_elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"…共 {report.topic_count} 个选题，点击查看完整日报"}}
+        )
+
+    # 降级 markdown content（不支持卡片的平台用）
+    card_content_parts: list[str] = []
+    if takeaway:
+        card_content_parts.append(takeaway)
+    if overview_text:
+        card_content_parts.append(overview_text)
+    if feature_picks:
+        card_content_parts.append(f"\n深度精讲（{len(feature_picks)} 篇）：")
+        for i, pick in enumerate(feature_picks, start=1):
+            title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+            reason = (pick.get("reason") or "")[:80]
+            source_url = pick.get("source_url") or ""
+            url_str = f"  {source_url}" if source_url else ""
+            card_content_parts.append(f"{i}. {title} — {reason}{url_str}")
+    if brief_picks:
+        card_content_parts.append(f"\n速览（{len(brief_picks)} 篇）：")
+        brief_start = len(feature_picks) + 1
+        for i, pick in enumerate(brief_picks, start=brief_start):
+            title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
+            category = pick.get("category", "")
+            source_url = pick.get("source_url") or ""
+            cat_str = f" [{category}]" if category else ""
+            url_str = f"  {source_url}" if source_url else ""
+            card_content_parts.append(f"{i}. {title}{cat_str}{url_str}")
+    if len(picks) > show_count:
+        card_content_parts.append(f"\n…共 {report.topic_count} 个选题")
+    card_content = "\n".join(p for p in card_content_parts if p)
+
+    # 卡片链接：必须是绝对 URL（飞书按钮不支持相对路径）
+    site_base = getattr(settings, "SITE_BASE_URL", "") or ""
+    card_link = f"{site_base.rstrip('/')}/daily?date={report_date}" if site_base else ""
+
+    return {
+        "content": card_content,
+        "link": card_link,
+        "elements": feishu_elements,
+        "button_text": "查看完整日报",
+    }
+
+
+async def push_daily_report_webhook(
+    report: DailyReport,
+    picks: list[dict],
+    report_date: str,
+    normalized_edition: str,
+    *,
+    force: bool = False,
+) -> bool:
+    """推送日报到 webhook（自动推送 / 手动推送共用）。
+
+    Parameters
+    ----------
+    force : True 时跳过去重检查（手动推送场景）。
+
+    Returns: True 如果发送成功，False 如果未配置或全部失败。
+    """
+    from app.services.alerting import send_alert
+
+    card = build_daily_report_card(report, picks, report_date, normalized_edition)
+
+    return await send_alert(
+        title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
+        message=f"日报生成完成，共 {report.topic_count} 个选题",
+        alert_key=f"daily_report:{report_date}:{normalized_edition}",
+        severity="info",
+        event_type="daily_report",
+        card=card,
+        force=force,
+    )
+
+
 async def _push_daily_report_success(
     report: DailyReport,
     picks: list[dict],
@@ -454,150 +629,8 @@ async def _push_daily_report_success(
         logger.warning("daily_report success notification failed", exc_info=True)
 
     try:
-        from app.services.alerting import send_alert
-
-        overview_text = (report.overview or "")[:200]
-        takeaway = (report.takeaway or "")[:60]
-
-        # ── 飞书富卡片：takeaway + overview + 全部精选（feature 分层 + brief 速览）──
-        # 当选题总数 ≤ 10 时全部展示，否则只展示 Top 5 + 汇总。
-        max_display = 10
-        show_count = min(len(picks), max_display)
-        display_picks = picks[:show_count]
-
-        # 按层级分组：feature 深度精讲，brief 速览
-        feature_picks = [p for p in display_picks if p.get("tier") == "feature"]
-        brief_picks = [p for p in display_picks if p.get("tier") != "feature"]
-
-        feishu_elements: list[dict] = []
-
-        # 1. takeaway — 一句话推送标题
-        if takeaway:
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**{takeaway}**"}}
-            )
-            feishu_elements.append({"tag": "hr"})
-
-        # 2. overview — 主编判断
-        if overview_text:
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": overview_text}}
-            )
-
-        # 3. 深度精讲 section
-        if feature_picks:
-            feishu_elements.append({"tag": "hr"})
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"🔥 **深度精讲**（{len(feature_picks)} 篇）"}}
-            )
-            for i, pick in enumerate(feature_picks, start=1):
-                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
-                category = pick.get("category", "")
-                reason = (pick.get("reason") or "")[:120]
-                angles = pick.get("angles") or []
-                time_window = pick.get("time_window", "")
-                source_url = pick.get("source_url") or ""
-
-                # 标题行（tier 由分区标题"深度精讲"体现，不再逐条重复标注）
-                meta_parts: list[str] = []
-                if category:
-                    meta_parts.append(category)
-                if time_window:
-                    meta_parts.append(f"⏰ {time_window}")
-                meta_str = f" · {' · '.join(meta_parts)}" if meta_parts else ""
-                feishu_elements.append(
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"**{i}. {title}**{meta_str}"}}
-                )
-                # 推荐理由（note 样式，视觉上与标题区分）
-                if reason:
-                    feishu_elements.append(
-                        {"tag": "note", "elements": [
-                            {"tag": "plain_text", "content": f"💡 {reason}"}
-                        ]}
-                    )
-                # 创作角度
-                if angles:
-                    angles_text = " | ".join(angles[:3])
-                    feishu_elements.append(
-                        {"tag": "note", "elements": [
-                            {"tag": "plain_text", "content": f"✍️ {angles_text}"}
-                        ]}
-                    )
-                # 原文链接（用 lark_md div 而非 note，因为 note 只支持 plain_text 不支持链接）
-                if source_url:
-                    feishu_elements.append(
-                        {"tag": "div", "text": {"tag": "lark_md", "content": f"[📄 查看原文]({source_url})"}}
-                    )
-
-        # 4. 速览 section
-        if brief_picks:
-            feishu_elements.append({"tag": "hr"})
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"📋 **速览**（{len(brief_picks)} 篇）"}}
-            )
-            brief_start = len(feature_picks) + 1
-            for i, pick in enumerate(brief_picks, start=brief_start):
-                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
-                category = pick.get("category", "")
-                source_url = pick.get("source_url") or ""
-                meta_str = f" · {category}" if category else ""
-                if source_url:
-                    meta_str += f" · [📄 原文]({source_url})"
-                feishu_elements.append(
-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"{i}. {title}{meta_str}"}}
-                )
-
-        # 5. 如果有更多未展示的
-        if len(picks) > show_count:
-            feishu_elements.append({"tag": "hr"})
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"…共 {report.topic_count} 个选题，点击查看完整日报"}}
-            )
-
-        # 降级 markdown content（不支持卡片的平台用）
-        card_content_parts: list[str] = []
-        if takeaway:
-            card_content_parts.append(takeaway)
-        if overview_text:
-            card_content_parts.append(overview_text)
-        if feature_picks:
-            card_content_parts.append(f"\n深度精讲（{len(feature_picks)} 篇）：")
-            for i, pick in enumerate(feature_picks, start=1):
-                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
-                reason = (pick.get("reason") or "")[:80]
-                source_url = pick.get("source_url") or ""
-                url_str = f"  {source_url}" if source_url else ""
-                card_content_parts.append(f"{i}. {title} — {reason}{url_str}")
-        if brief_picks:
-            card_content_parts.append(f"\n速览（{len(brief_picks)} 篇）：")
-            brief_start = len(feature_picks) + 1
-            for i, pick in enumerate(brief_picks, start=brief_start):
-                title = pick.get("editorial_title") or pick.get("source_title") or f"选题 {i}"
-                category = pick.get("category", "")
-                source_url = pick.get("source_url") or ""
-                cat_str = f" [{category}]" if category else ""
-                url_str = f"  {source_url}" if source_url else ""
-                card_content_parts.append(f"{i}. {title}{cat_str}{url_str}")
-        if len(picks) > show_count:
-            card_content_parts.append(f"\n…共 {report.topic_count} 个选题")
-        card_content = "\n".join(p for p in card_content_parts if p)
-
-        # 卡片链接：必须是绝对 URL（飞书按钮不支持相对路径）
-        site_base = getattr(settings, "SITE_BASE_URL", "") or ""
-        card_link = f"{site_base.rstrip('/')}/daily?date={report_date}" if site_base else ""
-
-        await send_alert(
-            title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
-            message=f"日报生成完成，共 {report.topic_count} 个选题",
-            alert_key=f"daily_report:{report_date}:{normalized_edition}",
-            severity="info",
-            event_type="daily_report",
-            card={
-                "content": card_content,
-                "link": card_link,
-                "elements": feishu_elements,
-                "button_text": "查看完整日报",
-            },
+        await push_daily_report_webhook(
+            report, picks, report_date, normalized_edition, force=False,
         )
     except Exception:
         logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)

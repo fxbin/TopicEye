@@ -10,7 +10,7 @@ from datetime import date as date_cls, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import async_session, get_db
 from app.models.user import User
 from app.repositories.content_repo import ContentRepo
@@ -305,6 +305,42 @@ async def trigger_generate_version(
             "message": "日报正在后台生成，请稍后刷新查看",
         },
     )
+
+
+@router.post("/push-webhook")
+async def push_daily_report_webhook(
+    date: str = Query(..., description="Report date in YYYY-MM-DD format"),
+    edition: str | None = Query(None, description="Optional edition filter"),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin_user),
+):
+    """手动推送指定日期的日报到已配置的 webhook。
+
+    仅管理员可调用。使用 force=True 跳过自动推送的去重检查。
+    如果该日报尚未生成或生成中，返回 400。
+    """
+    import json as _json
+
+    from app.services.daily_report import push_daily_report_webhook as _push
+
+    repo = DailyReportRepository(db)
+    report = await repo.get_by_date(date, edition=edition)
+    if report is None:
+        raise HTTPException(status_code=404, detail=f"未找到 {date} 的日报")
+    if report.status != "DONE":
+        raise HTTPException(status_code=400, detail=f"日报状态为 {report.status}，无法推送")
+
+    picks = _json.loads(report.top_picks) if report.top_picks else []
+    sent = await _push(
+        report,
+        picks,
+        report.report_date,
+        report.edition,
+        force=True,
+    )
+    if not sent:
+        return {"sent": False, "message": "未配置 webhook 或发送失败，请检查通知配置"}
+    return {"sent": True, "message": f"日报已推送到群（{report.report_date} {report.edition}）"}
 
 
 def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:

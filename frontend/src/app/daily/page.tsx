@@ -20,12 +20,14 @@ import {
   Pin,
   RefreshCw,
   RotateCcw,
+  Send,
   Smartphone,
   Target,
   TrendingUp,
 } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
 import { useAppContext } from '@/components/ClientLayout';
+import { isAdmin } from '@/lib/navigation';
 import { dailyReportApi } from '@/lib/api';
 import { useReadTracking } from '@/hooks/useReadTracking';
 import YesterdayTracking from './_yesterday-tracking';
@@ -484,7 +486,25 @@ export default function DailyReportPage() {
   // 标记失败的轻量内联提示（修掉原 handleMark 静默失败）
   const [markError, setMarkError] = useState<string | null>(null);
   // 站内阅读：点选题卡片标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
-  const { openReader } = useAppContext();
+  const { openReader, currentUser } = useAppContext();
+  // 手动推送日报到群
+  const [pushing, setPushing] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
+
+  const handlePushWebhook = useCallback(async () => {
+    if (!report) return;
+    setPushing(true);
+    setPushMsg(null);
+    try {
+      const res = await dailyReportApi.pushWebhook(report.report_date, report.edition);
+      setPushMsg(res.message);
+    } catch (err: unknown) {
+      setPushMsg(err instanceof Error ? err.message : '推送失败');
+    } finally {
+      setPushing(false);
+      setTimeout(() => setPushMsg(null), 3000);
+    }
+  }, [report]);
   // 今日「已选」标记数（action=write），用于工具栏 badge
   const writeCount = useMemo(
     () => Object.values(pickMarks).filter((a) => a === 'write').length,
@@ -652,6 +672,23 @@ export default function DailyReportPage() {
               {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               刷新
             </button>
+          )}
+          {report?.status === 'DONE' && isAdmin(currentUser) && (
+            <button
+              type="button"
+              onClick={handlePushWebhook}
+              disabled={pushing}
+              title="将当前日报推送到已配置的飞书/钉钉/Slack 群机器人"
+              className="ml-1 flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-primary disabled:opacity-50"
+            >
+              {pushing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              {pushing ? '推送中…' : '推送到群'}
+            </button>
+          )}
+          {pushMsg && (
+            <span className={cx('ml-1 text-[10px] font-bold', pushMsg.includes('失败') || pushMsg.includes('未配置') ? 'text-red' : 'text-teal')}>
+              {pushMsg}
+            </span>
           )}
         </div>
       </div>

@@ -74,6 +74,37 @@ export const sourcesApi = {
     return request(`/sources/${id}/sync`, { method: 'POST' });
   },
 
+  /** 获取信源的来源证据画像 */
+  getEvidenceProfile(id: number): Promise<{
+    source_id: number;
+    profile: {
+      publisher_identity: string;
+      publisher_family: string;
+      platform: string;
+      publisher_kind: string;
+      official_domains: string[];
+      verification_proof_url: string | null;
+      reviewed_at: string | null;
+    } | null;
+  }> {
+    return request(`/sources/${id}/evidence-profile`);
+  },
+
+  /** 创建或更新信源的来源证据画像 */
+  upsertEvidenceProfile(id: number, data: {
+    publisher_identity: string;
+    publisher_family: string;
+    platform: string;
+    publisher_kind: string;
+    official_domains?: string[];
+    verification_proof_url?: string;
+  }): Promise<{ source_id: number; updated: boolean }> {
+    return request(`/sources/${id}/evidence-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   /** 从 OPML 文件导入 RSS 源（Folo/Follow 导出） */
   importOPML(file: File): Promise<{ created: number; skipped: number; total: number; message: string }> {
     const formData = new FormData();

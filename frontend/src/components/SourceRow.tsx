@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, Star } from 'lucide-react';
+import { ChevronDown, ShieldCheck, Star } from 'lucide-react';
 import { Button, cx } from '@/components/ui';
 import { timeAgo } from '@/lib/utils';
 
@@ -88,6 +88,7 @@ interface SourceRowProps {
   deleting: boolean;
   onSync: () => void;
   onEdit: () => void;
+  onEvidenceProfile?: () => void;
   onDelete: () => void;
   onWeightChange?: (w: number) => void;
   onIntervalChange?: (minutes: number) => void;
@@ -105,6 +106,7 @@ export default function SourceRowComponent({
   deleting,
   onSync,
   onEdit,
+  onEvidenceProfile,
   onDelete,
   onWeightChange,
   onIntervalChange,
@@ -257,6 +259,17 @@ export default function SourceRowComponent({
         <Button type="button" onClick={onEdit} variant="secondary" className="min-h-7 bg-purple-light px-2.5 py-1 text-[11px] text-purple hover:text-purple">
           编辑
         </Button>
+        {onEvidenceProfile && (
+          <button
+            type="button"
+            onClick={onEvidenceProfile}
+            className="inline-flex h-7 items-center justify-center gap-1 rounded-sm border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-500 transition hover:border-primary-border hover:text-primary"
+            title="来源证据画像"
+          >
+            <ShieldCheck size={12} />
+            画像
+          </button>
+        )}
         <Button type="button" onClick={onDelete} disabled={deleting} variant="ghost" className="min-h-7 px-2.5 py-1 text-[11px] text-red hover:text-red">
           {deleting ? '删除中…' : '删除'}
         </Button>

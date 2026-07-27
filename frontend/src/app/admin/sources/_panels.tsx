@@ -112,6 +112,7 @@ export function SourceListPanel({
   selectedIds,
   onSync,
   onEdit,
+  onEvidenceProfile,
   onDelete,
   onWeightChange,
   onIntervalChange,
@@ -134,6 +135,7 @@ export function SourceListPanel({
   selectedIds: Set<number>;
   onSync: (id: number) => void;
   onEdit: (source: BackendSource) => void;
+  onEvidenceProfile?: (source: BackendSource) => void;
   onDelete: (id: number) => void;
   onWeightChange: (id: number, weight: number) => void;
   onIntervalChange: (id: number, mins: number) => void;
@@ -200,6 +202,7 @@ export function SourceListPanel({
                 deleting={deletingIds.has(src.id)}
                 onSync={() => onSync(src.id)}
                 onEdit={() => onEdit(src)}
+                onEvidenceProfile={onEvidenceProfile ? () => onEvidenceProfile(src) : undefined}
                 onDelete={() => onDelete(src.id)}
                 onWeightChange={(w) => onWeightChange(src.id, w)}
                 onIntervalChange={(mins) => onIntervalChange(src.id, mins)}

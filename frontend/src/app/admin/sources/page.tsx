@@ -26,6 +26,7 @@ import {
 
 import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
+import { EvidenceProfileModal } from '@/components/EvidenceProfileModal';
 import { RSSHubManager, SourceListPanel, FeatureFlagsPanel } from './_panels';
 
 // ─── Page Component ───
@@ -60,6 +61,7 @@ export default function SourcesPage() {
   const batchImportInputRef = useRef<HTMLInputElement>(null);
   const [, setImportingOPML] = useState(false);
   const [showBatchImport, setShowBatchImport] = useState(false);
+  const [evidenceProfileSource, setEvidenceProfileSource] = useState<BackendSource | null>(null);
   const [batchImportContent, setBatchImportContent] = useState('');
   const [batchImportCategory, setBatchImportCategory] = useState('批量导入');
   const [batchImportPreview, setBatchImportPreview] = useState<SourceBatchImportItem[]>([]);
@@ -893,6 +895,7 @@ export default function SourcesPage() {
           onToggleEnabled={handleToggleEnabled}
           onFavorite={handleToggleSourceFavorite}
           onMove={handleMoveSourceTier}
+          onEvidenceProfile={setEvidenceProfileSource}
         />
       )}
 
@@ -935,6 +938,7 @@ export default function SourcesPage() {
             selectedIds={selectedIds}
             onSync={handleSync}
             onEdit={openEditModal}
+            onEvidenceProfile={setEvidenceProfileSource}
             onDelete={handleDelete}
             onWeightChange={handleWeightChange}
             onIntervalChange={handleIntervalChange}
@@ -966,6 +970,9 @@ export default function SourcesPage() {
       )}
       {editingSource && (
         <EditSourceModal form={form} setForm={setForm} submitting={submitting} onUpdate={handleUpdate} onClose={() => { setEditingSource(null); setForm(emptyForm); }} />
+      )}
+      {evidenceProfileSource && (
+        <EvidenceProfileModal source={evidenceProfileSource} onClose={() => setEvidenceProfileSource(null)} />
       )}
     </AdminPageShell>
   );

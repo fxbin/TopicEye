@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { Activity, GripVertical, Network, Star } from 'lucide-react';
+import { Activity, GripVertical, Network, ShieldCheck, Star } from 'lucide-react';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import type { BackendSource } from '@/components/SourceRow';
 import { getFavoriteTargetKey } from '@/lib/favorites';
@@ -29,6 +29,7 @@ export function SourceMapView({
   onToggleEnabled,
   onFavorite,
   onMove,
+  onEvidenceProfile,
 }: {
   sourceMap: {
     tiers: Record<SourceTierKey, BackendSource[]>;
@@ -45,6 +46,7 @@ export function SourceMapView({
   onToggleEnabled: (source: BackendSource) => void;
   onFavorite: (source: BackendSource) => void;
   onMove: (source: BackendSource, targetTier: SourceTierKey, orderedIds: number[]) => void;
+  onEvidenceProfile?: (source: BackendSource) => void;
 }) {
   const tierKeys: SourceTierKey[] = ['core', 'stable', 'watch', 'attention'];
   const [draggedId, setDraggedId] = useState<number | null>(null);
@@ -160,6 +162,7 @@ export function SourceMapView({
                     onSync={onSync}
                     onToggleEnabled={onToggleEnabled}
                     onFavorite={onFavorite}
+                    onEvidenceProfile={onEvidenceProfile}
                     onDragOver={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -207,6 +210,7 @@ export function SourceMapCard({
   onSync,
   onToggleEnabled,
   onFavorite,
+  onEvidenceProfile,
   onDragOver,
   onDrop,
   onDragStart,
@@ -223,6 +227,7 @@ export function SourceMapCard({
   onSync: (id: number) => void;
   onToggleEnabled: (source: BackendSource) => void;
   onFavorite: (source: BackendSource) => void;
+  onEvidenceProfile?: (source: BackendSource) => void;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
   onDrop: React.DragEventHandler<HTMLDivElement>;
   onDragStart: React.DragEventHandler<HTMLDivElement>;
@@ -299,6 +304,16 @@ export function SourceMapCard({
         <Button type="button" variant="secondary" onClick={() => onEdit(source)} className="min-h-7 flex-1 px-2 py-1 text-[11px]">
           编辑
         </Button>
+        {onEvidenceProfile && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEvidenceProfile(source); }}
+            className="inline-flex min-h-7 items-center justify-center gap-1 rounded-sm border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-500 transition hover:border-primary-border hover:text-primary"
+            title="来源证据画像"
+          >
+            <ShieldCheck size={12} />
+          </button>
+        )}
         <Button
           type="button"
           variant={source.enabled ? 'secondary' : 'primary'}

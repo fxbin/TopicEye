@@ -16,12 +16,11 @@ Repository for MotherTopic model operations.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
-from sqlalchemy import or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.models.mother_topic import MotherTopic
+from app.repositories._query_helpers import apply_visibility
 from app.repositories.base import BaseRepository
 
 
@@ -40,12 +39,8 @@ class MotherTopicRepository(BaseRepository[MotherTopic]):
 
         按display_order, id 排序。active_only=True 时仅返回 is_active=True 的记录。
         """
-        stmt = select(MotherTopic).where(
-            or_(
-                MotherTopic.owner_user_id.is_(None),
-                MotherTopic.owner_user_id == user_id,
-            )
-        ).order_by(MotherTopic.display_order, MotherTopic.id)
+        stmt = select(MotherTopic).order_by(MotherTopic.display_order, MotherTopic.id)
+        stmt = apply_visibility(stmt, MotherTopic, visible_user_id=user_id)
         if active_only:
             stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
         result = await self.db.execute(stmt)

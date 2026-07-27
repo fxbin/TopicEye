@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
 from sqlalchemy import Text, cast, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,12 +22,18 @@ from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.core.time import naive_utc_now
 from app.models.content import ContentItem, ContentStatus
-from app.repositories.analysis_queries import latest_analysis_id_subquery
-from app.repositories.base import BaseRepository
 from app.repositories._content_repo_types import (  # noqa: F401 — re-export for scoring_flow et al.
     ANALYSIS_STALE_MINUTES,
     ScoringContentRow,
 )
+from app.repositories._query_helpers import (
+    apply_content_scope,
+    apply_filters,
+    apply_visibility,
+    visibility_clauses,
+)
+from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
@@ -49,15 +53,14 @@ class ContentRepo(BaseRepository[ContentItem]):
     ) -> list:
         """Return WHERE clause(s) for ADR 0001 content visibility.
 
-        - ``public_only=True``    → ``[owner_user_id IS NULL]``
-        - ``visible_user_id`` set → ``[OR(owner_user_id IS NULL, owner_user_id == visible_user_id)]``
-        - neither set             → ``[]`` (no filter, internal/batch callers)
+        Delegates to the shared ``visibility_clauses`` helper so that all
+        repositories use the same visibility logic.
         """
-        if public_only:
-            return [self.model.owner_user_id.is_(None)]
-        if visible_user_id is not None:
-            return [or_(self.model.owner_user_id.is_(None), self.model.owner_user_id == visible_user_id)]
-        return []
+        return visibility_clauses(
+            self.model,
+            visible_user_id=visible_user_id,
+            public_only=public_only,
+        )
 
     # ── Lookup helpers ─────────────────────────────────────────────
 
@@ -334,23 +337,11 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         stmt = select(self.model).options(selectinload(self.model.analyses))
         count_stmt = select(func.count()).select_from(self.model)
-        for clause in self._visibility_clauses(visible_user_id, public_only):
-            stmt = stmt.where(clause)
-            count_stmt = count_stmt.where(clause)
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
+        count_stmt = apply_visibility(count_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
 
-        if filters:
-            for field, value in filters.items():
-                if value is None:
-                    continue
-                col = getattr(self.model, field, None)
-                if col is None:
-                    continue
-                if isinstance(value, str) and ("%" in value or "_" in value):
-                    stmt = stmt.where(col.ilike(value))
-                    count_stmt = count_stmt.where(col.ilike(value))
-                else:
-                    stmt = stmt.where(col == value)
-                    count_stmt = count_stmt.where(col == value)
+        stmt = apply_filters(stmt, self.model, filters)
+        count_stmt = apply_filters(count_stmt, self.model, filters)
 
         # Enhanced full-text-ish search across content + AI analysis fields (OR)
         # Content-level: title, summary, raw_content, tags (JSON), source_name, author
@@ -383,18 +374,19 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(search_clause)
             count_stmt = count_stmt.where(search_clause)
 
-        # Exclude ignored item IDs
-        if exclude_ids:
-            stmt = stmt.where(self.model.id.notin_(exclude_ids))
-            count_stmt = count_stmt.where(self.model.id.notin_(exclude_ids))
-        if exclude_source_types:
-            stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
-            count_stmt = count_stmt.where(self.model.source_type.notin_(exclude_source_types))
-
-        # Time range filter
-        if time_cutoff:
-            stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-            count_stmt = count_stmt.where(self.model.crawled_at >= time_cutoff)
+        # Exclude ignored item IDs / source types / time range
+        stmt = apply_content_scope(
+            stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        count_stmt = apply_content_scope(
+            count_stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
 
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
@@ -429,8 +421,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .options(selectinload(self.model.analyses))
             .where(self.model.id == id)
         )
-        for clause in self._visibility_clauses(visible_user_id, public_only):
-            stmt = stmt.where(clause)
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -482,8 +473,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
         if category:
             stmt = stmt.where(self.model.category == category)
-        for clause in self._visibility_clauses(visible_user_id):
-            stmt = stmt.where(clause)
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
         result = await self.db.execute(stmt)
         return result.scalars().unique().all()
 
@@ -523,8 +513,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(AiAnalysis.curation_score.isnot(None))
             .where(self.model.duplicate_of.is_(None))
         )
-        for clause in self._visibility_clauses(visible_user_id):
-            stmt = stmt.where(clause)
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
         if exclude_ids:
             stmt = stmt.where(self.model.id.notin_(exclude_ids))
         if category:
@@ -575,31 +564,23 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(self.model.status == ContentStatus.ANALYZED)
         )
 
-        for field, value in (filters or {}).items():
-            if value is None:
-                continue
-            col = getattr(self.model, field, None)
-            if col is None:
-                continue
-            if isinstance(value, str) and ("%" in value or "_" in value):
-                count_stmt = count_stmt.where(col.ilike(value))
-                data_stmt = data_stmt.where(col.ilike(value))
-            else:
-                count_stmt = count_stmt.where(col == value)
-                data_stmt = data_stmt.where(col == value)
+        count_stmt = apply_filters(count_stmt, self.model, filters)
+        data_stmt = apply_filters(data_stmt, self.model, filters)
 
-        if exclude_ids:
-            count_stmt = count_stmt.where(self.model.id.notin_(exclude_ids))
-            data_stmt = data_stmt.where(self.model.id.notin_(exclude_ids))
-        if exclude_source_types:
-            count_stmt = count_stmt.where(self.model.source_type.notin_(exclude_source_types))
-            data_stmt = data_stmt.where(self.model.source_type.notin_(exclude_source_types))
-        if time_cutoff:
-            count_stmt = count_stmt.where(self.model.crawled_at >= time_cutoff)
-            data_stmt = data_stmt.where(self.model.crawled_at >= time_cutoff)
-        for clause in self._visibility_clauses(visible_user_id, public_only):
-            count_stmt = count_stmt.where(clause)
-            data_stmt = data_stmt.where(clause)
+        count_stmt = apply_content_scope(
+            count_stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        data_stmt = apply_content_scope(
+            data_stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        count_stmt = apply_visibility(count_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
+        data_stmt = apply_visibility(data_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
 
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
@@ -628,14 +609,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             exists().where(AiAnalysis.content_id == self.model.id),
         )
 
-        if exclude_ids:
-            stmt = stmt.where(self.model.id.notin_(exclude_ids))
-        if exclude_source_types:
-            stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
-        if time_cutoff:
-            stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        for clause in self._visibility_clauses(visible_user_id):
-            stmt = stmt.where(clause)
+        stmt = apply_content_scope(
+            stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -654,14 +634,13 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         stmt = select(func.count(self.model.id))
 
-        if exclude_ids:
-            stmt = stmt.where(self.model.id.notin_(exclude_ids))
-        if exclude_source_types:
-            stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
-        if time_cutoff:
-            stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        for clause in self._visibility_clauses(visible_user_id):
-            stmt = stmt.where(clause)
+        stmt = apply_content_scope(
+            stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
 
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
@@ -716,14 +695,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             .outerjoin(Source, Source.id == self.model.source_id)
         )
 
-        if exclude_ids:
-            stmt = stmt.where(self.model.id.notin_(exclude_ids))
-        if exclude_source_types:
-            stmt = stmt.where(self.model.source_type.notin_(exclude_source_types))
-        if time_cutoff:
-            stmt = stmt.where(self.model.crawled_at >= time_cutoff)
-        for clause in self._visibility_clauses(visible_user_id):
-            stmt = stmt.where(clause)
+        stmt = apply_content_scope(
+            stmt, self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
 
         stmt = stmt.order_by(self.model.crawled_at.desc()).limit(limit)
         result = await self.db.execute(stmt)

@@ -8,13 +8,14 @@ Subclasses only need to set the model class and optional filter mappings.
 from __future__ import annotations
 
 import logging
-from typing import Any, Generic, Optional, Type, TypeVar
 from collections.abc import Sequence
+from typing import Any, TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.repositories._query_helpers import apply_filters
 
 logger = logging.getLogger(__name__)
 
@@ -87,21 +88,9 @@ class BaseRepository[ModelType]:
         stmt = select(self.model)
         count_stmt = select(func.count()).select_from(self.model)
 
-        # Apply filters
-        if filters:
-            for field, value in filters.items():
-                if value is None:
-                    continue
-                col = getattr(self.model, field, None)
-                if col is None:
-                    continue
-                # Support ilike for string fields with % wildcards
-                if isinstance(value, str) and ("%" in value or "_" in value):
-                    stmt = stmt.where(col.ilike(value))
-                    count_stmt = count_stmt.where(col.ilike(value))
-                else:
-                    stmt = stmt.where(col == value)
-                    count_stmt = count_stmt.where(col == value)
+        # Apply filters (shared helper: ilike for wildcard strings, exact match otherwise)
+        stmt = apply_filters(stmt, self.model, filters)
+        count_stmt = apply_filters(count_stmt, self.model, filters)
 
         # Count
         total_result = await self.db.execute(count_stmt)

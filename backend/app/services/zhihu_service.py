@@ -11,16 +11,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
+
 import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.core.http_retry import retry_async
-
 from app.core.database import async_session, database_profile
+from app.core.http_retry import retry_async
 from app.models.zhihu import ZhihuAlbum, ZhihuCategory
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
 

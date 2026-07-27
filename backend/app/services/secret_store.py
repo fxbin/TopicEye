@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 

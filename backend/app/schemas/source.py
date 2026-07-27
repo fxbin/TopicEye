@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
+
 from pydantic import BaseModel, Field, field_validator
-from app.models.source import SourceType, SourceStatus
+
+from app.models.source import SourceStatus, SourceType
 
 API_SOURCE_ALLOWED_METHODS = {"GET", "POST"}
 

@@ -10,8 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timezone, UTC
-from typing import Literal
+from datetime import UTC, datetime
 
 
 class RingBufferHandler(logging.Handler):

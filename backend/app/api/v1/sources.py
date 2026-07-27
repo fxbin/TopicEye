@@ -1,37 +1,37 @@
 from __future__ import annotations
+
 import json
 import logging
 import xml.etree.ElementTree as ET
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.api.v1.auth import get_current_admin_user, get_current_user
-from app.core.database import async_session
-from app.core.database import get_db
-from app.core.exceptions import NotFoundError
-from app.models.user import User
-from app.models.source import Source, SourceType, SourceStatus
-from app.schemas.source import (
-    SourceCreate,
-    SourceUpdate,
-    SourceResponse,
-    SourceListResponse,
-    SourceReorderRequest,
-    SyncResultResponse,
-    normalize_source_url_value,
-    normalize_api_source_config_value,
-)
-from app.repositories.source_repo import SourceRepository
-from app.services.content_pipeline import ingest_from_source
 from app.api.v1._importers import (  # noqa: F401 — SourceBatchImportItem + _parse_source_batch re-exported for backward compat
     SourceBatchImportItem,
     SourceBatchImportRequest,
     _parse_source_batch,
     _preview_source_batch_items,
 )
+from app.api.v1.auth import get_current_admin_user, get_current_user
+from app.core.config import settings
+from app.core.database import async_session, get_db
+from app.core.exceptions import NotFoundError
+from app.models.source import Source, SourceStatus, SourceType
+from app.models.user import User
+from app.repositories.source_repo import SourceRepository
+from app.schemas.source import (
+    SourceCreate,
+    SourceListResponse,
+    SourceReorderRequest,
+    SourceResponse,
+    SourceUpdate,
+    SyncResultResponse,
+    normalize_api_source_config_value,
+    normalize_source_url_value,
+)
+from app.services.content_pipeline import ingest_from_source
 from app.services.plan_catalog import (
     plan_allows_private_source,
     private_sources_quota,

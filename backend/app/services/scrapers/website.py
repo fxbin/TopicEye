@@ -5,13 +5,14 @@ Website scraper — fetch a single page and extract main content.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 
-from app.services.extractor import extract_main_content, extract_cover_url
+from app.services.extractor import extract_cover_url, extract_main_content
+
 from . import BaseScraper, register_scraper
 
 logger = logging.getLogger(__name__)

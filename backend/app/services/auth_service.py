@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone, UTC
 import base64
 import hashlib
 import hmac
 import os
 import secrets
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sqlite_retry import retry_sqlite_locked
-from app.models.user import User, UserSession, UserApiToken, UserOAuthAccount
+from app.models.user import User, UserApiToken, UserOAuthAccount, UserSession
 
 _HASH_ALGORITHM = "pbkdf2_sha256"
 _HASH_ITERATIONS = 260_000

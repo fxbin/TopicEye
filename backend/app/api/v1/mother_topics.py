@@ -12,13 +12,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_admin_user, get_current_user
+from app.api.v1.auth import get_current_user
 from app.core.database import get_db
 from app.models.mother_topic import MotherTopic
 from app.models.user import User

@@ -150,25 +150,24 @@ class BaseTrendingScraper(ABC):
 
 # ── Auto-import submodules ───────────────────────────────────────
 from . import (  # noqa: E402, F401
-    _weibo,
     _baidu,
     _bilibili,
-    _ithome,
-    _zhihu_trending,
-    _toutiao,
-    _hackernews,
-    _douyin_trending,
-    _juejin,
-    _eastmoney,
-    _hupu,
-    _kr36,
     _douban,
-    _v2ex,
+    _douyin_trending,
+    _eastmoney,
     _github,
-    _sspai,
+    _hackernews,
     # 网文平台榜单（公开 API，无需登录）
     _heiyan,
+    _hupu,
     _ishugui,
+    _ithome,
+    _juejin,
+    _kr36,
+    _sspai,
+    _toutiao,
+    _v2ex,
+    _weibo,
     # 中文播客榜（公开 API）
     _xyzrank,
     # 以下接口暂不可用，保留代码待修复
@@ -176,4 +175,5 @@ from . import (  # noqa: E402, F401
     # _netease,
     # _xueqiu,
     # _sohu,
+    _zhihu_trending,
 )

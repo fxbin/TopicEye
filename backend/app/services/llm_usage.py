@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError

@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings  # noqa: F401 — accessed via stats.settings in tests
 from app.api.v1.auth import get_current_user
+from app.core.config import settings  # noqa: F401 — accessed via stats.settings in tests
 from app.core.database import async_session
 from app.services.duckdb_service import (
     query_dashboard_stats,

@@ -5,7 +5,6 @@ Repository for WeeklyDigest — weekly newsletter queries.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
 from collections.abc import Sequence
 
 from sqlalchemy import func, select

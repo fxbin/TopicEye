@@ -7,10 +7,9 @@ render trend charts without re-computing from raw content every time.
 
 from __future__ import annotations
 
-from datetime import datetime, date, timezone, UTC
-from typing import Optional
+from datetime import UTC, date, datetime
 
-from sqlalchemy import String, Integer, Float, Date, DateTime, JSON
+from sqlalchemy import JSON, Date, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

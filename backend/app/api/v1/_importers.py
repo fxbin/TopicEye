@@ -19,10 +19,9 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.source import SourceType
 from app.repositories.source_repo import SourceRepository
 from app.schemas.source import normalize_source_url_value
-from app.models.source import SourceType
-
 
 # ─── Request schemas ────────────────────────────────────────────────────
 

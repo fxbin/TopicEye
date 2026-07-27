@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 
-
 # 常用字段长度上限（防止 DoS + 合理业务限制）
 MAX_EMAIL_LEN = 255
 MAX_PASSWORD_LEN = 128

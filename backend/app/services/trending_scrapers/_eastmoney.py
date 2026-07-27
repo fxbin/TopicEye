@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending, truncate_title
 
 logger = logging.getLogger(__name__)
 

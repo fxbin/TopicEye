@@ -5,9 +5,8 @@ Repository for DailyReport — daily briefing queries.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 from collections.abc import Sequence
-from datetime import date as date_type
+from typing import Any
 
 from sqlalchemy import func, select
 

@@ -15,18 +15,18 @@ source_config (JSON via Source.source_config):
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from html import unescape
-from typing import Any, Optional
+from typing import Any
 
 import feedparser
 import httpx
 
 from . import BaseScraper, register_scraper
-import contextlib
 
 logger = logging.getLogger(__name__)
 

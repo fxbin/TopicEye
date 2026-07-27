@@ -5,7 +5,6 @@ Category repository — CRUD + seed data helpers.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from collections.abc import Sequence
 
 from sqlalchemy import select, update

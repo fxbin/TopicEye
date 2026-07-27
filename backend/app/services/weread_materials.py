@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone, UTC
 import re
-from typing import Any, Dict, Optional, Union
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceStatus, SourceType
 from app.models.user_integration import UserIntegration

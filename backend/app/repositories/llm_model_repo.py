@@ -16,7 +16,6 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.llm_model import LlmCallLog, LlmModel
 from app.repositories.base import BaseRepository

@@ -25,13 +25,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from app.core.config import settings
-from app.core.database import async_session
-from app.repositories.content_repo import ContentRepo
-from app.repositories.source_repo import SourceRepository
-from app.services.analysis import analyze_batch_concurrent
-from app.services.content_pipeline import ingest_from_source
-from app.services.job_tracker import track_job
 # Post-sync pipeline functions live in app._post_sync_pipeline.
 # Only import what scheduler.py itself calls; external callers should import
 # from app._post_sync_pipeline directly.
@@ -40,6 +33,12 @@ from app._post_sync_pipeline import (
     _request_post_sync_pipeline,
     _run_post_sync_pipeline,
 )
+from app.core.config import settings
+from app.core.database import async_session
+from app.repositories.content_repo import ContentRepo
+from app.repositories.source_repo import SourceRepository
+from app.services.content_pipeline import ingest_from_source
+from app.services.job_tracker import track_job
 
 logger = logging.getLogger(__name__)
 

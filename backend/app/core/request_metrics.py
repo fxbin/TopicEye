@@ -292,7 +292,7 @@ class RequestMetricsCollector:
             lines.append(f"# HELP {metric_name} {help_text}")
             lines.append(f"# TYPE {metric_name} histogram")
             for key, hist in sorted(durations.items()):
-                labels = ",".join(f'{k}="{v}"' for k, v in zip(label_keys, key))
+                labels = ",".join(f'{k}="{v}"' for k, v in zip(label_keys, key, strict=False))
                 for i, boundary in enumerate(hist.buckets):
                     lines.append(
                         f'{metric_name}_bucket{{{labels},le="{boundary}"}} {hist.bucket_counts[i]}'

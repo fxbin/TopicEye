@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-
 from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.auth import get_current_user

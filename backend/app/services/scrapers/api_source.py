@@ -19,13 +19,12 @@ source_config examples:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
 from . import BaseScraper, register_scraper
-
 
 DEFAULT_FIELD_PATHS = {
     "title": ("title", "name", "headline"),

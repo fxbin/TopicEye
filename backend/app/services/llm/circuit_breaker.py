@@ -15,8 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from enum import Enum, StrEnum
-from typing import Optional
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,6 @@ Repository for AiAnalysis model operations.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from sqlalchemy import func, or_, select, update
 
 from app.core.database import database_profile

@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.analysis_job import AnalysisJobRecord
-
 
 MAX_TRACKED_ANALYSIS_JOBS = 100
 logger = logging.getLogger(__name__)

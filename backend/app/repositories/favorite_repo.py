@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
-from typing import Optional, Union
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

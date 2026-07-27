@@ -3,7 +3,6 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-
 DEFAULT_MODEL_PARAMETERS: dict[str, Any] = {
     "routing_group": "default",
     "routing_priority": 100,

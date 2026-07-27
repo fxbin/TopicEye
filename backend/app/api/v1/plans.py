@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Header
 
+from app.core.database import async_session
 from app.schemas.plan import PlanCatalogResponse
 from app.services.auth_service import get_user_for_token
 from app.services.plan_catalog import get_plan_catalog_for_user
-from app.core.database import async_session
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 

@@ -15,24 +15,24 @@ import app.models.category  # noqa: F401
 
 # Ensure all models are imported for table creation
 import app.models.daily_report  # noqa: F401
+import app.models.fanqie  # noqa: F401
 import app.models.favorite  # noqa: F401
 import app.models.feedback  # noqa: F401
 import app.models.llm_model  # noqa: F401
+import app.models.metrics_snapshot  # noqa: F401
 import app.models.monthly_digest  # noqa: F401
 import app.models.mother_topic  # noqa: F401
 import app.models.notification  # noqa: F401
 import app.models.pick_mark  # noqa: F401
 import app.models.product_feedback  # noqa: F401
 import app.models.prompt_registry  # noqa: F401
+import app.models.qimao  # noqa: F401
+import app.models.read_record  # noqa: F401
 import app.models.scheduled_job  # noqa: F401
 import app.models.trending  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
-import app.models.fanqie  # noqa: F401
-import app.models.metrics_snapshot  # noqa: F401
-import app.models.qimao  # noqa: F401
-import app.models.read_record  # noqa: F401
 import app.models.zhihu  # noqa: F401
 from app.api.v1.router import router as v1_router
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings

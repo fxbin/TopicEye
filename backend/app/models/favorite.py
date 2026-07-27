@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base

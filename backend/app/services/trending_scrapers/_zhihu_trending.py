@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
+
 from app.services.zhihu_url import normalize_zhihu_url
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending, truncate_title
 
 logger = logging.getLogger(__name__)
 

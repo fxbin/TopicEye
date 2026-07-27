@@ -7,8 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response

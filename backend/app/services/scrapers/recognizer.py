@@ -15,7 +15,6 @@ and read back by the matching scraper's ``__init__``.
 from __future__ import annotations
 
 import re
-from typing import Optional
 from urllib.parse import urlparse
 
 from app.models.source import SourceType

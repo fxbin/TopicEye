@@ -3,19 +3,17 @@ AI Analysis API endpoints.
 """
 
 from __future__ import annotations
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
-from app.core.database import async_session
-from app.core.database import get_db
+from app.core.database import async_session, get_db
 from app.core.exceptions import NotFoundError
-from app.schemas.analysis import AiAnalysisResponse
-from app.repositories.content_repo import ContentRepo
 from app.repositories.analysis_repo import AnalysisRepository
-from app.services.analysis import analyze_content, analyze_batch, analyze_batch_concurrent, analyze_one_claimed
+from app.repositories.content_repo import ContentRepo
+from app.schemas.analysis import AiAnalysisResponse
+from app.services.analysis import analyze_batch_concurrent, analyze_content, analyze_one_claimed
 from app.services.analysis_jobs import (
     create_analysis_job,
     finish_analysis_job,

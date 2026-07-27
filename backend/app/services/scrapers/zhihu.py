@@ -18,14 +18,15 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timezone, UTC
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 
-from . import BaseScraper, register_scraper
 from app.services.zhihu_url import normalize_zhihu_url
+
+from . import BaseScraper, register_scraper
 
 logger = logging.getLogger(__name__)
 

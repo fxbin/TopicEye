@@ -6,7 +6,7 @@ enabling historical trend analysis beyond the 30-minute in-memory ring buffer.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column

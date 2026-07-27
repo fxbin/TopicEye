@@ -22,9 +22,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from alembic.config import Config
-
 from alembic import command
+from alembic.config import Config
 from app.core.config import settings
 from app.core.db_backend import create_database_profile
 

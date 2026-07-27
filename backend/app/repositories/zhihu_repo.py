@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from app.models.zhihu import ZhihuAlbum, ZhihuCategory

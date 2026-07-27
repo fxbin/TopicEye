@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlencode
 
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
-
 
 SOURCE_LIST_CACHE_PREFIX = "sources:list:"
 SOURCE_LIST_DEFAULT_CACHE_LABEL = "sources:list:1:20"

@@ -53,7 +53,7 @@ class ArticleSnapshot(Base):
         onupdate=lambda: datetime.now(UTC),
     )
 
-    content: Mapped["ContentItem"] = relationship(back_populates="reader_snapshot")
+    content: Mapped[ContentItem] = relationship(back_populates="reader_snapshot")
 
     __table_args__ = (
         Index("ix_article_snapshots_expires_at", "expires_at"),

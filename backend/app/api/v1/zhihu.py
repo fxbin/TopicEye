@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user

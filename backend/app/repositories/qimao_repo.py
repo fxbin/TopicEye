@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.qimao import QimaoBook
 from app.repositories.base import BaseRepository

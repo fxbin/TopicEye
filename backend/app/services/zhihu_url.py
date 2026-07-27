@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from urllib.parse import urlparse
-
 
 _ZHIHU_HOSTS = {
     "api.zhihu.com",

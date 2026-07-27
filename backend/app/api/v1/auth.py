@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from collections import deque
 from time import monotonic
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError

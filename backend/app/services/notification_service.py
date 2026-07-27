@@ -13,15 +13,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from collections.abc import Iterable
+from datetime import UTC
 
-from sqlalchemy import and_, exists, func, select, update
-from sqlalchemy.orm import aliased
+from sqlalchemy import func, select
 
 from app.core.database import async_session
 from app.models.notification import Notification, NotificationRead
-from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +135,7 @@ async def mark_read(user_id: int, notification_id: int) -> bool:
         # 用 INSERT ... ON CONFLICT DO NOTHING (PG/SQLite) 幂等写入
         from sqlalchemy.dialects.postgresql import insert as pg_insert
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
         from app.core.database import database_profile
 
         inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
@@ -173,6 +172,7 @@ async def mark_all_read(user_id: int) -> int:
 
         from sqlalchemy.dialects.postgresql import insert as pg_insert
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
         from app.core.database import database_profile
 
         inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
@@ -208,7 +208,8 @@ async def delete_notification(user_id: int, notification_id: int) -> bool:
 
 async def cleanup_old_notifications(*, days: int = 30) -> int:
     """清理超过 N 天的通知（NotificationRead 通过 CASCADE 自动清理）。"""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     from sqlalchemy import delete
 
     cutoff = datetime.now(UTC) - timedelta(days=days)

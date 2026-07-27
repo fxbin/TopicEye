@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fanqie import FanqieBook, FanqieCategory
 from app.repositories.base import BaseRepository

@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional, Set
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
 
 from app.core.http_retry import retry_async
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending
 
 logger = logging.getLogger(__name__)
 

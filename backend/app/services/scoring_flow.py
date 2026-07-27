@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone, UTC
-from typing import Optional, Any
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,6 @@ from app.services.json_cache import (
     set_cached_json as _set_cached_json,
 )
 from app.services.scoring_engine import CONFIG, ScoreBreakdown, ScoringInput, score_items
-
 
 STAGE_KEYS = ["candidates", "quality", "risk", "freshness", "diversity", "selected"]
 STAGE_LABELS = ["候选样本", "质量门槛", "风险降权", "时效衰减", "多样性混排", "精选输出"]
@@ -419,7 +418,7 @@ def build_stage_counts(scored: list[tuple[ScoreBreakdown, ScoringInput]]) -> lis
             "count": count,
             "retention": round(count / total, 4) if total else 0,
         }
-        for key, label, count in zip(STAGE_KEYS, STAGE_LABELS, counts)
+        for key, label, count in zip(STAGE_KEYS, STAGE_LABELS, counts, strict=False)
     ]
 
 

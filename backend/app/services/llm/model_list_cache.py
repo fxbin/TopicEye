@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
 
-
 MODEL_LIST_CACHE_KEY = "models:list"
 MODEL_LIST_CACHE_HEADER = "X-Models-Cache"
 

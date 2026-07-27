@@ -13,7 +13,6 @@ import resource
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
 from app.core.sqlite_retry import retry_write_transaction

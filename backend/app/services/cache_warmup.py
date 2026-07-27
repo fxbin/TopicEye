@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC
 from typing import Any
 
 from app.core.database import async_session
@@ -25,7 +26,6 @@ from app.services.today_picks_cache import (
     default_today_picks_cache_params,
     set_cached_today_picks,
 )
-from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +149,9 @@ async def warmup_content_favorites(db) -> None:
 
 
 async def warmup_content_list(db) -> None:
+    from datetime import datetime, timedelta
+
     from app.repositories.ignored_repo import IgnoredRepo
-    from datetime import datetime, timedelta, timezone
 
     params = home_content_list_cache_params()
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()

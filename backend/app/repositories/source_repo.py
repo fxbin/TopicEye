@@ -4,8 +4,8 @@ Repository for Source model operations.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone, UTC
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession

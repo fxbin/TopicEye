@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -301,8 +301,8 @@ async def classify_async(
     from app.repositories.category_repo import CategoryRepository
     from app.services.llm import call_llm_json
     from app.services.llm.prompts.classification import (
-        SYSTEM_PROMPT,
         CLASSIFICATION_PROMPT,
+        SYSTEM_PROMPT,
     )
 
     # Get current category list for the prompt. Ingestion can pass a per-source

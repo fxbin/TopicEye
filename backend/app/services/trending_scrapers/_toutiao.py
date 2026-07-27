@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
-import contextlib
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending
 
 logger = logging.getLogger(__name__)
 

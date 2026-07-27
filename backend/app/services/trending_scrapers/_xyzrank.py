@@ -17,7 +17,8 @@ from __future__ import annotations
 import logging
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry, BROWSER_UA
+
+from . import BROWSER_UA, BaseTrendingScraper, TrendingEntry, register_trending
 
 logger = logging.getLogger(__name__)
 

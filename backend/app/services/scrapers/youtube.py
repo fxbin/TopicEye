@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone, UTC
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper, fetch_feed_with_retry
+from . import BaseScraper, fetch_feed_with_retry, register_scraper
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlencode
 
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
-
 
 CONTENT_LIST_CACHE_PREFIX = "contents:list:"
 CACHEABLE_CONTENT_SORTS = {"created_at", "published_at", "crawled_at"}

@@ -6,9 +6,11 @@
 from __future__ import annotations
 
 import logging
+
 from sqlalchemy import select
+
 from app.core.database import async_session
-from app.models.mother_topic import MotherTopic, ContentType
+from app.models.mother_topic import ContentType, MotherTopic
 
 logger = logging.getLogger(__name__)
 

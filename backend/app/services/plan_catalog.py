@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
-
+from typing import Any
 
 PLAN_TIERS: list[dict[str, Any]] = [
     {

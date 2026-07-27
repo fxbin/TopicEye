@@ -9,9 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone, UTC
+from datetime import UTC
 from html import unescape
-from typing import Optional, Any
+from typing import Any
 
 import httpx
 

@@ -20,9 +20,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import shlex
-from datetime import datetime, timezone, UTC
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -174,7 +173,7 @@ class RedditScraper(BaseScraper):
         all_comments = await asyncio.gather(*comment_futures, return_exceptions=True)
 
         entries: list[dict[str, Any]] = []
-        for post, raw_comments in zip(valid_posts, all_comments):
+        for post, raw_comments in zip(valid_posts, all_comments, strict=False):
             comments: list[dict] = [] if isinstance(raw_comments, Exception) else raw_comments  # type: ignore[assignment]
             entry = self._parse_post(post, comments)
             if entry:

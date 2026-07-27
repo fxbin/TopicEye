@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import Optional
-from datetime import datetime, timezone, UTC
-from sqlalchemy import Integer, DateTime, ForeignKey, String, UniqueConstraint
+
+from datetime import UTC, datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 
 

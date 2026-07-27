@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlencode
 
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
-
 
 TODAY_PICKS_CACHE_PREFIX = "contents:today-picks:"
 # The page opens on the rolling 24-hour window and requests the first 40 picks.

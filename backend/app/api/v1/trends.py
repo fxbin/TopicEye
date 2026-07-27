@@ -15,7 +15,6 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from typing import Optional
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import async_session

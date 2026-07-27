@@ -11,12 +11,12 @@
 from __future__ import annotations
 
 import logging
-import math
 from collections import defaultdict
-from typing import List, Dict, Any
+from typing import Any
 
 import jieba
 import jieba.analyse
+
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)

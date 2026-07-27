@@ -14,7 +14,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import case as sa_case, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product_feedback import (
     IssueFeedback,
@@ -24,7 +23,6 @@ from app.models.product_feedback import (
 )
 from app.models.user import User
 from app.repositories.base import BaseRepository
-
 
 _OPEN_STATUSES = [
     IssueFeedbackStatus.open,

@@ -26,8 +26,6 @@ import asyncio
 import json
 import logging
 import os
-import re
-from typing import Optional
 
 import httpx
 from py_mini_racer import MiniRacer

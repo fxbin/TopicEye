@@ -5,23 +5,22 @@ Weekly Digest API endpoints.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
+from app.models.user import User
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.repositories.pick_mark_repo import PickMarkRepository
 from app.repositories.weekly_digest_repo import WeeklyDigestRepository
 from app.schemas.weekly_digest import (
-    WeeklyDigestResponse,
     WeeklyDigestListResponse,
+    WeeklyDigestResponse,
     WeeklyDigestWeeksResponse,
 )
 from app.services.weekly_digest import generate_weekly_digest
-from app.models.user import User
 
 router = APIRouter(prefix="/weekly-digests", tags=["weekly-digests"], dependencies=[Depends(get_current_user)])
 

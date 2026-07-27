@@ -2,18 +2,19 @@
 Topic cluster model — groups related content items.
 """
 
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
+
 from sqlalchemy import (
+    JSON,
     Column,
+    DateTime,
+    Float,
     Integer,
     String,
-    DateTime,
-    ForeignKey,
     Text,
-    JSON,
-    Float,
 )
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
 
 

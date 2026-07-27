@@ -15,15 +15,13 @@ cleanup_old_snapshots 清理。
 from __future__ import annotations
 
 import logging
-from collections import Counter
-from datetime import date, datetime, timedelta, timezone, UTC
-from typing import Optional, List, Dict
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select, delete, and_, func
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.trending import TrendingItem, TrendingSnapshot, TrendingSource
-from app.services.trending_scrapers import get_all_trending_sources, SYNC_EXCLUDED_SOURCES
+from app.models.trending import TrendingItem, TrendingSnapshot
+from app.services.trending_scrapers import SYNC_EXCLUDED_SOURCES, get_all_trending_sources
 from app.services.zhihu_url import normalize_zhihu_url
 
 logger = logging.getLogger(__name__)
@@ -122,7 +120,7 @@ async def save_all_snapshots(db: AsyncSession) -> dict:
             count = await save_snapshot(db, source_name)
             if count > 0:
                 results[source_name] = count
-        except Exception as exc:
+        except Exception:
             logger.exception("save_snapshot failed for source=%s", source_name)
             results[source_name] = 0
     return results

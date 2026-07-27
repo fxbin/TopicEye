@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
 import json
 import time
-from typing import Any, Optional
-
+from datetime import datetime
+from typing import Any
 
 _CACHE: dict[str, tuple[float, bytes]] = {}
 

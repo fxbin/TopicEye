@@ -9,32 +9,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import re
 import time
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import database_profile
 from app.models.content import ContentItem, ContentStatus
-from app.models.source import Source, SourceType, SourceStatus
-from app.services.classifier import classify, extract_tags, classify_async
-from app.services.llm_pre_filter import apply_pre_filter
-from app.services.content_read_cache import invalidate_content_read_caches
-from app.services.dedup import build_hash
-from app.services.scraper_http import build_scraper_client_kwargs
-from app.services.scrapers import get_scraper_cls
+from app.models.source import Source, SourceStatus, SourceType
+
 # Error redaction extracted to _error_redaction.py (pure functions + constants)
 from app.services._error_redaction import redact_source_sync_error  # noqa: F401 — re-export
+from app.services.classifier import classify_async
+from app.services.content_read_cache import invalidate_content_read_caches
+from app.services.dedup import build_hash
+from app.services.llm_pre_filter import apply_pre_filter
+from app.services.scraper_http import build_scraper_client_kwargs
+from app.services.scrapers import get_scraper_cls
 
 logger = logging.getLogger(__name__)
 
@@ -349,7 +346,7 @@ async def _persist_new_content_items(
     from app.models.metrics import ContentMetrics
 
     skipped_by_conflict = len(new_items) - len(inserted_ids)
-    for content_id, metrics_rec in zip(inserted_ids, metrics_records):
+    for content_id, metrics_rec in zip(inserted_ids, metrics_records, strict=False):
         if metrics_rec is None:
             continue
         metrics_rec["content_id"] = content_id

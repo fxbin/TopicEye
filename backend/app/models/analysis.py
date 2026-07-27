@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import Optional
-from datetime import datetime, timezone, UTC
-from sqlalchemy import Boolean, Integer, Float, String, Text, DateTime, ForeignKey, JSON
+
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 
 

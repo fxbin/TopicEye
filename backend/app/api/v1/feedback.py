@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1._db_write import write_with_503
 from app.api.v1.auth import get_current_user
-from app.core.database import database_profile
-from app.core.database import get_db
+from app.core.database import database_profile, get_db
 from app.core.sqlite_retry import begin_immediate_for_sqlite
 from app.models.feedback import (
-    FeedbackType,
     FEEDBACK_SCORE_DELTAS,
+    FeedbackType,
 )
 from app.models.user import User
 from app.repositories.content_repo import ContentRepo

@@ -10,16 +10,15 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import Optional
 
-from sqlalchemy import select, func, text, and_
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.trend import TopicTrend
-from app.models.topic import TopicGroup
-from app.models.content import ContentItem
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem
 from app.models.source import Source
+from app.models.topic import TopicGroup
+from app.models.trend import TopicTrend
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput, score_items

@@ -17,7 +17,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Float, String, Boolean, DateTime, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

@@ -12,11 +12,11 @@ TrendingSnapshot — 趋势雷达历史快照。
 from __future__ import annotations
 
 import enum
-from datetime import datetime, date, timezone, UTC
-from typing import Optional, List
+from datetime import UTC, date, datetime
 
-from sqlalchemy import String, Integer, DateTime, Date, JSON
+from sqlalchemy import JSON, Date, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.core.database import Base
 from app.models.enum_types import value_enum
 

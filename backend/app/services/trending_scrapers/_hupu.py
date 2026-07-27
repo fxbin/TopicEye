@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending
 
 logger = logging.getLogger(__name__)
 

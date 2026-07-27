@@ -5,24 +5,22 @@ Daily Report API endpoints.
 from __future__ import annotations
 
 import logging
-from typing import Tuple, Optional
-
 from datetime import date as date_cls, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
-from app.core.database import get_db, async_session
+from app.core.database import async_session, get_db
 from app.models.user import User
 from app.repositories.content_repo import ContentRepo
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.repositories.pick_mark_repo import PickMarkRepository
 from app.schemas.daily_report import (
-    DailyReportResponse,
-    DailyReportListResponse,
-    DailyReportDatesResponse,
     DailyReportCalendarResponse,
+    DailyReportDatesResponse,
+    DailyReportListResponse,
+    DailyReportResponse,
 )
 from app.services.daily_report import LOCAL_TZ, WEEKDAYS, generate_daily_report, get_latest_today_report
 from app.services.plan_catalog import plan_allows_private_source
@@ -227,7 +225,8 @@ async def trigger_generate_version(
     后台 task 完成后前端通过轮询 /today 拿最终结果。
     """
     import asyncio
-    from app.services.daily_report import _local_today, _day_window, _local_window_to_utc_naive
+
+    from app.services.daily_report import _day_window, _local_today, _local_window_to_utc_naive
 
     parsed_date = date_cls.fromisoformat(target_date) if target_date else _local_today()
     parsed_cutoff = datetime.fromisoformat(cutoff_at) if cutoff_at else None
@@ -318,7 +317,7 @@ def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:
     import re as _re
     if not title:
         return []
-    stopwords = {"的", "了", "在", "是", "和", "与", "或", "为", "我", "你", "他", "她", "它", "也", "都", "就", "把", "被", "了", "着",
+    stopwords = {"的", "了", "在", "是", "和", "与", "或", "为", "我", "你", "他", "她", "它", "也", "都", "就", "把", "被", "着",
                  "the", "a", "an", "of", "to", "in", "on", "at", "by", "for", "with"}
     # 中文用 jieba 切词
     try:

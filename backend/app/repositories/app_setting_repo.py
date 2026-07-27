@@ -16,12 +16,11 @@ import json
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.app_setting import (
-    AppSetting,
     DEFAULT_FEATURE_FLAGS,
     DEFAULT_RSSHUB_INSTANCES,
+    AppSetting,
 )
 from app.repositories.base import BaseRepository
 

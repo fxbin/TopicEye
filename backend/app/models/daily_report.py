@@ -4,10 +4,9 @@ Daily Report model — AI-generated daily briefing for creators.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

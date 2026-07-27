@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import Optional
+
 import enum
-from datetime import datetime, timezone, UTC
-from sqlalchemy import Boolean, String, Integer, Text, DateTime, ForeignKey, Index
+from datetime import UTC, datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 from app.models.enum_types import value_enum
 

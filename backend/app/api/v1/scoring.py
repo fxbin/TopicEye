@@ -29,7 +29,6 @@ from app.schemas.scoring import (
 )
 from app.services.scoring_engine import ScoringInput, score_items, score_low_follower_viral
 
-
 router = APIRouter(prefix="/scoring", tags=["scoring"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 

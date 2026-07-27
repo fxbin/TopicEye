@@ -25,13 +25,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
-from app.core.config import settings
-from app.core.database import async_session, get_db
-from app.core.sqlite_retry import retry_write_transaction as _retry_write
-from app.models.llm_model import ModelEvaluation
-from app.repositories.llm_evaluation_repo import ModelEvaluationRepository
-from app.repositories.llm_model_repo import LlmModelRepository
-from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 # 从父模块导入共享 helper（test_model 和 evaluation 都用）
 from app.api.v1.llm_models import (
@@ -40,7 +33,13 @@ from app.api.v1.llm_models import (
     _model_snapshot,
     _resolve_litellm_model,
 )
-
+from app.core.config import settings
+from app.core.database import async_session, get_db
+from app.core.sqlite_retry import retry_write_transaction as _retry_write
+from app.models.llm_model import ModelEvaluation
+from app.repositories.llm_evaluation_repo import ModelEvaluationRepository
+from app.repositories.llm_model_repo import LlmModelRepository
+from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 # _retry_write 现在从 app.core.sqlite_retry 导入（retry_write_transaction 别名）
 

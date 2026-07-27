@@ -4,10 +4,9 @@ Weekly Digest model — AI-generated weekly curated newsletter.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import String, Text, DateTime, Integer
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

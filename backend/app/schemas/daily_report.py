@@ -4,9 +4,9 @@ Daily Report schema — request/response models.
 
 import json
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, field_serializer
 
 from app.services.zhihu_url import normalize_zhihu_url
 

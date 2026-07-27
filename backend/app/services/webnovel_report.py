@@ -14,8 +14,7 @@ Webnovel report service — weekly history and rank movement analysis.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone, UTC
-from typing import Optional, Any
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +23,7 @@ from app.models.fanqie import FanqieBook, FanqieCategory, FanqieRankSnapshot
 from app.models.qimao import QimaoBook
 from app.models.trending import TrendingItem, TrendingSnapshot
 from app.models.zhihu import ZhihuAlbum
+
 # Shared cross-platform helpers extracted to _webnovel_common.py
 from app.services._webnovel_common import (  # noqa: F401 — re-export for backward compat
     _PER_PLATFORM_QUOTA,
@@ -34,9 +34,6 @@ from app.services._webnovel_common import (  # noqa: F401 — re-export for back
     _platform_label,
     _safe_int,
 )
-
-
-
 
 # ── 番茄（独立 ORM + 日级排名快照） ──────────────────────────────────
 

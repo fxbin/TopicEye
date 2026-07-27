@@ -7,18 +7,17 @@ Tables:
   - llm_call_logs: request-level token and cost logs for model calls
 """
 
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
-    String,
-    Integer,
+    JSON,
     Boolean,
     DateTime,
-    Text,
     Float,
     Index,
-    JSON,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 

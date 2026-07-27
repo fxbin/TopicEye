@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
-from typing import List
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry, truncate_title
-import contextlib
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending, truncate_title
 
 logger = logging.getLogger(__name__)
 

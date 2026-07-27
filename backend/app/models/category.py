@@ -6,8 +6,7 @@ Stores both seed (manually created) and auto-discovered categories.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column

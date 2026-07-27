@@ -14,9 +14,8 @@ ModelEvaluation 与 LlmModel 同属 llm_model 模块，但查询逻辑独立，
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
-from sqlalchemy import desc, func, Integer as SAInteger, select
+from sqlalchemy import Integer as SAInteger, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.llm_model import ModelEvaluation

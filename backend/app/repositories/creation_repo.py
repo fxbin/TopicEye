@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.creation import CreationPlan
 from app.repositories.base import BaseRepository

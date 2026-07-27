@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone, UTC
-from typing import Dict, Union
+from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -24,9 +23,8 @@ from app.models.trending import TrendingItem
 from app.services.scraper_http import build_browser_client_kwargs
 from app.services.trending_cache import invalidate_trending_cache
 from app.services.trending_scrapers import (
-    get_trending_cls,
-    get_all_trending_sources,
     get_syncable_trending_sources,
+    get_trending_cls,
 )
 from app.services.zhihu_url import normalize_zhihu_url
 
@@ -139,7 +137,7 @@ async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
     )
 
     results: dict[str, dict[str, int | str]] = {}
-    for name, item in zip(sources, raw_results):
+    for name, item in zip(sources, raw_results, strict=False):
         if isinstance(item, BaseException):
             logger.exception(
                 "Unexpected error syncing trending source '%s'", name, exc_info=item

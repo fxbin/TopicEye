@@ -22,7 +22,7 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -43,10 +43,10 @@ from app.services.llm.model_list_cache import (
     invalidate_model_list_cache,
     set_cached_model_list,
 )
-from app.services.llm.provider import invalidate_model_cache
-from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm.model_pricing import is_free_model, normalized_model_pricing
+from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
+from app.services.llm.provider import invalidate_model_cache
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 router = APIRouter(prefix="/models", tags=["models"])

@@ -6,16 +6,15 @@ Two tables:
   - job_execution_logs: every run (start, end, status, duration, result)
 """
 
-from datetime import datetime, timezone, UTC
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
-    String,
-    Integer,
     Boolean,
     DateTime,
-    Text,
     Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 

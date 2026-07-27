@@ -14,9 +14,7 @@ All tuning constants live in the CONFIG dict at the top for easy adjustment.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone, UTC
-from typing import Optional
-
+from datetime import UTC, datetime
 
 # ── Tunable configuration ────────────────────────────────────────────
 
@@ -100,7 +98,7 @@ class ScoringInput:
             elif slot in ("published_at", "crawled_at"):
                 # datetime 字段默认 None（表示"没有"），不能是 0（int），
                 # 否则 _compute_time_decay 的 ensure_aware_utc(0) 会崩。
-                setattr(self, slot, kwargs.get(slot, None))
+                setattr(self, slot, kwargs.get(slot))
             else:
                 setattr(self, slot, kwargs.get(slot, 0))
 
@@ -402,7 +400,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
 
     # Phase 4: Compute final score
     results: list[tuple[ScoreBreakdown, ScoringInput]] = []
-    for i, (bd, item) in enumerate(zip(breakdowns, safe_items)):
+    for i, (bd, item) in enumerate(zip(breakdowns, safe_items, strict=False)):
         bd.diversity_factor = round(diversity_factors[i], 4)
         bd.final_score = round(prelim_scores[i] * diversity_factors[i], 2)
         results.append((bd, item))

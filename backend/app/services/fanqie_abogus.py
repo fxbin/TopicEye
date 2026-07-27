@@ -25,7 +25,6 @@ import random
 import struct
 import time
 
-
 # ─── RC4 Stream Cipher ────────────────────────────────────────────────
 
 def rc4_encrypt(plaintext: bytes, key: bytes) -> bytes:

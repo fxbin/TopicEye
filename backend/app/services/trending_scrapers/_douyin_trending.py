@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, List
+from typing import Any
 
 import httpx
-from . import BaseTrendingScraper, register_trending, TrendingEntry
+
+from . import BaseTrendingScraper, TrendingEntry, register_trending
 
 logger = logging.getLogger(__name__)
 

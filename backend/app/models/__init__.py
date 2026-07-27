@@ -5,8 +5,8 @@ from app.models.article_snapshot import ArticleSnapshot
 from app.models.category import Category
 from app.models.content import ContentItem
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark, CrossSourceLevel, EvidenceType
-from app.models.evidence_interaction import EvidenceInteraction
 from app.models.content_relation import ContentRelation, RelationType
+from app.models.evidence_interaction import EvidenceInteraction
 from app.models.favorite import FavoriteItem
 from app.models.ignored import IgnoredItem
 from app.models.metrics import ContentMetrics
@@ -18,11 +18,11 @@ from app.models.read_record import ReadRecord
 from app.models.scheduled_job import JobExecutionLog, ScheduledJob
 from app.models.source import Source
 from app.models.source_evidence_profile import PublisherKind, SourceEvidenceProfile
-from app.models.user_interest_vector import UserInterestVector
 from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend
 from app.models.trending import TrendingItem, TrendingSnapshot
 from app.models.user import User, UserSession
+from app.models.user_interest_vector import UserInterestVector
 from app.models.weread_stats_cache import WeReadStatsCache
 
 __all__ = [

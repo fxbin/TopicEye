@@ -11,8 +11,7 @@ source_config (JSON via Source.source_config):
 from __future__ import annotations
 
 import logging
-import re
-from typing import Optional, Any
+from typing import Any
 
 import httpx
 

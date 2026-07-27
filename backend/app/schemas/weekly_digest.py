@@ -3,9 +3,9 @@ Weekly Digest schema — request/response models.
 """
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class WeeklyDigestResponse(BaseModel):

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine

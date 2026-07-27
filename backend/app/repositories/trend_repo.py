@@ -5,8 +5,8 @@ Repository for TopicTrend — daily snapshot CRUD + range queries.
 from __future__ import annotations
 
 import logging
-from datetime import date
 from collections.abc import Sequence
+from datetime import date
 
 from sqlalchemy import delete, select
 

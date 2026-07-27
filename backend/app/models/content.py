@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import Optional
+
 import enum
-from datetime import datetime, timezone, UTC
-from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, JSON, Boolean, Float, Index, UniqueConstraint
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 from app.models.enum_types import value_enum
 
@@ -87,7 +89,7 @@ class ContentItem(Base):
         order_by="AiAnalysis.created_at, AiAnalysis.id",
     )
     topic: Mapped[TopicGroup | None] = relationship(back_populates="items", foreign_keys=[topic_id])
-    reader_snapshot: Mapped["ArticleSnapshot | None"] = relationship(
+    reader_snapshot: Mapped[ArticleSnapshot | None] = relationship(
         back_populates="content",
         cascade="all, delete-orphan",
         uselist=False,

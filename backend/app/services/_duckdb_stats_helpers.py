@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.scoring_engine import ScoringInput
 from app.services._duckdb_sql import STATS_CURATION_FALLBACK_THRESHOLD
+from app.services.scoring_engine import ScoringInput
 
 
 def stats_row_to_scoring_input(row: dict[str, Any]) -> ScoringInput:

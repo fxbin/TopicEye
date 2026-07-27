@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import Optional
+
 from collections.abc import Sequence
-from sqlalchemy import select, delete
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.ignored import IgnoredItem
 
 

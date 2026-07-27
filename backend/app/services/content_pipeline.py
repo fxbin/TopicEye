@@ -39,6 +39,27 @@ from app.services._error_redaction import redact_source_sync_error  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
+def _ensure_datetime(value: Any) -> datetime | None:
+    """Defensive normalisation: convert str/ISO-timestamp to datetime.
+
+    Scrapers should already return datetime objects, but asyncpg rejects
+    ISO strings for TIMESTAMP columns. This guard catches any future
+    scraper that accidentally returns a string.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            from dateutil.parser import isoparse
+            return isoparse(value)
+        except Exception:
+            logger.warning("Could not parse published_at string: %r", value)
+            return None
+    return None
+
+
 
 async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]:
     """
@@ -217,7 +238,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
                 platform=source.platform,
                 owner_user_id=source.owner_user_id,
                 author=entry.get("author"),
-                published_at=entry.get("published_at"),
+                published_at=_ensure_datetime(entry.get("published_at")),
                 content_hash=entry_hash,
                 summary=summary or None,
                 raw_content=entry.get("raw_content") or None,

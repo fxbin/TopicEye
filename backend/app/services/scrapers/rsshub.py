@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-import time
+from datetime import UTC, datetime
 from typing import Optional, Any
 
 import feedparser
@@ -154,12 +154,13 @@ class RSSHubScraper(BaseScraper):
             elif hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
                 image_url = entry.media_thumbnail[0].get("url", "")
 
-            # Published date
+            # Published date — must be a datetime object, not a string,
+            # because asyncpg rejects ISO strings for TIMESTAMP columns.
             published_at = None
             if hasattr(entry, "published_parsed") and entry.published_parsed:
-                published_at = time.strftime("%Y-%m-%dT%H:%M:%S", entry.published_parsed)
+                published_at = datetime(*entry.published_parsed[:6], tzinfo=UTC)
             elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-                published_at = time.strftime("%Y-%m-%dT%H:%M:%S", entry.updated_parsed)
+                published_at = datetime(*entry.updated_parsed[:6], tzinfo=UTC)
 
             # Author
             author = (

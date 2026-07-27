@@ -244,7 +244,7 @@ async def update_user(
     async def _apply():
         target = await _load_user_or_404(db, user_id)
 
-        if target.id == current_user.id:
+        if target.id == current_user.id:  # noqa: SIM102
             # 禁止对自己执行封禁 / 降级（改自己的 plan 不受限）
             if req.is_active is False or (req.role is not None and req.role != "admin"):
                 raise HTTPException(

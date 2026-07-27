@@ -468,7 +468,7 @@ class RequestMetricsCollector:
 
             # 按 path 聚合 top 请求
             path_counts: dict[str, int] = defaultdict(int)
-            for (method, path, status), count in self._request_counts.items():
+            for (method, path, _status), count in self._request_counts.items():
                 path_counts[f"{method} {path}"] += count
             top_paths = sorted(path_counts.items(), key=lambda x: -x[1])[:15]
 

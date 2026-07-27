@@ -68,7 +68,7 @@ class DouyinTrending(BaseTrendingScraper):
             raw_labels = item.get("label")
             labels = []
             if isinstance(raw_labels, list):
-                labels = [l.get("name", "") for l in raw_labels if isinstance(l, dict) and l.get("name")]
+                labels = [lbl.get("name", "") for lbl in raw_labels if isinstance(lbl, dict) and lbl.get("name")]
 
             results.append(
                 {

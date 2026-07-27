@@ -172,7 +172,7 @@ class SohuTrending(BaseTrendingScraper):
         elif isinstance(data, dict):
             for key in ("hotNews", "hot", "news", "items", "list", "data", "feeds"):
                 candidate = data.get(key)
-                if isinstance(candidate, list) and len(candidate) >= 3:
+                if isinstance(candidate, list) and len(candidate) >= 3:  # noqa: SIM102
                     if isinstance(candidate[0], dict) and ("title" in candidate[0] or "name" in candidate[0]):
                         return candidate
             # 深一层

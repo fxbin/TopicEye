@@ -202,10 +202,8 @@ class ZhihuScraper(BaseScraper):
         tags: list[str] = []
         # Zhihu sometimes includes type in the item
         item_type = item.get("type", "")
-        if item_type:
-            # e.g. "feed_advert" -> skip
-            if "advert" in item_type:
-                return None
+        if item_type and "advert" in item_type:
+            return None
 
         # Build summary
         summary = excerpt if excerpt else title

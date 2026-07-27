@@ -121,16 +121,14 @@ async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
     semaphore = asyncio.Semaphore(concurrency)
 
     async def sync_one(name: str) -> dict[str, int | str]:
-        async with semaphore:
-            # 独立 session：避免共享 AsyncSession 并发损坏内部状态
-            async with async_session() as src_db:
-                try:
-                    result = await sync_trending_source(name, src_db)
-                    await src_db.commit()
-                    return result
-                except Exception:
-                    await src_db.rollback()
-                    raise
+        async with semaphore, async_session() as src_db:
+            try:
+                result = await sync_trending_source(name, src_db)
+                await src_db.commit()
+                return result
+            except Exception:
+                await src_db.rollback()
+                raise
 
     raw_results = await asyncio.gather(
         *(sync_one(name) for name in sources), return_exceptions=True

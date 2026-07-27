@@ -68,7 +68,7 @@ async def _claim_job_run(job_key: str, name: str, description: str, timeout: int
         now = datetime.now(UTC)
         async with async_session() as db:
 
-            async def _claim() -> bool:
+            async def _claim(*, now: datetime = now) -> bool:
                 await begin_immediate_for_sqlite(db)
                 existing = await db.execute(
                     select(ScheduledJob).where(ScheduledJob.job_key == job_key).with_for_update()
@@ -283,17 +283,17 @@ async def get_recent_logs(job_key: str = "", limit: int = 50) -> list[dict]:
         logs = result.scalars().all()
         return [
             {
-                "id": l.id,
-                "job_key": l.job_key,
-                "status": l.status,
-                "started_at": l.started_at.isoformat() if l.started_at else None,
-                "finished_at": l.finished_at.isoformat() if l.finished_at else None,
-                "duration_ms": l.duration_ms,
-                "result_summary": l.result_summary,
-                "error_message": l.error_message,
-                "trigger_type": l.trigger_type,
+                "id": log.id,
+                "job_key": log.job_key,
+                "status": log.status,
+                "started_at": log.started_at.isoformat() if log.started_at else None,
+                "finished_at": log.finished_at.isoformat() if log.finished_at else None,
+                "duration_ms": log.duration_ms,
+                "result_summary": log.result_summary,
+                "error_message": log.error_message,
+                "trigger_type": log.trigger_type,
             }
-            for l in logs
+            for log in logs
         ]
 
 

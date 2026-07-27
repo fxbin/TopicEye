@@ -151,7 +151,7 @@ async def fetch_feed_with_retry(
 
 # ── Auto-import submodules to trigger @register_scraper ───────────────
 
-from . import (
+from . import (  # noqa: E402
     api_source as _api_source_mod,  # noqa: E402, F401
     douyin_hot as _douyin_hot_mod,  # noqa: E402, F401
     newsletter as _newsletter_mod,  # noqa: E402, F401

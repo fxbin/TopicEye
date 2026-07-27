@@ -47,7 +47,7 @@ _cache_warmup_task: asyncio.Task | None = None
 
 # ── Structured logging (JSON for production aggregation) ──
 from app.core.logging_config import configure_logging  # noqa: E402  — 在 basicConfig 之后
-from app.core.request_utils import client_ip
+from app.core.request_utils import client_ip  # noqa: E402
 
 _log_format = getattr(settings, "LOG_FORMAT", "text")
 configure_logging(log_format=_log_format)

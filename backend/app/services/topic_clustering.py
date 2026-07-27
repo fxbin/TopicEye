@@ -359,7 +359,7 @@ async def cluster_and_dedup(
     if use_dedup:
         MAX_DEDUP_CANDIDATES = 30
         dedup_candidates = []
-        for idx, cluster_item_list in cluster_items_map.items():
+        for _, cluster_item_list in cluster_items_map.items():
             if len(cluster_item_list) < 2 or len(cluster_item_list) > 15:
                 continue
             dedup_candidates.append(cluster_item_list)

@@ -417,7 +417,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     else:
         actual_threshold = cfg["curation_threshold"]
 
-    for bd, item in results:
+    for bd, _item in results:
         bd.threshold_used = round(actual_threshold, 2)
         bd.selected = (
             bd.final_score >= actual_threshold

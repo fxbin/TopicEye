@@ -20,6 +20,7 @@ from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_serialization import latest_analysis_from_item
+from app.services.digest_base import is_active_generating as _digest_is_active_generating
 from app.services.digest_fallback import build_daily_editorial_fallback
 from app.services.llm import call_llm_json
 from app.services.scoring_engine import score_items
@@ -234,10 +235,12 @@ def _owner_filter(owner_user_id: int | None):
 
 
 def _is_active_generating(report: DailyReport, now: datetime) -> bool:
-    if report.status != "GENERATING":
-        return False
-    generated_at = _as_local_naive(report.generated_at) or _as_local_naive(report.updated_at) or now
-    return now - generated_at < GENERATING_STALE_AFTER
+    """Delegate to digest_base.is_active_generating with DailyReport's generated_at field."""
+    return _digest_is_active_generating(
+        report,
+        now,
+        generated_at=_as_local_naive(report.generated_at) or _as_local_naive(report.updated_at),
+    )
 
 
 async def _fetch_report_inputs(

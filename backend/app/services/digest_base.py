@@ -22,12 +22,28 @@ logger = logging.getLogger(__name__)
 DIGEST_GENERATING_STALE_AFTER = timedelta(minutes=10)
 
 
-def is_active_generating(digest: Any, now: datetime) -> bool:
-    """True if *digest* is in GENERATING and hasn't gone stale."""
+def is_active_generating(
+    digest: Any,
+    now: datetime,
+    *,
+    generated_at: datetime | None = None,
+) -> bool:
+    """True if *digest* is in GENERATING and hasn't gone stale.
+
+    Args:
+        digest: The digest/report object (must have ``.status`` and
+            ``.updated_at`` / ``.created_at``).
+        now: Current time in the same timezone as the digest's timestamps.
+        generated_at: Optional override for the generation start time.
+            When ``None``, falls back to ``digest.updated_at`` then
+            ``digest.created_at`` then *now*.  Callers that have a
+            dedicated ``generated_at`` field (e.g. ``DailyReport``)
+            should pass the resolved value here.
+    """
     if digest.status != "GENERATING":
         return False
-    generated_at = digest.updated_at or digest.created_at or now
-    return now - generated_at < DIGEST_GENERATING_STALE_AFTER
+    ts = generated_at or digest.updated_at or digest.created_at or now
+    return now - ts < DIGEST_GENERATING_STALE_AFTER
 
 
 def apply_llm_result(digest: Any, result: dict[str, Any]) -> None:

@@ -172,9 +172,13 @@ def parse_album_item(item: dict) -> dict:
 
 
 async def _fetch_html(url: str) -> str | None:
-    """下载单个页面 HTML。强制 IPv4 (跟 _fetch_api 同根因)."""
+    """下载单个页面 HTML。强制 IPv4 (跟 _fetch_api 同根因).
+
+    Uses the shared ``retry_async`` helper for uniform retry + logging.
+    """
     transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
-    try:
+
+    async def _do_get() -> str:
         async with httpx.AsyncClient(transport=transport, timeout=15.0) as client:
             resp = await client.get(
                 url,
@@ -185,12 +189,13 @@ async def _fetch_html(url: str) -> str | None:
                 },
                 follow_redirects=True,
             )
-            if resp.status_code == 200:
-                return resp.text
-            logger.warning(f"Zhihu fetch {url} status={resp.status_code}")
-    except Exception as e:
-        logger.warning(f"Zhihu fetch {url} error: {e}")
-    return None
+            resp.raise_for_status()
+            return resp.text
+
+    return await retry_async(
+        _do_get, attempts=3, base_delay=0.5,
+        context=f"Zhihu HTML {url}",
+    )
 
 
 async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: str | None = None) -> list:

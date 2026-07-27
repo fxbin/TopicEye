@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from app.core.http_retry import retry_async
+
 logger = logging.getLogger(__name__)
 
 # ── Registry ──────────────────────────────────────────────────────────
@@ -87,6 +89,65 @@ class BaseScraper(ABC):
                 if len(result) >= max_tags:
                     break
         return result
+
+
+# ── Shared feed fetcher with retry ────────────────────────────────────
+
+# Transient HTTP status codes that warrant a retry.
+_RETRY_STATUS = {502, 503, 504, 429, 500}
+
+
+async def fetch_feed_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    etag: str | None = None,
+    last_modified: str | None = None,
+    attempts: int = 3,
+    base_delay: float = 1.0,
+    context: str = "",
+) -> httpx.Response | None:
+    """GET an RSS/Atom feed with retry on transient HTTP errors.
+
+    - Sends ``If-None-Match`` / ``If-Modified-Since`` when etag/last_modified
+      are provided, enabling 304 Not Modified short-circuit.
+    - Retries on 502/503/504/429/500 and network timeouts with linear backoff.
+    - Returns the ``httpx.Response`` on success (200 or 304).
+    - Returns ``None`` if all attempts are exhausted (caller treats as "no entries").
+
+    This replaces the bare ``client.get() + raise_for_status()`` pattern that
+    immediately fails on transient 502 Bad Gateway from upstream feed servers
+    like hnrss.org.
+    """
+    headers: dict[str, str] = {}
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_modified:
+        headers["If-Modified-Since"] = last_modified
+
+    async def _do_get() -> httpx.Response:
+        resp = await client.get(url, headers=headers or None)
+        # 304 is a success — return without raising.
+        if resp.status_code == 304:
+            return resp
+        # Transient server errors → raise to trigger retry.
+        if resp.status_code in _RETRY_STATUS:
+            raise httpx.HTTPStatusError(
+                f"HTTP {resp.status_code}",
+                request=resp.request,
+                response=resp,
+            )
+        # Other non-2xx → raise (will also be retried, which is fine
+        # because persistent 4xx errors will exhaust quickly).
+        resp.raise_for_status()
+        return resp
+
+    return await retry_async(
+        _do_get,
+        attempts=attempts,
+        base_delay=base_delay,
+        context=context or f"RSS feed {url}",
+    )
 
 
 # ── Auto-import submodules to trigger @register_scraper ───────────────

@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper
+from . import BaseScraper, register_scraper, fetch_feed_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +99,15 @@ class YouTubeScraper(BaseScraper):
             return []
 
         self._rss_url = YOUTUBE_FEED_TEMPLATE.format(channel_id=self.channel_id)
-        resp = await client.get(self._rss_url)
+        resp = await fetch_feed_with_retry(
+            client, self._rss_url, context=f"YouTube {self._rss_url}",
+        )
+        if resp is None:
+            logger.warning("YouTube feed exhausted retries, returning empty: %s", self._rss_url)
+            return []
         if resp.status_code == 304:
             logger.info("YouTube feed not modified: %s", self._rss_url)
             return []
-        resp.raise_for_status()
 
         feed = feedparser.parse(resp.text)
         entries: list[dict[str, Any]] = []

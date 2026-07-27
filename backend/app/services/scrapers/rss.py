@@ -12,7 +12,7 @@ from typing import Any
 import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper
+from . import BaseScraper, register_scraper, fetch_feed_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,12 @@ class RSSScraper(BaseScraper):
     """Fetch and parse RSS/Atom feeds."""
 
     async def fetch(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
-        resp = await client.get(self.url)
+        resp = await fetch_feed_with_retry(
+            client, self.url, context=f"RSS {self.url}",
+        )
+        if resp is None:
+            logger.warning("RSS feed exhausted retries, returning empty: %s", self.url)
+            return []
         # Capture conditional request state so the pipeline can persist it on
         # the Source row and send If-None-Match / If-Modified-Since next time.
         self._latest_etag = resp.headers.get("etag")
@@ -45,7 +50,6 @@ class RSSScraper(BaseScraper):
         if resp.status_code == 304:
             logger.info("RSS feed not modified: %s", self.url)
             return []
-        resp.raise_for_status()
 
         feed = feedparser.parse(resp.text)
         entries: list[dict[str, Any]] = []

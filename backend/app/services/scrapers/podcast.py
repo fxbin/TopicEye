@@ -28,7 +28,7 @@ from urllib.parse import urlparse
 import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper
+from . import BaseScraper, register_scraper, fetch_feed_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +114,15 @@ class PodcastScraper(BaseScraper):
         if not self.rss_url:
             self.rss_url = await self._resolve_rss_url(client)
 
-        resp = await client.get(self.rss_url)
+        resp = await fetch_feed_with_retry(
+            client, self.rss_url, context=f"Podcast {self.rss_url}",
+        )
+        if resp is None:
+            logger.warning("Podcast feed exhausted retries, returning empty: %s", self.rss_url)
+            return []
         if resp.status_code == 304:
             logger.info("Podcast feed not modified: %s", self.rss_url)
             return []
-        resp.raise_for_status()
 
         feed = feedparser.parse(resp.text)
         entries: list[dict[str, Any]] = []

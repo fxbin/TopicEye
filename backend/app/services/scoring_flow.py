@@ -479,7 +479,7 @@ def string_list(value: Any) -> list[str]:
             for child in raw.values():
                 visit(child)
             return
-        if isinstance(raw, (list, tuple, set)):
+        if isinstance(raw, list | tuple | set):
             for child in raw:
                 visit(child)
             return

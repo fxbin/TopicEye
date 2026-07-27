@@ -219,7 +219,7 @@ class RedditScraper(BaseScraper):
 
     @staticmethod
     def _parse_post(post: dict, comments: list[dict]) -> dict[str, Any] | None:
-        post_id = post["id"]
+        post["id"]
         title = post.get("title", "")
         is_self = post.get("is_self", False)
         subreddit = post.get("subreddit", "")

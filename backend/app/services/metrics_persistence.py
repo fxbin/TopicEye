@@ -30,10 +30,7 @@ def _get_process_metrics() -> dict:
     macOS reports ru_maxrss in bytes; Linux reports it in KB.
     """
     rusage = resource.getrusage(resource.RUSAGE_SELF)
-    if platform.system() == "Darwin":
-        rss_mb = rusage.ru_maxrss / (1024 * 1024)
-    else:
-        rss_mb = rusage.ru_maxrss / 1024
+    rss_mb = rusage.ru_maxrss / (1024 * 1024) if platform.system() == "Darwin" else rusage.ru_maxrss / 1024
     return {
         "process_rss_mb": round(rss_mb, 1),
         "process_cpu_user_s": round(rusage.ru_utime, 2),

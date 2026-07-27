@@ -56,7 +56,7 @@ async def ensure_sequences_synced() -> list[str]:
 
         for table_name, column_name in candidates:
             # 系统表名/列名来自 PG catalog，不是用户输入，无注入风险
-            seq_qualified = pg_get_serial_value(db, table_name, column_name)
+            pg_get_serial_value(db, table_name, column_name)
             max_id = await get_max_id(db, table_name, column_name)
             curr_val = await get_seq_last_value(db, table_name, column_name)
 

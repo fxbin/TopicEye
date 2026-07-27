@@ -491,15 +491,15 @@ def _build_metrics_record(entry: dict) -> dict | None:
         return _build_douyin_metrics(entry["_douyin_hot_meta"])
     if entry.get("_twitter_rss_meta"):
         # xgo.ing RSS 数据有限，暂只占位
-        return dict(
-            likes=0,
-            comments=0,
-            shares=0,
-            favorites=0,
-            followers_count=0,
-            engagement_rate=0.0,
-            explosion_ratio=0.0,
-        )
+        return {
+            "likes": 0,
+            "comments": 0,
+            "shares": 0,
+            "favorites": 0,
+            "followers_count": 0,
+            "engagement_rate": 0.0,
+            "explosion_ratio": 0.0,
+        }
     return None
 
 
@@ -517,15 +517,15 @@ def _build_reddit_metrics(meta: dict) -> dict:
     if subscribers > 0:
         explosion_ratio = round(score / subscribers * 1000, 4)
 
-    return dict(
-        likes=score,
-        comments=num_comments,
-        shares=0,
-        favorites=0,
-        followers_count=subscribers,
-        engagement_rate=engagement_rate,
-        explosion_ratio=explosion_ratio,
-    )
+    return {
+        "likes": score,
+        "comments": num_comments,
+        "shares": 0,
+        "favorites": 0,
+        "followers_count": subscribers,
+        "engagement_rate": engagement_rate,
+        "explosion_ratio": explosion_ratio,
+    }
 
 
 def _build_zhihu_metrics(meta: dict) -> dict:
@@ -547,15 +547,15 @@ def _build_zhihu_metrics(meta: dict) -> dict:
     if rank > 0:
         explosion_ratio = round(1000.0 / rank, 4)
 
-    return dict(
-        likes=hot_score,
-        comments=0,
-        shares=0,
-        favorites=0,
-        followers_count=0,
-        engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
-        explosion_ratio=explosion_ratio,
-    )
+    return {
+        "likes": hot_score,
+        "comments": 0,
+        "shares": 0,
+        "favorites": 0,
+        "followers_count": 0,
+        "engagement_rate": round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
+        "explosion_ratio": explosion_ratio,
+    }
 
 
 def _build_douyin_metrics(meta: dict) -> dict:
@@ -567,15 +567,15 @@ def _build_douyin_metrics(meta: dict) -> dict:
     if rank > 0:
         explosion_ratio = round(1000.0 / rank, 4)
 
-    return dict(
-        likes=hot_score,
-        comments=0,
-        shares=0,
-        favorites=0,
-        followers_count=0,
-        engagement_rate=round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
-        explosion_ratio=explosion_ratio,
-    )
+    return {
+        "likes": hot_score,
+        "comments": 0,
+        "shares": 0,
+        "favorites": 0,
+        "followers_count": 0,
+        "engagement_rate": round(float(hot_score) / 10000, 4) if hot_score > 0 else 0.0,
+        "explosion_ratio": explosion_ratio,
+    }
 
 
 def _backend_insert(model):

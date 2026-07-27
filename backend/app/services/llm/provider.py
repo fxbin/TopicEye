@@ -285,7 +285,7 @@ async def call_llm_json_with_metadata(
 
         try:
             result = json.loads(text)
-            if not isinstance(result, (dict, list)) or not result:
+            if not isinstance(result, dict | list) or not result:
                 logger.warning("LLM JSON is empty or not a dict/list (attempt %d): %s", attempt + 1, str(result)[:200])
                 if attempt < max_attempts - 1:
                     continue

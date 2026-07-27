@@ -34,7 +34,7 @@ async def analyze_single(
     analysis_repo = AnalysisRepository(db)
 
     try:
-        content = await content_repo.get_by_id_or_raise(content_id, "Content")
+        await content_repo.get_by_id_or_raise(content_id, "Content")
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 

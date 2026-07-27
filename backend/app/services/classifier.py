@@ -364,10 +364,7 @@ async def classify_async(
         tags = _normalize_llm_tags(result.get("tags"))
         # 显式 bool 解析：bool("false") 在 Python 是 True，弱模型返回字符串会污染分类表
         _raw_new = result.get("is_new_category", False)
-        if isinstance(_raw_new, bool):
-            is_new = _raw_new
-        else:
-            is_new = str(_raw_new).strip().lower() in ("true", "1", "yes")
+        is_new = _raw_new if isinstance(_raw_new, bool) else str(_raw_new).strip().lower() in ("true", "1", "yes")
         confidence = _clamp_confidence(result.get("confidence", 0.5))
 
         if not category:

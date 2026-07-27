@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.enum_types import value_enum
+
+if TYPE_CHECKING:
+    from app.models.content import ContentItem
 
 
 class SourceType(enum.StrEnum):

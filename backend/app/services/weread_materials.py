@@ -119,14 +119,14 @@ def normalize_weread_entries(payload: Any) -> list[dict[str, Any]]:
             summary_parts.append(f"{note_count} 条划线")
         if isinstance(review_count, int) and review_count > 0:
             summary_parts.append(f"{review_count} 条想法")
-        if isinstance(progress, (int, float)) and progress:
+        if isinstance(progress, int | float) and progress:
             summary_parts.append(f"阅读进度 {int(progress)}%")
         summary = "，".join(summary_parts) if summary_parts else None
         # WeRead Gateway 返回的 sort 字段是最近笔记活动时间戳（Unix seconds），
         # 用作 published_at 以保留微信读书自身的排序顺序。
         # sort 不存在或无效时返回 None，由 sync_weread_materials 决定回退策略。
         sort_value = raw.get("sort")
-        if isinstance(sort_value, (int, float)) and sort_value > 1_000_000_000:
+        if isinstance(sort_value, int | float) and sort_value > 1_000_000_000:
             published_at = datetime.fromtimestamp(int(sort_value), tz=UTC)
         else:
             published_at = None

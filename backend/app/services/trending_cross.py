@@ -22,9 +22,7 @@ from app.services.zhihu_url import normalize_zhihu_url
 logger = logging.getLogger(__name__)
 
 # 停用词
-_STOPWORDS = set(
-    ["的了是在我有和就不人都一上也他到说这着你要会把她被从让用为以及于对与或但而如果因为所以这个那个什么怎么哪谁几多大小里外中前后上下左右来自往向然后然后虽然但是不过可是然后可以可能已经这些那些其实事实上真的非常还更最就才只又再"]
-)
+_STOPWORDS = {"的了是在我有和就不人都一上也他到说这着你要会把她被从让用为以及于对与或但而如果因为所以这个那个什么怎么哪谁几多大小里外中前后上下左右来自往向然后然后虽然但是不过可是然后可以可能已经这些那些其实事实上真的非常还更最就才只又再"}
 
 # 信源显示名
 _SOURCE_LABELS: dict[str, str] = {
@@ -129,7 +127,7 @@ def cluster_trending_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for cluster in clusters:
         # 只返回跨平台或多条目的（单条目也保留，方便前端展示）
-        sources_set = set(it["source"] for it in cluster)
+        sources_set = {it["source"] for it in cluster}
         resonance = len(sources_set)
 
         # 选最短标题作为代表（通常最精炼）

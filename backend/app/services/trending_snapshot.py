@@ -253,7 +253,7 @@ async def analyze_persistent_topics(
         return []
 
     # 统计每个快照的日期集合
-    dates = sorted(set(s.snapshot_date for s in snapshots))
+    dates = sorted({s.snapshot_date for s in snapshots})
     total_days = len(dates)
 
     # 按标题聚合
@@ -329,7 +329,7 @@ async def analyze_persistent_topics(
                 "days_on_list": consec_days,
                 "total_days": total_days,
                 "snapshot_count": td["snap_count"],
-                "sources": sorted(list(td["sources"])),
+                "sources": sorted(td["sources"]),
                 "source_count": source_count,
                 "avg_rank": round(avg_rank, 1),
                 "best_rank": best_rank,

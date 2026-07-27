@@ -228,10 +228,7 @@ def _compute_quality_factor(item: ScoringInput) -> tuple[float, dict]:
     cfg = CONFIG
     qs = _dim(item.quality_score, default=None)
     # quality_score 缺失时回落到 info_density 作 substance 代理
-    if qs is None:
-        composite = _dim(item.info_density)
-    else:
-        composite = qs
+    composite = _dim(item.info_density) if qs is None else qs
 
     if composite >= cfg["quality_gate_strong"]:
         factor = 1.0
@@ -292,7 +289,7 @@ def _compute_time_decay(item: ScoringInput, now: datetime | None = None) -> floa
     if t is None:
         t = now
     # 防御：int / 其他非 datetime/str 类型直接回落到 now（DuckDB 路径可能返回 int epoch）
-    if isinstance(t, (int, float)):
+    if isinstance(t, int | float):
         t = now
     if isinstance(t, str):
         try:
@@ -334,7 +331,7 @@ def _compute_diversity_penalty(
     category_counts: dict[str, int] = {}
     factors = [1.0] * len(items)
 
-    for rank, (idx, score) in enumerate(indexed):
+    for rank, (idx, _score) in enumerate(indexed):
         if rank >= top_n:
             break
         src_id = items[idx].source_id

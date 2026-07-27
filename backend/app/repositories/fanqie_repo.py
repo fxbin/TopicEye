@@ -76,7 +76,7 @@ class FanqieRepository(BaseRepository[FanqieBook]):
             select(FanqieBook)
             .where(
                 FanqieBook.category_id == category_id,
-                pos_attr != None,
+                pos_attr is not None,
             )
             .order_by(pos_attr)
             .limit(limit)

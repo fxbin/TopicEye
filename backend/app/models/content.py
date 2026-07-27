@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.enum_types import value_enum
+
+if TYPE_CHECKING:
+    from app.models.ai_analysis import AiAnalysis
+    from app.models.article_snapshot import ArticleSnapshot
+    from app.models.metrics import ContentMetrics
+    from app.models.source import Source
+    from app.models.topic import TopicGroup
 
 
 class ContentStatus(enum.StrEnum):

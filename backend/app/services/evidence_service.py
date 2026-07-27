@@ -168,7 +168,7 @@ async def discover_cross_source_evidence(
         if ra != rb:
             parent[ra] = rb
 
-    item_by_id = {item["id"]: item for item in items}
+    {item["id"]: item for item in items}
 
     for a, b in combinations(items, 2):
         shared_tags = a["tags"] & b["tags"]

@@ -481,7 +481,7 @@ class RequestMetricsCollector:
                     llm_by_scene[scene]["failed"] += count
             for scene, cost in self._llm_cost_total.items():
                 llm_by_scene[scene]["cost"] = round(cost, 6)
-            for (scene, direction), count in self._llm_token_counts.items():
+            for (scene, _direction), count in self._llm_token_counts.items():
                 llm_by_scene[scene]["tokens"] += count
 
             # ── HTTP 延迟分位数（从全局聚合 histogram 计算）──

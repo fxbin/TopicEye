@@ -43,7 +43,7 @@ _TOP_LIMIT = 10
 def _safe_int(value: Any) -> int:
     if value is None:
         return 0
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return int(value)
     text = str(value).replace(",", "").strip()
     try:

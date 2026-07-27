@@ -74,14 +74,14 @@ def _upsert_zhihu_category_statement(rec: dict):
     stmt = _backend_insert(ZhihuCategory).values(rec)
     return stmt.on_conflict_do_update(
         index_elements=["zhihu_id"],
-        set_=dict(
-            name=stmt.excluded.name,
-            name_en=stmt.excluded.name_en,
-            level=stmt.excluded.level,
-            parent_id=stmt.excluded.parent_id,
-            sort=stmt.excluded.sort,
-            artwork=stmt.excluded.artwork,
-        ),
+        set_={
+            "name": stmt.excluded.name,
+            "name_en": stmt.excluded.name_en,
+            "level": stmt.excluded.level,
+            "parent_id": stmt.excluded.parent_id,
+            "sort": stmt.excluded.sort,
+            "artwork": stmt.excluded.artwork,
+        },
     )
 
 
@@ -89,31 +89,31 @@ def _upsert_zhihu_album_statement(rec: dict):
     stmt = _backend_insert(ZhihuAlbum).values(rec)
     return stmt.on_conflict_do_update(
         index_elements=["business_id", "sort_type"],
-        set_=dict(
-            title=stmt.excluded.title,
-            author=stmt.excluded.author,
-            author_desc=stmt.excluded.author_desc,
-            abstract=stmt.excluded.abstract,
-            thumb_url=stmt.excluded.thumb_url,
-            price=stmt.excluded.price,
-            original_price=stmt.excluded.original_price,
-            is_exclusive=stmt.excluded.is_exclusive,
-            is_svip=stmt.excluded.is_svip,
-            is_purchased=stmt.excluded.is_purchased,
-            online_time=stmt.excluded.online_time,
-            online_time_text=stmt.excluded.online_time_text,
-            tag=stmt.excluded.tag,
-            subscription_name=stmt.excluded.subscription_name,
-            media_type=stmt.excluded.media_type,
-            subcategory=stmt.excluded.subcategory,
-            business_line=stmt.excluded.business_line,
-            chapter_text=stmt.excluded.chapter_text,
-            category1_name=stmt.excluded.category1_name,
-            category2_name=stmt.excluded.category2_name,
-            position=stmt.excluded.position,
-            rank_pos_diff=stmt.excluded.rank_pos_diff,
-            updated_at=stmt.excluded.updated_at,
-        ),
+        set_={
+            "title": stmt.excluded.title,
+            "author": stmt.excluded.author,
+            "author_desc": stmt.excluded.author_desc,
+            "abstract": stmt.excluded.abstract,
+            "thumb_url": stmt.excluded.thumb_url,
+            "price": stmt.excluded.price,
+            "original_price": stmt.excluded.original_price,
+            "is_exclusive": stmt.excluded.is_exclusive,
+            "is_svip": stmt.excluded.is_svip,
+            "is_purchased": stmt.excluded.is_purchased,
+            "online_time": stmt.excluded.online_time,
+            "online_time_text": stmt.excluded.online_time_text,
+            "tag": stmt.excluded.tag,
+            "subscription_name": stmt.excluded.subscription_name,
+            "media_type": stmt.excluded.media_type,
+            "subcategory": stmt.excluded.subcategory,
+            "business_line": stmt.excluded.business_line,
+            "chapter_text": stmt.excluded.chapter_text,
+            "category1_name": stmt.excluded.category1_name,
+            "category2_name": stmt.excluded.category2_name,
+            "position": stmt.excluded.position,
+            "rank_pos_diff": stmt.excluded.rank_pos_diff,
+            "updated_at": stmt.excluded.updated_at,
+        },
     )
 
 

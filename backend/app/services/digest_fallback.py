@@ -13,7 +13,7 @@ def _text(value: Any, default: str = "") -> str:
 def _score(item: dict[str, Any]) -> float:
     for key in ("adjusted_score", "curation_score", "quality_score"):
         value = item.get(key)
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
     return 0.0
 

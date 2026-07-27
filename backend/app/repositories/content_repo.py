@@ -286,7 +286,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         """Return a breakdown of item counts per status."""
         stmt = select(self.model.status, func.count()).group_by(self.model.status)
         result = await self.db.execute(stmt)
-        return {status: count for status, count in result.all()}
+        return dict(result.all())
 
     async def count_by_category(self) -> dict[str, int]:
         """Return a breakdown of item counts per category."""
@@ -296,7 +296,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .group_by(self.model.category)
         )
         result = await self.db.execute(stmt)
-        return {category: count for category, count in result.all()}
+        return dict(result.all())
 
     async def delete_old_pending(self, cutoff_days: int = 90) -> int:
         """删除超过指定天数的 pending 状态内容。返回删除数量。"""

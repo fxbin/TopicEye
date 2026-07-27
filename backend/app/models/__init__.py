@@ -60,4 +60,5 @@ __all__ = [
     "EvidenceInteraction",
     "UserInterestVector",
     "PromptRegistry",
+    "TopicTrend",
 ]

@@ -99,7 +99,7 @@ async def _dedup_one_batch(items: list[dict]) -> dict[int, int]:
         scored = {item["id"]: item.get("curation_score", 0) for item in items}
 
         for pair in raw:
-            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+            if not isinstance(pair, list | tuple) or len(pair) < 2:
                 continue
             try:
                 can_id = int(pair[0])

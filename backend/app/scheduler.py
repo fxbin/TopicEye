@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import select
 
 # Post-sync pipeline functions live in app._post_sync_pipeline.
 # Only import what scheduler.py itself calls; external callers should import
@@ -159,7 +160,7 @@ async def sync_and_analyze() -> None:
 async def cleanup_old_content() -> None:
     """Remove pending content older than 90 days."""
     logger.info("Scheduler: cleanup_old_content started")
-    cutoff = datetime.now(UTC) - timedelta(days=90)
+    datetime.now(UTC) - timedelta(days=90)
 
     async with async_session() as db:
         content_repo = ContentRepo(db)
@@ -380,10 +381,7 @@ def _next_source_run_time(last_sync_at: datetime | None, interval_minutes: int) 
     if last_sync_at is None:
         return scheduler_now + timedelta(seconds=10)
 
-    if last_sync_at.tzinfo is None:
-        last_sync_utc = last_sync_at.replace(tzinfo=UTC)
-    else:
-        last_sync_utc = last_sync_at.astimezone(UTC)
+    last_sync_utc = last_sync_at.replace(tzinfo=UTC) if last_sync_at.tzinfo is None else last_sync_at.astimezone(UTC)
 
     due_utc = last_sync_utc + timedelta(minutes=interval_minutes)
     if due_utc <= datetime.now(UTC):

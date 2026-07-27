@@ -103,7 +103,7 @@ class ZhihuRepository(BaseRepository[ZhihuAlbum]):
         else:
             query = (
                 select(ZhihuCategory)
-                .where(ZhihuCategory.parent_id == None)
+                .where(ZhihuCategory.parent_id is None)
                 .order_by(ZhihuCategory.sort)
             )
         result = await self.db.execute(query)

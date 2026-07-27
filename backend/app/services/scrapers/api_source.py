@@ -59,7 +59,7 @@ def _first_path(value: dict, paths: tuple[str, ...]) -> Any:
 
 
 def _parse_datetime(value: Any) -> datetime:
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         timestamp = float(value)
         if timestamp > 10_000_000_000:
             timestamp = timestamp / 1000

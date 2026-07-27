@@ -374,7 +374,7 @@ async def get_sparkline(
     # 生成连续桶时间序列
     sorted_buckets = sorted(bucket_counts.keys())
     min_bucket = sorted_buckets[0]
-    max_bucket = sorted_buckets[-1]
+    sorted_buckets[-1]
     # 对齐到当前时刻
     now_bucket = int(datetime.now().timestamp() // bucket_seconds)
     points: list[dict] = []
@@ -578,7 +578,7 @@ def _safe_json_loads(value) -> list | dict | None:
     """容忍 None / 已是 list / JSON 字符串三种情况。"""
     if value is None:
         return None
-    if isinstance(value, (list, dict)):
+    if isinstance(value, list | dict):
         return value
     import json
 

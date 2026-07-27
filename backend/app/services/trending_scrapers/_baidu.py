@@ -66,7 +66,7 @@ class BaiduTrending(BaseTrendingScraper):
                     hot_val = 0
 
                 # 趋势标签
-                hot_tag = item.get("hotTag", "0")
+                item.get("hotTag", "0")
                 new_hot_name = item.get("newHotName", "")
                 label_tag_name = item.get("labelTagName", "")
                 trend = "stable"

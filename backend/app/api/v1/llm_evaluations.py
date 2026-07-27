@@ -82,7 +82,7 @@ def _auto_score_response(content: str) -> float:
         data = json.loads(candidate)
         if not isinstance(data, dict):
             return 0.0
-        scores = [v for v in data.values() if isinstance(v, (int, float))]
+        scores = [v for v in data.values() if isinstance(v, int | float)]
         if scores:
             return float(min(100.0, max(0.0, sum(scores) / len(scores))))
     except Exception:

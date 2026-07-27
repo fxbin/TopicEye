@@ -88,9 +88,9 @@ async def update_rsshub_instances(
         try:
             url = normalize_rsshub_instance_url(inst.url)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if url in seen_urls:
-            raise HTTPException(status_code=409, detail=f"RSSHub instance already exists: {url}")
+            raise HTTPException(status_code=409, detail=f"RSSHub instance already exists: {url}") from None
         seen_urls.add(url)
         normalized_instances.append(inst.model_copy(update={"url": url}))
 
@@ -470,7 +470,7 @@ async def update_notification_webhook_config(
             try:
                 validated_url = _validate_webhook_url(new_url_raw)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"webhook #{i + 1}: {exc}")
+                raise HTTPException(status_code=400, detail=f"webhook #{i + 1}: {exc}") from exc
             webhook_url_stored = encrypt_secret(validated_url) or ""
         elif i < len(existing_webhooks):
             # 保留原值（按 index 对齐）

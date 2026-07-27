@@ -170,7 +170,7 @@ async def create_user(
             )
         except IntegrityError:
             # 并发场景：两个请求同时通过了邮箱 pre-check，或 PG 序列未同步导致 PK 冲突
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册") from None
         return user
 
     user = await _retry_write(db, _apply)

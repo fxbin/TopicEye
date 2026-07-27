@@ -87,7 +87,7 @@ def _normalize_api_source_config(payload: dict, current: Source | None = None) -
     try:
         normalized = normalize_api_source_config_value(keyword)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if normalized is not None or "keyword" in payload:
         payload["keyword"] = normalized
     return payload
@@ -310,10 +310,10 @@ async def update_my_source(
     try:
         existing = await repo.get_by_id_or_raise(source_id, resource_name="Source")
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     if existing.owner_user_id != current_user.id:
         # Mask as 404 to avoid leaking existence
-        raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
+        raise HTTPException(status_code=404, detail=f"Source {source_id} not found") from None
     try:
         payload = data.model_dump(exclude_unset=True)
         _normalize_source_status(payload, existing)
@@ -330,7 +330,7 @@ async def update_my_source(
         logger.info("Source updated (user): user_id=%d, id=%d", current_user.id, source_id)
         return source
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.delete("/me/{source_id}", status_code=204)
@@ -343,15 +343,15 @@ async def delete_my_source(
     try:
         existing = await repo.get_by_id_or_raise(source_id, resource_name="Source")
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     if existing.owner_user_id != current_user.id:
-        raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
+        raise HTTPException(status_code=404, detail=f"Source {source_id} not found") from None
     try:
         await repo.delete(source_id)
         _invalidate_source_cache()
         logger.info("Source deleted (user): user_id=%d, id=%d", current_user.id, source_id)
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.post("/me/{source_id}/sync", response_model=SyncResultResponse)
@@ -364,12 +364,12 @@ async def sync_my_source(
     try:
         existing = await repo.get_by_id_or_raise(source_id, resource_name="Source")
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     if existing.owner_user_id != current_user.id:
-        raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
+        raise HTTPException(status_code=404, detail=f"Source {source_id} not found") from None
 
     if not existing.enabled or existing.status == SourceStatus.DISABLED:
-        raise HTTPException(status_code=409, detail="信源已禁用，请启用后再同步")
+        raise HTTPException(status_code=409, detail="信源已禁用，请启用后再同步") from None
 
     source = await repo.claim_sync(
         source_id,
@@ -477,11 +477,11 @@ async def import_opml(
     try:
         root = ET.fromstring(content)
     except ET.ParseError:
-        raise HTTPException(status_code=400, detail="Invalid OPML XML")
+        raise HTTPException(status_code=400, detail="Invalid OPML XML") from None
 
     body = root.find("body")
     if body is None:
-        raise HTTPException(status_code=400, detail="No <body> element found in OPML")
+        raise HTTPException(status_code=400, detail="No <body> element found in OPML") from None
 
     outlines = body.findall(".//outline[@xmlUrl]")
     repo = SourceRepository(db)
@@ -595,7 +595,7 @@ async def get_source(source_id: int, db: AsyncSession = Depends(get_db)):
     except Exception:
         existing = None
     if existing is None:
-        raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
+        raise HTTPException(status_code=404, detail=f"Source {source_id} not found") from None
     return existing
 
 
@@ -622,7 +622,7 @@ async def update_source(source_id: int, data: SourceUpdate, db: AsyncSession = D
         logger.info("Source updated (admin): id=%d", source_id)
         return source
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.delete("/{source_id}", status_code=204, dependencies=[Depends(get_current_admin_user)])
@@ -637,7 +637,7 @@ async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
         _invalidate_source_cache()
         logger.info("Source deleted (admin): id=%d", source_id)
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.post("/{source_id}/sync", response_model=SyncResultResponse, dependencies=[Depends(get_current_admin_user)])

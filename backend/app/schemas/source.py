@@ -36,14 +36,14 @@ def normalize_api_source_config_value(value: str | None) -> str | None:
     try:
         config = json.loads(text)
     except json.JSONDecodeError:
-        raise ValueError("API 信源配置必须是合法 JSON 对象")
+        raise ValueError("API 信源配置必须是合法 JSON 对象") from None
     if not isinstance(config, dict):
-        raise ValueError("API 信源配置必须是合法 JSON 对象")
+        raise ValueError("API 信源配置必须是合法 JSON 对象") from None
 
     method = config.get("method")
     if method is not None:
         if not isinstance(method, str) or method.strip().upper() not in API_SOURCE_ALLOWED_METHODS:
-            raise ValueError("API 信源 method 仅支持 GET 或 POST")
+            raise ValueError("API 信源 method 仅支持 GET 或 POST") from None
         config["method"] = method.strip().upper()
 
     for key in ("headers", "params", "body", "fields"):
@@ -69,9 +69,9 @@ def normalize_api_source_config_value(value: str | None) -> str | None:
         try:
             timeout_value = float(timeout)
         except (TypeError, ValueError):
-            raise ValueError("API 信源 timeout 必须是 1 到 120 秒之间的数字")
+            raise ValueError("API 信源 timeout 必须是 1 到 120 秒之间的数字") from None
         if timeout_value < 1 or timeout_value > 120:
-            raise ValueError("API 信源 timeout 必须是 1 到 120 秒之间的数字")
+            raise ValueError("API 信源 timeout 必须是 1 到 120 秒之间的数字") from None
         config["timeout"] = timeout_value
 
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))

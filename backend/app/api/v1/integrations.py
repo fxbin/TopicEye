@@ -102,13 +102,13 @@ async def sync_weread(
             await mark_user_integration_sync_error(db, claimed, message=redact_weread_sync_error(str(exc), api_key))
         await db.commit()
         detail = redact_weread_sync_error(str(exc), api_key)
-        raise HTTPException(status_code=502, detail=detail)
+        raise HTTPException(status_code=502, detail=detail) from exc
     except Exception as exc:
         if claimed.last_sync_status == "syncing":
             await mark_user_integration_sync_error(db, claimed, message=redact_weread_sync_error(str(exc), api_key))
         await db.commit()
         detail = redact_weread_sync_error(str(exc), api_key)
-        raise HTTPException(status_code=502, detail=f"微信读书素材同步失败：{detail}")
+        raise HTTPException(status_code=502, detail=f"微信读书素材同步失败：{detail}") from exc
 
     return WeReadSyncResponse(
         fetched=int(result["fetched"]),

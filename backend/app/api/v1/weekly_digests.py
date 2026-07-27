@@ -85,7 +85,7 @@ async def trigger_generate(
         except (ValueError, IndexError):
             raise HTTPException(
                 status_code=400, detail=f"Invalid week_key format: {week_key}. Use YYYY-WNN format, e.g. 2025-W21"
-            )
+            ) from None
 
     # Delete existing digest to force regeneration
     if reference_date:
@@ -132,7 +132,7 @@ async def get_pick_tracking(
         week_num = int(parts[1])
         monday = date.fromisocalendar(year, week_num, 1)
     except (ValueError, IndexError):
-        raise HTTPException(status_code=400, detail=f"Invalid week_key: {week_key}")
+        raise HTTPException(status_code=400, detail=f"Invalid week_key: {week_key}") from None
     sunday = monday + timedelta(days=6)
 
     # 1. 查用户本周的所有标记

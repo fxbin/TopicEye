@@ -32,7 +32,7 @@ def _parse_month_key(month_key: str) -> date:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid month_key format: {month_key}. Use YYYY-MM, e.g. 2026-05",
-        )
+        ) from None
 
 
 @router.get("/current", response_model=MonthlyDigestResponse)

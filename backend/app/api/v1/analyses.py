@@ -36,7 +36,7 @@ async def analyze_single(
     try:
         await content_repo.get_by_id_or_raise(content_id, "Content")
     except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
     # Check if already analyzed
     existing = await analysis_repo.get_by_content_id(content_id)
@@ -59,7 +59,7 @@ async def analyze_single(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") from e
 
 
 @router.post("/batch", response_model=list[AiAnalysisResponse])

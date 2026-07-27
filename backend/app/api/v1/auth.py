@@ -120,7 +120,7 @@ async def get_optional_current_user(
 
 async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required") from None
     return current_user
 
 
@@ -165,13 +165,13 @@ async def send_code(data: SendCodeRequest, request: Request, db: AsyncSession = 
         logger.info("Send-code requested: email=%s, ip=%s", data.email, client_ip(request))
     except CodeRateLimitedError:
         logger.info("Send-code rate-limited: email=%s, ip=%s", data.email, client_ip(request))
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试")
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试") from None
     except EmailNotConfiguredError:
         logger.warning("Send-code failed (email not configured): email=%s, ip=%s", data.email, client_ip(request))
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员") from None
     except VerificationError as exc:
         logger.warning("Send-code failed: email=%s, ip=%s, exc=%s", data.email, client_ip(request), exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.post(
@@ -191,14 +191,14 @@ async def register(data: AuthRegisterRequest, request: Request, db: AsyncSession
         await verify_code(db, data.email, data.verification_code)
     except InvalidCodeError as exc:
         logger.warning("Register failed (invalid code): email=%s, ip=%s", data.email, ip)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
         user = await create_user(db, email=data.email, password=data.password, display_name=data.display_name)
         token, session = await create_session(db, user)
     except IntegrityError:
         logger.warning("Register failed (integrity): email=%s, ip=%s", data.email, ip)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered") from None
 
     logger.info("Register success: email=%s, user_id=%d, ip=%s", data.email, user.id, ip)
     return AuthTokenResponse(access_token=token, expires_at=session.expires_at, user=UserResponse.model_validate(user))
@@ -257,7 +257,7 @@ async def change_my_password(
         await change_password(db, user, data.old_password, data.new_password, keep_token=token)
     except ValueError as exc:
         logger.warning("Change-password failed: user_id=%d, ip=%s, reason=%s", user.id, ip, exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     await db.commit()
     logger.info("Change-password success: user_id=%d, ip=%s", user.id, ip)
     return {"message": "密码修改成功，其他设备的登录状态已失效"}

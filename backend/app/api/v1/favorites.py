@@ -64,7 +64,7 @@ def _parse_state_target_ids(raw_target_ids: str | None) -> list[int]:
         try:
             ids.append(int(value))
         except ValueError:
-            raise HTTPException(status_code=422, detail="target_ids must be comma-separated integers")
+            raise HTTPException(status_code=422, detail="target_ids must be comma-separated integers") from None
     return ids
 
 
@@ -153,9 +153,9 @@ async def create_favorite(
         _invalidate_favorite_mutation_caches(content_changed=data.target_type == FavoriteTargetType.CONTENT)
         return item
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/state")
@@ -199,7 +199,7 @@ async def reorder_favorites(
     try:
         items = await FavoriteRepo(db, current_user.id).reorder_status(status=data.status, ordered_ids=data.ordered_ids)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     _invalidate_favorite_mutation_caches()
     return items
 
@@ -215,7 +215,7 @@ async def reorder_favorite_board(
             [(column.status, column.ordered_ids) for column in data.columns]
         )
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     _invalidate_favorite_mutation_caches()
     return items
 
@@ -229,7 +229,7 @@ async def bulk_update_favorite_status(
     try:
         items = await FavoriteRepo(db, current_user.id).bulk_update_status(status=data.status, ids=data.ids)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     _invalidate_favorite_mutation_caches()
     return items
 
@@ -250,7 +250,7 @@ async def bulk_delete_favorites(
     try:
         deleted = await repo.bulk_delete(data.ids)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     _invalidate_favorite_mutation_caches(content_changed=content_changed)
     return {"deleted": deleted}
 

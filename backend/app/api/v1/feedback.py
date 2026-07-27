@@ -88,7 +88,7 @@ async def submit_feedback(
         raise HTTPException(
             status_code=422,
             detail=f"Invalid feedback_type. Must be one of: {valid}",
-        )
+        ) from None
 
     async def _write():
         if database_profile.is_sqlite and not db.in_transaction():

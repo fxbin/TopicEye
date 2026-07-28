@@ -116,8 +116,16 @@ async def test_ingest_from_source_reuses_category_names_per_source(monkeypatch):
 
         async def fetch(self, client):
             return [
-                {"title": "first", "url": "https://example.com/first", "summary": "one"},
-                {"title": "second", "url": "https://example.com/second", "summary": "two"},
+                {
+                    "title": "first",
+                    "url": "https://example.com/first",
+                    "summary": "A detailed technical article about AI systems and evaluation.",
+                },
+                {
+                    "title": "second",
+                    "url": "https://example.com/second",
+                    "summary": "A detailed technical article about AI systems and evaluation.",
+                },
             ]
 
     category_loads = 0
@@ -178,7 +186,11 @@ async def test_ingest_from_source_classifies_new_entries_with_bounded_concurrenc
 
         async def fetch(self, client):
             return [
-                {"title": f"item {index}", "url": f"https://example.com/item-{index}", "summary": "one"}
+                {
+                    "title": f"item {index}",
+                    "url": f"https://example.com/item-{index}",
+                    "summary": "A detailed technical article about AI systems and evaluation.",
+                }
                 for index in range(4)
             ]
 
@@ -236,6 +248,67 @@ async def test_ingest_from_source_classifies_new_entries_with_bounded_concurrenc
 
 
 @pytest.mark.asyncio
+async def test_ingest_from_source_pre_filters_before_llm_classification(monkeypatch):
+    class FakeScraper:
+        def __init__(self, source_url, source_config):
+            self.source_url = source_url
+            self.source_config = source_config
+
+        async def fetch(self, client):
+            return [
+                {"title": "GM everyone!", "url": "https://example.com/noise", "summary": ""},
+                {
+                    "title": "New LLM benchmark improves agent reliability",
+                    "url": "https://example.com/signal",
+                    "summary": "A detailed technical evaluation with reproducible results.",
+                },
+            ]
+
+    classified_titles = []
+
+    async def fake_get_active_category_names(db):
+        return ["AI"]
+
+    async def fake_classify_entry_readonly(title, summary, *, category_names):
+        classified_titles.append(title)
+        return {"category": "AI", "tags": ["benchmark"], "is_new_category": False, "confidence": 0.8}
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: FakeScraper)
+    monkeypatch.setattr(content_pipeline, "_get_active_category_names", fake_get_active_category_names)
+    monkeypatch.setattr(content_pipeline, "classify_entry_readonly", fake_classify_entry_readonly)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        async with session_factory() as db:
+            source = Source(
+                id=1,
+                name="Pre-filter Example",
+                url="https://example.com/feed",
+                source_type=SourceType.RSS,
+                enabled=True,
+            )
+            db.add(source)
+            await db.commit()
+
+            stats = await content_pipeline.ingest_from_source(source, db)
+            await db.commit()
+            rows = (await db.execute(select(ContentItem).order_by(ContentItem.id))).scalars().all()
+
+        assert stats == {"fetched": 2, "new": 2, "duplicates": 0}
+        assert classified_titles == ["New LLM benchmark improves agent reliability"]
+        assert rows[0].skip_analysis is True
+        assert rows[0].category is None
+        assert rows[1].skip_analysis is False
+        assert rows[1].category == "AI"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_ingest_from_source_registers_new_categories_after_parallel_classification(monkeypatch):
     class FakeScraper:
         def __init__(self, source_url, source_config):
@@ -244,7 +317,11 @@ async def test_ingest_from_source_registers_new_categories_after_parallel_classi
 
         async def fetch(self, client):
             return [
-                {"title": "new category item", "url": "https://example.com/new-category", "summary": "one"},
+                {
+                    "title": "new category item",
+                    "url": "https://example.com/new-category",
+                    "summary": "A detailed technical article about AI systems and evaluation.",
+                },
             ]
 
     async def fake_get_active_category_names(db):

@@ -195,8 +195,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         )
         existing_hashes = {row[0] for row in result.all()}
 
-        # ── Step 4+5: Classify, tag and persist ──────────────────────
-        category_names = await _get_active_category_names(db)
+        # ── Step 4+5: Pre-filter, classify eligible entries, persist ─
         candidate_entries: list[dict[str, Any]] = []
         for entry in entries:
             ch = entry["_content_hash"]
@@ -206,24 +205,14 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             candidate_entries.append(entry)
             existing_hashes.add(ch)
 
-        classify_started_at = time.perf_counter()
-        classified_entries = await _classify_entries_concurrently(
-            candidate_entries,
-            category_names=category_names,
-        )
-        classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
-
-        await _register_new_categories(db, [class_result for _, class_result in classified_entries])
-
         new_items: list[ContentItem] = []
         metrics_records: list[dict | None] = []
         category_counts: dict[str, int] = {}
-        for entry, class_result in classified_entries:
+        items_by_hash: dict[str, ContentItem] = {}
+        eligible_entries: list[dict[str, Any]] = []
+        for entry in candidate_entries:
             title = entry.get("title", "")
             summary = entry.get("summary", "")
-
-            category = class_result["category"]
-            tags = class_result["tags"]
             entry_hash = entry.get("_content_hash")  # per-entry hash (fix: was reusing outer-loop ch)
 
             item = ContentItem(
@@ -240,18 +229,38 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
                 summary=summary or None,
                 raw_content=entry.get("raw_content") or None,
                 cover_url=entry.get("cover_url"),
-                category=category,
-                tags=tags if tags else None,
                 status=ContentStatus.PENDING,
             )
+            # LLM 规则过滤层（参照 content-signal-radar lowSignalPenalty）：
+            # 在分类前执行，避免低信号内容占用模型池和分类并发槽位。
+            is_skipped = apply_pre_filter(item)
             new_items.append(item)
             metrics_records.append(_build_metrics_record(entry))
-            # LLM 规则过滤层（参照 content-signal-radar lowSignalPenalty）：
-            # 命中硬低信号/自吹/过短 → 标 skip_analysis=True（不入 LLM 队列）
-            apply_pre_filter(item)
+            items_by_hash[entry_hash] = item
+            if not is_skipped:
+                eligible_entries.append(entry)
+
+        classify_started_at = time.perf_counter()
+        classified_entries: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        if eligible_entries:
+            category_names = await _get_active_category_names(db)
+            classified_entries = await _classify_entries_concurrently(
+                eligible_entries,
+                category_names=category_names,
+            )
+            await _register_new_categories(db, [class_result for _, class_result in classified_entries])
+
+        for entry, class_result in classified_entries:
+            item = items_by_hash[entry["_content_hash"]]
+            category = class_result["category"]
+            tags = class_result["tags"]
+            item.category = category
+            item.tags = tags if tags else None
             if category:
                 category_counts[category] = category_counts.get(category, 0) + 1
-            new_count += 1
+
+        classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
+        new_count = len(new_items)
 
         # ── Persist via dialect INSERT + ON CONFLICT DO NOTHING ──
         # DB-layer dedup is the concurrency-safe backstop; SELECT IN above

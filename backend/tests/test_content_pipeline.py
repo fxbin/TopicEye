@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database import Base
 from app.models.category import Category
-from app.models.content import ContentItem
+from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceStatus, SourceType
 from app.repositories.source_repo import SourceRepository
 from app.services import content_pipeline
@@ -362,5 +362,59 @@ async def test_ingest_from_source_registers_new_categories_after_parallel_classi
         assert item.category == "新赛道"
         assert category is not None
         assert category.is_auto_created is True
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_ingest_persists_content_before_classifier_failure(monkeypatch):
+    class FakeScraper:
+        def __init__(self, source_url, source_config):
+            self.source_url = source_url
+            self.source_config = source_config
+
+        async def fetch(self, client):
+            return [
+                {
+                    "title": "durable before LLM",
+                    "url": "https://example.com/durable-before-llm",
+                    "summary": "This item must survive a classifier outage.",
+                }
+            ]
+
+    async def classifier_outage(title, summary, *, category_names):
+        raise RuntimeError("classifier unavailable")
+
+    async def category_names(db):
+        return ["AI"]
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: FakeScraper)
+    monkeypatch.setattr(content_pipeline, "_get_active_category_names", category_names)
+    monkeypatch.setattr(content_pipeline, "classify_entry_readonly", classifier_outage)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        async with session_factory() as db:
+            source = Source(
+                id=1,
+                name="Durable Example",
+                url="https://example.com/feed",
+                source_type=SourceType.RSS,
+                enabled=True,
+            )
+            db.add(source)
+            await db.commit()
+
+            stats = await content_pipeline.ingest_from_source(source, db)
+            row = await db.scalar(select(ContentItem))
+
+        assert stats == {"fetched": 1, "new": 1, "duplicates": 0}
+        assert row is not None
+        assert row.status == ContentStatus.PENDING
+        assert row.category is None
     finally:
         await engine.dispose()

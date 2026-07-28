@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,8 +207,6 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
 
         new_items: list[ContentItem] = []
         metrics_records: list[dict | None] = []
-        category_counts: dict[str, int] = {}
-        items_by_hash: dict[str, ContentItem] = {}
         eligible_entries: list[dict[str, Any]] = []
         for entry in candidate_entries:
             title = entry.get("title", "")
@@ -236,12 +234,39 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             is_skipped = apply_pre_filter(item)
             new_items.append(item)
             metrics_records.append(_build_metrics_record(entry))
-            items_by_hash[entry_hash] = item
             if not is_skipped:
                 eligible_entries.append(entry)
 
+        # Persist the crawl result before any remote LLM work.  Classification
+        # may be slow, rate-limited, or unavailable; it must not be able to
+        # turn a successfully fetched item into a lost item.  A later analysis
+        # worker can still process the PENDING row if this invocation stops
+        # before classification finishes.
+        inserted_content_ids: dict[str, int] = {}
+        db_elapsed_ms = 0
+        if new_items:
+            db_started_at = time.perf_counter()
+            inserted_content_ids = await _persist_new_content_items(
+                db, new_items, metrics_records, category_counts={}
+            )
+            await db.commit()
+            invalidate_content_read_caches()
+            db_elapsed_ms = int((time.perf_counter() - db_started_at) * 1000)
+
+        skipped_by_conflict = len(new_items) - len(inserted_content_ids)
+        if skipped_by_conflict:
+            duplicate_count += skipped_by_conflict
+        new_count = len(inserted_content_ids)
+
+        # A concurrent sync can win the unique constraint race.  Only run the
+        # expensive classifier for rows this invocation actually inserted.
+        eligible_entries = [
+            entry for entry in eligible_entries if entry["_content_hash"] in inserted_content_ids
+        ]
+
         classify_started_at = time.perf_counter()
         classified_entries: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        category_counts: dict[str, int] = {}
         if eligible_entries:
             category_names = await _get_active_category_names(db)
             classified_entries = await _classify_entries_concurrently(
@@ -251,32 +276,18 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             await _register_new_categories(db, [class_result for _, class_result in classified_entries])
 
         for entry, class_result in classified_entries:
-            item = items_by_hash[entry["_content_hash"]]
             category = class_result["category"]
             tags = class_result["tags"]
-            item.category = category
-            item.tags = tags if tags else None
+            await db.execute(
+                update(ContentItem)
+                .where(ContentItem.id == inserted_content_ids[entry["_content_hash"]])
+                .values(category=category, tags=tags if tags else None)
+            )
             if category:
                 category_counts[category] = category_counts.get(category, 0) + 1
 
         classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
-        new_count = len(new_items)
-
-        # ── Persist via dialect INSERT + ON CONFLICT DO NOTHING ──
-        # DB-layer dedup is the concurrency-safe backstop; SELECT IN above
-        # only optimises the happy path. RETURNING gives us the inserted
-        # ids so we can attach ContentMetrics without orphaning them.
-        db_elapsed_ms = 0
-        if new_items:
-            db_started_at = time.perf_counter()
-            skipped_by_conflict = await _persist_new_content_items(
-                db, new_items, metrics_records, category_counts
-            )
-            if skipped_by_conflict:
-                duplicate_count += skipped_by_conflict
-                new_count -= skipped_by_conflict
-            invalidate_content_read_caches()
-            db_elapsed_ms = int((time.perf_counter() - db_started_at) * 1000)
+        await _increment_category_counts(db, category_counts)
 
         # ── Step 6: Update source ────────────────────────────────────
         _update_source_status(source, SourceStatus.ACTIVE)
@@ -315,14 +326,15 @@ async def _persist_new_content_items(
     new_items: list[ContentItem],
     metrics_records: list[dict | None],
     category_counts: dict[str, int],
-) -> int:
+) -> dict[str, int]:
     """通过方言 INSERT + ON CONFLICT DO NOTHING 持久化新内容项。
 
     DB 层去重是并发安全的兜底；上方的 SELECT IN 只优化快乐路径。
     RETURNING 返回实际插入的 id，用于挂载 ContentMetrics 避免孤儿记录。
 
     Returns:
-        被冲突跳过的数量（skipped_by_conflict）。
+        本次实际写入的 ``content_hash -> content_id`` 映射。  ``content_hash``
+        不在映射中即表示被并发写入方的唯一约束冲突跳过。
     """
     # dialect.insert does not trigger ORM `default=` callables, so
     # populate NOT-NULL columns that have no server_default.
@@ -336,6 +348,8 @@ async def _persist_new_content_items(
             item.updated_at = now
         if item.is_favorited is None:
             item.is_favorited = False
+        if item.analysis_attempts is None:
+            item.analysis_attempts = 0
         if item.similarity_score is None:
             item.similarity_score = 0.0
 
@@ -347,22 +361,24 @@ async def _persist_new_content_items(
     insert_stmt = _backend_insert(ContentItem).values(new_records)
     insert_stmt = insert_stmt.on_conflict_do_nothing(
         index_elements=["source_id", "content_hash"],
-    ).returning(ContentItem.id)
+    ).returning(ContentItem.id, ContentItem.content_hash)
     result = await db.execute(insert_stmt)
-    inserted_ids = [row[0] for row in result.all()]
+    inserted_content_ids = {row.content_hash: row.id for row in result.all()}
 
     # Attach ContentMetrics to successfully inserted rows only.
     from app.models.metrics import ContentMetrics
 
-    skipped_by_conflict = len(new_items) - len(inserted_ids)
-    for content_id, metrics_rec in zip(inserted_ids, metrics_records, strict=False):
+    for item, metrics_rec in zip(new_items, metrics_records, strict=True):
         if metrics_rec is None:
+            continue
+        content_id = inserted_content_ids.get(item.content_hash)
+        if content_id is None:
             continue
         metrics_rec["content_id"] = content_id
         db.add(ContentMetrics(**metrics_rec))
 
     await _increment_category_counts(db, category_counts)
-    return skipped_by_conflict
+    return inserted_content_ids
 
 
 async def _classify_entries_concurrently(

@@ -38,6 +38,9 @@ from app.core.config import settings
 from app.core.database import async_session
 from app.repositories.content_repo import ContentRepo
 from app.repositories.source_repo import SourceRepository
+from app.services.analysis import (
+    analyze_batch_concurrent,  # noqa: F401 — re-exported for _post_sync_pipeline runtime lookup
+)
 from app.services.content_pipeline import ingest_from_source
 from app.services.job_tracker import track_job
 

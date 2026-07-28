@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     ANALYSIS_MAX_ATTEMPTS: int = 5
     ANALYSIS_RETRY_BASE_DELAY_SECONDS: int = 60
     ANALYSIS_RETRY_MAX_DELAY_SECONDS: int = 3600
+    # 分析队列租约。领取时发放 fencing token，worker 定期续租；过期可被其他
+    # worker 接管，旧 token 的最终写回会被条件更新拒绝。
+    ANALYSIS_LEASE_SECONDS: int = 600
+    ANALYSIS_HEARTBEAT_SECONDS: int = 60
     ANALYSIS_JOB_INFLIGHT_TTL_SECONDS: int = 900
     ANALYSIS_CASCADE_ENABLED: bool = False
     ANALYSIS_LITE_ROUTING_GROUP: str = "analysis_lite"

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
@@ -171,6 +171,169 @@ async def test_claim_pending_analysis_ids_marks_items_analyzing_before_workers_r
     assert second_claim == []
     assert content.status == ContentStatus.ANALYZING
     assert content.analysis_attempts == 1
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_analysis_claim_uses_lease_and_fencing_token():
+    """An expired claim is replaceable, but its old token cannot complete."""
+    engine, session_factory = await _session_factory()
+    now = datetime.now(UTC)
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=1,
+                title="过期领取内容",
+                url="https://example.com/expired-lease",
+                status=ContentStatus.ANALYZING,
+                analysis_claim_token="old-token",
+                analysis_lease_expires_at=now - timedelta(seconds=1),
+                crawled_at=now,
+            )
+        )
+        await db.commit()
+
+        repo = ContentRepo(db)
+        claim = await repo.claim_analysis_job(1)
+        assert claim is not None
+        assert claim.fencing_token != "old-token"
+        assert ensure_aware_utc(claim.lease_expires_at) > now
+        assert await repo.complete_analysis_claim(1, "old-token") is False
+        assert await repo.complete_analysis_claim(1, claim.fencing_token) is True
+        await db.commit()
+
+        content = await db.get(ContentItem, 1)
+
+    assert content.status == ContentStatus.ANALYZED
+    assert content.analysis_claim_token is None
+    assert content.analysis_lease_expires_at is None
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_analysis_heartbeat_renews_only_current_claim():
+    engine, session_factory = await _session_factory()
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=1,
+                title="续租内容",
+                url="https://example.com/renew-lease",
+                status=ContentStatus.PENDING,
+            )
+        )
+        await db.commit()
+
+        repo = ContentRepo(db)
+        claim = await repo.claim_analysis_job(1)
+        assert claim is not None
+        assert await repo.renew_analysis_lease(1, "different-token") is False
+        assert await repo.renew_analysis_lease(1, claim.fencing_token) is True
+        await db.commit()
+        content = await db.get(ContentItem, 1)
+
+    assert content.analysis_lease_expires_at is not None
+    assert content.analysis_lease_expires_at >= claim.lease_expires_at
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_analysis_claim_release_requires_current_fencing_token():
+    engine, session_factory = await _session_factory()
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=1,
+                title="安全释放领取",
+                url="https://example.com/release-lease",
+                status=ContentStatus.PENDING,
+            )
+        )
+        await db.commit()
+
+        repo = ContentRepo(db)
+        claim = await repo.claim_analysis_job(1)
+        assert claim is not None
+        assert await repo.release_analysis_claim(1, "wrong-token") is False
+        assert await repo.release_analysis_claim(1, claim.fencing_token) is True
+        await db.commit()
+        content = await db.get(ContentItem, 1)
+
+    assert content.status == ContentStatus.PENDING
+    assert content.analysis_claim_token is None
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_late_worker_result_is_rolled_back_after_claim_is_replaced():
+    """A slow worker must not write an analysis after its claim is replaced."""
+    engine, session_factory = await _session_factory()
+    started = asyncio.Event()
+    continue_analysis = asyncio.Event()
+
+    async def slow_analyzer(content, db):
+        started.set()
+        await continue_analysis.wait()
+        record = AiAnalysis(
+            content_id=content.id,
+            summary="过期 worker 的结果",
+            curation_score=60,
+        )
+        db.add(record)
+        await db.flush()
+        return record
+
+    async with session_factory() as setup_db:
+        setup_db.add(
+            ContentItem(
+                id=1,
+                title="慢任务内容",
+                url="https://example.com/late-worker",
+                status=ContentStatus.PENDING,
+            )
+        )
+        await setup_db.commit()
+        first_claim = await ContentRepo(setup_db).claim_analysis_job(1)
+        assert first_claim is not None
+        await setup_db.commit()
+
+    async with session_factory() as worker_db:
+        worker = asyncio.create_task(
+            analysis.analyze_one_claimed(
+                1,
+                worker_db,
+                assume_claimed=True,
+                claim_token=first_claim.fencing_token,
+                analyzer=slow_analyzer,
+            )
+        )
+        await started.wait()
+
+        async with session_factory() as takeover_db:
+            await takeover_db.execute(
+                update(ContentItem)
+                .where(ContentItem.id == 1)
+                .values(analysis_lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+            )
+            await takeover_db.commit()
+            second_claim = await ContentRepo(takeover_db).claim_analysis_job(1)
+            assert second_claim is not None
+            assert second_claim.fencing_token != first_claim.fencing_token
+            await takeover_db.commit()
+
+        continue_analysis.set()
+        assert await worker is None
+
+    async with session_factory() as verify_db:
+        content = await verify_db.get(ContentItem, 1)
+        records = (await verify_db.execute(select(AiAnalysis).where(AiAnalysis.content_id == 1))).scalars().all()
+
+    assert content.status == ContentStatus.ANALYZING
+    assert content.analysis_claim_token == second_claim.fencing_token
+    assert records == []
     await engine.dispose()
 
 
@@ -481,115 +644,29 @@ async def test_analysis_job_snapshot_retries_sqlite_lock(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_background_analysis_releases_failed_claims(monkeypatch):
-    await reset_analysis_jobs()
-    engine, session_factory = await _session_factory()
-    monkeypatch.setattr(analyses_api, "async_session", session_factory)
+async def test_background_analysis_adapter_delegates_to_fenced_runner(monkeypatch):
+    """The legacy entry point must not release a newer worker's claim by ID."""
+    calls: list[str] = []
 
-    async def fake_concurrent(content_ids, **_kwargs):
-        async with session_factory() as db:
-            content = await db.get(ContentItem, 1)
-            analysis_record = AiAnalysis(
-                content_id=1,
-                summary="后台已分析",
-                curation_score=60,
-            )
-            db.add(analysis_record)
-            content.status = ContentStatus.ANALYZED
-            await db.commit()
-        return [SimpleNamespace(content_id=1)]
+    async def fake_runner(job_id: str):
+        calls.append(job_id)
 
-    monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fake_concurrent)
+    monkeypatch.setattr(analyses_api, "run_analysis_job", fake_runner)
 
-    async with session_factory() as db:
-        db.add_all(
-            [
-                ContentItem(
-                    id=1,
-                    title="后台成功内容",
-                    url="https://example.com/background-success",
-                    status=ContentStatus.ANALYZING,
-                    crawled_at=datetime.now(UTC),
-                ),
-                ContentItem(
-                    id=2,
-                    title="后台失败释放内容",
-                    url="https://example.com/background-release-failed",
-                    status=ContentStatus.ANALYZING,
-                    crawled_at=datetime.now(UTC),
-                ),
-            ]
-        )
-        await db.commit()
+    await analyses_api._run_batch_background("durable-job", [1, 2])
 
-    job = await create_analysis_job([1, 2])
-    await analyses_api._run_batch_background(job.job_id, [1, 2])
-
-    async with session_factory() as db:
-        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
-    job_status = await get_analysis_job(job.job_id)
-
-    assert statuses == {
-        1: ContentStatus.ANALYZED,
-        2: ContentStatus.PENDING,
-    }
-    assert job_status["status"] == "PARTIAL"
-    assert job_status["analyzed_ids"] == [1]
-    assert job_status["failed_ids"] == [2]
-    await engine.dispose()
-    await reset_analysis_jobs()
+    assert calls == ["durable-job"]
 
 
 @pytest.mark.asyncio
-async def test_background_analysis_releases_claims_on_batch_exception(monkeypatch):
-    await reset_analysis_jobs()
-    engine, session_factory = await _session_factory()
-    monkeypatch.setattr(analyses_api, "async_session", session_factory)
-
-    async def failing_concurrent(*_args, **_kwargs):
+async def test_background_analysis_adapter_propagates_runner_failure(monkeypatch):
+    async def failing_runner(_job_id: str):
         raise RuntimeError("background worker crashed")
 
-    monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", failing_concurrent)
-
-    async with session_factory() as db:
-        db.add_all(
-            [
-                ContentItem(
-                    id=1,
-                    title="后台异常释放一",
-                    url="https://example.com/background-exception-release-1",
-                    status=ContentStatus.ANALYZING,
-                    crawled_at=datetime.now(UTC),
-                ),
-                ContentItem(
-                    id=2,
-                    title="后台异常释放二",
-                    url="https://example.com/background-exception-release-2",
-                    status=ContentStatus.ANALYZING,
-                    crawled_at=datetime.now(UTC),
-                ),
-            ]
-        )
-        await db.commit()
-
-    job = await create_analysis_job([1, 2])
+    monkeypatch.setattr(analyses_api, "run_analysis_job", failing_runner)
 
     with pytest.raises(RuntimeError):
-        await analyses_api._run_batch_background(job.job_id, [1, 2])
-
-    async with session_factory() as db:
-        statuses = {item.id: item.status for item in (await db.execute(select(ContentItem))).scalars().all()}
-    job_status = await get_analysis_job(job.job_id)
-
-    assert statuses == {
-        1: ContentStatus.PENDING,
-        2: ContentStatus.PENDING,
-    }
-    assert job_status["status"] == "FAILED"
-    assert job_status["failed_ids"] == [1, 2]
-    assert "background worker crashed" in job_status["error_message"]
-    await engine.dispose()
-    await reset_analysis_jobs()
+        await analyses_api._run_batch_background("durable-job", [1, 2])
 
 
 @pytest.mark.asyncio
@@ -1606,6 +1683,7 @@ async def test_analyze_batch_skips_sqlite_locked_item_without_crashing(monkeypat
         raise OperationalError("UPDATE content_items", {}, Exception("database is locked"))
 
     monkeypatch.setattr(analysis, "retry_sqlite_locked", locked_write)
+    monkeypatch.setattr("app.repositories.content_repo.retry_sqlite_locked", locked_write)
     engine, session_factory = await _session_factory()
 
     async with session_factory() as db:

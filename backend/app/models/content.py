@@ -61,6 +61,10 @@ class ContentItem(Base):
     # 持久化分析队列元数据：ERROR 仅在 next_retry_at 到期且未超过尝试上限时重试。
     analysis_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     analysis_next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 每次领取都会生成新的 fencing token。只有持有当前 token 的 worker 才能
+    # 写入最终状态，避免租约过期后的旧 worker 迟到覆盖新 worker 的结果。
+    analysis_claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    analysis_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Topic clustering fields
     topic_id: Mapped[int | None] = mapped_column(

@@ -12,10 +12,11 @@ import asyncio
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Mapping
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -23,7 +24,7 @@ from app.core.database import async_session
 from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
-from app.repositories.content_repo import ANALYSIS_STALE_MINUTES
+from app.repositories.content_repo import ANALYSIS_STALE_MINUTES, ContentRepo
 from app.services.analysis_normalize import (
     _clamp_score,
     _detect_lang,
@@ -265,16 +266,7 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
 
     cutoff = ensure_naive_utc(stale_cutoff)
     now = ensure_naive_utc(datetime.now(UTC))
-    return (
-        (ContentItem.status == ContentStatus.PENDING)
-        | ((ContentItem.status == ContentStatus.ANALYZING) & (ContentItem.updated_at <= cutoff))
-        | (
-            (ContentItem.status == ContentStatus.ERROR)
-            & (ContentItem.updated_at <= cutoff)
-            & (ContentItem.analysis_attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)))
-            & ((ContentItem.analysis_next_retry_at.is_(None)) | (ContentItem.analysis_next_retry_at <= now))
-        )
-    )
+    return ContentRepo._analysis_candidate_condition(stale_cutoff=cutoff, now=now)
 
 
 def _select_analysis_prompts(content: ContentItem, *, title: str, content_text: str) -> tuple[str, str, str, bool]:
@@ -380,23 +372,48 @@ def _build_analysis_record(
     )
 
 
-async def _mark_content_error(db: AsyncSession, content_id: int) -> None:
+async def _mark_content_error(
+    db: AsyncSession,
+    content_id: int,
+    *,
+    fencing_token: str | None = None,
+) -> bool:
     """分析失败后将内容标记为 ERROR 状态。失败仅记录 warning，不抛出。"""
     try:
         content = await db.get(ContentItem, content_id)
-        if content is not None:
+        if content is None:
+            return False
+
+        attempts = max(1, int(content.analysis_attempts or 0))
+        if attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)):
+            delay = min(
+                max(1, int(settings.ANALYSIS_RETRY_BASE_DELAY_SECONDS)) * (2 ** (attempts - 1)),
+                max(1, int(settings.ANALYSIS_RETRY_MAX_DELAY_SECONDS)),
+            )
+            next_retry_at: datetime | None = datetime.now(UTC) + timedelta(seconds=delay)
+        else:
+            next_retry_at = None
+
+        if fencing_token is None:
+            # Compatibility for historical call sites that failed before the
+            # durable claim protocol was introduced.
             content.status = ContentStatus.ERROR
             content.updated_at = datetime.now(UTC)
-            attempts = max(1, int(content.analysis_attempts or 0))
-            if attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)):
-                delay = min(
-                    max(1, int(settings.ANALYSIS_RETRY_BASE_DELAY_SECONDS)) * (2 ** (attempts - 1)),
-                    max(1, int(settings.ANALYSIS_RETRY_MAX_DELAY_SECONDS)),
-                )
-                content.analysis_next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
-            else:
-                content.analysis_next_retry_at = None
+            content.analysis_next_retry_at = next_retry_at
             await db.commit()
+            return True
+
+        marked = await ContentRepo(db).fail_analysis_claim(
+            content_id,
+            fencing_token,
+            next_retry_at=next_retry_at,
+        )
+        if marked:
+            await db.commit()
+        else:
+            await db.rollback()
+            logger.info("Skipped late failure write for content id=%d: lease ownership changed", content_id)
+        return marked
     except Exception as status_error:
         await db.rollback()
         logger.warning(
@@ -404,6 +421,7 @@ async def _mark_content_error(db: AsyncSession, content_id: int) -> None:
             content_id,
             status_error,
         )
+        return False
 
 
 # ── Core analysis function ───────────────────────────────────────
@@ -581,6 +599,7 @@ async def analyze_batch_concurrent(
     concurrency: int | None = None,
     session_factory: Callable[[], Any] = async_session,
     assume_claimed: bool = False,
+    claim_tokens: Mapping[int, str] | None = None,
 ) -> list[AiAnalysis]:
     """Analyze multiple content items with bounded concurrency.
 
@@ -595,7 +614,13 @@ async def analyze_batch_concurrent(
 
     async def _run_one(content_id: int) -> AiAnalysis | None:
         async with semaphore, session_factory() as db:
-            return await analyze_one_claimed(content_id, db, assume_claimed=assume_claimed)
+            return await analyze_one_claimed(
+                content_id,
+                db,
+                assume_claimed=assume_claimed,
+                claim_token=(claim_tokens or {}).get(content_id),
+                heartbeat_session_factory=session_factory,
+            )
 
     analyses = await asyncio.gather(*(_run_one(content_id) for content_id in content_ids))
     return [item for item in analyses if item is not None]
@@ -606,49 +631,75 @@ async def analyze_one_claimed(
     db: AsyncSession,
     *,
     assume_claimed: bool = False,
+    claim_token: str | None = None,
+    heartbeat_session_factory: Callable[[], Any] = async_session,
     analyzer: Callable[[ContentItem, AsyncSession], Awaitable[AiAnalysis]] | None = None,
     raise_on_failure: bool = False,
 ) -> AiAnalysis | None:
-    """Claim and analyze one pending or stale analyzing item."""
-    stale_cutoff = datetime.now(UTC) - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+    """Claim, heartbeat, and fence one analysis item.
+
+    ``claim_token`` is optional only for compatibility with the legacy
+    ID-only batch API.  New callers must pass the token returned by
+    ``ContentRepo.claim_*_analysis_jobs`` so a reclaimed item cannot be
+    completed by an older worker.
+    """
+    fencing_token: str | None = claim_token
+    heartbeat_task: asyncio.Task[None] | None = None
     try:
         if not assume_claimed:
-
-            async def _mark_analyzing() -> bool:
-                result = await db.execute(
-                    update(ContentItem)
-                    .where(ContentItem.id == content_id)
-                    .where(_analysis_retryable_status_filter(stale_cutoff))
-                    .values(
-                        status=ContentStatus.ANALYZING,
-                        updated_at=datetime.now(UTC),
-                        analysis_attempts=ContentItem.analysis_attempts + 1,
-                        analysis_next_retry_at=None,
-                    )
-                )
-                await db.commit()
-                return result.rowcount > 0
-
-            claimed = await retry_sqlite_locked(
-                _mark_analyzing,
-                attempts=3,
-                base_delay=0.1,
-                on_retry=db.rollback,
-            )
-            if not claimed:
+            claim = await ContentRepo(db).claim_analysis_job(content_id)
+            if claim is None:
                 logger.info("Skipped analysis for content id=%d: already claimed or no longer stale", content_id)
                 return None
+            fencing_token = claim.fencing_token
+            await db.commit()
 
         content = await db.get(ContentItem, content_id)
         if content is None:
             return None
+        if fencing_token is None:
+            # Legacy callers only passed IDs.  Capture the token before doing
+            # slow work; migrated callers pass it explicitly and are fully
+            # protected even if a lease changes before this read.
+            fencing_token = content.analysis_claim_token
+        if not fencing_token or content.analysis_claim_token != fencing_token:
+            logger.info("Skipped analysis for content id=%d: lease ownership changed", content_id)
+            return None
+
+        # ``db.get`` opened a read transaction.  The LLM call can take tens of
+        # seconds, so finish that transaction before starting remote work.
+        # The session factory is expire_on_commit=False; ``content`` remains a
+        # usable immutable input snapshot, while final fencing prevents stale
+        # output from being committed.
+        await db.commit()
+
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_analysis_lease(
+                content_id,
+                fencing_token,
+                session_factory=heartbeat_session_factory,
+            )
+        )
 
         analyze = analyzer or analyze_content
         analysis = await analyze(content, db)
+        await _stop_heartbeat(heartbeat_task)
+        heartbeat_task = None
+
+        # The analysis record may have been flushed while generating its ID,
+        # but it remains in this transaction.  If the fencing condition loses,
+        # rollback removes that late record as well as any stale status write.
+        completed = await ContentRepo(db).complete_analysis_claim(content_id, fencing_token)
+        if not completed:
+            await db.rollback()
+            logger.info("Discarded late analysis result for content id=%d: lease ownership changed", content_id)
+            return None
         await db.commit()
         invalidate_content_read_caches()
         return analysis
     except Exception as e:
+        if heartbeat_task is not None:
+            await _stop_heartbeat(heartbeat_task)
         await db.rollback()
         if is_sqlite_locked(e):
             logger.warning("Skipped analysis for content id=%d: database is locked", content_id)
@@ -657,10 +708,48 @@ async def analyze_one_claimed(
             return None
 
         logger.error("Failed to analyze content id=%d: %s", content_id, e)
-        await _mark_content_error(db, content_id)
+        await _mark_content_error(db, content_id, fencing_token=fencing_token)
         if raise_on_failure:
             raise
         return None
+
+
+def _analysis_heartbeat_seconds() -> float:
+    lease_seconds = max(1, int(settings.ANALYSIS_LEASE_SECONDS))
+    configured = max(1, int(settings.ANALYSIS_HEARTBEAT_SECONDS))
+    # A heartbeat that starts after expiry is a configuration error.  Clamp it
+    # below half the lease so a transient missed tick still leaves recovery.
+    return float(min(configured, max(1, lease_seconds // 2)))
+
+
+async def _heartbeat_analysis_lease(
+    content_id: int,
+    fencing_token: str,
+    *,
+    session_factory: Callable[[], Any],
+) -> None:
+    """Keep a slow LLM call owned without sharing its worker DB session."""
+    try:
+        while True:
+            await asyncio.sleep(_analysis_heartbeat_seconds())
+            async with session_factory() as heartbeat_db:
+                renewed = await ContentRepo(heartbeat_db).renew_analysis_lease(content_id, fencing_token)
+                if renewed:
+                    await heartbeat_db.commit()
+                else:
+                    await heartbeat_db.rollback()
+                    logger.warning("Stopped analysis heartbeat for content id=%d: lease ownership changed", content_id)
+                    return
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # A final fencing check still protects correctness.
+        logger.warning("Analysis heartbeat failed for content id=%d: %s", content_id, exc)
+
+
+async def _stop_heartbeat(task: asyncio.Task[None]) -> None:
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
 
 
 def _normalize_analysis_concurrency(value: int | None) -> int:

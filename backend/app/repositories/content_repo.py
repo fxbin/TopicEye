@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from sqlalchemy import Text, cast, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +39,21 @@ from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AnalysisClaim:
+    """A durable ownership record returned when an analysis item is claimed.
+
+    ``fencing_token`` is deliberately opaque: callers must pass it back when
+    completing or failing the job.  A newly claimed worker receives a new
+    token, so an expired worker can never commit a late result.
+    """
+
+    content_id: int
+    fencing_token: str
+    lease_expires_at: datetime
+
 
 class ContentRepo(BaseRepository[ContentItem]):
     model = ContentItem
@@ -84,7 +101,19 @@ class ContentRepo(BaseRepository[ContentItem]):
         """Return rows that may be claimed by the durable analysis queue."""
         return (
             (ContentItem.status == ContentStatus.PENDING)
-            | ((ContentItem.status == ContentStatus.ANALYZING) & (ContentItem.updated_at <= stale_cutoff))
+            | (
+                (ContentItem.status == ContentStatus.ANALYZING)
+                & (
+                    # New claim protocol: the lease, rather than an unrelated
+                    # content update, defines whether work can be taken over.
+                    (
+                        (ContentItem.analysis_lease_expires_at.is_not(None))
+                        & (ContentItem.analysis_lease_expires_at <= now)
+                    )
+                    # Legacy rows created before the migration have no lease.
+                    | ((ContentItem.analysis_lease_expires_at.is_(None)) & (ContentItem.updated_at <= stale_cutoff))
+                )
+            )
             | (
                 (ContentItem.status == ContentStatus.ERROR)
                 & (ContentItem.updated_at <= stale_cutoff)
@@ -92,6 +121,11 @@ class ContentRepo(BaseRepository[ContentItem]):
                 & ((ContentItem.analysis_next_retry_at.is_(None)) | (ContentItem.analysis_next_retry_at <= now))
             )
         )
+
+    @staticmethod
+    def _analysis_lease_expiry(now: datetime) -> datetime:
+        lease_seconds = max(1, int(settings.ANALYSIS_LEASE_SECONDS))
+        return now + timedelta(seconds=lease_seconds)
 
     async def get_by_status(
         self,
@@ -139,9 +173,24 @@ class ContentRepo(BaseRepository[ContentItem]):
         limit: int = 20,
         hours: int | None = None,
     ) -> list[int]:
-        """Claim pending or stale analysis candidates and return claimed IDs in queue order."""
+        """Compatibility wrapper returning IDs for legacy batch callers.
 
-        async def _claim() -> list[int]:
+        New consumers should use :meth:`claim_pending_analysis_jobs` and keep
+        the returned fencing tokens through completion.  IDs alone cannot
+        prove ownership after a lease expires.
+        """
+        claims = await self.claim_pending_analysis_jobs(limit=limit, hours=hours)
+        return [claim.content_id for claim in claims]
+
+    async def claim_pending_analysis_jobs(
+        self,
+        *,
+        limit: int = 20,
+        hours: int | None = None,
+    ) -> list[AnalysisClaim]:
+        """Atomically claim eligible work and return durable ownership tokens."""
+
+        async def _claim() -> list[AnalysisClaim]:
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
 
@@ -166,28 +215,36 @@ class ContentRepo(BaseRepository[ContentItem]):
             if not pending_ids:
                 return []
 
-            update_result = await self.db.execute(
-                update(self.model)
-                .where(self.model.id.in_(pending_ids))
-                .where(candidate_condition)
-                .values(
-                    status=ContentStatus.ANALYZING,
-                    updated_at=claimed_at,
-                    analysis_attempts=self.model.analysis_attempts + 1,
-                    analysis_next_retry_at=None,
+            lease_expires_at = self._analysis_lease_expiry(claimed_at)
+            claims: list[AnalysisClaim] = []
+            # A per-row token is intentional.  A bulk UPDATE cannot assign a
+            # distinct fencing token to each item, and the selected rows are
+            # locked on PostgreSQL / protected by BEGIN IMMEDIATE on SQLite.
+            for content_id in pending_ids:
+                fencing_token = uuid4().hex
+                update_result = await self.db.execute(
+                    update(self.model)
+                    .where(self.model.id == content_id)
+                    .where(candidate_condition)
+                    .values(
+                        status=ContentStatus.ANALYZING,
+                        updated_at=claimed_at,
+                        analysis_attempts=self.model.analysis_attempts + 1,
+                        analysis_next_retry_at=None,
+                        analysis_claim_token=fencing_token,
+                        analysis_lease_expires_at=lease_expires_at,
+                    )
                 )
-            )
+                if update_result.rowcount:
+                    claims.append(
+                        AnalysisClaim(
+                            content_id=content_id,
+                            fencing_token=fencing_token,
+                            lease_expires_at=lease_expires_at,
+                        )
+                    )
             await self.db.flush()
-            if update_result.rowcount == len(pending_ids):
-                return pending_ids
-
-            refreshed = await self.db.execute(
-                select(self.model.id)
-                .where(self.model.id.in_(pending_ids))
-                .where(self.model.status == ContentStatus.ANALYZING)
-            )
-            refreshed_ids = {int(row[0]) for row in refreshed.all()}
-            return [content_id for content_id in pending_ids if content_id in refreshed_ids]
+            return claims
 
         return await retry_sqlite_locked(
             _claim,
@@ -195,6 +252,132 @@ class ContentRepo(BaseRepository[ContentItem]):
             base_delay=0.1,
             on_retry=self.db.rollback,
         )
+
+    async def claim_analysis_job(self, content_id: int) -> AnalysisClaim | None:
+        """Claim one eligible item and return its fencing token.
+
+        This is the single-item counterpart to ``claim_pending_analysis_jobs``
+        and lets API-triggered analysis use the durable protocol immediately.
+        """
+
+        async def _claim() -> AnalysisClaim | None:
+            claimed_at = naive_utc_now()
+            candidate_condition = self._analysis_candidate_condition(
+                stale_cutoff=claimed_at - timedelta(minutes=ANALYSIS_STALE_MINUTES),
+                now=claimed_at,
+            )
+            fencing_token = uuid4().hex
+            lease_expires_at = self._analysis_lease_expiry(claimed_at)
+            result = await self.db.execute(
+                update(self.model)
+                .where(self.model.id == content_id)
+                .where(self.model.skip_analysis.is_(False))
+                .where(candidate_condition)
+                .values(
+                    status=ContentStatus.ANALYZING,
+                    updated_at=claimed_at,
+                    analysis_attempts=self.model.analysis_attempts + 1,
+                    analysis_next_retry_at=None,
+                    analysis_claim_token=fencing_token,
+                    analysis_lease_expires_at=lease_expires_at,
+                )
+            )
+            await self.db.flush()
+            if not result.rowcount:
+                return None
+            return AnalysisClaim(
+                content_id=content_id,
+                fencing_token=fencing_token,
+                lease_expires_at=lease_expires_at,
+            )
+
+        return await retry_sqlite_locked(
+            _claim,
+            attempts=4,
+            base_delay=0.1,
+            on_retry=self.db.rollback,
+        )
+
+    async def renew_analysis_lease(self, content_id: int, fencing_token: str) -> bool:
+        """Extend a claim only if this worker still owns its fencing token."""
+        now = naive_utc_now()
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id == content_id)
+            .where(self.model.status == ContentStatus.ANALYZING)
+            .where(self.model.analysis_claim_token == fencing_token)
+            .values(
+                updated_at=now,
+                analysis_lease_expires_at=self._analysis_lease_expiry(now),
+            )
+        )
+        await self.db.flush()
+        return bool(result.rowcount)
+
+    async def complete_analysis_claim(self, content_id: int, fencing_token: str) -> bool:
+        """Finalize a result iff the worker still owns the current claim."""
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id == content_id)
+            .where(self.model.analysis_claim_token == fencing_token)
+            .values(
+                status=ContentStatus.ANALYZED,
+                updated_at=naive_utc_now(),
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+                analysis_next_retry_at=None,
+            )
+        )
+        await self.db.flush()
+        return bool(result.rowcount)
+
+    async def fail_analysis_claim(
+        self,
+        content_id: int,
+        fencing_token: str,
+        *,
+        next_retry_at: datetime | None,
+    ) -> bool:
+        """Mark failure iff the worker still owns the current claim."""
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id == content_id)
+            .where(self.model.analysis_claim_token == fencing_token)
+            .values(
+                status=ContentStatus.ERROR,
+                # Keep the in-session ORM value timezone-aware; SQLAlchemy
+                # normalizes it for SQLite on bind while Python callers can
+                # safely compare it with the original UTC timestamp.
+                updated_at=datetime.now(UTC),
+                analysis_next_retry_at=next_retry_at,
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+            )
+        )
+        await self.db.flush()
+        return bool(result.rowcount)
+
+    async def release_analysis_claim(self, content_id: int, fencing_token: str) -> bool:
+        """Abandon a claim iff this worker still owns its fencing token.
+
+        Durable job cancellation and timeout recovery must use this method
+        rather than the legacy ID-only bulk release, otherwise a cancelled old
+        worker could release work that a newer worker already reclaimed.
+        """
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id == content_id)
+            .where(self.model.status == ContentStatus.ANALYZING)
+            .where(self.model.analysis_claim_token == fencing_token)
+            .values(
+                status=ContentStatus.PENDING,
+                updated_at=naive_utc_now(),
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+            )
+        )
+        await self.db.flush()
+        return bool(result.rowcount)
 
     async def update_status(self, id: int, status: ContentStatus) -> ContentItem:
         """Transition a single item to a new status."""
@@ -220,9 +403,14 @@ class ContentRepo(BaseRepository[ContentItem]):
             return 0
         stmt = (
             update(self.model)
-            .where(self.model.id.in_(ids))
-            .where(self.model.status == ContentStatus.ANALYZING)
-            .values(status=ContentStatus.PENDING, updated_at=naive_utc_now())
+                .where(self.model.id.in_(ids))
+                .where(self.model.status == ContentStatus.ANALYZING)
+            .values(
+                status=ContentStatus.PENDING,
+                updated_at=naive_utc_now(),
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+            )
         )
         result = await self.db.execute(stmt)
         await self.db.flush()

@@ -8,6 +8,7 @@ import { contentsApi } from '@/lib/api';
 import type { ArticleReaderBlock, ArticleReaderSnapshot, ContentItem } from '@/types';
 import { timeAgo } from '@/lib/datetime';
 import { AutoLink } from '@/components/AutoLink';
+import EvidencePanel from '@/components/EvidencePanel';
 
 function legacyBlocks(text: string): ArticleReaderBlock[] {
   const paragraphGroups = text
@@ -220,6 +221,12 @@ export default function ContentReaderPage() {
               </section>
             </div>
 
+            {/* Cross-source evidence panel */}
+            {contentId > 0 && (
+              <div className="mt-4">
+                <EvidencePanel contentId={contentId} />
+              </div>
+            )}
           </article>
         )}
       </main>

@@ -818,3 +818,37 @@ export const apiTokensApi = {
     return request(`/me/api-tokens/${id}`, { method: 'DELETE' });
   },
 };
+
+// ─── Evidence (可信线索) Admin API ───
+
+export interface EvidenceStats {
+  marks: {
+    total: number;
+    by_level: Record<string, number>;
+    has_primary_source: number;
+    has_official_source: number;
+  };
+  links: {
+    total: number;
+    by_type: Record<string, number>;
+  };
+  profiles: {
+    total_system_sources: number;
+    profiled_sources: number;
+    unprofiled_sources: number;
+    by_kind: Record<string, number>;
+  };
+}
+
+export const evidenceApi = {
+  /** 获取证据聚合统计 */
+  getStats(): Promise<EvidenceStats> {
+    return request('/admin/evidence/stats');
+  },
+
+  /** 手动触发跨源证据发现 */
+  discover(hours?: number): Promise<{ triggered: boolean; stats: Record<string, number> }> {
+    const query = hours ? `?hours=${hours}` : '';
+    return request(`/admin/evidence/discover${query}`, { method: 'POST' });
+  },
+};

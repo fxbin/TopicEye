@@ -192,7 +192,7 @@ async def warmup_stats_workspace() -> list[str]:
 
 
 async def warmup_trending_workspace(db) -> list[str]:
-    from app.api.v1.trending import build_default_trending_cache_payloads
+    from app.services.trending_workspace import build_default_trending_cache_payloads
 
     payloads = await build_default_trending_cache_payloads(db)
     for key, payload in payloads.items():

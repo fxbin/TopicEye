@@ -10,6 +10,7 @@ import { Badge, cx } from '@/components/ui';
 import type { ContentAnalysis, RecommendLevel } from '@/types';
 import { explainRecommendation } from '@/lib/recommendation';
 import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 interface Props {
   analysis: ContentAnalysis;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function ContentAnalysisPanel({ analysis, onClose }: Props) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const recommendation = explainRecommendation(analysis);
   const level = recommendation.level;
 
@@ -31,6 +33,12 @@ export default function ContentAnalysisPanel({ analysis, onClose }: Props) {
 
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="content-analysis-panel-title"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
       className="fixed bottom-0 right-0 top-0 z-[1000] h-screen w-[480px] max-w-[90vw] animate-[slideInRight_0.25s_ease] overflow-y-auto bg-white px-7 py-8 shadow-[-4px_0_24px_rgba(0,0,0,0.1)]"
       onClick={(e) => e.stopPropagation()}
     >
@@ -40,13 +48,14 @@ export default function ContentAnalysisPanel({ analysis, onClose }: Props) {
         onClick={onClose}
         className="absolute right-4 top-4 inline-flex cursor-pointer items-center border-0 bg-transparent text-gray-400 transition hover:text-gray-600"
         title="关闭"
+        aria-label="关闭分析报告"
       >
         <X size={20} strokeWidth={2} />
       </button>
 
       {/* Header */}
       <div className="mb-6">
-        <h2 className="mb-3 text-lg font-bold text-gray-900">
+        <h2 id="content-analysis-panel-title" className="mb-3 text-lg font-bold text-gray-900">
           AI 分析报告
         </h2>
         <div className="flex items-center gap-3">

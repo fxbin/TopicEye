@@ -15,6 +15,7 @@ import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { X } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 // ─── AdminPageShell ──────────────────────────────────────────────────
 
@@ -188,20 +189,26 @@ export function AdminModal({
   onClose: () => void;
   maxWidth?: number;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
+  const titleId = React.useId();
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}
-    >
-      <Panel
-        onClick={(e) => e.stopPropagation()}
-        className="w-full p-6 shadow-2xl"
-        style={{ maxWidth }}
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
       >
-        <h2 className="mb-5 text-lg font-black text-gray-900">{title}</h2>
-        {children}
-      </Panel>
-    </div>
+        <Panel className="pointer-events-auto w-full p-6 shadow-2xl" style={{ maxWidth }}>
+          <h2 id={titleId} className="mb-5 text-lg font-black text-gray-900">{title}</h2>
+          {children}
+        </Panel>
+      </div>
+    </>
   );
 }
 

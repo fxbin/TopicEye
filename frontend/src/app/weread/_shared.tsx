@@ -33,6 +33,7 @@ import {
   Users,
   Layers,
 } from 'lucide-react';
+import { useDialogFocus } from '@/components/useDialogFocus';
 import { integrationsApi } from '@/lib/api';
 import { Panel, Badge, Surface, cx } from '@/components/ui';
 import { AutoLink } from '@/components/AutoLink';
@@ -346,13 +347,21 @@ export function BookDetailPanel({ item, meta, onClose }: {
   meta: WeReadMeta;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const status = getReadingStatus(meta.readingProgress);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <Panel
-        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto p-6"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-50 bg-black/40" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weread-book-detail-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[51] flex items-center justify-center p-4"
       >
+        <Panel className="pointer-events-auto max-h-[85vh] w-full max-w-2xl overflow-y-auto p-6">
         {/* 头部 */}
         <div className="mb-4 flex items-start gap-4">
           <div className="h-[120px] w-[90px] shrink-0">
@@ -371,7 +380,7 @@ export function BookDetailPanel({ item, meta, onClose }: {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="mb-1 break-words text-lg font-black text-gray-900">{item.title}</h2>
+            <h2 id="weread-book-detail-title" className="mb-1 break-words text-lg font-black text-gray-900">{item.title}</h2>
             {item.author && (
               <p className="mb-2 text-sm text-gray-500">{item.author}</p>
             )}
@@ -397,6 +406,7 @@ export function BookDetailPanel({ item, meta, onClose }: {
             type="button"
             onClick={onClose}
             className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            aria-label="关闭书籍详情"
           >
             <X size={18} />
           </button>
@@ -452,8 +462,9 @@ export function BookDetailPanel({ item, meta, onClose }: {
           在微信读书中{item.url && item.url !== WEREAD_FALLBACK_URL ? '查看' : '搜索'}
           <ExternalLink size={12} />
         </a>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }
 

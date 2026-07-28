@@ -10,6 +10,7 @@ import type { ContentAnalysis } from '@/types';
 import CreationPlanDisplay from '@/components/CreationPlanDisplay';
 import RelationPanel from '@/components/RelationPanel';
 import EvidencePanel from '@/components/EvidencePanel';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 interface AnalysisPanelProps {
   analysis: ContentAnalysis & { _content_id?: number };
@@ -17,6 +18,7 @@ interface AnalysisPanelProps {
 }
 
 export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const { currentUser } = useAppContext();
   const contentId = analysis.content_id || 0;
   const [creationPlan, setCreationPlan] = useState<Record<string, unknown> | null>(null);
@@ -44,10 +46,18 @@ export default function AnalysisPanel({ analysis, onClose }: AnalysisPanelProps)
   return (
     <>
       <div onClick={onClose} className="fixed inset-0 z-[999] bg-black/20" />
-      <div className="fixed bottom-0 right-0 top-0 z-[1000] w-[520px] max-w-[90vw] overflow-y-auto bg-white p-8 shadow-[-4px_0_24px_rgba(0,0,0,0.1)]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="analysis-panel-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="fixed bottom-0 right-0 top-0 z-[1000] w-[520px] max-w-[90vw] overflow-y-auto bg-white p-8 shadow-[-4px_0_24px_rgba(0,0,0,0.1)]"
+      >
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">AI 分析报告</h2>
-          <button type="button" onClick={onClose} className="cursor-pointer border-0 bg-transparent p-1 text-gray-400 hover:text-gray-600" title="关闭">
+          <h2 id="analysis-panel-title" className="text-lg font-bold text-gray-900">AI 分析报告</h2>
+          <button type="button" onClick={onClose} className="cursor-pointer border-0 bg-transparent p-1 text-gray-400 hover:text-gray-600" title="关闭" aria-label="关闭分析报告">
             <X size={18} strokeWidth={2} />
           </button>
         </div>

@@ -17,6 +17,7 @@ import SourceForm, { type FormState } from '@/components/SourceForm';
 import type { BackendSource } from '@/components/SourceRow';
 import { sourceTypeLabel } from '@/lib/source-sync-board';
 import type { SourceBatchImportItem } from '@/lib/api';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 export function AddSourceModal({
   form,
@@ -31,12 +32,13 @@ export function AddSourceModal({
   onCreate: () => void;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}>
-      <Panel onClick={(e) => e.stopPropagation()} className="w-full max-w-[480px] p-8 shadow-2xl">
-        <h2 className="mb-6 text-xl font-black text-gray-900">添加信源</h2>
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="add-source-modal-title" tabIndex={-1} onKeyDown={onKeyDown} className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4">
+        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
+        <h2 id="add-source-modal-title" className="mb-6 text-xl font-black text-gray-900">添加信源</h2>
         <SourceForm form={form} setForm={setForm} />
         <div className="mt-7 flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
@@ -46,8 +48,9 @@ export function AddSourceModal({
             {submitting ? '提交中…' : '添加'}
           </Button>
         </div>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }
 
@@ -76,21 +79,21 @@ export function BatchImportModal({
   onImport: () => void;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}
-    >
-      <Panel onClick={(event) => event.stopPropagation()} className="flex max-h-[86vh] w-full max-w-[860px] flex-col overflow-hidden p-0 shadow-2xl">
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="batch-import-modal-title" tabIndex={-1} onKeyDown={onKeyDown} className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4">
+        <Panel className="pointer-events-auto flex max-h-[86vh] w-full max-w-[860px] flex-col overflow-hidden p-0 shadow-2xl">
         <div className="border-b border-gray-100 px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="mb-1 text-xl font-black text-gray-900">批量导入信源</h2>
+              <h2 id="batch-import-modal-title" className="mb-1 text-xl font-black text-gray-900">批量导入信源</h2>
               <p className="text-xs leading-5 text-gray-500">
                 支持粘贴信源配置、JSON 数组、Markdown 链接清单或 OPML 内容；先预览重复项，再确认写入。
               </p>
             </div>
-            <Button type="button" variant="ghost" onClick={onClose} className="min-h-8 px-2">
+            <Button type="button" variant="ghost" onClick={onClose} className="min-h-8 px-2" aria-label="关闭批量导入">
               ×
             </Button>
           </div>
@@ -177,8 +180,9 @@ export function BatchImportModal({
             </div>
           </div>
         </div>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }
 
@@ -195,12 +199,13 @@ export function EditSourceModal({
   onUpdate: () => void;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}>
-      <Panel onClick={(e) => e.stopPropagation()} className="w-full max-w-[480px] p-8 shadow-2xl">
-        <h2 className="mb-6 text-xl font-black text-gray-900">编辑信源</h2>
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="edit-source-modal-title" tabIndex={-1} onKeyDown={onKeyDown} className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4">
+        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
+        <h2 id="edit-source-modal-title" className="mb-6 text-xl font-black text-gray-900">编辑信源</h2>
         <SourceForm form={form} setForm={setForm} />
         <div className="mt-7 flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
@@ -210,7 +215,8 @@ export function EditSourceModal({
             {submitting ? '保存中…' : '保存'}
           </Button>
         </div>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }

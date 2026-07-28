@@ -16,6 +16,7 @@ import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
+import { useDialogFocus } from '@/components/useDialogFocus';
 import {
   productFeedbackApi,
   type IssueFeedbackItem,
@@ -140,6 +141,7 @@ function UpdateCard({ item }: { item: ProductUpdateItem }) {
 // ── Feedback panel (简化版：写表单 + 最近 10 条历史) ───────────────────
 
 function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const { currentUser } = useAppContext();
   const [myIssues, setMyIssues] = useState<IssueFeedbackItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -194,12 +196,22 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6">
-      <div className="flex h-full max-h-[90vh] w-full max-w-3xl flex-col rounded-md bg-white shadow-xl">
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-50 bg-black/40" />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feedback-panel-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[51] flex items-center justify-center p-4 sm:p-6"
+      >
+      <div className="pointer-events-auto flex h-full max-h-[90vh] w-full max-w-3xl flex-col rounded-md bg-white shadow-xl">
         {/* Header */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <h2 id="feedback-panel-title" className="flex items-center gap-2 text-base font-semibold text-gray-900">
               <Flag size={16} className="text-orange" />
               提交反馈
             </h2>
@@ -207,7 +219,7 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
               提交后我们会在站内通知你处理进度
             </p>
           </div>
-          <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1">
+          <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1" aria-label="关闭反馈面板">
             <X size={16} />
           </Button>
         </div>
@@ -328,7 +340,8 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

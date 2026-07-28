@@ -17,6 +17,7 @@ import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { useFetch } from '@/hooks/useFetch';
+import { useDialogFocus } from '@/components/useDialogFocus';
 import {
   productFeedbackApi,
   type ProductUpdateItem,
@@ -397,14 +398,25 @@ function UpdateEditor({
   onSave: () => void;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-4 sm:p-6" onClick={onClose}>
-      <div className="flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-editor-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center p-4 sm:p-6"
+      >
+      <div className="pointer-events-auto flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
-          <h2 className="text-base font-semibold text-gray-900">
+          <h2 id="update-editor-title" className="text-base font-semibold text-gray-900">
             {editing ? `编辑 v${editing.version}` : '新建发版'}
           </h2>
-          <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1">
+          <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1" aria-label="关闭发版编辑器">
             <X size={16} />
           </Button>
         </div>
@@ -535,6 +547,7 @@ function UpdateEditor({
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

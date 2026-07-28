@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 import { creationApi } from '@/lib/api';
 import { Button, Panel, cx } from '@/components/ui';
 import CreationPlanDisplay, { type CreationPlan } from '@/components/CreationPlanDisplay';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ interface ExploreModeDialogProps {
 }
 
 export default function ExploreModeDialog({ contentId, onClose }: ExploreModeDialogProps) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -206,19 +208,28 @@ export default function ExploreModeDialog({ contentId, onClose }: ExploreModeDia
 
   return (
     <>
-      <div onClick={onClose} className="fixed inset-0 z-[999] bg-black/20" />
-      <div className="fixed inset-x-4 top-1/2 z-[1000] max-h-[85vh] w-auto max-w-2xl -translate-y-1/2 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl md:left-1/2 md:-translate-x-1/2">
+      <div aria-hidden="true" onClick={onClose} className="fixed inset-0 z-[999] bg-black/20" />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="explore-mode-dialog-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="fixed inset-x-4 top-1/2 z-[1000] max-h-[85vh] w-auto max-w-2xl -translate-y-1/2 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl md:left-1/2 md:-translate-x-1/2"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
           <div className="flex items-center gap-2">
             <Compass size={16} className="text-primary" />
-            <span className="text-sm font-bold text-gray-900">探索模式</span>
+            <span id="explore-mode-dialog-title" className="text-sm font-bold text-gray-900">探索模式</span>
             <StepIndicator step={step} />
           </div>
           <button
             type="button"
             onClick={onClose}
             className="grid h-8 w-8 place-items-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            aria-label="关闭探索模式"
           >
             <X size={16} />
           </button>

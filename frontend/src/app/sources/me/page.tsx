@@ -19,6 +19,7 @@ import type { BackendSource } from '@/components/SourceRow';
 import { timeAgo } from '@/lib/utils';
 import { LoadingState, EmptyState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 type Tab = 'private' | 'public';
 
@@ -607,14 +608,22 @@ function SourceFormModal({
   onSubmit: () => void;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const mode: FormMode = editing ? 'edit' : 'create';
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}
-    >
-      <Panel onClick={(e) => e.stopPropagation()} className="w-full max-w-[480px] p-8 shadow-2xl">
-        <h2 className="mb-6 text-xl font-black text-gray-900">
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="private-source-form-modal-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
+      >
+        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
+        <h2 id="private-source-form-modal-title" className="mb-6 text-xl font-black text-gray-900">
           {mode === 'create' ? '新建私有信源' : `编辑：${editing?.name ?? ''}`}
         </h2>
         <SourceForm form={form} setForm={setForm} />
@@ -632,7 +641,8 @@ function SourceFormModal({
             {submitting ? (mode === 'create' ? '创建中…' : '保存中…') : (mode === 'create' ? '创建' : '保存')}
           </Button>
         </div>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }

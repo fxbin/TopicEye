@@ -127,12 +127,13 @@ export function ErrorState({
   return (
     <StateWrapper panel={panel} className={className}>
       <div
+        role="alert"
         className={cx(
           'flex w-full items-center justify-between gap-3 rounded-sm bg-red-light px-4 py-2.5 text-[13px] text-red',
         )}
       >
         <span className="flex items-center gap-2">
-          <AlertCircle size={15} className="shrink-0" />
+          <AlertCircle size={15} className="shrink-0" aria-hidden="true" />
           <span>{error}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2">

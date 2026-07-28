@@ -21,6 +21,7 @@ import { ShieldCheck } from 'lucide-react';
 import { Badge, Button, Panel } from '@/components/ui';
 import { sourcesApi } from '@/lib/api';
 import type { BackendSource } from '@/components/SourceRow';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 const PUBLISHER_KINDS = [
   { value: 'unknown', label: '未知', desc: '默认值，不参与可信线索标注' },
@@ -60,6 +61,7 @@ export function EvidenceProfileModal({
   source: BackendSource;
   onClose: () => void;
 }) {
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   const [form, setForm] = useState<ProfileFormState>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -128,19 +130,23 @@ export function EvidenceProfileModal({
   const kindMeta = PUBLISHER_KINDS.find((k) => k.value === form.publisher_kind);
 
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 px-4"
-      onClick={onClose}
-    >
-      <Panel
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-hidden p-0 shadow-2xl"
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="evidence-profile-modal-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
       >
+        <Panel className="pointer-events-auto flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-hidden p-0 shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-2.5 border-b border-gray-100 px-6 py-4">
           <ShieldCheck className="h-5 w-5 text-primary" />
           <div className="flex-1">
-            <h2 className="text-base font-black text-gray-900">来源证据画像</h2>
+            <h2 id="evidence-profile-modal-title" className="text-base font-black text-gray-900">来源证据画像</h2>
             <p className="text-xs text-gray-400">
               {source.name} · 配置可信线索标注规则
             </p>
@@ -273,8 +279,9 @@ export function EvidenceProfileModal({
             </Button>
           </div>
         </div>
-      </Panel>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }
 

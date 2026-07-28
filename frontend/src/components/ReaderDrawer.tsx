@@ -8,6 +8,7 @@ import { timeAgo } from '@/lib/datetime';
 import { cx } from '@/components/ui';
 import SourceBadge from '@/components/SourceBadge';
 import { AutoLink } from '@/components/AutoLink';
+import { useDialogFocus } from '@/components/useDialogFocus';
 
 // ─── 正文渲染（从 reader/page.tsx 抽出，保持一致）──
 
@@ -106,6 +107,8 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
   const [translating, setTranslating] = useState(false);
   const [showZh, setShowZh] = useState(true); // 默认中文（有翻译时）
   const [error, setError] = useState<string | null>(null);
+  const isOpen = contentId !== null;
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(isOpen, onClose);
 
   const load = useCallback(async (id: number, refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -132,14 +135,6 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
       void load(contentId);
     }
   }, [contentId, load]);
-
-  // ESC 关闭
-  useEffect(() => {
-    if (contentId === null) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [contentId, onClose]);
 
   const hasZh = Boolean(snapshot?.content_blocks_zh?.length || snapshot?.text_content_zh);
   const isOriginalZh = hasZh && snapshot?.text_content_zh === snapshot?.text_content;
@@ -179,12 +174,11 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
   }, [snapshot, showZh, hasZh]);
 
   const sourceUrl = content?.url || snapshot?.canonical_url;
-  const isOpen = contentId !== null;
-
   return (
     <>
       {/* 遮罩 */}
       <div
+        aria-hidden="true"
         className={cx(
           'fixed inset-0 z-40 bg-black/40 transition-opacity duration-300',
           isOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
@@ -194,6 +188,13 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
 
       {/* 抽屉面板 */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reader-drawer-title"
+        aria-hidden={!isOpen}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
         className={cx(
           'fixed right-0 top-0 z-50 flex h-full w-full max-w-[680px] flex-col bg-[#F7F8FA] shadow-2xl transition-transform duration-300',
           isOpen ? 'translate-x-0' : 'translate-x-full',
@@ -201,7 +202,7 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
       >
         {/* 顶部栏 */}
         <div className="flex shrink-0 items-center justify-between border-b border-[#e9e4dc] bg-[#fffefd] px-5 py-3">
-          <span className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
+          <span id="reader-drawer-title" className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
             <BookOpen size={14} className="text-primary" /> 站内阅读
           </span>
           <div className="flex items-center gap-3">
@@ -236,6 +237,7 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
               onClick={onClose}
               className="grid h-7 w-7 place-items-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
               title="关闭 (Esc)"
+              aria-label="关闭站内阅读"
             >
               <X size={16} />
             </button>

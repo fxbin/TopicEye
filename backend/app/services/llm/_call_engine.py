@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from litellm import RateLimitError, completion
+from litellm import RateLimitError, acompletion
 from litellm.exceptions import (  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
     BadRequestError,
     ContentPolicyViolationError,
@@ -37,6 +37,7 @@ from app.services.llm._rate_limit import (
     _get_model_rate_limiter,
     _rate_limiter,
 )
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,21 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
     ):
         return True
     return _is_bad_request_error(exc)
+
+
+def _completion_timeout_seconds(configured_timeout: Any = None) -> float:
+    """Return a positive, globally bounded LLM deadline in seconds."""
+    try:
+        hard_cap = max(float(settings.LLM_COMPLETION_TIMEOUT_SECONDS), 0.1)
+    except (TypeError, ValueError):
+        hard_cap = 45.0
+
+    if configured_timeout is None:
+        return hard_cap
+    try:
+        return min(max(float(configured_timeout), 0.1), hard_cap)
+    except (TypeError, ValueError):
+        return hard_cap
 
 
 def _parse_reset_time(exc: Exception):
@@ -143,6 +159,10 @@ async def _call_llm_single(
         "num_retries": 0,
     }
     kwargs.update(_litellm_extra_kwargs(model_config))
+    completion_timeout = _completion_timeout_seconds(kwargs.get("timeout"))
+    # 同时传给 LiteLLM 和 asyncio。前者取消底层 HTTP 请求，后者为每个
+    # provider 提供一致的兜底截止时间。
+    kwargs["timeout"] = completion_timeout
     if api_key:
         kwargs["api_key"] = api_key
     if api_base:
@@ -155,7 +175,10 @@ async def _call_llm_single(
     start = time.monotonic()
     try:
         async with _get_completion_semaphore():
-            response = await asyncio.to_thread(completion, **kwargs)
+            response = await asyncio.wait_for(
+                acompletion(**kwargs),
+                timeout=completion_timeout,
+            )
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content
         usage = extract_usage(response)

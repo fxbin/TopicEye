@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
     LLM_WORKER_CONCURRENCY: int = 4
+    # 单次运行时调用的硬上限；模型 extra_params.timeout 只能把它调小，不能放大。
+    LLM_COMPLETION_TIMEOUT_SECONDS: float = 45.0
     ANALYSIS_WORKER_CONCURRENCY: int = 3
     ANALYSIS_JOB_INFLIGHT_TTL_SECONDS: int = 900
     ANALYSIS_CASCADE_ENABLED: bool = False

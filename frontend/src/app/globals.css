@@ -63,10 +63,11 @@
 html,
 body {
   height: 100%;
-  width: 100%;
+  max-width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
 }
 
 body {
@@ -78,6 +79,46 @@ body {
 #__next,
 main {
   height: 100vh;
+  min-width: 0;
+}
+
+/* Prevent media from forcing a narrower viewport to scroll sideways. */
+img,
+picture,
+video,
+canvas,
+svg {
+  max-inline-size: 100%;
+}
+
+/* Keyboard focus must remain visible even where component styles reset outlines. */
+:where(a, button, input, select, textarea, summary, [role='button'], [tabindex]):focus-visible {
+  outline: 3px solid var(--color-primary-solid);
+  outline-offset: 3px;
+}
+
+:where(:target, :focus-visible) {
+  scroll-margin-block: 4rem;
+}
+
+.skip-to-content {
+  position: fixed;
+  inset-block-start: 0.75rem;
+  inset-inline-start: 0.75rem;
+  z-index: 1100;
+  transform: translateY(-160%);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-solid);
+  color: white;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 150ms ease-out;
+}
+
+.skip-to-content:focus-visible {
+  transform: translateY(0);
+  outline-color: white;
 }
 
 /* Custom Scrollbar */
@@ -180,6 +221,15 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .radar-signature-sweep,
   .radar-signature-ping,
   .radar-signature-blip {

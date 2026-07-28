@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DM_Sans, DM_Mono, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import ClientLayout from '@/components/ClientLayout';
+import SkipToContent from '@/components/SkipToContent';
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -39,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={`${dmSans.variable} ${dmMono.variable} ${notoSerif.variable}`} suppressHydrationWarning>
       <body>
+        <SkipToContent />
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

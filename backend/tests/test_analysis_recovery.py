@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 
 from app.api.v1 import analyses as analyses_api
+from app.core.db_backend import ensure_aware_utc
 from app.core.database import Base
 from app.models.analysis import AiAnalysis
 from app.models.analysis_job import AnalysisJobRecord
@@ -114,6 +115,25 @@ async def test_list_pending_for_analysis_filters_recent_pending_items():
                     skip_analysis=True,
                     crawled_at=now,
                 ),
+                ContentItem(
+                    id=9,
+                    title="达到重试上限的失败内容",
+                    url="https://example.com/terminal-error",
+                    status=ContentStatus.ERROR,
+                    analysis_attempts=5,
+                    crawled_at=now,
+                    updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
+                ),
+                ContentItem(
+                    id=10,
+                    title="延迟重试的失败内容",
+                    url="https://example.com/delayed-error",
+                    status=ContentStatus.ERROR,
+                    analysis_attempts=1,
+                    analysis_next_retry_at=now + timedelta(minutes=5),
+                    crawled_at=now,
+                    updated_at=now - timedelta(minutes=ANALYSIS_STALE_MINUTES + 5),
+                ),
             ]
         )
         await db.commit()
@@ -150,6 +170,40 @@ async def test_claim_pending_analysis_ids_marks_items_analyzing_before_workers_r
     assert claimed_ids == [1]
     assert second_claim == []
     assert content.status == ContentStatus.ANALYZING
+    assert content.analysis_attempts == 1
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_failed_analysis_uses_exponential_retry_and_terminal_state(monkeypatch):
+    engine, session_factory = await _session_factory()
+    monkeypatch.setattr(analysis.settings, "ANALYSIS_RETRY_BASE_DELAY_SECONDS", 60)
+    monkeypatch.setattr(analysis.settings, "ANALYSIS_RETRY_MAX_DELAY_SECONDS", 3600)
+    monkeypatch.setattr(analysis.settings, "ANALYSIS_MAX_ATTEMPTS", 3)
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=1,
+                title="重试内容",
+                url="https://example.com/retry-backoff",
+                status=ContentStatus.ANALYZING,
+                analysis_attempts=2,
+            )
+        )
+        await db.commit()
+        await analysis._mark_content_error(db, 1)
+        item = await db.get(ContentItem, 1)
+
+        assert item.status == ContentStatus.ERROR
+        assert item.analysis_next_retry_at is not None
+        assert ensure_aware_utc(item.analysis_next_retry_at) > datetime.now(UTC)
+
+        item.analysis_attempts = 3
+        await db.commit()
+        await analysis._mark_content_error(db, 1)
+        assert item.analysis_next_retry_at is None
+
     await engine.dispose()
 
 

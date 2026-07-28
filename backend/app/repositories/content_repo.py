@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
+from app.core.config import settings
 from app.core.time import naive_utc_now
 from app.models.content import ContentItem, ContentStatus
 from app.repositories._content_repo_types import (  # noqa: F401 — re-export for scoring_flow et al.
@@ -78,6 +79,20 @@ class ContentRepo(BaseRepository[ContentItem]):
 
     # ── Status lifecycle ───────────────────────────────────────────
 
+    @staticmethod
+    def _analysis_candidate_condition(*, stale_cutoff: datetime, now: datetime):
+        """Return rows that may be claimed by the durable analysis queue."""
+        return (
+            (ContentItem.status == ContentStatus.PENDING)
+            | ((ContentItem.status == ContentStatus.ANALYZING) & (ContentItem.updated_at <= stale_cutoff))
+            | (
+                (ContentItem.status == ContentStatus.ERROR)
+                & (ContentItem.updated_at <= stale_cutoff)
+                & (ContentItem.analysis_attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)))
+                & ((ContentItem.analysis_next_retry_at.is_(None)) | (ContentItem.analysis_next_retry_at <= now))
+            )
+        )
+
     async def get_by_status(
         self,
         status: ContentStatus,
@@ -102,14 +117,11 @@ class ContentRepo(BaseRepository[ContentItem]):
         hours: int | None = None,
     ) -> Sequence[ContentItem]:
         """Fetch eligible pending or stale items for analysis, newest collected first."""
-        stale_cutoff = naive_utc_now() - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+        now = naive_utc_now()
+        stale_cutoff = now - timedelta(minutes=ANALYSIS_STALE_MINUTES)
         stmt = (
             select(self.model)
-            .where(
-                (self.model.status == ContentStatus.PENDING)
-                | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
-                | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
-            )
+            .where(self._analysis_candidate_condition(stale_cutoff=stale_cutoff, now=now))
             # 与 claim_pending_analysis_ids 使用同一资格条件。该查询还承担
             # post-sync "是否仍有积压" 的判断，不能把显式跳过 LLM 的内容算入。
             .where(self.model.skip_analysis.is_(False))
@@ -133,15 +145,12 @@ class ContentRepo(BaseRepository[ContentItem]):
             if database_profile.is_sqlite:
                 await begin_immediate_for_sqlite(self.db)
 
-            stale_cutoff = naive_utc_now() - timedelta(minutes=ANALYSIS_STALE_MINUTES)
             claimed_at = naive_utc_now()
+            stale_cutoff = claimed_at - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+            candidate_condition = self._analysis_candidate_condition(stale_cutoff=stale_cutoff, now=claimed_at)
             stmt = (
                 select(self.model.id)
-                .where(
-                    (self.model.status == ContentStatus.PENDING)
-                    | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
-                    | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
-                )
+                .where(candidate_condition)
                 # LLM 规则过滤：skip_analysis=True 的内容（低信号/自吹/过短）不入队
                 .where(self.model.skip_analysis.is_(False))
                 .order_by(self.model.crawled_at.desc(), self.model.created_at.desc())
@@ -160,12 +169,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             update_result = await self.db.execute(
                 update(self.model)
                 .where(self.model.id.in_(pending_ids))
-                .where(
-                    (self.model.status == ContentStatus.PENDING)
-                    | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
-                    | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
+                .where(candidate_condition)
+                .values(
+                    status=ContentStatus.ANALYZING,
+                    updated_at=claimed_at,
+                    analysis_attempts=self.model.analysis_attempts + 1,
+                    analysis_next_retry_at=None,
                 )
-                .values(status=ContentStatus.ANALYZING, updated_at=claimed_at)
             )
             await self.db.flush()
             if update_result.rowcount == len(pending_ids):

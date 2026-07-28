@@ -264,10 +264,16 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
     from app.core.db_backend import ensure_naive_utc
 
     cutoff = ensure_naive_utc(stale_cutoff)
+    now = ensure_naive_utc(datetime.now(UTC))
     return (
         (ContentItem.status == ContentStatus.PENDING)
         | ((ContentItem.status == ContentStatus.ANALYZING) & (ContentItem.updated_at <= cutoff))
-        | ((ContentItem.status == ContentStatus.ERROR) & (ContentItem.updated_at <= cutoff))
+        | (
+            (ContentItem.status == ContentStatus.ERROR)
+            & (ContentItem.updated_at <= cutoff)
+            & (ContentItem.analysis_attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)))
+            & ((ContentItem.analysis_next_retry_at.is_(None)) | (ContentItem.analysis_next_retry_at <= now))
+        )
     )
 
 
@@ -381,6 +387,15 @@ async def _mark_content_error(db: AsyncSession, content_id: int) -> None:
         if content is not None:
             content.status = ContentStatus.ERROR
             content.updated_at = datetime.now(UTC)
+            attempts = max(1, int(content.analysis_attempts or 0))
+            if attempts < max(1, int(settings.ANALYSIS_MAX_ATTEMPTS)):
+                delay = min(
+                    max(1, int(settings.ANALYSIS_RETRY_BASE_DELAY_SECONDS)) * (2 ** (attempts - 1)),
+                    max(1, int(settings.ANALYSIS_RETRY_MAX_DELAY_SECONDS)),
+                )
+                content.analysis_next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
+            else:
+                content.analysis_next_retry_at = None
             await db.commit()
     except Exception as status_error:
         await db.rollback()
@@ -604,7 +619,12 @@ async def analyze_one_claimed(
                     update(ContentItem)
                     .where(ContentItem.id == content_id)
                     .where(_analysis_retryable_status_filter(stale_cutoff))
-                    .values(status=ContentStatus.ANALYZING, updated_at=datetime.now(UTC))
+                    .values(
+                        status=ContentStatus.ANALYZING,
+                        updated_at=datetime.now(UTC),
+                        analysis_attempts=ContentItem.analysis_attempts + 1,
+                        analysis_next_retry_at=None,
+                    )
                 )
                 await db.commit()
                 return result.rowcount > 0

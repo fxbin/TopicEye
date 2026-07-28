@@ -58,6 +58,9 @@ class ContentItem(Base):
     # skip_analysis=True 时不进 LLM 队列（不入 claim_pending），但仍入库保留
     skip_analysis: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     skip_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 持久化分析队列元数据：ERROR 仅在 next_retry_at 到期且未超过尝试上限时重试。
+    analysis_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    analysis_next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Topic clustering fields
     topic_id: Mapped[int | None] = mapped_column(

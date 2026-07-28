@@ -69,11 +69,11 @@ def _post_sync_analysis_batch_size() -> int:
 
 
 def _post_sync_analysis_time_budget_seconds() -> int:
-    return _positive_int(getattr(settings, "POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS", 520), 520)
+    return _positive_int(getattr(settings, "POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS", 280), 280)
 
 
 def _post_sync_min_remaining_seconds() -> int:
-    return _positive_int(getattr(settings, "POST_SYNC_MIN_REMAINING_SECONDS", 90), 90)
+    return _positive_int(getattr(settings, "POST_SYNC_MIN_REMAINING_SECONDS", 30), 30)
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -585,6 +585,77 @@ async def _topic_clustering_daily() -> None:
         logger.exception("Scheduler: daily topic clustering failed")
 
 
+# ── Decoupled post-sync jobs (clustering / evidence / trends) ─────────
+# These were previously embedded in _run_post_sync_pipeline_once(), which
+# caused 600s timeouts when analysis consumed most of the time budget.
+# Each now runs independently with its own timeout.
+
+
+@track_job(
+    "post_sync_clustering",
+    name="增量话题聚类",
+    timeout=300,
+    description="每15分钟对近期已分析内容做增量聚类，独立于分析管线",
+)
+async def _post_sync_clustering() -> None:
+    """Incremental clustering on recently analyzed content.
+
+    Uses ``cluster_and_dedup_with_lease`` which has its own cross-process
+    lease, so overlapping runs are safely skipped.
+    """
+    try:
+        async with async_session() as db:
+            from app.services.topic_clustering import cluster_and_dedup_with_lease
+
+            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
+            await db.commit()
+        if claimed:
+            logger.info("Scheduler: post-sync clustering done — %s", stats)
+        else:
+            logger.debug("Scheduler: post-sync clustering skipped (lease held)")
+    except Exception:
+        logger.exception("Scheduler: post-sync clustering failed")
+
+
+@track_job(
+    "post_sync_evidence",
+    name="跨源证据发现",
+    timeout=120,
+    description="每15分钟发现跨源证据标记（零 LLM 成本）",
+)
+async def _post_sync_evidence() -> None:
+    """Discover cross-source evidence marks for recent content."""
+    try:
+        async with async_session() as db:
+            from app.services.evidence_service import discover_cross_source_evidence
+
+            ev_stats = await discover_cross_source_evidence(db, hours=24)
+            await db.commit()
+        if ev_stats.get("marks", 0) > 0:
+            logger.info("Scheduler: post-sync evidence — %s", ev_stats)
+    except Exception:
+        logger.warning("Scheduler: post-sync evidence failed (non-fatal)", exc_info=True)
+
+
+@track_job(
+    "post_sync_trends",
+    name="趋势快照刷新",
+    timeout=300,
+    description="每30分钟刷新当日趋势快照，独立于分析管线",
+)
+async def _post_sync_trends() -> None:
+    """Refresh daily trend snapshots for the current day."""
+    try:
+        async with async_session() as db:
+            from app.services.trends import snapshot_daily_trends
+
+            stats = await snapshot_daily_trends(db)
+            await db.commit()
+        logger.info("Scheduler: post-sync trend snapshot done — %s", stats)
+    except Exception:
+        logger.exception("Scheduler: post-sync trend snapshot failed")
+
+
 # ── NEW: AI 日报 & 周刊定时任务 ──────────────────────────────────────
 
 
@@ -839,6 +910,32 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # ── Decoupled post-sync jobs ──────────────────────────────────────
+    # Previously embedded in post_sync_pipeline, these now run independently
+    # to prevent analysis time budget from pushing the combined job past its
+    # hard timeout. Each has its own @track_job wrapper for execution logs.
+    scheduler.add_job(
+        _post_sync_clustering,
+        trigger=IntervalTrigger(minutes=15),
+        id="post_sync_clustering",
+        name="Incremental topic clustering",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _post_sync_evidence,
+        trigger=IntervalTrigger(minutes=15),
+        id="post_sync_evidence",
+        name="Cross-source evidence discovery",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _post_sync_trends,
+        trigger=IntervalTrigger(minutes=30),
+        id="post_sync_trends",
+        name="Refresh daily trend snapshots",
+        replace_existing=True,
+    )
+
     # Trending snapshot: save daily snapshot at 00:30
     scheduler.add_job(
         _save_trending_snapshots,
@@ -1024,9 +1121,10 @@ def start_scheduler() -> None:
         logger.warning("Scheduler: could not schedule initial rescan (no event loop)")
 
     logger.info(
-        "Scheduler started: per-source sync + 10min rescan + 5min post-sync + cleanup + "
-        "daily_report(12:00/20:00 + final 00:30) + weekly_digest(Mon 09:00) + "
-        "weread_stats_cache(05:00)"
+        "Scheduler started: per-source sync + 10min rescan + "
+        "5min analysis + 15min clustering + 15min evidence + 30min trends + "
+        "cleanup + daily_report(12:00/20:00 + final 00:30) + "
+        "weekly_digest(Mon 03:00) + weread_stats_cache(05:00)"
     )
 
 

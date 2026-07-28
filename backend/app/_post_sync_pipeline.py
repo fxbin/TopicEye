@@ -56,11 +56,11 @@ def _post_sync_analysis_batch_size() -> int:
 
 
 def _post_sync_analysis_time_budget_seconds() -> int:
-    return _positive_int(getattr(settings, "POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS", 520), 520)
+    return _positive_int(getattr(settings, "POST_SYNC_ANALYSIS_TIME_BUDGET_SECONDS", 280), 280)
 
 
 def _post_sync_min_remaining_seconds() -> int:
-    return _positive_int(getattr(settings, "POST_SYNC_MIN_REMAINING_SECONDS", 90), 90)
+    return _positive_int(getattr(settings, "POST_SYNC_MIN_REMAINING_SECONDS", 30), 30)
 
 
 def _request_post_sync_pipeline(stats: dict | None = None) -> bool:
@@ -112,9 +112,9 @@ def _clear_post_sync_task(task: asyncio.Task) -> None:
 
 @track_job(
     "post_sync_pipeline",
-    name="同步后分析聚合",
-    timeout=600,
-    description="节流处理待分析内容、话题聚类和趋势快照，避免每个信源同步后重复触发",
+    name="同步后分析",
+    timeout=300,
+    description="节流处理待分析内容，避免每个信源同步后重复触发。聚类/证据/趋势已拆为独立调度任务。",
 )
 async def _run_post_sync_pipeline() -> None:
     """Run shared post-sync work, coalescing overlapping sync completions."""
@@ -136,13 +136,12 @@ async def _run_post_sync_pipeline() -> None:
 
 
 async def _run_post_sync_pipeline_once() -> None:
-    """Analyze pending, cluster, snapshot trends, and push today's picks.
+    """Analyze pending content only.
 
-    The today-picks push runs **unconditionally** at the end of each cycle
-    (dedup is handled inside ``send_alert``).  Previously it was nested
-    inside the analysis/clustering success path, which meant that if there
-    was no *new* pending content the push was never reached — even though
-    perfectly good picks from a previous run were already available.
+    Clustering, cross-source evidence discovery, and trend snapshots have
+    been decoupled into independent scheduled jobs (see ``scheduler.py``)
+    to prevent the analysis time budget from pushing the total job past
+    its hard timeout.
     """
     analysis_stats = await _drain_pending_analysis()
     if analysis_stats["attempted"] == 0:
@@ -160,55 +159,16 @@ async def _run_post_sync_pipeline_once() -> None:
             analysis_stats,
         )
 
-    # ── Clustering ──
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
-
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
-        if claimed:
-            logger.info("Scheduler: clustering done — %s", stats)
-        else:
-            logger.info("Scheduler: clustering skipped because another run holds the lease")
-    except Exception:
-        logger.exception("Scheduler: clustering failed")
-
-    # ── Cross-source evidence discovery (after clustering, zero LLM cost) ──
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.evidence_service import discover_cross_source_evidence
-
-            ev_stats = await discover_cross_source_evidence(db, hours=24)
-            await db.commit()
-        if ev_stats.get("marks", 0) > 0:
-            logger.info("Scheduler: cross-source evidence — %s", ev_stats)
-    except Exception:
-        logger.warning("Scheduler: cross-source evidence failed (non-fatal)", exc_info=True)
-
-    # 批量分析+聚类完成后刷新 stats 缓存（不再在单条内容增删时失效）
+    # 刷新 stats 缓存（分析完成后新数据可被 /stats 端点读取）
     try:
         from app.services.stats_cache import invalidate_stats_cache
 
         invalidate_stats_cache()
-        logger.info("Scheduler: stats cache invalidated after post-sync pipeline")
+        logger.info("Scheduler: stats cache invalidated after analysis")
     except Exception:
         logger.warning("Scheduler: failed to invalidate stats cache", exc_info=True)
 
-    try:
-        async with app.scheduler.async_session() as db:
-            from app.services.trends import snapshot_daily_trends
-
-            stats = await snapshot_daily_trends(db)
-            await db.commit()
-        logger.info("Scheduler: trend snapshot done — %s", stats)
-    except Exception:
-        logger.exception("Scheduler: trend snapshot failed")
-
-    # 今日精选推送已移除。
-    # 日报生成流程（daily_report.py _push_daily_report_success）已有独立的飞书推送，
-    # 推送的是 LLM 编辑筛选后的 top_picks（6-9 条，带 editorial_title/tier/angles）。
-    # 此处之前推的 build_today_picks 是原始评分列表，与 /daily 页面展示内容不一致，
-    # 会导致用户在飞书看到的内容和站内日报对不上。
+    # 聚类/证据发现/趋势快照已拆为独立调度任务，不再在此处执行。
 
 
 async def _drain_pending_analysis(

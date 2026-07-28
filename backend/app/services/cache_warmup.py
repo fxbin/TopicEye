@@ -183,7 +183,7 @@ async def warmup_today_picks(db) -> None:
 
 
 async def warmup_stats_workspace() -> list[str]:
-    from app.api.v1.stats import build_default_stats_cache_payloads
+    from app.services.stats_workspace import build_default_stats_cache_payloads
 
     payloads = build_default_stats_cache_payloads()
     for key, payload in payloads.items():

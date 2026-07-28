@@ -21,6 +21,7 @@ from app.services.duckdb_service import (
     query_stats_source_distribution,
 )
 from app.services.json_cache import get_cached_json, set_cached_json
+from app.services.stats_workspace import build_default_stats_cache_payloads
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
@@ -157,16 +158,3 @@ async def get_dashboard_stats(days: int = Query(30, ge=1, le=90)):
     if cached:
         return cached
     return _query_response(cache_key, lambda: query_dashboard_stats(days=days))
-
-
-def build_default_stats_cache_payloads() -> dict[str, dict]:
-    """Build default workspace stats payloads through DuckDB for cache warmup."""
-    days = DEFAULT_STATS_DAYS
-    return {
-        _stats_cache_key("overview", days=days): query_stats_overview(days=days),
-        _stats_cache_key("source_distribution", days=days): query_stats_source_distribution(days=days),
-        _stats_cache_key("category_distribution", days=days): query_stats_category_distribution(days=days),
-        _stats_cache_key("daily_trend", days=days): query_stats_daily_trend(days=days),
-        _stats_cache_key("novel_platforms"): query_stats_novel_platforms(),
-        _stats_cache_key("dashboard", days=days): query_dashboard_stats(days=days),
-    }

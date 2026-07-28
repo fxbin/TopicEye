@@ -106,6 +106,14 @@ async def test_list_pending_for_analysis_filters_recent_pending_items():
                     crawled_at=now - timedelta(minutes=5),
                     updated_at=now,
                 ),
+                ContentItem(
+                    id=8,
+                    title="已跳过分析的最新内容",
+                    url="https://example.com/skip-analysis",
+                    status=ContentStatus.PENDING,
+                    skip_analysis=True,
+                    crawled_at=now,
+                ),
             ]
         )
         await db.commit()

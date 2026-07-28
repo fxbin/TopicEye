@@ -101,7 +101,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         limit: int = 20,
         hours: int | None = None,
     ) -> Sequence[ContentItem]:
-        """Fetch recent pending or stale analyzing items for analysis, newest collected first."""
+        """Fetch eligible pending or stale items for analysis, newest collected first."""
         stale_cutoff = naive_utc_now() - timedelta(minutes=ANALYSIS_STALE_MINUTES)
         stmt = (
             select(self.model)
@@ -110,6 +110,9 @@ class ContentRepo(BaseRepository[ContentItem]):
                 | ((self.model.status == ContentStatus.ANALYZING) & (self.model.updated_at <= stale_cutoff))
                 | ((self.model.status == ContentStatus.ERROR) & (self.model.updated_at <= stale_cutoff))
             )
+            # 与 claim_pending_analysis_ids 使用同一资格条件。该查询还承担
+            # post-sync "是否仍有积压" 的判断，不能把显式跳过 LLM 的内容算入。
+            .where(self.model.skip_analysis.is_(False))
             .order_by(self.model.crawled_at.desc(), self.model.created_at.desc())
             .limit(limit)
         )

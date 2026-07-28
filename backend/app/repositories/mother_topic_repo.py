@@ -35,16 +35,45 @@ class MotherTopicRepository(BaseRepository[MotherTopic]):
         user_id: int,
         active_only: bool = False,
     ) -> Sequence[MotherTopic]:
-        """返回当前用户可见的母题（系统模板 + 自己的 fork）。
+        """返回当前用户可见的母题（系统模板 + 自己的 fork），按 name 去重。
 
         按display_order, id 排序。active_only=True 时仅返回 is_active=True 的记录。
+
+        去重规则：如果用户 fork 了某个系统模板（同名），只返回 fork 版本
+        （用户可能已自定义关键词/权重），系统模板仅在用户未 fork 时作为 fallback。
+
+        执行顺序：先查全量去重，再按 active_only 过滤。
+        这样用户停用自己的 fork 后，去重时选中 fork（inactive），
+        系统模板被丢弃，最后 active_only 过滤掉 inactive fork → 话题不再显示。
         """
         stmt = select(MotherTopic).order_by(MotherTopic.display_order, MotherTopic.id)
         stmt = apply_visibility(stmt, MotherTopic, visible_user_id=user_id)
-        if active_only:
-            stmt = stmt.where(MotherTopic.is_active == True)  # noqa: E712
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        all_topics = result.scalars().all()
+
+        # Deduplicate by name: prefer user's fork over system template.
+        # User forks (owner_user_id is not None) take priority; system
+        # templates (owner_user_id is None) serve as fallback only when
+        # the user hasn't forked that name.
+        seen_names: set[str] = set()
+        deduped: list[MotherTopic] = []
+        for topic in all_topics:
+            if topic.owner_user_id is not None:
+                seen_names.add(topic.name)
+                deduped.append(topic)
+        for topic in all_topics:
+            if topic.owner_user_id is None and topic.name not in seen_names:
+                seen_names.add(topic.name)
+                deduped.append(topic)
+
+        # Apply active_only filter AFTER dedup, so that a user deactivating
+        # their fork also suppresses the system template fallback.
+        if active_only:
+            deduped = [t for t in deduped if t.is_active]
+
+        # Preserve original (display_order, id) sort order.
+        deduped.sort(key=lambda t: (t.display_order, t.id))
+        return deduped
 
     async def list_all_for_admin(self, *, active_only: bool = False) -> Sequence[MotherTopic]:
         """admin 审计用：返回全量母题（含其他用户的私有 fork）。

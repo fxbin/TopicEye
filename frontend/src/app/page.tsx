@@ -57,6 +57,7 @@ export default function HomePage() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
   const [contentLimit, setContentLimit] = useState(INITIAL_CONTENT_LIMIT);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,9 +101,10 @@ export default function HomePage() {
     (async () => {
       try {
         setLoading(true);
+        setContentLimit(INITIAL_CONTENT_LIMIT);
         setError(null);
         const res = await contentsApi.list({
-          page_size: contentLimit,
+          page_size: INITIAL_CONTENT_LIMIT,
           hours: TIME_RANGE_HOURS[activeTimeRange],
           source_type: activeSourceType === '全部' ? undefined : activeSourceType,
           category: activeCategory === '全部' ? undefined : activeCategory,
@@ -134,11 +136,33 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTimeRange, activeSourceType, activeCategory, contentLimit, searchQuery]);
+  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery]);
 
   const resetContentLimit = useCallback(() => {
     setContentLimit(INITIAL_CONTENT_LIMIT);
   }, []);
+
+  const handleLoadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const nextLimit = contentLimit + CONTENT_LOAD_STEP;
+      const res = await contentsApi.list({
+        page_size: nextLimit,
+        hours: TIME_RANGE_HOURS[activeTimeRange],
+        source_type: activeSourceType === '全部' ? undefined : activeSourceType,
+        category: activeCategory === '全部' ? undefined : activeCategory,
+        q: searchQuery.trim() || undefined,
+        include_trend_sources: false,
+      });
+      setItems(res.items || []);
+      setTotalAvailable(res.total ?? (res.items || []).length);
+      setContentLimit(nextLimit);
+    } catch (err) {
+      console.error('Load more failed:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [contentLimit, activeTimeRange, activeSourceType, activeCategory, searchQuery]);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -441,9 +465,10 @@ export default function HomePage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => setContentLimit((current) => current + CONTENT_LOAD_STEP)}
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
                 >
-                  加载更多（还有 {totalAvailable - items.length} 条）
+                  {loadingMore ? '加载中…' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
                 </Button>
                 <div className="mt-2 text-[11px] text-gray-400">首屏优先展示最新内容，按需继续展开。</div>
               </div>

@@ -68,3 +68,4 @@ htmlcov/
 .workbuddy/
 .qoder/
 .brooks-lint-history.json
+.vidt/

@@ -41,6 +41,7 @@ from app.repositories.source_repo import SourceRepository
 from app.services.analysis import (
     analyze_batch_concurrent,  # noqa: F401 — re-exported for _post_sync_pipeline runtime lookup
 )
+from app.services.analysis_jobs import dispatch_queued_analysis_jobs, recover_interrupted_analysis_jobs
 from app.services.content_pipeline import ingest_from_source
 from app.services.job_tracker import track_job
 
@@ -127,10 +128,9 @@ async def sync_and_analyze() -> None:
 
     if analysis_stats["remaining"]:
         logger.info(
-            "Scheduler: pending backlog remains after analysis drain — %s; clustering deferred",
+            "Scheduler: pending backlog remains after analysis drain — %s; continuing with analyzed subset",
             analysis_stats,
         )
-        return
 
     # ── Phase 3: Cluster + dedup ──
     try:
@@ -155,6 +155,27 @@ async def sync_and_analyze() -> None:
         logger.info("Scheduler: trend snapshot done — %s", stats)
     except Exception:
         logger.exception("Scheduler: trend snapshot failed")
+
+
+@track_job(
+    "dispatch_analysis_jobs",
+    name="恢复持久化分析任务",
+    timeout=600,
+    description="执行数据库中排队的分析任务，避免进程重启后后台任务丢失",
+)
+async def _dispatch_analysis_jobs() -> None:
+    """Dispatch DB-backed jobs that were not picked up by a request task."""
+    dispatched = await dispatch_queued_analysis_jobs()
+    if dispatched:
+        logger.info("Scheduler: dispatched persisted analysis jobs=%s", dispatched)
+
+
+async def _recover_analysis_jobs_on_startup() -> None:
+    """Requeue interrupted jobs once, then let the regular dispatcher own them."""
+    recovered = await recover_interrupted_analysis_jobs()
+    if recovered:
+        logger.info("Scheduler: recovered interrupted analysis jobs=%s", recovered)
+    await _dispatch_analysis_jobs()
 
 
 @track_job(
@@ -798,6 +819,16 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # API request tasks are only an acceleration path.  The database-backed
+    # dispatcher is the durable owner and will pick up jobs after restarts.
+    scheduler.add_job(
+        _dispatch_analysis_jobs,
+        trigger=IntervalTrigger(minutes=1),
+        id="dispatch_analysis_jobs",
+        name="Dispatch persisted analysis jobs",
+        replace_existing=True,
+    )
+
     # Shared post-sync processing is intentionally throttled and decoupled from
     # per-source jobs to keep source fetch intervals reliable on SQLite.
     scheduler.add_job(
@@ -987,6 +1018,7 @@ def start_scheduler() -> None:
         loop = _asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(_rescan_sources())
+            loop.create_task(_recover_analysis_jobs_on_startup())
             logger.info("Scheduler: initial source rescan scheduled immediately")
     except RuntimeError:
         logger.warning("Scheduler: could not schedule initial rescan (no event loop)")

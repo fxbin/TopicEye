@@ -8,17 +8,19 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
-from app.core.database import async_session, get_db
+from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.content_repo import ContentRepo
 from app.schemas.analysis import AiAnalysisResponse
 from app.services.analysis import analyze_batch_concurrent, analyze_content, analyze_one_claimed
 from app.services.analysis_jobs import (
+    AnalysisJobPersistenceError,
     create_analysis_job,
     finish_analysis_job,
     get_analysis_job,
     mark_analysis_job_running,
+    run_analysis_job,
 )
 
 router = APIRouter(prefix="/analyses", tags=["analyses"], dependencies=[Depends(get_current_user)])
@@ -104,7 +106,14 @@ async def analyze_all_pending(
         }
 
     if not sync:
-        job = await create_analysis_job(ids)
+        try:
+            job = await create_analysis_job(ids)
+        except AnalysisJobPersistenceError as exc:
+            # The content claim was committed before job registration.  Do not
+            # release it by ID here: a lease may have been reclaimed by a
+            # different worker.  The lease expiry path safely makes it
+            # eligible again without violating fencing.
+            raise HTTPException(status_code=503, detail="Analysis queue is temporarily unavailable") from exc
         if not job.content_ids:
             return {
                 "message": "Analysis already queued for matching content",
@@ -119,7 +128,7 @@ async def analyze_all_pending(
             }
         if background_tasks is None:
             background_tasks = BackgroundTasks()
-        background_tasks.add_task(_run_batch_background, job.job_id, job.content_ids)
+        background_tasks.add_task(run_analysis_job, job.job_id)
         return {
             "message": f"Analysis queued for {len(job.content_ids)} items in background",
             "count": len(job.content_ids),
@@ -148,7 +157,7 @@ async def analyze_all_pending(
 
 @router.get("/jobs/{job_id}")
 async def get_analysis_job_status(job_id: str):
-    """Return process-local status for a background analysis job."""
+    """Return durable status for a background analysis job."""
     job = await get_analysis_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Analysis job not found")
@@ -205,25 +214,12 @@ async def list_analyses(
 
 
 async def _run_batch_background(job_id: str, content_ids: list[int]) -> None:
-    """Run batch analysis in background."""
-    await mark_analysis_job_running(job_id)
-    try:
-        results = await analyze_batch_concurrent(content_ids, assume_claimed=True)
-        analyzed_ids = [item.content_id for item in results]
-        failed_ids = [content_id for content_id in content_ids if content_id not in set(analyzed_ids)]
-        await _release_background_analysis_claims(failed_ids)
-        await finish_analysis_job(job_id, analyzed_ids=analyzed_ids, failed_ids=failed_ids)
-    except Exception as exc:
-        await _release_background_analysis_claims(content_ids)
-        await finish_analysis_job(job_id, failed_ids=content_ids, error_message=str(exc))
-        raise
+    """Legacy callable retained for integrations that invoke it directly.
 
-
-async def _release_background_analysis_claims(content_ids: list[int]) -> int:
-    """Release still-analyzing background claims so failed jobs can be retried."""
-    if not content_ids:
-        return 0
-    async with async_session() as db:
-        released = await ContentRepo(db).release_analyzing_to_pending(content_ids)
-        await db.commit()
-        return released
+    New requests enqueue :func:`run_analysis_job`, whose database CAS makes
+    restart recovery safe.  It must not release IDs itself: a reclaimed lease
+    may now belong to a different worker and only the durable executor has
+    the ownership context needed to finish it safely.
+    """
+    del content_ids
+    await run_analysis_job(job_id)

@@ -235,14 +235,30 @@ async def test_mother_topics_per_user_isolation_and_fork():
         topic_names = [s["name"] for s in result["topic_scores"]]
         assert "B 私有" not in topic_names
 
-        # ── 14. admin list 看全量（含其他用户私有母题）──
+        # ── 14. admin list scope=all 看全量（含其他用户私有母题）──
         resp = await client.get(
-            "/mother-topics?active_only=false",
+            "/mother-topics?active_only=false&scope=all",
             headers={"Authorization": f"Bearer {token_admin}"},
         )
         assert resp.status_code == 200
         admin_names = [item["name"] for item in resp.json()]
         assert "B 私有" in admin_names  # admin 能看到所有用户的
+
+        # ── 14b. admin list scope=mine 只看自己（隔离）──
+        resp = await client.get(
+            "/mother-topics?active_only=false&scope=mine",
+            headers={"Authorization": f"Bearer {token_admin}"},
+        )
+        assert resp.status_code == 200
+        admin_mine_names = [item["name"] for item in resp.json()]
+        assert "B 私有" not in admin_mine_names  # admin 用户侧也隔离
+
+        # ── 14c. 普通用户 scope=all 被拒 ──
+        resp = await client.get(
+            "/mother-topics?active_only=false&scope=all",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
 
         # ── 15. user_a delete 系统模板：403 ──
         resp = await client.delete(

@@ -129,19 +129,23 @@ def _assert_can_modify(topic: MotherTopic, current_user: User) -> None:
 @router.get("/", response_model=list[MotherTopicOut])
 async def list_mother_topics(
     active_only: bool = False,
+    scope: str = "mine",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """列出当前用户可见的母题（系统模板 + 自己的 fork）。
+    """列出母题，按 name 去重。
 
-    admin 可看到全量（含其他用户的私有母题）用于审计；active_only=false
-    不再是 admin-only —— 普通用户也能看自己名下的停用母题。
+    scope=mine （默认）→ 用户隔离视图：系统模板 + 自己的 fork，按 name 去重。
+    scope=all  → admin 审计视图：全量母题（含其他用户私有 fork），仅 admin 可用。
+    active_only=true 时仅返回 is_active=True 的记录（在去重后过滤）。
     """
     repo = MotherTopicRepository(db)
-    if current_user.role == "admin":
-        # admin 看全量（含其他用户的私有 fork，用于审计）
+    if scope == "all":
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="仅管理员可查看全量母题")
         topics = await repo.list_all_for_admin(active_only=active_only)
     else:
+        # 默认 scope=mine：用户隔离视图（含 admin 访问用户侧页面）
         topics = await repo.list_visible_for_user(user_id=current_user.id, active_only=active_only)
     return [MotherTopicOut.from_orm_model(t) for t in topics]
 

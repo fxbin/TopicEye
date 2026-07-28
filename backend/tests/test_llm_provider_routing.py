@@ -7,6 +7,7 @@ from litellm.exceptions import BadRequestError
 from app.services.llm import provider
 from app.services.llm import _call_engine
 from app.services.llm import _rate_limit
+from app.services.llm.response_cache import LLMCache
 
 
 def _model(model_id: int, name: str, priority: int) -> SimpleNamespace:
@@ -156,6 +157,42 @@ async def test_call_llm_uses_requested_routing_group(monkeypatch):
 
     assert result == "ok from openai/lite"
     assert observed == {"group": "analysis_lite"}
+
+
+@pytest.mark.asyncio
+async def test_response_cache_isolated_by_routing_group_and_scene(monkeypatch):
+    """相同 prompt 不能跨模型池或业务场景复用缓存结果。"""
+    provider._failover.reset()
+    cache = LLMCache()
+    calls = []
+
+    async def route_models(group="default"):
+        return [_model(1 if group == "analysis_lite" else 2, group, 10)]
+
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
+        calls.append((model, scene))
+        return f"{model}:{scene}"
+
+    monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
+    monkeypatch.setattr(provider, "_call_with_retry", fake_call)
+    monkeypatch.setattr("app.services.llm.response_cache.get_llm_cache", lambda: cache)
+
+    messages = [{"role": "user", "content": "same prompt"}]
+    lite = await provider.call_llm(messages, routing_group="analysis_lite", scene="analysis")
+    pro = await provider.call_llm(messages, routing_group="default", scene="analysis")
+    lite_again = await provider.call_llm(messages, routing_group="analysis_lite", scene="analysis")
+    different_scene = await provider.call_llm(messages, routing_group="analysis_lite", scene="summary")
+
+    assert lite == lite_again == "openai/analysis_lite:analysis"
+    assert pro == "openai/default:analysis"
+    assert different_scene == "openai/analysis_lite:summary"
+    assert calls == [
+        ("openai/analysis_lite", "analysis"),
+        ("openai/default", "analysis"),
+        ("openai/analysis_lite", "summary"),
+    ]
 
 
 @pytest.mark.asyncio

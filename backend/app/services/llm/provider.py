@@ -76,6 +76,15 @@ async def invalidate_model_cache() -> None:
         _model_cache._last_refresh = 0.0
     reset_model_rate_limiters()
     _failover.reset()
+    # 模型顺序、端点或参数变更后，旧路由的结果不能继续作为命中项返回。
+    from app.services.llm.response_cache import get_llm_cache
+
+    get_llm_cache().clear()
+
+
+def _cache_scope(routing_group: str, scene: str) -> str:
+    """Build a cache namespace for the selected routing policy."""
+    return f"routing_group:{routing_group}|scene:{scene}"
 
 
 async def call_llm_with_metadata(
@@ -101,7 +110,8 @@ async def call_llm_with_metadata(
     from app.services.llm.response_cache import get_llm_cache
 
     cache = get_llm_cache()
-    cached = cache.get(messages, temperature, max_tokens, model=None)
+    cache_scope = _cache_scope(routing_group, scene)
+    cached = cache.get(messages, temperature, max_tokens, model=cache_scope)
     if cached is not None:
         return cached, {"cache_hit": True}
 
@@ -118,7 +128,7 @@ async def call_llm_with_metadata(
             messages,
             temperature,
             max_tokens,
-            model=None,
+            model=cache_scope,
             raw_response=result[0],
         )
         return result

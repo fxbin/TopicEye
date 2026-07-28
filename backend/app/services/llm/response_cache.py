@@ -1,13 +1,13 @@
 """
 LLM 响应缓存（按 prompt 内容 hash）。
 
-相同 (messages, model, temperature) 的 LLM 调用在 TTL 内返回缓存结果。
+相同 (messages, model/路由策略, temperature) 的 LLM 调用在 TTL 内返回缓存结果。
 场景：
 - 重试/失败的源再次抓取（same content → same LLM input）
 - 重复内容（hash 撞车）→ 直接命中
 
-注意：缓存按 (model, temperature, messages_hash) 维度，避免不同
-temperature 命中相同缓存。温度 0 (deterministic) 缓存收益最大。
+注意：缓存按 (model/路由策略, temperature, messages_hash) 维度，避免不同
+路由组、场景或 temperature 命中相同缓存。温度 0 (deterministic) 缓存收益最大。
 
 单进程内存实现。生产多实例需换 Redis（key 一样）。
 """

@@ -13,9 +13,9 @@ from collections.abc import Sequence
 
 from sqlalchemy import func, or_, select
 
+from app.core.user_identity import normalize_email
 from app.models.user import User, UserOAuthAccount
 from app.repositories.base import BaseRepository
-from app.services.auth_service import normalize_email
 
 
 class UserRepository(BaseRepository[User]):

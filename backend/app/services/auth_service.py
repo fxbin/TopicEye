@@ -11,16 +11,13 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sqlite_retry import retry_sqlite_locked
+from app.core.user_identity import normalize_email
 from app.models.user import User, UserApiToken, UserOAuthAccount, UserSession
 
 _HASH_ALGORITHM = "pbkdf2_sha256"
 _HASH_ITERATIONS = 260_000
 _SALT_BYTES = 16
 _SESSION_TOKEN_BYTES = 32
-
-
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
 
 
 def hash_password(password: str) -> str:

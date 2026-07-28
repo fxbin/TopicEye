@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.email_verification import EmailVerificationCode
-from app.services.auth_service import normalize_email
+from app.core.user_identity import normalize_email
 from app.services.email.base import EmailSendError
 from app.services.email.factory import get_email_provider
 

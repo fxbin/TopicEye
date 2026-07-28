@@ -464,8 +464,10 @@ export default function HomePage() {
               groups={timelineGroups}
               isFavorited={contentFavoriteState.isFavorited}
               onToggleFav={async (id) => {
+                const wasFav = contentFavoriteState.isFavorited(id);
                 await toggleFavorite(id);
                 contentFavoriteState.refresh();
+                contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
               }}
               onIgnore={handleIgnore}
               onShowAnalysis={(a) => setSelectedAnalysis(a)}

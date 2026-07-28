@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.content import ContentItem
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark
 from app.models.evidence_interaction import EvidenceInteraction
 from app.models.source import Source
@@ -214,4 +215,120 @@ class EvidenceRepository:
                 "unprofiled_sources": total_system_sources - profiled_sources,
                 "by_kind": by_kind,
             },
+        }
+
+    async def get_effect_stats(self, days: int = 7) -> dict[str, Any]:
+        """Compare interaction rates between evidence-marked and unmarked content.
+
+        This is the effect validation query. It joins content_items
+        with evidence_marks (LEFT JOIN, so unmarked content is included) and
+        aggregates interaction counts per group.
+
+        Returns a dict with:
+        - marked: {total_content, interactions_by_type, total_interactions, interaction_rate}
+        - unmarked: {total_content, interactions_by_type, total_interactions, interaction_rate}
+        - comparison: {click_rate_lift, favorite_rate_lift, feedback_rate_lift}
+        """
+        from datetime import UTC, datetime, timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+
+        # Count content items with and without evidence marks (public scope only)
+        marked_count_result = await self.db.execute(
+            select(func.count(ContentEvidenceMark.id)).where(
+                ContentEvidenceMark.owner_user_id.is_(None),
+                ContentEvidenceMark.cross_source_level != "none",
+                ContentEvidenceMark.computed_at >= cutoff,
+            )
+        )
+        marked_content_count = marked_count_result.scalar() or 0
+
+        # Total public content in the window
+        total_content_result = await self.db.execute(
+            select(func.count(ContentItem.id)).where(
+                ContentItem.owner_user_id.is_(None),
+                ContentItem.created_at >= cutoff,
+            )
+        )
+        total_content = total_content_result.scalar() or 0
+        unmarked_content_count = max(0, total_content - marked_content_count)
+
+        # Interactions on marked content
+        marked_interactions_result = await self.db.execute(
+            select(
+                EvidenceInteraction.interaction_type,
+                func.count(EvidenceInteraction.id),
+            )
+            .select_from(EvidenceInteraction)
+            .join(ContentEvidenceMark, ContentEvidenceMark.content_id == EvidenceInteraction.content_id)
+            .where(
+                ContentEvidenceMark.owner_user_id.is_(None),
+                ContentEvidenceMark.cross_source_level != "none",
+                EvidenceInteraction.created_at >= cutoff,
+            )
+            .group_by(EvidenceInteraction.interaction_type)
+        )
+        marked_by_type: dict[str, int] = {}
+        marked_total_interactions = 0
+        for itype, cnt in marked_interactions_result:
+            marked_by_type[itype] = cnt
+            marked_total_interactions += cnt
+
+        # Interactions on unmarked content (content_id NOT in evidence_marks)
+        unmarked_interactions_result = await self.db.execute(
+            select(
+                EvidenceInteraction.interaction_type,
+                func.count(EvidenceInteraction.id),
+            )
+            .select_from(EvidenceInteraction)
+            .outerjoin(
+                ContentEvidenceMark,
+                (ContentEvidenceMark.content_id == EvidenceInteraction.content_id)
+                & (ContentEvidenceMark.owner_user_id.is_(None)),
+            )
+            .where(
+                ContentEvidenceMark.id.is_(None),
+                EvidenceInteraction.created_at >= cutoff,
+            )
+            .group_by(EvidenceInteraction.interaction_type)
+        )
+        unmarked_by_type: dict[str, int] = {}
+        unmarked_total_interactions = 0
+        for itype, cnt in unmarked_interactions_result:
+            unmarked_by_type[itype] = cnt
+            unmarked_total_interactions += cnt
+
+        # Compute per-type rates
+        def _rate(count: int, base: int) -> float:
+            return round(count / base, 4) if base > 0 else 0.0
+
+        marked_rates = {t: _rate(c, marked_content_count) for t, c in marked_by_type.items()}
+        unmarked_rates = {t: _rate(c, unmarked_content_count) for t, c in unmarked_by_type.items()}
+
+        # Lift: how much the evidence mark improves each interaction rate
+        def _lift(marked_val: float, unmarked_val: float) -> float | None:
+            if unmarked_val == 0:
+                return None
+            return round((marked_val - unmarked_val) / unmarked_val, 4)
+
+        all_types = set(marked_by_type) | set(unmarked_by_type)
+        comparison: dict[str, float | None] = {}
+        for t in all_types:
+            comparison[t] = _lift(marked_rates.get(t, 0), unmarked_rates.get(t, 0))
+
+        return {
+            "window_days": days,
+            "marked": {
+                "total_content": marked_content_count,
+                "interactions_by_type": marked_by_type,
+                "total_interactions": marked_total_interactions,
+                "interaction_rate": _rate(marked_total_interactions, marked_content_count),
+            },
+            "unmarked": {
+                "total_content": unmarked_content_count,
+                "interactions_by_type": unmarked_by_type,
+                "total_interactions": unmarked_total_interactions,
+                "interaction_rate": _rate(unmarked_total_interactions, unmarked_content_count),
+            },
+            "comparison": comparison,
         }

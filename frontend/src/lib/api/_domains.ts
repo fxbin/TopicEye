@@ -329,6 +329,16 @@ export const contentsApi = {
   unignore(id: number): Promise<{ content_id: number; ignored: boolean; removed: boolean }> {
     return request(`/contents/${id}/ignore`, { method: 'DELETE' });
   },
+
+  /** 记录证据内容交互（fire-and-forget，不抛错） */
+  trackEvidenceInteraction(
+    contentId: number,
+    interactionType: 'click' | 'favorite' | 'unfavorite' | 'adopt' | 'feedback_positive' | 'feedback_negative',
+  ): void {
+    const url = `${BASE_URL}/contents/${contentId}/evidence-interaction?interaction_type=${interactionType}`;
+    const token = getAuthToken();
+    fetch(url, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => {});
+  },
 };
 
 export const contentCategoriesApi = {
@@ -840,10 +850,33 @@ export interface EvidenceStats {
   };
 }
 
+export interface EvidenceEffectStats {
+  window_days: number;
+  marked: {
+    total_content: number;
+    interactions_by_type: Record<string, number>;
+    total_interactions: number;
+    interaction_rate: number;
+  };
+  unmarked: {
+    total_content: number;
+    interactions_by_type: Record<string, number>;
+    total_interactions: number;
+    interaction_rate: number;
+  };
+  comparison: Record<string, number | null>;
+}
+
 export const evidenceApi = {
   /** 获取证据聚合统计 */
   getStats(): Promise<EvidenceStats> {
     return request('/admin/evidence/stats');
+  },
+
+  /** 获取证据效果统计（交互率对比） */
+  getEffectStats(days?: number): Promise<EvidenceEffectStats> {
+    const query = days ? `?days=${days}` : '';
+    return request(`/admin/evidence/effect-stats${query}`);
   },
 
   /** 手动触发跨源证据发现 */

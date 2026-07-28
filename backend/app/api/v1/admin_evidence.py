@@ -1,8 +1,9 @@
 """
 Admin Evidence API — cross-source evidence stats + manual discovery trigger.
 
-- GET  /admin/evidence/stats       Aggregated evidence statistics
-- POST /admin/evidence/discover    Manually trigger cross-source evidence discovery
+- GET  /admin/evidence/stats          Aggregated evidence statistics
+- GET  /admin/evidence/effect-stats   Interaction rate comparison
+- POST /admin/evidence/discover       Manually trigger cross-source evidence discovery
 """
 
 from __future__ import annotations
@@ -30,6 +31,20 @@ async def get_evidence_stats(db: AsyncSession = Depends(get_db)):
     """Return aggregated evidence statistics for admin dashboard."""
     repo = EvidenceRepository(db)
     return await repo.get_stats()
+
+
+@router.get("/effect-stats")
+async def get_evidence_effect_stats(
+    days: int = Query(7, ge=1, le=90, description="Lookback window in days"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compare interaction rates between evidence-marked and unmarked content.
+
+    Returns per-group content counts, interaction counts by type, and
+    rate lift (how much evidence marks improve each interaction type).
+    """
+    repo = EvidenceRepository(db)
+    return await repo.get_effect_stats(days=days)
 
 
 @router.post("/discover")

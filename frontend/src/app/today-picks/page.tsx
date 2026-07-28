@@ -177,8 +177,10 @@ function TodayPicksPage() {
       setActionError('收藏需要登录，点击右上角登录或使用 Google / GitHub 快速登录');
       return;
     }
+    const wasFav = contentFavoriteState.isFavorited(id);
     await toggleFavorite(id);
     contentFavoriteState.refresh();
+    contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
   };
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
     if (!currentUser) {
@@ -202,6 +204,12 @@ function TodayPicksPage() {
       setWorkflowPendingId(null);
     }
   }, [contentFavoriteState, currentUser, router, toggleFavorite]);
+
+  const handleRead = useCallback((id: number) => {
+    contentsApi.trackEvidenceInteraction(id, 'click');
+    openReader(id);
+  }, [openReader]);
+
   const toggleTopic = (id: number) => {
     setExpandedTopics((prev) => {
       const next = new Set(prev);
@@ -264,7 +272,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
-              onRead={openReader}
+              onRead={handleRead}
               workflowPending={workflowPendingId === leadItem.id}
               evidenceMark={evidenceMarks[String(leadItem.id)]}
             />
@@ -293,7 +301,7 @@ function TodayPicksPage() {
               onFav={handleFav}
               onOpen={setSelectedAnalysis}
               onStartWorkflow={handleStartWorkflow}
-              onRead={openReader}
+              onRead={handleRead}
               workflowPendingId={workflowPendingId}
               evidenceMarks={evidenceMarks}
             />
@@ -308,7 +316,7 @@ function TodayPicksPage() {
                   onFav={handleFav}
                   onOpen={setSelectedAnalysis}
                   onStartWorkflow={handleStartWorkflow}
-                  onRead={openReader}
+                  onRead={handleRead}
                   workflowPending={workflowPendingId === item.id}
                   evidenceMark={evidenceMarks[String(item.id)]}
                 />

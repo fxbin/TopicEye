@@ -367,3 +367,16 @@ async def test_llm_completion_has_bounded_async_deadline(monkeypatch):
 
     assert observed["timeout"] == 0.1
     assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_token_rate_limiter_enforces_tpm_budget():
+    limiter = _rate_limit.TokenRateLimiter(max_tokens=2, window_seconds=0.02)
+    await limiter.acquire(2)
+    started = asyncio.get_running_loop().time()
+    await limiter.acquire(1)
+    assert asyncio.get_running_loop().time() - started >= 0.008
+
+
+def test_estimate_request_tokens_includes_prompt_and_output_budget():
+    assert _rate_limit.estimate_request_tokens([{"role": "user", "content": "abcdefgh"}], 12) == 14

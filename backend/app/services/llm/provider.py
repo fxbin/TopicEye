@@ -36,6 +36,7 @@ from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
     reset_completion_semaphore,
     reset_model_rate_limiters,
+    reset_token_rate_limiter,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ async def invalidate_model_cache() -> None:
         _model_cache._route_models = []
         _model_cache._last_refresh = 0.0
     reset_model_rate_limiters()
+    reset_token_rate_limiter()
     _failover.reset()
     # 模型顺序、端点或参数变更后，旧路由的结果不能继续作为命中项返回。
     from app.services.llm.response_cache import get_llm_cache

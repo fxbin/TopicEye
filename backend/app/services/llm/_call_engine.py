@@ -35,7 +35,9 @@ from tenacity import (
 from app.services.llm._rate_limit import (
     _get_completion_semaphore,
     _get_model_rate_limiter,
+    _get_token_rate_limiter,
     _rate_limiter,
+    estimate_request_tokens,
 )
 from app.core.config import settings
 
@@ -144,6 +146,7 @@ async def _call_llm_single(
     from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
     await _rate_limiter.acquire()
+    await _get_token_rate_limiter().acquire(estimate_request_tokens(messages, max_tokens))
     model_limiter = _get_model_rate_limiter(model_config)
     if model_limiter is not None:
         await model_limiter.acquire()

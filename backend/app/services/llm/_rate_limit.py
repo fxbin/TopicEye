@@ -50,6 +50,34 @@ class RateLimiter:
             self._tokens -= 1
 
 
+class TokenRateLimiter:
+    """Token-bucket limiter for the aggregate LLM token budget."""
+
+    def __init__(self, max_tokens: int, window_seconds: float = 60):
+        self.max_tokens = max(1, int(max_tokens))
+        self.window_seconds = max(0.001, float(window_seconds))
+        self._available = float(self.max_tokens)
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, tokens: int) -> None:
+        required = min(max(1, int(tokens)), self.max_tokens)
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._available = min(
+                    float(self.max_tokens),
+                    self._available + elapsed * self.max_tokens / self.window_seconds,
+                )
+                self._last_refill = now
+                if self._available >= required:
+                    self._available -= required
+                    return
+                wait_seconds = (required - self._available) * self.window_seconds / self.max_tokens
+            await asyncio.sleep(wait_seconds)
+
+
 # Global rate limiter
 _rate_limiter = RateLimiter(
     max_requests=settings.LLM_REQUESTS_PER_MINUTE,
@@ -58,6 +86,7 @@ _rate_limiter = RateLimiter(
 _model_rate_limiters: dict[str, RateLimiter] = {}
 _model_rate_limiters_lock = threading.Lock()
 _completion_semaphore: asyncio.Semaphore | None = None
+_token_rate_limiter: TokenRateLimiter | None = None
 
 
 def _normalize_llm_concurrency(value: Any = None) -> int:
@@ -118,3 +147,29 @@ def reset_completion_semaphore() -> None:
     """Reset the global LLM completion concurrency gate after config changes/tests."""
     global _completion_semaphore
     _completion_semaphore = None
+
+
+def _get_token_rate_limiter() -> TokenRateLimiter:
+    global _token_rate_limiter
+    try:
+        budget = max(1, int(settings.LLM_TOKENS_PER_MINUTE))
+    except (TypeError, ValueError):
+        budget = 100_000
+    if _token_rate_limiter is None or _token_rate_limiter.max_tokens != budget:
+        _token_rate_limiter = TokenRateLimiter(budget)
+    return _token_rate_limiter
+
+
+def reset_token_rate_limiter() -> None:
+    global _token_rate_limiter
+    _token_rate_limiter = None
+
+
+def estimate_request_tokens(messages: list, max_tokens: int) -> int:
+    """Conservative local estimate used before a provider returns real usage."""
+    prompt_chars = sum(len(str(message.get("content", ""))) for message in messages if isinstance(message, dict))
+    try:
+        output_budget = max(0, int(max_tokens))
+    except (TypeError, ValueError):
+        output_budget = 0
+    return max(1, (prompt_chars + 3) // 4 + output_budget)

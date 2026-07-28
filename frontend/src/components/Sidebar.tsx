@@ -96,6 +96,8 @@ export default function Sidebar({
                   key={item.id}
                   type="button"
                   title={compact ? item.label : undefined}
+                  aria-label={compact ? item.label : undefined}
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => router.push(item.href)}
                   className={cx(
                     'mb-0.5 flex w-full items-center rounded-sm border-0 text-sm transition',
@@ -127,6 +129,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={() => router.push('/profile')}
+                aria-label="个人中心"
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal to-[#7DD3C0] text-xs font-semibold text-white transition hover:opacity-90"
                 title="个人中心"
               >
@@ -145,6 +148,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={onLogout}
+                aria-label="退出登录"
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-gray-500 transition hover:bg-gray-100 hover:text-red"
                 title="退出登录"
               >
@@ -161,6 +165,7 @@ export default function Sidebar({
               compact ? 'justify-center px-0 py-2.5' : 'justify-start gap-2 px-3 py-2.5 text-left text-gray-600',
             )}
             title={compact ? '登录' : undefined}
+            aria-label={compact ? '登录' : undefined}
             disabled={authLoading}
           >
             <LogIn size={16} strokeWidth={2} />

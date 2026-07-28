@@ -102,6 +102,7 @@ export default function AdminSidebar() {
             <button
               key={item.id}
               type="button"
+              aria-current={active ? 'page' : undefined}
               onClick={() => {
                 if (item.href.startsWith('/dashboard')) {
                   window.open(item.href, '_blank');
@@ -140,6 +141,7 @@ export default function AdminSidebar() {
               type="button"
               onClick={handleLogout}
               disabled={authLoading}
+              aria-label="退出登录"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-800 hover:text-red-400"
               title="退出登录"
             >

@@ -73,6 +73,8 @@ export default function TopicCard({ topic, isFav, onToggleFav }: TopicCardProps)
             onToggleFav(topic.id);
           }}
           className={cx('inline-flex items-center border-0 bg-transparent p-1 transition', isFav ? 'text-primary' : 'text-gray-300 hover:text-primary')}
+          aria-label={isFav ? '取消收藏' : '收藏'}
+          aria-pressed={isFav}
           title={isFav ? '取消收藏' : '收藏'}
         >
           <Star size={18} strokeWidth={2} fill={isFav ? '#FF6B35' : 'none'} />

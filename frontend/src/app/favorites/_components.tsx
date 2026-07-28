@@ -174,6 +174,8 @@ export function FavoriteColumn({
           type="button"
           disabled={column.items.length === 0}
           onClick={() => onSelectColumn(column.items)}
+          aria-label={allSelected ? `取消选择${column.label}列` : `选择${column.label}列`}
+          aria-pressed={allSelected}
           className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-gray-200 bg-white text-gray-400 transition hover:text-primary disabled:opacity-30"
           title={allSelected ? '取消选择本列' : '选择本列'}
         >
@@ -325,6 +327,8 @@ export function FavoriteCard({
         <button
           type="button"
           onClick={() => onSelect(item.id)}
+          aria-label={selected ? '取消选择素材' : '选择素材'}
+          aria-pressed={selected}
           className={cx('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-xs border transition', selected ? 'border-primary bg-primary text-white' : 'border-gray-200 text-gray-300 hover:text-primary')}
           title={selected ? '取消选择' : '选择素材'}
         >
@@ -496,6 +500,7 @@ export function FavoriteCard({
           type="button"
           disabled={pending}
           onClick={() => onRemove(item)}
+          aria-label={item.status === 'archived' ? '删除收藏' : '归档收藏'}
           className="inline-flex h-8 items-center gap-1 rounded-sm border border-red-light bg-red-light px-2 text-xs font-bold text-red disabled:cursor-wait disabled:opacity-60"
           title="删除收藏"
         >
@@ -569,6 +574,7 @@ export function FiltersBar({
               key={option.value || 'all'}
               type="button"
               onClick={() => setTargetType(option.value)}
+              aria-pressed={targetType === option.value}
               className={cx(
                 'rounded-sm border px-3 py-1.5 text-xs font-bold transition',
                 targetType === option.value
@@ -689,6 +695,7 @@ export function CreationDraftPanel({
         <button
           type="button"
           onClick={onClose}
+          aria-label="关闭创作方案"
           className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-gray-200 bg-white text-gray-400 transition hover:text-gray-800"
           title="关闭"
         >

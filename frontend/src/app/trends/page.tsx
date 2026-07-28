@@ -240,10 +240,34 @@ function ControlPanel({
   activeTab: 'topics' | 'keywords';
   setActiveTab: (tab: 'topics' | 'keywords') => void;
 }) {
+  const trendTabs = [
+    { key: 'topics' as const, label: '话题曲线', icon: BarChart3 },
+    { key: 'keywords' as const, label: '关键词频率', icon: Tags },
+  ];
+
+  const moveTabFocus = (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: 'topics' | 'keywords') => {
+    const currentIndex = trendTabs.findIndex((item) => item.key === currentTab);
+    const nextIndex = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+      ? (currentIndex + 1) % trendTabs.length
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+        ? (currentIndex - 1 + trendTabs.length) % trendTabs.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? trendTabs.length - 1
+            : null;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextTab = trendTabs[nextIndex].key;
+    setActiveTab(nextTab);
+    requestAnimationFrame(() => document.getElementById(`trends-${nextTab}-tab`)?.focus());
+  };
+
   return (
     <Panel className="p-4">
       <PanelTitle icon={CalendarDays} title="观察窗口" />
-      <div className="mb-3.5 grid grid-cols-4 gap-1 rounded-sm bg-gray-100 p-1">
+      <div className="mb-3.5 grid grid-cols-4 gap-1 rounded-sm bg-gray-100 p-1" role="group" aria-label="观察窗口">
         {[3, 7, 14, 30].map((value) => {
           const active = days === value;
           return (
@@ -251,6 +275,7 @@ function ControlPanel({
               key={value}
               type="button"
               onClick={() => setDays(value)}
+              aria-pressed={active}
               className={cx(
                 'rounded-xs px-1 py-1.5 text-[11px] font-black transition',
                 active ? 'bg-white text-primary shadow-[0_1px_3px_rgba(15,23,42,0.08)]' : 'text-gray-500 hover:text-gray-800',
@@ -262,18 +287,21 @@ function ControlPanel({
         })}
       </div>
 
-      <div className="flex flex-col gap-2">
-        {[
-          { key: 'topics' as const, label: '话题曲线', icon: BarChart3 },
-          { key: 'keywords' as const, label: '关键词频率', icon: Tags },
-        ].map((item) => {
+      <div className="flex flex-col gap-2" role="tablist" aria-label="趋势内容">
+        {trendTabs.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.key;
           return (
             <button
               key={item.key}
               type="button"
+              role="tab"
+              id={`trends-${item.key}-tab`}
+              aria-selected={active}
+              aria-controls={`trends-${item.key}-panel`}
+              tabIndex={active ? 0 : -1}
               onClick={() => setActiveTab(item.key)}
+              onKeyDown={(event) => moveTabFocus(event, item.key)}
               className={cx(
                 'flex items-center gap-2 rounded-sm border px-2.5 py-2 text-xs font-black transition',
                 active ? 'border-primary-border bg-primary-light text-primary' : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border hover:text-primary',
@@ -442,28 +470,43 @@ export default function TrendsPage() {
             <Metric label="最强动量" value={topMomentum} colorClass="text-purple" icon={<Radio size={15} className="text-purple" />} />
           </section>
 
-          {loading ? (
-            <LoadingState label="加载中…" minHeight="320px" />
-          ) : activeTab === 'topics' ? (
-            sortedTopics.length === 0 ? (
-              <EmptyState icon={Filter} title="暂无趋势数据" desc="趋势快照生成后会在这里展示话题曲线。" />
+          <section
+            role="tabpanel"
+            id="trends-topics-panel"
+            aria-labelledby="trends-topics-tab"
+            tabIndex={0}
+            hidden={activeTab !== 'topics'}
+          >
+            {loading ? (
+              <LoadingState label="加载中…" minHeight="320px" />
             ) : (
-              <div className="flex flex-col gap-3">
-                {sortedTopics.map((topic, index) => (
-                  <TopicCard
-                    key={topic.key}
-                    topic={topic}
-                    dates={dates}
-                    maxCount={maxCount}
-                    color={COLORS[index % COLORS.length]}
-                    rank={index + 1}
-                  />
-                ))}
-              </div>
-            )
-          ) : (
-            <KeywordBoard keywords={keywords} />
-          )}
+              sortedTopics.length === 0 ? (
+                <EmptyState icon={Filter} title="暂无趋势数据" desc="趋势快照生成后会在这里展示话题曲线。" />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {sortedTopics.map((topic, index) => (
+                    <TopicCard
+                      key={topic.key}
+                      topic={topic}
+                      dates={dates}
+                      maxCount={maxCount}
+                      color={COLORS[index % COLORS.length]}
+                      rank={index + 1}
+                    />
+                  ))}
+                </div>
+              )
+            )}
+          </section>
+          <section
+            role="tabpanel"
+            id="trends-keywords-panel"
+            aria-labelledby="trends-keywords-tab"
+            tabIndex={0}
+            hidden={activeTab !== 'keywords'}
+          >
+            {loading ? <LoadingState label="加载中…" minHeight="320px" /> : <KeywordBoard keywords={keywords} />}
+          </section>
         </main>
 
         <aside className="flex flex-col gap-3.5 xl:sticky xl:top-[88px]">

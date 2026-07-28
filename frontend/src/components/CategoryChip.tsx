@@ -14,6 +14,7 @@ export default function CategoryChip({ name, active, onClick }: CategoryChipProp
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cx(
         'rounded-full border px-4 py-1.5 text-[13px] transition',
         active ? 'border-primary-solid bg-primary-solid font-semibold text-white' : 'border-gray-200 bg-white font-normal text-gray-600 hover:border-primary-border hover:text-primary-text',

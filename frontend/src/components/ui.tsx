@@ -215,6 +215,7 @@ export function Segmented<T extends string>({
             key={item.value}
             type="button"
             onClick={() => onChange(item.value)}
+            aria-pressed={selected}
             className={cx(
               'rounded-xs border border-transparent py-1.5 text-[11px] transition',
               selected

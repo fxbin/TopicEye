@@ -2,6 +2,7 @@ from types import SimpleNamespace
 import asyncio
 
 import pytest
+from litellm.exceptions import BadRequestError
 
 from app.services.llm import provider
 from app.services.llm import _call_engine
@@ -75,6 +76,32 @@ async def test_call_llm_skips_cooling_down_candidate(monkeypatch):
 
     assert result == "ok from openai/second"
     assert calls == ["openai/second"]
+
+
+@pytest.mark.asyncio
+async def test_bad_request_does_not_fail_over_or_degrade_healthy_model(monkeypatch):
+    """同一请求的确定性拒绝不应消耗备用模型或污染模型池健康度。"""
+    provider._failover.reset()
+    models = [_model(1, "first", 10), _model(2, "second", 20)]
+    calls = []
+
+    async def route_models(group="default"):
+        return models
+
+    async def fake_call(
+        messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
+    ):
+        calls.append(model)
+        raise BadRequestError("400 contentFilter", model=model, llm_provider="openai")
+
+    monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
+    monkeypatch.setattr(provider, "_call_with_retry", fake_call)
+
+    with pytest.raises(BadRequestError):
+        await provider.call_llm([{"role": "user", "content": "blocked"}])
+
+    assert calls == ["openai/first"]
+    assert provider._failover.should_skip("db:1") is False
 
 
 @pytest.mark.asyncio

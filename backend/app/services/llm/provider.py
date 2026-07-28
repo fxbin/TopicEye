@@ -27,6 +27,7 @@ from typing import Any
 
 from app.services.llm._call_engine import (
     _call_with_retry,
+    _is_deterministic_request_error,
     _is_rate_limit_error,
     _parse_reset_time,
 )
@@ -122,10 +123,10 @@ async def call_llm_with_metadata(
         )
         return result
     except Exception as exc:
-        # Only count genuine LLM/API failures, not caller-side issues
+        # 输入或内容策略错误不反映模型可用性，不能污染全局熔断器。
         from app.services.llm.circuit_breaker import CircuitOpenError
 
-        if not isinstance(exc, CircuitOpenError):
+        if not isinstance(exc, CircuitOpenError) and not _is_deterministic_request_error(exc):
             await breaker.record_failure()
         raise
 
@@ -171,6 +172,9 @@ async def _call_llm_with_metadata_inner(
             return response, _llm_call_metadata(model_config, request_model, routing_group)
         except Exception as exc:
             last_exc = exc
+            if _is_deterministic_request_error(exc):
+                logger.info("LLM request rejected; keeping route healthy: %s", exc)
+                raise
             reset_time = _parse_reset_time(exc) if _is_rate_limit_error(exc) else None
             _failover.on_failure(
                 key,
@@ -208,6 +212,9 @@ async def _call_llm_with_metadata_inner(
                 return response, _llm_call_metadata(model_config, request_model, routing_group)
             except Exception as exc:
                 last_exc = exc
+                if _is_deterministic_request_error(exc):
+                    logger.info("LLM request rejected during probe; keeping route healthy: %s", exc)
+                    raise
 
     if last_exc:
         logger.error("All LLM candidates failed: %s", last_exc)

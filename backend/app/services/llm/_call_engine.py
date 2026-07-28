@@ -17,7 +17,14 @@ import time
 from typing import Any
 
 from litellm import RateLimitError, completion
-from litellm.exceptions import BadRequestError  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
+from litellm.exceptions import (  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
+    BadRequestError,
+    ContentPolicyViolationError,
+    ContextWindowExceededError,
+    JSONSchemaValidationError,
+    UnprocessableEntityError,
+    UnsupportedParamsError,
+)
 from tenacity import (
     retry,
     retry_if_exception,
@@ -53,6 +60,28 @@ def _is_bad_request_error(exc: Exception) -> bool:
         return True
     msg = str(exc).lower()
     return "error code: 400" in msg or ("contentfilter" in msg and "400" in msg)
+
+
+def _is_deterministic_request_error(exc: Exception) -> bool:
+    """Return whether the caller must change the request before retrying.
+
+    这类错误与某个候选模型的健康度无关：切换模型既不能通过内容安全
+    过滤，也不能缩短超出上下文窗口的输入。将它们计入模型失败会错误地
+    冷却健康路由，并在所有模型都拒绝同一请求时打开全局熔断器。
+    """
+    if isinstance(
+        exc,
+        (
+            BadRequestError,
+            ContentPolicyViolationError,
+            ContextWindowExceededError,
+            JSONSchemaValidationError,
+            UnprocessableEntityError,
+            UnsupportedParamsError,
+        ),
+    ):
+        return True
+    return _is_bad_request_error(exc)
 
 
 def _parse_reset_time(exc: Exception):
@@ -189,9 +218,9 @@ def _should_retry(exc: BaseException) -> bool:
 
     BadRequestError (400) 也不重试：内容过滤等确定性错误重试只会浪费时间。
     """
-    if isinstance(exc, RateLimitError | BadRequestError):
+    if isinstance(exc, RateLimitError) or _is_deterministic_request_error(exc):
         return False
-    return not _is_rate_limit_error(exc) and not _is_bad_request_error(exc)
+    return not _is_rate_limit_error(exc)
 
 
 @retry(

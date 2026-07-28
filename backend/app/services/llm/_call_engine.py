@@ -33,10 +33,12 @@ from tenacity import (
 )
 
 from app.services.llm._rate_limit import (
-    _get_completion_semaphore,
     _get_model_rate_limiter,
     _get_token_rate_limiter,
+    _pool_metrics,
+    _pool_scope,
     _rate_limiter,
+    acquire_completion_slot,
     estimate_request_tokens,
 )
 from app.core.config import settings
@@ -145,11 +147,14 @@ async def _call_llm_single(
     from app.services.llm.provider import _litellm_extra_kwargs
     from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
+    pool_scope = _pool_scope(model_config, scene)
+    rate_limit_started = time.monotonic()
     await _rate_limiter.acquire()
     await _get_token_rate_limiter().acquire(estimate_request_tokens(messages, max_tokens))
     model_limiter = _get_model_rate_limiter(model_config)
     if model_limiter is not None:
         await model_limiter.acquire()
+    _pool_metrics.rate_limited(pool_scope, time.monotonic() - rate_limit_started)
 
     kwargs: dict[str, Any] = {
         "model": model,
@@ -177,7 +182,7 @@ async def _call_llm_single(
 
     start = time.monotonic()
     try:
-        async with _get_completion_semaphore():
+        async with acquire_completion_slot(model_config, scene):
             response = await asyncio.wait_for(
                 acompletion(**kwargs),
                 timeout=completion_timeout,

@@ -34,6 +34,8 @@ from app.services.llm._call_engine import (
 from app.services.llm._failover import _candidate_from_db_model, _failover, _model_key
 from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
+    _pool_scope,
+    record_llm_pool_circuit_event,
     reset_completion_semaphore,
     reset_model_rate_limiters,
     reset_token_rate_limiter,
@@ -104,6 +106,7 @@ async def call_llm_with_metadata(
     if not await breaker.allow_request():
         from app.services.llm.circuit_breaker import CircuitOpenError
 
+        record_llm_pool_circuit_event(None, scene, "global_open")
         raise CircuitOpenError(
             f"LLM circuit breaker OPEN (failures={breaker.status()['failure_count']}); callers should use fallback"
         )
@@ -163,6 +166,7 @@ async def _call_llm_with_metadata_inner(
         api_base = candidate["api_base"]
         key = _model_key(model_config)
         if _failover.should_skip(key):
+            record_llm_pool_circuit_event(model_config, scene, "candidate_cooling_down")
             candidate["_failover_key"] = key  # 重探时重新检查冷却用
             skipped.append(candidate)
             continue
@@ -181,7 +185,7 @@ async def _call_llm_with_metadata_inner(
                 scene,
             )
             _failover.on_success(key)
-            return response, _llm_call_metadata(model_config, request_model, routing_group)
+            return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
         except Exception as exc:
             last_exc = exc
             if _is_deterministic_request_error(exc):
@@ -193,6 +197,7 @@ async def _call_llm_with_metadata_inner(
                 reset_at=reset_time,
                 cooldown_seconds=candidate["cooldown_seconds"],
             )
+            record_llm_pool_circuit_event(model_config, scene, "candidate_degraded")
             if _is_rate_limit_error(exc):
                 logger.warning("LLM candidate rate-limited, trying next: %s", exc)
             else:
@@ -221,7 +226,7 @@ async def _call_llm_with_metadata_inner(
                     scene,
                 )
                 _failover.on_success(_model_key(model_config))
-                return response, _llm_call_metadata(model_config, request_model, routing_group)
+                return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
             except Exception as exc:
                 last_exc = exc
                 if _is_deterministic_request_error(exc):
@@ -234,13 +239,14 @@ async def _call_llm_with_metadata_inner(
     raise RuntimeError("No enabled LLM route models configured")
 
 
-def _llm_call_metadata(model_config: Any, request_model: str, routing_group: str) -> dict[str, Any]:
+def _llm_call_metadata(model_config: Any, request_model: str, routing_group: str, scene: str = "general") -> dict[str, Any]:
     return {
         "actual_model": request_model,
         "request_model": request_model,
         "model_name": getattr(model_config, "name", None),
         "model_id": getattr(model_config, "id", None),
         "routing_group": routing_group,
+        "pool_scope": _pool_scope(model_config, scene),
     }
 
 

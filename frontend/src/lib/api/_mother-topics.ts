@@ -10,9 +10,9 @@ import type { FanqieBook, FanqieCategory, QimaoBook, WebnovelWeeklyReport, Zhihu
 // ─── Mother Topics API ──────────────────────────────────────────────
 
 export const motherTopicsApi = {
-  /** 列出所有母题 */
-  list(active_only = false): Promise<MotherTopic[]> {
-    return request(`/mother-topics?active_only=${active_only}`);
+  /** 列出母题（scope=mine 用户隔离视图，scope=all admin 审计全量） */
+  list(active_only = false, scope: 'mine' | 'all' = 'mine'): Promise<MotherTopic[]> {
+    return request(`/mother-topics?active_only=${active_only}&scope=${scope}`);
   },
 
   /** 创建母题 */

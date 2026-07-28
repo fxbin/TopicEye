@@ -200,14 +200,25 @@ function TopicCard({
             >
               编辑
             </Button>
-            <Button
-              type="button"
-              onClick={() => onDelete(topic.id)}
-              variant="danger"
-              className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
-            >
-              停用
-            </Button>
+            {topic.is_active ? (
+              <Button
+                type="button"
+                onClick={() => onDelete(topic.id)}
+                variant="danger"
+                className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
+              >
+                停用
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => onSave({ is_active: true })}
+                variant="success"
+                className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
+              >
+                启用
+              </Button>
+            )}
           </Toolbar>
         </>
       )}
@@ -221,7 +232,7 @@ export default function MotherTopicsConfigPage() {
   const router = useRouter();
   const { data: topics, loading, error, refetch } = useFetch<MotherTopic[]>(
     async () => {
-      const ts = await motherTopicsApi.list(false);
+      const ts = await motherTopicsApi.list(false, 'all');
       return ts.sort((a, b) => a.display_order - b.display_order);
     },
     [],

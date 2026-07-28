@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
     CACHE_WARMUP_ENABLED: bool = True
     READ_CACHE_TTL_SECONDS: float = 60.0
-    SOURCE_SYNC_TIMEOUT_SECONDS: int = 120
+    # 整体同步超时(秒)。包含 fetch + classify + persist 三阶段。
+    # 120s 对 arXiv/HN/36氪 等条目多的信源太短(classify 阶段 LLM 调用慢),
+    # 300s 给足时间让正常同步完成,同时仍能在卡死时及时释放 worker。
+    SOURCE_SYNC_TIMEOUT_SECONDS: int = 300
     SOURCE_SYNC_WORKER_CONCURRENCY: int = 3
     # 趋势雷达全量同步并发度。串行模式下 8 个国内信源 ConnectError 累加
     # 20s+ 撑爆 120s job 超时;并发后这些同时失败,总耗时≈最慢单源。

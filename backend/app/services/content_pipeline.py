@@ -80,8 +80,24 @@ async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]
     except TimeoutError:
         message = f"Source sync timed out after {settings.SOURCE_SYNC_TIMEOUT_SECONDS}s"
         logger.warning("Source %s (%d): %s", source.name, source.id, message)
-        _update_source_error(source, message)
-        await db.flush()
+        # asyncio.wait_for cancels the inner task, which may leave the DB
+        # session in a dirty state (an interrupted query mid-flight).  A
+        # bare db.flush() on a dirty session raises InvalidRequestError, so
+        # the ERROR status update is silently lost — the source stays in
+        # SYNCING until the rescan job auto-resets it minutes later.
+        #
+        # Fix: rollback the dirty session first, then re-fetch the source
+        # (the ORM object may be detached after rollback) and update its
+        # status in a clean transaction.
+        # ``rollback`` expires ORM attributes, so capture the primary key
+        # before rolling back rather than triggering an implicit async load
+        # through ``source.id`` afterwards.
+        source_id = source.id
+        await db.rollback()
+        fresh = await db.get(Source, source_id)
+        if fresh is not None:
+            _update_source_error(fresh, message)
+            await db.commit()
         return {"fetched": 0, "new": 0, "duplicates": 0}
 
 

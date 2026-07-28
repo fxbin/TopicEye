@@ -47,6 +47,58 @@ def test_build_scraper_client_kwargs_skips_explicit_proxy_for_loopback(monkeypat
     assert "application/rss+xml" in local_kwargs["headers"]["Accept"]
 
 
+@pytest.mark.asyncio
+async def test_ingest_timeout_rolls_back_then_persists_source_error(monkeypatch):
+    """Cancellation must not leave the source stuck in SYNCING."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async def interrupted_sync(source, db):
+        db.add(
+            ContentItem(
+                title="will be rolled back",
+                url="https://example.com/interrupted",
+                source_id=source.id,
+            )
+        )
+        raise TimeoutError
+
+    monkeypatch.setattr(content_pipeline, "_ingest_from_source_inner", interrupted_sync)
+    monkeypatch.setattr(content_pipeline.settings, "SOURCE_SYNC_TIMEOUT_SECONDS", 1)
+
+    try:
+        async with session_factory() as db:
+            source = Source(
+                id=1,
+                name="Timeout Example",
+                url="https://example.com/feed",
+                source_type=SourceType.RSS,
+                status=SourceStatus.SYNCING,
+                enabled=True,
+            )
+            db.add(source)
+            await db.commit()
+
+            assert await content_pipeline.ingest_from_source(source, db) == {
+                "fetched": 0,
+                "new": 0,
+                "duplicates": 0,
+            }
+
+        async with session_factory() as verify_db:
+            stored_source = await verify_db.get(Source, 1)
+            interrupted_rows = (await verify_db.execute(select(ContentItem))).scalars().all()
+
+        assert stored_source is not None
+        assert stored_source.status == SourceStatus.ERROR
+        assert stored_source.sync_error == "Source sync timed out after 1s"
+        assert interrupted_rows == []
+    finally:
+        await engine.dispose()
+
+
 def test_build_scraper_client_kwargs_emits_conditional_request_headers():
     kwargs = build_scraper_client_kwargs(
         "https://example.com/feed",

@@ -5,6 +5,8 @@ const backendApiUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:8102';
 
 const nextConfig = {
   reactStrictMode: true,
+  compress: true,
+  poweredByHeader: false,
   allowedDevOrigins: ['localhost', '127.0.0.1', 'frontend.topiceye.orb.local'],
   turbopack: {
     root: path.resolve(__dirname),
@@ -30,6 +32,20 @@ const nextConfig = {
       { source: '/feedback', destination: '/admin/feedback', permanent: true },
       { source: '/contents', destination: '/admin/contents', permanent: true },
       { source: '/mother-topics/config', destination: '/admin/mother-topics', permanent: true },
+    ];
+  },
+
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), microphone=()' },
+        ],
+      },
     ];
   },
 

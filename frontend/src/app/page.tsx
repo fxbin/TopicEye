@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen,
@@ -12,6 +12,7 @@ import {
   PenLine,
   Star,
   X,
+  ArrowUp,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
@@ -70,6 +71,8 @@ export default function HomePage() {
   const [activeSourceType, setActiveSourceType] = useState('全部');
   const [selectedAnalysis, setSelectedAnalysis] = useState<ContentAnalysis | null>(null);
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,8 +276,17 @@ export default function HomePage() {
   // Today's date
   const dateStr = formatShanghaiToday();
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    setShowBackToTop(el.scrollTop > window.innerHeight * 0.5);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   return (
-    <div className="fade-in h-full overflow-y-auto px-10 py-8">
+    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-10 py-8">
       {/* Header */}
       <Header
         title="今日选题"
@@ -485,6 +497,18 @@ export default function HomePage() {
             availableTotal={clientOnlyFilterActive ? undefined : totalCount}
           />
         </div>
+      )}
+
+      {/* Back to top button */}
+      {showBackToTop && !selectedAnalysis && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="fixed bottom-8 right-8 z-50 grid h-11 w-11 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-lg transition hover:border-primary-border hover:text-primary"
+          aria-label="回到顶部"
+        >
+          <ArrowUp size={20} strokeWidth={2.2} />
+        </button>
       )}
 
       {/* Analysis panel overlay */}

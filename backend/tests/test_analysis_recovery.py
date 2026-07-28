@@ -568,7 +568,14 @@ async def test_analyze_pending_sync_uses_concurrent_analysis(monkeypatch):
         raise AssertionError("pending sync endpoint should use concurrent analysis")
 
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fake_concurrent)
-    monkeypatch.setattr(analyses_api, "analyze_batch", fail_if_sequential_analysis_runs)
+    # analyze_batch_concurrent 是当前唯一的批量入口。保留同名桩以便未来
+    # 端点意外回退到顺序实现时仍能立即失败，而不要求模块导出旧实现。
+    monkeypatch.setattr(
+        analyses_api,
+        "analyze_batch",
+        fail_if_sequential_analysis_runs,
+        raising=False,
+    )
     engine, session_factory = await _session_factory()
 
     async with session_factory() as db:
@@ -627,7 +634,13 @@ async def test_analyze_batch_endpoint_uses_concurrent_analysis(monkeypatch):
         raise AssertionError("batch endpoint should use concurrent analysis")
 
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fake_concurrent)
-    monkeypatch.setattr(analyses_api, "analyze_batch", fail_if_sequential_analysis_runs)
+    # 同上：兼容已移除的顺序入口，并持续防止端点回退。
+    monkeypatch.setattr(
+        analyses_api,
+        "analyze_batch",
+        fail_if_sequential_analysis_runs,
+        raising=False,
+    )
     engine, session_factory = await _session_factory()
 
     async with session_factory() as db:

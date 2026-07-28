@@ -33,6 +33,7 @@ from app.services.llm._call_engine import (
 from app.services.llm._failover import _candidate_from_db_model, _failover, _model_key
 from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
+    reset_completion_semaphore,
     reset_model_rate_limiters,
 )
 

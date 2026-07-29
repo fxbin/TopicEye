@@ -12,6 +12,8 @@ import pytest
 from app.services.llm.circuit_breaker import (
     CircuitBreaker,
     CircuitState,
+    get_llm_circuit_breaker,
+    reset_llm_circuit_breakers,
 )
 
 
@@ -99,3 +101,19 @@ async def test_half_open_probe_failure_reopens():
 
     assert cb.state == CircuitState.OPEN
     assert await cb.allow_request() is False
+
+
+@pytest.mark.asyncio
+async def test_routing_groups_have_isolated_breakers_and_can_reset():
+    reset_llm_circuit_breakers()
+    analysis = get_llm_circuit_breaker("analysis")
+    reports = get_llm_circuit_breaker("reports")
+
+    for _ in range(analysis.failure_threshold):
+        await analysis.record_failure()
+
+    assert analysis.state == CircuitState.OPEN
+    assert reports.state == CircuitState.CLOSED
+
+    reset_llm_circuit_breakers()
+    assert get_llm_circuit_breaker("analysis").state == CircuitState.CLOSED

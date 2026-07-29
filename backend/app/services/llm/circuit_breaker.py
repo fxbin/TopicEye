@@ -127,12 +127,31 @@ class CircuitBreaker:
         }
 
 
-# 全局单例（单进程足够；多进程需换 Redis 实现）
-_default_breaker: CircuitBreaker | None = None
+# 路由组级单例（单进程足够；多进程需换 Redis 实现）。
+#
+# 不同 routing_group 代表不同的业务降级边界；例如分析渠道配额耗尽时，
+# 不能让报告/创作渠道也进入 OPEN。键不包含模型、请求或用户信息，保持低基数。
+_breakers: dict[str, CircuitBreaker] = {}
 
 
-def get_llm_circuit_breaker() -> CircuitBreaker:
-    global _default_breaker
-    if _default_breaker is None:
-        _default_breaker = CircuitBreaker(name="llm_default")
-    return _default_breaker
+def _breaker_scope(routing_group: str | None) -> str:
+    return str(routing_group or "default").strip() or "default"
+
+
+def get_llm_circuit_breaker(routing_group: str = "default") -> CircuitBreaker:
+    """Return the circuit breaker for one LLM routing group."""
+    scope = _breaker_scope(routing_group)
+    breaker = _breakers.get(scope)
+    if breaker is None:
+        breaker = CircuitBreaker(name=f"llm_{scope}")
+        _breakers[scope] = breaker
+    return breaker
+
+
+def reset_llm_circuit_breakers() -> None:
+    """Drop all route breakers after model routing configuration changes.
+
+    A newly enabled fallback must become usable immediately; retaining an old
+    OPEN state would make operators wait out an unrelated cooldown.
+    """
+    _breakers.clear()

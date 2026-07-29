@@ -80,6 +80,10 @@ async def invalidate_model_cache() -> None:
     reset_model_rate_limiters()
     reset_token_rate_limiter()
     _failover.reset()
+    # 配置变更可能新增健康备用渠道；不能让旧路由组的 OPEN 状态继续阻断它。
+    from app.services.llm.circuit_breaker import reset_llm_circuit_breakers
+
+    reset_llm_circuit_breakers()
     # 模型顺序、端点或参数变更后，旧路由的结果不能继续作为命中项返回。
     from app.services.llm.response_cache import get_llm_cache
 
@@ -89,6 +93,19 @@ async def invalidate_model_cache() -> None:
 def _cache_scope(routing_group: str, scene: str) -> str:
     """Build a cache namespace for the selected routing policy."""
     return f"routing_group:{routing_group}|scene:{scene}"
+
+
+class LlmCapacityUnavailableError(Exception):
+    """All enabled candidates are cooling down, with a deterministic retry time."""
+
+    def __init__(self, *, routing_group: str, next_available_at):
+        self.routing_group = routing_group
+        self.next_available_at = next_available_at
+        retry_at = next_available_at.isoformat() if next_available_at else "unknown"
+        super().__init__(
+            f"LLM route '{routing_group}' has no immediately available model; "
+            f"all enabled candidates are cooling down (retry_at={retry_at})"
+        )
 
 
 async def call_llm_with_metadata(
@@ -102,7 +119,7 @@ async def call_llm_with_metadata(
     # Circuit breaker: skip LLM call entirely when in OPEN state
     from app.services.llm.circuit_breaker import get_llm_circuit_breaker
 
-    breaker = get_llm_circuit_breaker()
+    breaker = get_llm_circuit_breaker(routing_group)
     if not await breaker.allow_request():
         from app.services.llm.circuit_breaker import CircuitOpenError
 
@@ -141,7 +158,13 @@ async def call_llm_with_metadata(
         # 输入或内容策略错误不反映模型可用性，不能污染全局熔断器。
         from app.services.llm.circuit_breaker import CircuitOpenError
 
-        if not isinstance(exc, CircuitOpenError) and not _is_deterministic_request_error(exc):
+        # 429 和本地候选冷却代表局部容量耗尽，由 per-model failover 管理；
+        # 把它们累计到路由熔断器会让一个配额不足的渠道阻断全部调用。
+        if (
+            not isinstance(exc, (CircuitOpenError, LlmCapacityUnavailableError))
+            and not _is_deterministic_request_error(exc)
+            and not _is_rate_limit_error(exc)
+        ):
             await breaker.record_failure()
         raise
 
@@ -203,39 +226,20 @@ async def _call_llm_with_metadata_inner(
             else:
                 logger.warning("LLM candidate failed, trying next: %s", exc)
 
-    if skipped:
-        logger.info("All active LLM candidates failed or were cooling down; probing skipped candidates")
-        for candidate in skipped:
-            # 重新检查冷却：刚被 active 循环失败的模型可能仍在冷却期，不应立即重探
-            fkey = candidate.get("_failover_key")
-            if fkey and _failover.should_skip(fkey):
-                continue
-            model_config = candidate["model_config"]
-            request_model = candidate["request_model"]
-            api_base = candidate["api_base"]
-            try:
-                response = await _call_with_retry(
-                    messages,
-                    request_model,
-                    candidate["api_key"],
-                    api_base,
-                    candidate["temperature"],
-                    candidate["max_tokens"],
-                    None,
-                    model_config,
-                    scene,
-                )
-                _failover.on_success(_model_key(model_config))
-                return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
-            except Exception as exc:
-                last_exc = exc
-                if _is_deterministic_request_error(exc):
-                    logger.info("LLM request rejected during probe; keeping route healthy: %s", exc)
-                    raise
-
     if last_exc:
         logger.error("All LLM candidates failed: %s", last_exc)
         raise last_exc
+    if skipped:
+        next_available_at = _failover.next_available_at(candidate["_failover_key"] for candidate in skipped)
+        logger.info(
+            "All enabled LLM candidates are cooling down; routing_group=%s retry_at=%s",
+            routing_group,
+            next_available_at,
+        )
+        raise LlmCapacityUnavailableError(
+            routing_group=routing_group,
+            next_available_at=next_available_at,
+        )
     raise RuntimeError("No enabled LLM route models configured")
 
 

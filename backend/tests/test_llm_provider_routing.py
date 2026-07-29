@@ -8,6 +8,14 @@ from app.services.llm import provider
 from app.services.llm import _call_engine
 from app.services.llm import _rate_limit
 from app.services.llm.response_cache import LLMCache
+from app.services.llm.circuit_breaker import CircuitState, get_llm_circuit_breaker, reset_llm_circuit_breakers
+
+
+@pytest.fixture(autouse=True)
+def _reset_route_health():
+    """Keep per-test model cooldowns and route breakers isolated."""
+    provider._failover.reset()
+    reset_llm_circuit_breakers()
 
 
 def _model(model_id: int, name: str, priority: int) -> SimpleNamespace:
@@ -206,6 +214,63 @@ async def test_call_llm_requires_enabled_db_route_models(monkeypatch):
 
     with pytest.raises(RuntimeError, match="No enabled LLM route models configured"):
         await provider.call_llm([{"role": "user", "content": "hello"}])
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_chain_does_not_open_route_breaker(monkeypatch):
+    """429 只冷却候选模型，不能升级为路由组全局熔断。"""
+    models = [_model(1, "first", 10), _model(2, "second", 20)]
+
+    async def route_models(group="default"):
+        return models
+
+    async def fake_call(*_args, **_kwargs):
+        raise RuntimeError("429 rate limit")
+
+    monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
+    monkeypatch.setattr(provider, "_call_with_retry", fake_call)
+
+    # 重复全链 429 超过默认 5 次阈值；breaker 仍必须保持 CLOSED。
+    for _ in range(6):
+        provider._failover.reset()
+        with pytest.raises(RuntimeError, match="429 rate limit"):
+            await provider.call_llm([{"role": "user", "content": "hello"}])
+
+    assert get_llm_circuit_breaker("default").state == CircuitState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_all_cooling_candidates_return_retry_time_without_opening_breaker(monkeypatch):
+    models = [_model(1, "first", 10), _model(2, "second", 20)]
+
+    async def route_models(group="default"):
+        return models
+
+    async def unexpected_call(*_args, **_kwargs):
+        raise AssertionError("cooling candidates must not be probed")
+
+    provider._failover.on_failure("db:1", cooldown_seconds=300)
+    provider._failover.on_failure("db:2", cooldown_seconds=300)
+    monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
+    monkeypatch.setattr(provider, "_call_with_retry", unexpected_call)
+
+    with pytest.raises(provider.LlmCapacityUnavailableError) as exc_info:
+        await provider.call_llm([{"role": "user", "content": "hello"}])
+
+    assert exc_info.value.next_available_at is not None
+    assert get_llm_circuit_breaker("default").state == CircuitState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_model_configuration_invalidation_resets_open_breakers():
+    breaker = get_llm_circuit_breaker("default")
+    for _ in range(breaker.failure_threshold):
+        await breaker.record_failure()
+    assert breaker.state == CircuitState.OPEN
+
+    await provider.invalidate_model_cache()
+
+    assert get_llm_circuit_breaker("default").state == CircuitState.CLOSED
 
 
 @pytest.mark.asyncio

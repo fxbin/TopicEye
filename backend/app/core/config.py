@@ -158,10 +158,9 @@ class Settings(BaseSettings):
     CLASSIFICATION_WORKER_CONCURRENCY: int = 3
 
     # ── Content-event normalization ──
-    # Roll out in four explicit stages: off -> shadow -> write -> serve.
-    # "serve" keeps the write behavior and additionally authorizes consumers
-    # to prefer event truth; those read-path switches remain consumer-owned.
-    EVENT_NORMALIZATION_ROLLOUT_MODE: str = "off"
+    # Event truth is the only read model. This switch controls only whether
+    # the incremental classifier is disabled, audited, or allowed to write.
+    EVENT_NORMALIZATION_MODE: str = "off"
     EVENT_NORMALIZATION_ROUTING_GROUP: str = "event_normalization"
     EVENT_NORMALIZATION_MAX_ITEMS: int = 50
     EVENT_NORMALIZATION_MAX_CANDIDATES: int = 8

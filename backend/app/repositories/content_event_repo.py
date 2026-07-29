@@ -52,7 +52,7 @@ class EventReviewRow:
 
 
 class ContentEventRepository:
-    """ORM access for event groups, members, and the legacy projection."""
+    """ORM access for canonical event groups and members."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -324,12 +324,6 @@ class ContentEventRepository:
             total,
         )
 
-    async def list_all_legacy_links(self) -> list[ContentItem]:
-        result = await self.db.execute(
-            select(ContentItem).where(ContentItem.duplicate_of.is_not(None)).order_by(ContentItem.id)
-        )
-        return list(result.scalars().all())
-
     async def create_group(self, **values) -> ContentEventGroup:
         group = ContentEventGroup(**values)
         self.db.add(group)
@@ -344,38 +338,6 @@ class ContentEventRepository:
 
     async def delete_member(self, member: ContentEventMember) -> None:
         await self.db.delete(member)
-        await self.db.flush()
-
-    async def sync_duplicate_projection(self, event_id: int) -> None:
-        """Flatten the compatibility projection for one event.
-
-        Canonicals and non-duplicate relations always project to ``NULL``.
-        Rejected members are also detached from the legacy projection.
-        """
-
-        group = await self.get_group(event_id)
-        if group is None:
-            return
-        if group.status == EventStatus.SHADOW:
-            return
-        member_rows = await self.list_member_rows(
-            event_id,
-            include_unaccepted=True,
-        )
-        canonical = await self.get_content(group.canonical_content_id)
-        if canonical is not None:
-            canonical.duplicate_of = None
-            canonical.similarity_score = None
-        for row in member_rows:
-            row.content.duplicate_of = None
-            row.content.similarity_score = None
-            if (
-                group.status == EventStatus.ACTIVE
-                and row.member.relation_type == "duplicate"
-                and row.member.review_status in {EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED}
-            ):
-                row.content.duplicate_of = group.canonical_content_id
-                row.content.similarity_score = row.member.confidence
         await self.db.flush()
 
     async def assigned_content_ids(self, content_ids: Iterable[int]) -> set[int]:

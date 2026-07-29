@@ -366,9 +366,6 @@ async def _persist_new_content_items(
             item.is_favorited = False
         if item.analysis_attempts is None:
             item.analysis_attempts = 0
-        if item.similarity_score is None:
-            item.similarity_score = 0.0
-
     # Exclude autoincrement PK from explicit values: PG rejects
     # NULL on a SERIAL PK (NotNullViolationError) while SQLite silently
     # generates a rowid. Excluding makes both backends auto-generate.

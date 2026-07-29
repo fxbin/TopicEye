@@ -51,6 +51,19 @@ from app.services._duckdb_stats_helpers import (  # noqa: F401 — re-export
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, score_items
 
 logger = logging.getLogger(__name__)
+
+ACCEPTED_EVENT_MEMBER_PREDICATE = """
+NOT EXISTS (
+    SELECT 1
+    FROM oltp_db.content_event_members event_member
+    JOIN oltp_db.content_event_groups event_group
+      ON event_group.id = event_member.event_group_id
+    WHERE event_member.content_id = c.id
+      AND event_group.status = 'active'
+      AND event_member.review_status IN ('auto', 'confirmed')
+)
+"""
+
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
 
 class DuckDBAnalytics:
@@ -263,7 +276,7 @@ class DuckDBAnalytics:
                 c.published_at, c.crawled_at,
                 c.content_hash, c.summary, c.cover_url,
                 c.category, c.tags, c.language, c.status, c.is_favorited,
-                c.topic_id, c.duplicate_of, c.similarity_score,
+                c.topic_id,
                 c.created_at, c.updated_at,
                 a.id AS analysis_id, a.created_at AS analysis_created_at,
                 a.quality_score, a.hot_score, a.freshness_score,
@@ -323,8 +336,6 @@ class DuckDBAnalytics:
             "status",
             "is_favorited",
             "topic_id",
-            "duplicate_of",
-            "similarity_score",
             "created_at",
             "updated_at",
             "analysis_id",
@@ -384,7 +395,6 @@ class DuckDBAnalytics:
                 "actionability",
                 "analysis_source_weight",
                 "feedback_score",
-                "similarity_score",
             ):
                 val = item.get(score_field)
                 if val is not None:
@@ -444,7 +454,7 @@ class DuckDBAnalytics:
                         c.platform, c.author, c.published_at, c.crawled_at,
                         c.content_hash, c.summary, c.cover_url,
                         c.category, c.tags, c.language, c.status,
-                        c.topic_id, c.duplicate_of, c.similarity_score,
+                        c.topic_id,
                         c.created_at, c.updated_at,
                         a.id AS analysis_id, a.created_at AS analysis_created_at,
                         a.quality_score, a.hot_score, a.freshness_score,
@@ -472,7 +482,7 @@ class DuckDBAnalytics:
                       AND c.crawled_at >= ?
                       AND ignored.content_id IS NULL
                       AND a.risk_score <= {risk_threshold}
-                      AND c.duplicate_of IS NULL
+                      AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
                       {category_clause}
                       {visibility_clause}
                 )
@@ -496,7 +506,7 @@ class DuckDBAnalytics:
                       AND c.crawled_at >= ?
                       AND ignored.content_id IS NULL
                       AND a.risk_score <= {risk_threshold}
-                      AND c.duplicate_of IS NULL
+                      AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
                       {category_clause}
                       {visibility_clause}
                 )
@@ -509,7 +519,7 @@ class DuckDBAnalytics:
             "platform", "author", "published_at", "crawled_at",
             "content_hash", "summary", "cover_url",
             "category", "tags", "language", "status",
-            "topic_id", "duplicate_of", "similarity_score",
+            "topic_id",
             "created_at", "updated_at",
             "analysis_id", "analysis_created_at",
             "quality_score", "hot_score", "freshness_score",
@@ -541,7 +551,7 @@ class DuckDBAnalytics:
             for score_field in (
                 "quality_score", "hot_score", "freshness_score", "creator_score",
                 "viral_score", "risk_score", "curation_score", "info_density",
-                "actionability", "similarity_score", "obscure_factor",
+                "actionability", "obscure_factor",
                 "freshness_boost", "time_decay", "content_score",
             ):
                 val = item.get(score_field)
@@ -680,7 +690,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= ?
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
               AND a.curation_score IS NOT NULL
         """,
             [cutoff],
@@ -756,7 +766,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
         """).fetchone()
         today_row = conn.execute(f"""
             WITH {IGNORED_CONTENT_CTE}
@@ -765,7 +775,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{today_start}'
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
         """).fetchone()
 
         return {
@@ -800,7 +810,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY s.id, s.name, s.source_type
             HAVING COUNT(c.id) > 0
             ORDER BY content_count DESC
@@ -837,7 +847,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY c.category
             ORDER BY content_count DESC
         """).fetchall()
@@ -875,7 +885,7 @@ class DuckDBAnalytics:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
               AND ignored.content_id IS NULL
-              AND c.duplicate_of IS NULL
+              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY CAST(c.crawled_at AS DATE)
             ORDER BY crawl_date ASC
         """).fetchall()
@@ -938,7 +948,10 @@ class DuckDBAnalytics:
                 AVG(a.curation_score) AS avg_curation,
                 MAX(a.curation_score) AS max_curation,
                 COUNT(DISTINCT c.topic_id) AS topic_count,
-                COUNT(CASE WHEN c.duplicate_of IS NOT NULL THEN 1 END) AS dup_count
+                COUNT(
+                    CASE WHEN NOT ({ACCEPTED_EVENT_MEMBER_PREDICATE})
+                    THEN 1 END
+                ) AS event_member_count
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
@@ -953,7 +966,7 @@ class DuckDBAnalytics:
             "avg_curation": round(float(row[1] or 0), 1),
             "max_curation": round(float(row[2] or 0), 1),
             "topic_count": row[3] or 0,
-            "dup_count": row[4] or 0,
+            "event_member_count": row[4] or 0,
         }
 
     def query_dashboard_stats(self, days: int = 7) -> dict[str, Any]:

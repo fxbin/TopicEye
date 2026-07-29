@@ -6,13 +6,15 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.api.v1 import contents as contents_api
-from app.api.v1 import auth as auth_api
+from app.api.v1 import auth as auth_api, contents as contents_api
+from app.repositories.content_event_consumption_repo import (
+    ContentEventConsumptionRepository,
+)
 from app.repositories.content_repo import ContentRepo
 from app.services import today_picks
 from app.services.json_cache import invalidate_json_cache, set_cached_json
-from app.services.today_picks_cache import default_today_picks_cache_params
 from app.services.scoring_engine import ScoringInput, score_items
+from app.services.today_picks_cache import default_today_picks_cache_params
 
 
 class FailingSession:
@@ -28,6 +30,34 @@ class FailingSession:
 
 def _failing_session_factory():
     return FailingSession()
+
+
+@pytest.fixture(autouse=True)
+def _event_truth_without_assignments(monkeypatch):
+    """Keep scoring tests independent from the event-consumer integration."""
+
+    async def resolve(_self, _ids, *, visible_user_id):
+        return {}
+
+    async def load_groups(
+        _self,
+        _event_group_ids,
+        *,
+        visible_user_id,
+        member_limit,
+    ):
+        return {}
+
+    monkeypatch.setattr(
+        ContentEventConsumptionRepository,
+        "resolve_today_pick_assignments",
+        resolve,
+    )
+    monkeypatch.setattr(
+        ContentEventConsumptionRepository,
+        "load_display_groups",
+        load_groups,
+    )
 
 
 def _duckdb_rows():
@@ -55,8 +85,6 @@ def _duckdb_rows():
             "status": "analyzed",
             "is_favorited": False,
             "topic_id": 10,
-            "duplicate_of": None,
-            "similarity_score": 0.0,
             "created_at": crawled_at,
             "updated_at": crawled_at,
             "analysis_id": 101,
@@ -81,30 +109,6 @@ def _duckdb_rows():
             "feedback_score": 20.0,
             "adjusted_curation_score": 107.0,
         },
-        {
-            "id": 2,
-            "title": "重复样本",
-            "url": "https://example.com/duplicate",
-            "source_id": 1,
-            "source_name": "测试信源",
-            "source_type": "RSS",
-            "platform": "rss",
-            "published_at": crawled_at,
-            "crawled_at": crawled_at,
-            "category": "AI",
-            "status": "analyzed",
-            "is_favorited": False,
-            "topic_id": 10,
-            "duplicate_of": 1,
-            "analysis_id": 102,
-            "analysis_created_at": now.isoformat(),
-            "creator_score": 80.0,
-            "risk_score": 10.0,
-            "curation_score": 90.0,
-            "analysis_source_weight": 50.0,
-            "source_weight_db": 3,
-            "adjusted_curation_score": 90.0,
-        },
     ]
 
 
@@ -124,7 +128,6 @@ def _duckdb_rows_with_weak_candidate():
             "curation_score": 70.0,
             "adjusted_curation_score": 90.0,
             "topic_id": 11,
-            "duplicate_of": None,
         }
     )
     return [weak, *rows]
@@ -140,7 +143,6 @@ def _duckdb_rows_with_mid_risk_candidate():
             "url": "https://example.com/mid-risk",
             "risk_score": 80.0,
             "topic_id": 12,
-            "duplicate_of": None,
         }
     )
     return [candidate, *rows]
@@ -195,7 +197,7 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     payload = await today_picks.build_today_picks(FailingSession(), category="AI", hours=48, limit=1)
 
     assert payload["total"] == 1
-    assert payload["duplicates_hidden"] == 1
+    assert payload["event_members_hidden"] == 0
     assert payload["page_size"] == 1
     assert payload["topics"] == [
         {"id": 10, "name": "AI 话题", "summary": "摘要", "keywords": ["AI"], "best_score": 104.0}
@@ -216,119 +218,7 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     assert item["analysis"]["score_breakdown"]["time_decay"] == expected["time_decay"]
     assert "raw_content" not in item
     assert "analyses" not in item
-    assert item["normalization"] == {
-        "canonical_id": 1,
-        "member_count": 1,
-        "source_count": 1,
-        "has_more": False,
-        "members": [
-            {
-                "id": 2,
-                "title": "重复样本",
-                "url": "https://example.com/duplicate",
-                "source_name": "测试信源",
-                "source_type": "RSS",
-                "platform": "rss",
-                "published_at": item["published_at"],
-                "crawled_at": item["crawled_at"],
-                "relation_type": "duplicate",
-                "confidence": None,
-            }
-        ],
-    }
-
-
-def test_attach_normalization_isolates_canonicals_caps_and_deduplicates_members():
-    canonical_items = [
-        {
-            "id": 10,
-            "source_id": 1,
-            "source_name": "来源一",
-            "source_type": "RSS",
-            "platform": "rss",
-        },
-        {
-            "id": 20,
-            "source_id": None,
-            "source_name": None,
-            "source_type": None,
-            "platform": None,
-        },
-        {
-            "id": 30,
-            "source_id": 3,
-            "source_name": "无附属来源",
-            "source_type": "RSS",
-            "platform": "rss",
-        },
-    ]
-    rows = []
-    for member_id in range(106, 99, -1):
-        rows.append(
-            {
-                "id": member_id,
-                "title": f"主记录 10 的附属 {member_id}",
-                "url": f"https://example.com/{member_id}",
-                "source_id": 1 if member_id == 100 else member_id,
-                "source_name": f"来源 {member_id}",
-                "source_type": "RSS",
-                "platform": "rss",
-                "published_at": f"2026-07-{member_id - 99:02d}T00:00:00+00:00",
-                "crawled_at": f"2026-07-{member_id - 99:02d}T01:00:00+00:00",
-                "duplicate_of": 10,
-                "similarity_score": member_id / 1000,
-            }
-        )
-    # 重复分析行不能放大 member_count。
-    rows.append(dict(rows[-1]))
-    rows.append(
-        {
-            "id": 200,
-            "title": "主记录 20 的附属",
-            "url": "https://example.com/200",
-            "source_id": 20,
-            "source_name": "来源二十",
-            "source_type": "WEB",
-            "platform": "web",
-            "published_at": "2026-07-09T00:00:00+00:00",
-            "crawled_at": "2026-07-09T01:00:00+00:00",
-            "duplicate_of": 20,
-            "similarity_score": 0.97,
-        }
-    )
-    # 只组装 direct duplicate_of；重复链 201 -> 200 不归入 canonical 20。
-    rows.append(
-        {
-            "id": 201,
-            "title": "重复链下游",
-            "url": "https://example.com/201",
-            "duplicate_of": 200,
-        }
-    )
-
-    today_picks._attach_normalization(canonical_items, rows)
-
-    first = canonical_items[0]["normalization"]
-    assert first["canonical_id"] == 10
-    assert first["member_count"] == 7
-    assert first["source_count"] == 7
-    assert first["has_more"] is True
-    assert [member["id"] for member in first["members"]] == [100, 101, 102, 103, 104]
-    assert all(member["relation_type"] == "duplicate" for member in first["members"])
-    assert first["members"][0]["confidence"] == 0.1
-
-    second = canonical_items[1]["normalization"]
-    assert second["member_count"] == 1
-    assert second["source_count"] == 1
-    assert [member["id"] for member in second["members"]] == [200]
-
-    assert canonical_items[2]["normalization"] == {
-        "canonical_id": 30,
-        "member_count": 0,
-        "source_count": 1,
-        "has_more": False,
-        "members": [],
-    }
+    assert "normalization" not in item
 
 
 @pytest.mark.asyncio
@@ -397,7 +287,7 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
 
     async def fake_build_today_picks(db, *, category=None, hours=48, limit=None):
         calls["count"] += 1
-        return {"items": [], "total": 0, "duplicates_hidden": 0, "topics": [], "page": 1, "page_size": 0}
+        return {"items": [], "total": 0, "event_members_hidden": 0, "topics": [], "page": 1, "page_size": 0}
 
     monkeypatch.setattr("app.services.today_picks.build_today_picks", fake_build_today_picks)
 
@@ -468,7 +358,7 @@ async def test_today_picks_cache_and_build_are_user_scoped(monkeypatch):
         return {
             "items": [{"id": owner_user_id or 0}],
             "total": 1,
-            "duplicates_hidden": 0,
+            "event_members_hidden": 0,
             "topics": [],
             "page": 1,
             "page_size": 1,
@@ -545,7 +435,7 @@ async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkey
     assert payload == {
         "items": [],
         "total": 0,
-        "duplicates_hidden": 0,
+        "event_members_hidden": 0,
         "topics": [],
         "page": 1,
         "page_size": 0,
@@ -726,7 +616,6 @@ def test_score_rows_does_not_double_filter_with_today_picks_threshold():
             "freshness_score": 80.0,
             "source_weight_db": 3,
             "feedback_score": 0,
-            "duplicate_of": None,
         }
         for i in range(100)
     ]
@@ -760,7 +649,6 @@ async def _seed_oltp_fixture(engine, *, extra_content=None, ignored_ids=(), feed
     ``feedback_rows``: list of (content_id, user_id, score_delta) tuples.
     Returns the list of created content ids.
     """
-    from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.models.analysis import AiAnalysis
@@ -808,7 +696,6 @@ async def _seed_oltp_fixture(engine, *, extra_content=None, ignored_ids=(), feed
                 published_at=spec.get("crawled_at", crawled_at),
                 category=spec.get("category", "AI"),
                 status=ContentStatus.ANALYZED,
-                duplicate_of=spec.get("duplicate_of"),
                 created_at=crawled_at,
                 updated_at=crawled_at,
             )
@@ -907,8 +794,6 @@ async def test_fallback_excludes_ignored_content(monkeypatch):
     )
     to_ignore = ids[1]
     # 单独插一条 ignored 记录
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
     from app.models.ignored import IgnoredItem
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
@@ -961,39 +846,3 @@ async def test_fallback_aggregates_feedback_score(monkeypatch):
     await engine.dispose()
     target_row = next(row for row in rows if row["id"] == target_id)
     assert target_row["feedback_score"] == 30.0, f"应聚合 +30，实际 {target_row['feedback_score']}"
-
-
-@pytest.mark.asyncio
-async def test_fallback_reads_real_duplicate_of(monkeypatch):
-    """OLTP fallback 应读真实 duplicate_of 列并剔除重复（不再硬编码 None）。"""
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from app.core.database import Base
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    canonical_id = 1  # 先占位，seed 后回填
-    ids = await _seed_oltp_fixture(
-        engine,
-        extra_content=[
-            {"title": "重复样本", "url": "https://example.com/dup", "duplicate_of": canonical_id},
-        ],
-    )
-    canonical_id = ids[0]
-    dup_id = ids[1]
-
-    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_k: (_ for _ in ()).throw(OSError("duckdb down")))
-    monkeypatch.setattr(today_picks, "query_topics", lambda **_k: [])
-
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
-        payload = await today_picks.build_today_picks(db, hours=48, category=None, limit=None)
-
-    await engine.dispose()
-    # build_today_picks 的 _score_rows 内部会剔除 duplicate_of 不为 None 的项。
-    # 若 fallback 误把 duplicate_of 硬编码为 None，dup_id 会出现在 payload 中，
-    # 此断言即失败。因此这个断言间接验证了 fallback 读到了真实 duplicate_of 列。
-    item_ids = {item["id"] for item in payload["items"]}
-    assert dup_id not in item_ids, "重复项应被 _score_rows 剔除（间接验证 fallback 读到真实 duplicate_of）"
-    assert canonical_id in item_ids, "被重复指向的 canonical 项应保留"

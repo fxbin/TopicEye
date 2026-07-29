@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.repositories.content_repo import ContentRepo
 from app.repositories.topic_repo import TopicRepository
-from app.services.topic_clustering import cluster_and_dedup_with_lease
+from app.services.topic_clustering import cluster_topics_with_lease
 from app.services.zhihu_url import normalize_zhihu_url
 
 router = APIRouter(prefix="/topics", tags=["topics"])
@@ -48,7 +48,7 @@ async def run_clustering(
     current_user: User = Depends(get_current_admin_user),
 ):
     """Run dedup + topic clustering on all analyzed content."""
-    stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="manual")
+    stats, claimed = await cluster_topics_with_lease(db, trigger_type="manual")
     if not claimed:
         raise HTTPException(status_code=409, detail="话题聚类正在运行中，请稍后再试")
     return {"status": "ok", "stats": stats}
@@ -87,8 +87,6 @@ async def get_topic(
                 "title": it.title,
                 "url": normalize_zhihu_url(it.url),
                 "source_name": it.source_name,
-                "duplicate_of": it.duplicate_of,
-                "similarity_score": it.similarity_score,
             }
             for it in items
         ],

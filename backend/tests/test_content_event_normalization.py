@@ -72,13 +72,13 @@ async def test_shadow_uses_local_fast_path_without_event_mutation(
     monkeypatch,
 ):
     async with normalization_db() as db:
-        first = await _content(
+        await _content(
             db,
             "模型池提升推理吞吐",
             hour=0,
             source_name="AIHOT",
         )
-        second = await _content(
+        await _content(
             db,
             "模型池提升推理吞吐",
             hour=1,
@@ -110,10 +110,6 @@ async def test_shadow_uses_local_fast_path_without_event_mutation(
         assert (
             await db.scalar(select(func.count()).select_from(ContentEventMember))
         ) == 0
-        await db.refresh(first)
-        await db.refresh(second)
-        assert first.duplicate_of is None
-        assert second.duplicate_of is None
 
 
 @pytest.mark.asyncio
@@ -197,7 +193,7 @@ async def test_write_recalls_historical_canonical_and_replays_idempotently(
 
 
 @pytest.mark.asyncio
-async def test_llm_failure_and_cap_create_pending_without_projection(
+async def test_llm_failure_and_cap_create_pending_members(
     normalization_db,
     monkeypatch,
 ):
@@ -215,7 +211,7 @@ async def test_llm_failure_and_cap_create_pending_without_projection(
 
     monkeypatch.setattr(normalization, "call_llm_json", unavailable)
     async with normalization_db() as db:
-        first = await _content(
+        await _content(
             db,
             "GLM 5.2 发布模型池能力",
             hour=0,
@@ -249,9 +245,24 @@ async def test_llm_failure_and_cap_create_pending_without_projection(
         assert result["pending"] == 2
         assert result["created_events"] == 1
         assert result["created_members"] == 2
-        for content in (first, second, third):
-            await db.refresh(content)
-            assert content.duplicate_of is None
+        pending_members = list(
+            (
+                await db.execute(
+                    select(ContentEventMember).order_by(
+                        ContentEventMember.content_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [member.content_id for member in pending_members] == [
+            second.id,
+            third.id,
+        ]
+        assert {member.review_status for member in pending_members} == {
+            "pending"
+        }
 
 
 @pytest.mark.asyncio
@@ -430,7 +441,7 @@ async def test_scheduler_off_has_no_database_or_service_side_effect(monkeypatch)
 
     monkeypatch.setattr(
         scheduler_module.settings,
-        "EVENT_NORMALIZATION_ROLLOUT_MODE",
+        "EVENT_NORMALIZATION_MODE",
         "off",
     )
 

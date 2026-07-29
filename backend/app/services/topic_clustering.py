@@ -1,10 +1,8 @@
-"""
-Topic clustering service — AI semantic dedup + semantic grouping.
+"""Topic clustering service.
 
-Algorithm:
-  1. AI semantic dedup: LLM on title+summary+tags → same-event pairs (replaces SequenceMatcher)
-  2. Tag-based clustering: shared tags → same topic
-  3. LLM naming: one call per cluster for topic name + summary
+Event normalization is owned exclusively by ``content_event_normalization``.
+This service only groups related content into topics and optionally names those
+topic groups with an LLM.
 """
 
 from __future__ import annotations
@@ -26,7 +24,6 @@ from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.services.feedback_signal import get_feedback_scores
 from app.services.llm import call_llm_json
 from app.services.scoring_engine import ScoringInput, score_items
-from app.services.semantic_dedup import semantic_dedup
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +32,9 @@ CLUSTER_TAG_OVERLAP = 1  # min shared tags to be in same cluster
 MIN_CLUSTER_SIZE = 2  # min items to form a topic group
 CLUSTER_LLM_CONCURRENCY = 3
 TOPIC_CLUSTERING_JOB_KEY = "topic_clustering"
-TOPIC_CLUSTERING_JOB_NAME = "话题聚类与去重"
+TOPIC_CLUSTERING_JOB_NAME = "话题聚类"
 TOPIC_CLUSTERING_JOB_TIMEOUT = 600
-TOPIC_CLUSTERING_JOB_DESCRIPTION = "重建话题分组和语义去重关系"
+TOPIC_CLUSTERING_JOB_DESCRIPTION = "重建话题分组"
 
 
 # ── Tag-based clustering ────────────────────────────────────────────────
@@ -59,7 +56,7 @@ def _extract_tags(item: dict) -> set[str]:
 def _union_find_cluster(
     items: list[dict],
 ) -> list[list[int]]:
-    """Group non-duplicate items by tag overlap.
+    """Group items by tag overlap.
 
     Returns list of groups, each group is a list of item IDs.
     """
@@ -112,7 +109,7 @@ def _union_find_cluster(
     return [g for g in groups.values() if len(g) >= MIN_CLUSTER_SIZE]
 
 
-# ── Step 3: LLM naming ─────────────────────────────────────────────────
+# ── Optional LLM naming ────────────────────────────────────────────────
 
 
 async def _name_clusters(
@@ -168,36 +165,20 @@ async def _name_clusters(
     return await asyncio.gather(*(_bounded_name(cluster) for cluster in clusters))
 
 
-async def _dedup_candidate_clusters(cluster_items: list[list[dict]]) -> dict[int, int]:
-    """Run semantic dedup on candidate clusters with bounded concurrency."""
-    semaphore = asyncio.Semaphore(CLUSTER_LLM_CONCURRENCY)
-
-    async def _dedup_one(cluster_item_list: list[dict]) -> dict[int, int]:
-        async with semaphore:
-            return await semantic_dedup(cluster_item_list)
-
-    dedup_results = await asyncio.gather(*(_dedup_one(cluster) for cluster in cluster_items))
-    dup_map: dict[int, int] = {}
-    for cluster_dups in dedup_results:
-        dup_map.update(cluster_dups)
-    return dup_map
-
-
 # ── Main entry point ────────────────────────────────────────────────────
 
 
-async def cluster_and_dedup_with_lease(
+async def cluster_topics_with_lease(
     db: AsyncSession,
     *,
     trigger_type: str = "manual",
     days: int = 7,
-    use_dedup: bool = False,
     use_llm_naming: bool = False,
 ) -> tuple[dict | None, bool]:
     """Run clustering under a cross-process lease.
 
-    The clustering pass writes topic/duplicate state, so overlapping
-    runs must be skipped instead of allowed to interleave writes.
+    The clustering pass writes topic state, so overlapping runs must be
+    skipped instead of allowed to interleave writes.
     """
     from app.services import job_tracker
 
@@ -217,7 +198,11 @@ async def cluster_and_dedup_with_lease(
 
     status = "SUCCESS"
     try:
-        stats = await cluster_and_dedup(db, days=days, use_dedup=use_dedup, use_llm_naming=use_llm_naming)
+        stats = await cluster_topics(
+            db,
+            days=days,
+            use_llm_naming=use_llm_naming,
+        )
         # After clustering, discover content relations (zero LLM cost, runs in same session)
         try:
             from app.services.relation_engine import discover_relations
@@ -251,11 +236,10 @@ def _auto_name_group(cluster: list[dict]) -> dict:
     }
 
 
-async def cluster_and_dedup(
+async def cluster_topics(
     db: AsyncSession,
     *,
     days: int = 7,
-    use_dedup: bool = False,
     use_llm_naming: bool = False,
 ) -> dict:
     """Run clustering on recent unassigned content. Returns stats.
@@ -264,10 +248,8 @@ async def cluster_and_dedup(
     that have no ``topic_id`` yet. Already-assigned items and existing
     TopicGroups are left untouched.
 
-    By default dedup and LLM naming are OFF — topics are auto-named from
-    tag unions. This keeps each run fast (no LLM calls) and bounded to
-    the daily ingest volume. LLM naming can be turned on for manual runs
-    where quality matters more than speed.
+    By default LLM naming is OFF and topics are auto-named from tag unions.
+    Event membership is deliberately not inferred here.
     """
 
     # 1. Fetch recent analyzed items that still lack a topic_id
@@ -292,7 +274,13 @@ async def cluster_and_dedup(
     rows = result.all()
 
     if not rows:
-        return {"clusters": 0, "duplicates": 0, "standalone": 0, "total": 0, "window_days": days, "incremental": True}
+        return {
+            "clusters": 0,
+            "standalone": 0,
+            "total": 0,
+            "window_days": days,
+            "incremental": True,
+        }
 
     content_ids = [content.id for content, _analysis, _source_weight in rows]
     feedback_scores = await get_feedback_scores(db, content_ids)
@@ -342,49 +330,15 @@ async def cluster_and_dedup(
     #    Only new TopicGroups are inserted; existing ones are preserved.
     from sqlalchemy import text
 
-    # 3. Tag-based clustering (candidate scope for same-topic duplicates)
-    #    Items without shared tags → standalone groups (will be skipped in dedup below)
-    groups = _union_find_cluster(items)  # run on ALL items first
+    # 3. Tag-based topic clustering. Event membership is handled elsewhere.
+    groups = _union_find_cluster(items)
     item_by_id = {item["id"]: item for item in items}
-    cluster_items_map: dict[int, list[dict]] = {}  # cluster_idx → items
-    for idx, group_ids in enumerate(groups):
-        cluster_items_map[idx] = [item_by_id[item_id] for item_id in group_ids]
 
-    # 4. AI semantic dedup within candidate clusters (optional)
-    #    Disabled by default in incremental mode: each candidate cluster is one LLM
-    #    call (~10s each) and dedup only affects the duplicate_of field, not topic_id.
-    #    Trend snapshots work fine without it.
-    dup_map: dict[int, int] = {}
-    dup_count = 0
-    if use_dedup:
-        MAX_DEDUP_CANDIDATES = 30
-        dedup_candidates = []
-        for _, cluster_item_list in cluster_items_map.items():
-            if len(cluster_item_list) < 2 or len(cluster_item_list) > 15:
-                continue
-            dedup_candidates.append(cluster_item_list)
-        if len(dedup_candidates) > MAX_DEDUP_CANDIDATES:
-            logger.warning(
-                "Skipping semantic dedup: %d candidate clusters exceed cap %d",
-                len(dedup_candidates),
-                MAX_DEDUP_CANDIDATES,
-            )
-            dedup_candidates = []
-        dup_map = await _dedup_candidate_clusters(dedup_candidates) if dedup_candidates else {}
-        dup_count = len(dup_map)
-
-    # 5. Non-duplicate items for clustering
-    non_dup = [i for i in items if i["id"] not in dup_map]
-
-    # 6. Re-cluster non-duplicate items (clean topic groups, standalone excluded)
-    groups = _union_find_cluster(non_dup)
-
-    # 7. Name clusters
+    # 4. Name clusters
     #    Default: auto-name from tag union (no LLM, instant).
     #    Optional: LLM naming for top N groups by size (use_llm_naming=True).
     cluster_meta = []
     if groups:
-        non_dup_by_id = {item["id"]: item for item in non_dup}
         sorted_groups = sorted(groups, key=len, reverse=True)
 
         if use_llm_naming:
@@ -393,22 +347,27 @@ async def cluster_and_dedup(
             auto_groups = sorted_groups[MAX_LLM_NAMED_CLUSTERS:]
 
             if llm_groups:
-                group_items = [[non_dup_by_id[item_id] for item_id in g] for g in llm_groups]
+                group_items = [
+                    [item_by_id[item_id] for item_id in group]
+                    for group in llm_groups
+                ]
                 cluster_meta = await _name_clusters(group_items)
 
             for group_ids in auto_groups:
-                cluster = [non_dup_by_id[item_id] for item_id in group_ids]
+                cluster = [item_by_id[item_id] for item_id in group_ids]
                 cluster_meta.append(_auto_name_group(cluster))
             if auto_groups:
                 logger.info("Auto-named %d overflow clusters (beyond LLM cap %d)", len(auto_groups), MAX_LLM_NAMED_CLUSTERS)
         else:
             # Fast path: auto-name all groups from tags (zero LLM calls)
             for group_ids in sorted_groups:
-                cluster = [non_dup_by_id[item_id] for item_id in group_ids]
+                cluster = [item_by_id[item_id] for item_id in group_ids]
                 cluster_meta.append(_auto_name_group(cluster))
 
-    # 8. Write to DB
-    standalone_ids = {i["id"] for i in non_dup} - {id for g in groups for id in g}
+    # 5. Write to DB
+    standalone_ids = {item["id"] for item in items} - {
+        content_id for group in groups for content_id in group
+    }
 
     for meta in cluster_meta:
         topic = TopicGroup(
@@ -427,18 +386,10 @@ async def cluster_and_dedup(
                 {"tid": topic.id, "id": item_id},
             )
 
-    # Write duplicate mappings (similarity_score=1.0 for LLM-confirmed duplicates)
-    for dup_id, canonical_id in dup_map.items():
-        await db.execute(
-            text("UPDATE content_items SET duplicate_of=:can_id, similarity_score=1.0 WHERE id=:id"),
-            {"can_id": canonical_id, "id": dup_id},
-        )
-
     await db.commit()
 
     stats = {
         "clusters": len(cluster_meta),
-        "duplicates": dup_count,
         "standalone": len(standalone_ids),
         "total": len(items),
         "window_days": days,

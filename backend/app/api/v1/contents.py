@@ -286,8 +286,6 @@ async def list_contents(
                             "tags": raw.get("tags"),
                             "status": raw.get("status"),
                             "topic_id": raw.get("topic_id"),
-                            "duplicate_of": raw.get("duplicate_of"),
-                            "similarity_score": raw.get("similarity_score"),
                             "created_at": raw.get("created_at"),
                             "analysis": analysis_data,
                         })

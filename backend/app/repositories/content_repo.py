@@ -20,11 +20,17 @@ from sqlalchemy import Text, cast, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import database_profile
 from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
-from app.core.config import settings
 from app.core.time import naive_utc_now
 from app.models.content import ContentItem, ContentStatus
+from app.models.content_event import (
+    ContentEventGroup,
+    ContentEventMember,
+    EventReviewStatus,
+    EventStatus,
+)
 from app.repositories._content_repo_types import (  # noqa: F401 — re-export for scoring_flow et al.
     ANALYSIS_STALE_MINUTES,
     ScoringContentRow,
@@ -78,6 +84,23 @@ class ContentRepo(BaseRepository[ContentItem]):
             self.model,
             visible_user_id=visible_user_id,
             public_only=public_only,
+        )
+
+    @staticmethod
+    def _accepted_event_member_exists():
+        return exists(
+            select(ContentEventMember.id)
+            .join(
+                ContentEventGroup,
+                ContentEventGroup.id == ContentEventMember.event_group_id,
+            )
+            .where(
+                ContentEventMember.content_id == ContentItem.id,
+                ContentEventGroup.status == EventStatus.ACTIVE,
+                ContentEventMember.review_status.in_(
+                    (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
+                ),
+            )
         )
 
     # ── Lookup helpers ─────────────────────────────────────────────
@@ -465,28 +488,6 @@ class ContentRepo(BaseRepository[ContentItem]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def get_duplicates_of(self, canonical_id: int) -> Sequence[ContentItem]:
-        """Fetch all items marked as duplicates of a canonical item."""
-        result = await self.db.execute(
-            select(self.model)
-            .where(self.model.duplicate_of == canonical_id)
-            .order_by(self.model.similarity_score.desc())
-        )
-        return result.scalars().all()
-
-    async def mark_as_duplicate(
-        self,
-        item_id: int,
-        canonical_id: int,
-        similarity_score: float = 0.0,
-    ) -> ContentItem:
-        """Mark an item as a duplicate of another item."""
-        return await self.update(
-            item_id,
-            duplicate_of=canonical_id,
-            similarity_score=similarity_score,
-        )
-
     async def assign_topic(
         self,
         item_id: int,
@@ -711,8 +712,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         (``owner_user_id IS NULL``) or content owned by that user. ``None``
         means no visibility filter (legacy / admin callers).
 
-        口径与 today-picks / DuckDB query_today_picks 对齐：剔除重复内容
-        (``duplicate_of IS NULL``) 与已忽略内容 (``exclude_ids``)。
+        口径与 today-picks / DuckDB query_today_picks 对齐：剔除事件附属内容
+        与已忽略内容 (``exclude_ids``)。
         """
         from app.models.analysis import AiAnalysis
         from app.services.scoring_engine import CONFIG as SCORING_CONFIG
@@ -730,7 +731,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(self.model.crawled_at <= window_end)
             .where(AiAnalysis.risk_score <= risk_threshold)
             .where(AiAnalysis.curation_score.isnot(None))
-            .where(self.model.duplicate_of.is_(None))
+            .where(~self._accepted_event_member_exists())
         )
         stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
         if exclude_ids:
@@ -962,7 +963,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         """按标题关键词做小时分桶计数，供 /daily-reports/sparkline 端点使用。
 
         - 关键词用 ILIKE 任意命中即算（OR 匹配），保证 1-2 个核心词也能查到曲线
-        - 过滤：crawled_at >= cutoff, status='analyzed', duplicate_of IS NULL
+        - 过滤：crawled_at >= cutoff, status='analyzed'，且不是事件附属内容
         - 分桶：date_trunc('hour', crawled_at)
         - 返回：[(hour_datetime, count), ...]
 
@@ -979,7 +980,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(
                 self.model.crawled_at >= cutoff,
                 self.model.status == "analyzed",
-                self.model.duplicate_of.is_(None),
+                ~self._accepted_event_member_exists(),
                 or_(*pattern_clauses),
             )
             .group_by("ts")
@@ -1007,7 +1008,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         供 /contents/today-count 端点使用，口径与首页「今日选题」一致：
         - status='analyzed'
         - crawled_at >= cutoff
-        - duplicate_of IS NULL
+        - 非 ACTIVE 事件的 accepted member
         - 可见性：public_only=True 时只计 owner_user_id IS NULL；
           visible_user_id 非 None 时计公共池+该用户私有。
         """
@@ -1016,7 +1017,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(
                 self.model.status == "analyzed",
                 self.model.crawled_at >= cutoff,
-                self.model.duplicate_of.is_(None),
+                ~self._accepted_event_member_exists(),
             )
         )
         for clause in self._visibility_clauses(visible_user_id, public_only):

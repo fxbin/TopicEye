@@ -75,8 +75,6 @@ def _content_item(content_id: int, title: str):
         created_at=timestamp,
         updated_at=timestamp,
         topic_id=None,
-        duplicate_of=None,
-        similarity_score=None,
         analyses=[analysis],
     )
 

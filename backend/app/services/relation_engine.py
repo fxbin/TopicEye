@@ -21,11 +21,17 @@ from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
+from app.models.content_event import (
+    ContentEventGroup,
+    ContentEventMember,
+    EventReviewStatus,
+    EventStatus,
+)
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.relation_repo import RelationRepository
 from app.services.llm import call_llm_json
@@ -84,7 +90,7 @@ async def discover_relations(
             and_(
                 ContentItem.status == ContentStatus.ANALYZED,
                 ContentItem.crawled_at >= cutoff,
-                ContentItem.duplicate_of.is_(None),
+                ~_accepted_event_member_exists(),
             )
         )
         .order_by(ContentItem.crawled_at.desc())
@@ -308,3 +314,18 @@ async def _discover_llm_relations(
         total_counts,
     )
     return total_counts
+def _accepted_event_member_exists():
+    return exists(
+        select(ContentEventMember.id)
+        .join(
+            ContentEventGroup,
+            ContentEventGroup.id == ContentEventMember.event_group_id,
+        )
+        .where(
+            ContentEventMember.content_id == ContentItem.id,
+            ContentEventGroup.status == EventStatus.ACTIVE,
+            ContentEventMember.review_status.in_(
+                (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
+            ),
+        )
+    )

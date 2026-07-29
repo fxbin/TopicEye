@@ -22,8 +22,8 @@ class SkillTodayPicksResponse(BaseModel):
     """
 
     items: list[dict[str, Any]] = Field(default_factory=list, description="精选内容卡片列表")
-    total: int = Field(0, description="精选总数（去重后）")
-    duplicates_hidden: int = Field(0, description="被去重剔除的重复条数")
+    total: int = Field(0, description="精选总数（事件归并后）")
+    event_members_hidden: int = Field(0, description="被归并折叠的事件附属条数")
     topics: list[dict[str, Any]] = Field(default_factory=list, description="关联话题分组")
     page: int = Field(1, description="页码（恒为 1）")
     page_size: int = Field(0, description="本页条数")

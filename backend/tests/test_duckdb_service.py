@@ -15,6 +15,21 @@ def create_ignored_items_table(conn):
             content_id INTEGER
         )
     """)
+    conn.execute("""
+        CREATE TABLE oltp_db.content_event_groups (
+            id INTEGER,
+            canonical_content_id INTEGER,
+            status VARCHAR
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE oltp_db.content_event_members (
+            id INTEGER,
+            event_group_id INTEGER,
+            content_id INTEGER,
+            review_status VARCHAR
+        )
+    """)
 
 
 def test_duckdb_status_redacts_database_password_on_connection_failure(monkeypatch):
@@ -48,8 +63,7 @@ def test_stats_queries_use_latest_analysis_only(monkeypatch):
             source_id INTEGER,
             source_name VARCHAR,
             category VARCHAR,
-            crawled_at TIMESTAMP,
-            duplicate_of INTEGER
+            crawled_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -91,7 +105,7 @@ created_at TIMESTAMP
     now = datetime.now(UTC).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL)",
+        "INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?)",
         [now],
     )
     conn.execute(
@@ -144,8 +158,7 @@ def test_dashboard_stats_uses_unified_scorer_for_curated_counts(monkeypatch):
             source_id INTEGER,
             source_name VARCHAR,
             category VARCHAR,
-            crawled_at TIMESTAMP,
-            duplicate_of INTEGER
+            crawled_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -197,8 +210,8 @@ created_at TIMESTAMP
 
     now = datetime.now(UTC).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL)", [now])
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, NULL)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?)", [now])
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, 95.0, 10, 10, 50, 10, 10, 50, 10, 10, 0, ?)",
         [now],
@@ -234,7 +247,6 @@ def test_stats_queries_exclude_ignored_content(monkeypatch):
             source_name VARCHAR,
             category VARCHAR,
             crawled_at TIMESTAMP,
-            duplicate_of INTEGER,
             topic_id INTEGER
         )
     """)
@@ -287,8 +299,8 @@ def test_stats_queries_exclude_ignored_content(monkeypatch):
 
     now = datetime.now(UTC).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL, 10)", [now])
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', '商业', ?, NULL, 20)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, 10)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', '商业', ?, 20)", [now])
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, 90, 90, 90, 80, 90, 90, 90, 90, 90, 0, ?)",
         [now],
@@ -356,8 +368,6 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
             status VARCHAR,
             is_favorited BOOLEAN,
             topic_id INTEGER,
-            duplicate_of INTEGER,
-            similarity_score DOUBLE,
             created_at TIMESTAMP,
             updated_at TIMESTAMP
         )
@@ -419,7 +429,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
         INSERT INTO oltp_db.content_items VALUES (
             1, '最新分析精选', 'https://example.com/pick', 1, '测试信源', 'RSS',
             'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
-            'zh', 'analyzed', false, NULL, NULL, 0.0, ?, ?
+            'zh', 'analyzed', false, NULL, ?, ?
         )
         """,
         [now, now, now],
@@ -483,8 +493,6 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             status VARCHAR,
             is_favorited BOOLEAN,
             topic_id INTEGER,
-            duplicate_of INTEGER,
-            similarity_score DOUBLE,
             created_at TIMESTAMP,
             updated_at TIMESTAMP
         )
@@ -546,7 +554,7 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
                 'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
-                'zh', 'analyzed', false, NULL, NULL, 0.0, ?, ?
+                'zh', 'analyzed', false, NULL, ?, ?
             )
             """,
             [content_id, title, f"https://example.com/{content_id}", now, now, now],
@@ -603,8 +611,6 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             status VARCHAR,
             is_favorited BOOLEAN,
             topic_id INTEGER,
-            duplicate_of INTEGER,
-            similarity_score DOUBLE,
             created_at TIMESTAMP,
             updated_at TIMESTAMP
         )
@@ -666,7 +672,7 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
                 'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
-                'zh', 'analyzed', false, NULL, NULL, 0.0, ?, ?
+                'zh', 'analyzed', false, NULL, ?, ?
             )
             """,
             [content_id, f"风险候选 {content_id}", f"https://example.com/risk-{content_id}", now, now, now],
@@ -717,8 +723,6 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             status VARCHAR,
             is_favorited BOOLEAN,
             topic_id INTEGER,
-            duplicate_of INTEGER,
-            similarity_score DOUBLE,
             created_at TIMESTAMP,
             updated_at TIMESTAMP
         )
@@ -780,7 +784,7 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
                 'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
-                'zh', 'analyzed', false, NULL, NULL, 0.0, ?, ?
+                'zh', 'analyzed', false, NULL, ?, ?
             )
             """,
             [content_id, title, f"https://example.com/{content_id}", now, now, now],
@@ -1070,7 +1074,6 @@ def test_daily_stats_uses_latest_analysis_and_unified_curated_count(monkeypatch)
             source_name VARCHAR,
             category VARCHAR,
             crawled_at TIMESTAMP,
-            duplicate_of INTEGER,
             topic_id INTEGER
         )
     """)
@@ -1112,9 +1115,15 @@ created_at TIMESTAMP
 
     now = datetime.now(UTC).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, NULL, 10)", [now])
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, NULL, 20)", [now])
-    conn.execute("INSERT INTO oltp_db.content_items VALUES (3, 1, '测试信源', 'AI', ?, 1, 20)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, 10)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, 20)", [now])
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (3, 1, '测试信源', 'AI', ?, 20)", [now])
+    conn.execute(
+        "INSERT INTO oltp_db.content_event_groups VALUES (10, 1, 'active')"
+    )
+    conn.execute(
+        "INSERT INTO oltp_db.content_event_members VALUES (1, 10, 3, 'auto')"
+    )
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, 20, 90, 90, 80, 90, 90, 90, 90, 90, 0, ?)",
         [now - timedelta(hours=2)],
@@ -1142,7 +1151,7 @@ created_at TIMESTAMP
     assert stats["avg_curation"] == 84.3
     assert stats["max_curation"] == 95.0
     assert stats["topic_count"] == 2
-    assert stats["dup_count"] == 1
+    assert stats["event_member_count"] == 1
 
     conn.close()
 
@@ -1157,7 +1166,6 @@ def test_daily_stats_uses_unified_risk_threshold(monkeypatch):
             source_name VARCHAR,
             category VARCHAR,
             crawled_at TIMESTAMP,
-            duplicate_of INTEGER,
             topic_id INTEGER
         )
     """)
@@ -1201,7 +1209,7 @@ created_at TIMESTAMP
     conn.execute("INSERT INTO oltp_db.sources VALUES (1, '测试信源', 'RSS', 3)")
     for content_id, risk_score in ((1, 80), (2, 83)):
         conn.execute(
-            "INSERT INTO oltp_db.content_items VALUES (?, 1, '测试信源', 'AI', ?, NULL, ?)",
+            "INSERT INTO oltp_db.content_items VALUES (?, 1, '测试信源', 'AI', ?, ?)",
             [content_id, now, content_id],
         )
         conn.execute(

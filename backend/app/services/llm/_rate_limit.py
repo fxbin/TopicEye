@@ -11,12 +11,13 @@ LLM 调用的限流与并发控制。
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
-from contextlib import asynccontextmanager
 import logging
 import threading
 import time
-from typing import Any, AsyncIterator
+from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
 
 from app.core.config import settings
 
@@ -102,7 +103,6 @@ _BACKGROUND_SCENES = frozenset(
         "content_analysis",
         "content_classification",
         "content_enrichment",
-        "semantic_dedup",
         "relation_discovery",
     }
 )

@@ -4,7 +4,6 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.config import settings
 from app.core.database import Base
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_event import (
@@ -140,6 +139,7 @@ async def _seed_events(db):
             relation_type=relation,
             confidence=0.9,
             match_method="test",
+            reason=f"same event: {content.title}",
             review_status=review,
         )
         for content, relation, review in member_specs
@@ -151,6 +151,7 @@ async def _seed_events(db):
             relation_type=EventRelationType.CORROBORATION,
             confidence=0.92,
             match_method="test",
+            reason="same private event",
             review_status=EventReviewStatus.AUTO,
         )
     )
@@ -228,6 +229,7 @@ async def test_today_pick_event_projection_is_batched_scoped_and_stable():
             "duplicate",
             "corroboration",
         ]
+        assert summary.members[0].reason == "same event: public-duplicate"
 
     await engine.dispose()
 
@@ -242,11 +244,6 @@ async def test_event_truth_evidence_marks_only_canonical_and_filters_relations(
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
         public_group, public, _private_group, _private = await _seed_events(db)
-        monkeypatch.setattr(
-            settings,
-            "EVENT_NORMALIZATION_ROLLOUT_MODE",
-            "serve",
-        )
         stats = await discover_cross_source_evidence(
             db,
             hours=24,
@@ -294,7 +291,7 @@ async def test_event_truth_evidence_marks_only_canonical_and_filters_relations(
     await engine.dispose()
 
 
-def _pick_row(content_id: int, *, duplicate_of=None) -> dict:
+def _pick_row(content_id: int) -> dict:
     now = datetime.now(UTC).isoformat()
     return {
         "id": content_id,
@@ -308,8 +305,6 @@ def _pick_row(content_id: int, *, duplicate_of=None) -> dict:
         "crawled_at": now,
         "category": "AI",
         "status": "analyzed",
-        "duplicate_of": duplicate_of,
-        "similarity_score": 0.9,
         "analysis_id": content_id,
         "analysis_created_at": now,
         "quality_score": 90.0,
@@ -328,15 +323,14 @@ def _pick_row(content_id: int, *, duplicate_of=None) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_today_picks_serve_hides_all_event_members_and_reports_outside(
+async def test_today_picks_hides_all_event_members_and_exposes_reason(
     monkeypatch,
-    caplog,
 ):
     rows = [
-        _pick_row(1, duplicate_of=999),
+        _pick_row(1),
         _pick_row(2),
         _pick_row(3),
-        _pick_row(4, duplicate_of=1),
+        _pick_row(4),
     ]
     assignments = {
         1: EventAssignment(1, 10, 1, True),
@@ -362,6 +356,7 @@ async def test_today_picks_serve_hides_all_event_members_and_reports_outside(
                     crawled_at=datetime.now(UTC),
                     relation_type="corroboration",
                     confidence=0.93,
+                    reason="same release reported by another publisher",
                 ),
             ),
         )
@@ -384,11 +379,6 @@ async def test_today_picks_serve_hides_all_event_members_and_reports_outside(
         return groups
 
     monkeypatch.setattr(
-        settings,
-        "EVENT_NORMALIZATION_ROLLOUT_MODE",
-        "serve",
-    )
-    monkeypatch.setattr(
         today_picks,
         "query_today_picks",
         lambda **_kwargs: rows,
@@ -405,91 +395,31 @@ async def test_today_picks_serve_hides_all_event_members_and_reports_outside(
         load_groups,
     )
 
-    with caplog.at_level("INFO", logger="app.services.today_picks"):
-        payload = await today_picks.build_today_picks(
-            object(),
-            hours=48,
-            limit=None,
-        )
+    payload = await today_picks.build_today_picks(
+        object(),
+        hours=48,
+        limit=None,
+    )
 
-    assert [item["id"] for item in payload["items"]] == [1]
-    assert payload["duplicates_hidden"] == 3
-    assert "normalization_counters" not in payload
-    assert today_picks._event_compare_counters(rows, assignments) == {
-        "candidate_count": 4,
-        "legacy_hidden": 2,
-        "event_hidden": 2,
-        "event_only_hidden": 2,
-        "legacy_only_hidden": 2,
-        "canonical_outside_window": 1,
-    }
-    assert "canonical_outside_window=1" in caplog.text
+    assert [item["id"] for item in payload["items"]] == [1, 4]
+    assert payload["event_members_hidden"] == 2
     normalization = payload["items"][0]["normalization"]
     assert normalization["member_count"] == 2
     assert normalization["has_more"] is True
     assert normalization["members"][0]["relation_type"] == "corroboration"
+    assert (
+        normalization["members"][0]["reason"]
+        == "same release reported by another publisher"
+    )
 
 
 @pytest.mark.asyncio
-async def test_today_picks_write_compares_without_changing_legacy_output(
-    monkeypatch,
-    caplog,
-):
+async def test_today_picks_event_truth_error_returns_empty_payload(monkeypatch):
     rows = [_pick_row(1), _pick_row(2)]
-    assignments = {
-        1: EventAssignment(1, 10, 1, True),
-        2: EventAssignment(2, 10, 1, False, "corroboration", 0.93),
-    }
-
-    async def resolve(_self, _ids, *, visible_user_id):
-        assert visible_user_id is None
-        return assignments
-
-    async def must_not_expand(*_args, **_kwargs):
-        raise AssertionError("write mode must not serve event expansion")
-
-    monkeypatch.setattr(
-        settings,
-        "EVENT_NORMALIZATION_ROLLOUT_MODE",
-        "write",
-    )
-    monkeypatch.setattr(
-        today_picks,
-        "query_today_picks",
-        lambda **_kwargs: rows,
-    )
-    monkeypatch.setattr(today_picks, "query_topics", lambda: [])
-    monkeypatch.setattr(
-        ContentEventConsumptionRepository,
-        "resolve_today_pick_assignments",
-        resolve,
-    )
-    monkeypatch.setattr(
-        ContentEventConsumptionRepository,
-        "load_display_groups",
-        must_not_expand,
-    )
-
-    with caplog.at_level("INFO", logger="app.services.today_picks"):
-        payload = await today_picks.build_today_picks(object(), hours=48)
-
-    assert {item["id"] for item in payload["items"]} == {1, 2}
-    assert "normalization_counters" not in payload
-    assert "event_hidden=1" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_today_picks_serve_query_error_falls_back_to_legacy(monkeypatch):
-    rows = [_pick_row(1), _pick_row(2, duplicate_of=1)]
 
     async def fail_resolution(*_args, **_kwargs):
         raise RuntimeError("event truth unavailable")
 
-    monkeypatch.setattr(
-        settings,
-        "EVENT_NORMALIZATION_ROLLOUT_MODE",
-        "serve",
-    )
     monkeypatch.setattr(
         today_picks,
         "query_today_picks",
@@ -504,10 +434,14 @@ async def test_today_picks_serve_query_error_falls_back_to_legacy(monkeypatch):
 
     payload = await today_picks.build_today_picks(object(), hours=48)
 
-    assert [item["id"] for item in payload["items"]] == [1]
-    assert payload["duplicates_hidden"] == 1
-    assert "normalization_counters" not in payload
-    assert payload["items"][0]["normalization"]["members"][0]["id"] == 2
+    assert payload == {
+        "items": [],
+        "total": 0,
+        "event_members_hidden": 0,
+        "topics": [],
+        "page": 1,
+        "page_size": 0,
+    }
 
 
 def _evidence_content(
@@ -700,11 +634,6 @@ async def test_unknown_canonical_platform_cannot_create_cross_source_evidence(
         )
         await db.commit()
 
-        monkeypatch.setattr(
-            settings,
-            "EVENT_NORMALIZATION_ROLLOUT_MODE",
-            "serve",
-        )
         stats = await discover_cross_source_evidence(
             db,
             hours=24,
@@ -727,37 +656,26 @@ async def test_unknown_canonical_platform_cannot_create_cross_source_evidence(
 
 
 @pytest.mark.asyncio
-async def test_evidence_serve_error_falls_back_to_legacy(monkeypatch):
+async def test_evidence_event_truth_error_propagates(monkeypatch):
     async def fail_event(*_args, **_kwargs):
         raise RuntimeError("event truth unavailable")
 
-    async def legacy(_db, *, hours, owner_user_id):
-        assert hours == 24
-        assert owner_user_id is None
-        return {"groups": 7, "marks": 8, "links": 9, "total": 10}
-
-    monkeypatch.setattr(
-        settings,
-        "EVENT_NORMALIZATION_ROLLOUT_MODE",
-        "serve",
-    )
     monkeypatch.setattr(
         evidence_service,
         "_discover_event_cross_source_evidence",
         fail_event,
     )
-    monkeypatch.setattr(
-        evidence_service,
-        "_discover_legacy_cross_source_evidence",
-        legacy,
-    )
 
-    stats = await discover_cross_source_evidence(object())
+    class NestedContext:
+        async def __aenter__(self):
+            return self
 
-    assert stats == {
-        "groups": 7,
-        "marks": 8,
-        "links": 9,
-        "total": 10,
-        "event_fallback": 1,
-    }
+        async def __aexit__(self, *_args):
+            return False
+
+    class FakeDb:
+        def begin_nested(self):
+            return NestedContext()
+
+    with pytest.raises(RuntimeError, match="event truth unavailable"):
+        await discover_cross_source_evidence(FakeDb())

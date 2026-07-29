@@ -778,9 +778,8 @@ async def normalize_recent_events_with_lease(
     if normalized_mode not in {
         EventNormalizationMode.SHADOW.value,
         EventNormalizationMode.WRITE.value,
-        EventNormalizationMode.SERVE.value,
     }:
-        raise ValueError("mode must be off, shadow, write, or serve")
+        raise ValueError("mode must be off, shadow, or write")
     normalized_key = idempotency_key.strip()
     if not normalized_key or len(normalized_key) > 200:
         raise ValueError("idempotency_key must contain 1..200 characters")
@@ -830,10 +829,7 @@ async def normalize_recent_events_with_lease(
         await db.rollback()
 
         semaphore = asyncio.Semaphore(limits.concurrency)
-        write_enabled = normalized_mode in {
-            EventNormalizationMode.WRITE.value,
-            EventNormalizationMode.SERVE.value,
-        }
+        write_enabled = normalized_mode == EventNormalizationMode.WRITE.value
 
         predictions_by_index: dict[int, _Prediction] = {}
         boundary_batch: list[tuple[int, _ContentSnapshot, _Candidate]] = []

@@ -50,24 +50,6 @@ class EventMemberInput:
     review_status: str | None = None
 
 
-@dataclass
-class ContentEventBackfillReport:
-    scanned_links: int = 0
-    candidate_components: int = 0
-    planned_events: int = 0
-    planned_members: int = 0
-    created_events: int = 0
-    created_members: int = 0
-    skipped_dangling_links: int = 0
-    skipped_cross_scope_links: int = 0
-    skipped_self_links: int = 0
-    skipped_cycle_components: int = 0
-    skipped_existing_components: int = 0
-
-    def as_dict(self) -> dict[str, int]:
-        return dict(vars(self))
-
-
 def effective_content_time(content: ContentItem) -> datetime:
     """Return a comparable UTC effective time with deterministic fallbacks."""
 
@@ -306,7 +288,6 @@ class ContentEventService:
                 reason=candidate.reason,
                 review_status=review_status,
             )
-        await self.repo.sync_duplicate_projection(group.id)
         return group
 
     async def _switch_canonical(
@@ -416,7 +397,6 @@ class ContentEventService:
                 )
         await self._refresh_occurrence_range(group)
         group.version += 1
-        await self.repo.sync_duplicate_projection(group.id)
         await self.db.flush()
         return group
 
@@ -449,7 +429,6 @@ class ContentEventService:
         await self.repo.delete_member(member)
         source_group.version += 1
         await self._refresh_occurrence_range(source_group)
-        await self.repo.sync_duplicate_projection(source_group.id)
         return await self.add_member(
             target_group.id,
             content.id,
@@ -510,7 +489,6 @@ class ContentEventService:
         )
         group.version += 1
         await self._refresh_occurrence_range(group)
-        await self.repo.sync_duplicate_projection(group.id)
         await self.db.flush()
         return group
 
@@ -559,7 +537,6 @@ class ContentEventService:
             group.canonical_locked_at = None
         group.version += 1
         await self._refresh_occurrence_range(group)
-        await self.repo.sync_duplicate_projection(group.id)
         await self.db.flush()
         return group
 
@@ -613,7 +590,6 @@ class ContentEventService:
                 )
         group.version += 1
         await self._refresh_occurrence_range(group)
-        await self.repo.sync_duplicate_projection(group.id)
         await self.db.flush()
         return group
 
@@ -712,118 +688,3 @@ class ContentEventService:
             "page": max(1, page),
             "page_size": max(1, page_size),
         }
-
-    async def backfill_legacy_duplicates(
-        self,
-        *,
-        apply: bool = False,
-    ) -> ContentEventBackfillReport:
-        """Rebuild legacy ``duplicate_of`` components into event groups."""
-
-        report = ContentEventBackfillReport()
-        linked = await self.repo.list_all_legacy_links()
-        report.scanned_links = len(linked)
-        linked_by_id = {item.id: item for item in linked}
-        referenced_ids = {int(item.duplicate_of) for item in linked if item.duplicate_of is not None}
-        all_contents = await self.repo.get_contents(
-            [*linked_by_id, *referenced_ids],
-            for_update=apply,
-        )
-        content_by_id = {item.id: item for item in all_contents}
-        adjacency: dict[int, set[int]] = {}
-        directed: dict[int, int] = {}
-
-        for item in linked:
-            target_id = int(item.duplicate_of)
-            if item.id == target_id:
-                report.skipped_self_links += 1
-                continue
-            target = content_by_id.get(target_id)
-            if target is None:
-                report.skipped_dangling_links += 1
-                continue
-            if target.owner_user_id != item.owner_user_id:
-                report.skipped_cross_scope_links += 1
-                continue
-            directed[item.id] = target_id
-            adjacency.setdefault(item.id, set()).add(target_id)
-            adjacency.setdefault(target_id, set()).add(item.id)
-
-        components: list[set[int]] = []
-        remaining = set(adjacency)
-        while remaining:
-            start = min(remaining)
-            stack = [start]
-            component: set[int] = set()
-            while stack:
-                current = stack.pop()
-                if current in component:
-                    continue
-                component.add(current)
-                stack.extend(adjacency.get(current, ()))
-            remaining.difference_update(component)
-            components.append(component)
-
-        report.candidate_components = len(components)
-        assigned_ids = await self.repo.assigned_content_ids(
-            content_id for component in components for content_id in component
-        )
-        for component in components:
-            if self._component_has_cycle(component, directed):
-                report.skipped_cycle_components += 1
-                continue
-            if component & assigned_ids:
-                report.skipped_existing_components += 1
-                continue
-            report.planned_events += 1
-            report.planned_members += len(component) - 1
-            if not apply:
-                continue
-            items = [content_by_id[content_id] for content_id in component]
-            owner_user_id = items[0].owner_user_id
-            candidates = {
-                item.id: EventMemberInput(
-                    content_id=item.id,
-                    relation_type=EventRelationType.DUPLICATE,
-                    confidence=(float(item.similarity_score) if item.similarity_score is not None else 1.0),
-                    match_method="legacy-backfill",
-                    detector_version="duplicate_of:v1",
-                    reason="backfilled from content_items.duplicate_of",
-                    # A terminal legacy target is the existing root of truth,
-                    # even when its historical similarity value is absent or
-                    # the old model defaulted it to zero.
-                    review_status=(EventReviewStatus.AUTO if item.id not in directed else None),
-                )
-                for item in items
-            }
-            await self.create_event(
-                sorted(component),
-                owner_user_id=owner_user_id,
-                members=candidates,
-                canonical_reason="earliest legacy duplicate component",
-                classifier_version="legacy-backfill:v1",
-            )
-            report.created_events += 1
-            report.created_members += len(component) - 1
-        return report
-
-    @staticmethod
-    def _component_has_cycle(
-        component: set[int],
-        directed: Mapping[int, int],
-    ) -> bool:
-        done: set[int] = set()
-        for start in component:
-            if start in done:
-                continue
-            path: set[int] = set()
-            current = start
-            while current in component and current in directed:
-                if current in path:
-                    return True
-                if current in done:
-                    break
-                path.add(current)
-                current = directed[current]
-            done.update(path)
-        return False

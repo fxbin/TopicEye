@@ -11,11 +11,17 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
+from app.models.content_event import (
+    ContentEventGroup,
+    ContentEventMember,
+    EventReviewStatus,
+    EventStatus,
+)
 from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend
@@ -24,6 +30,23 @@ from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput, score_items
 
 logger = logging.getLogger(__name__)
+
+
+def _accepted_event_member_exists():
+    return exists(
+        select(ContentEventMember.id)
+        .join(
+            ContentEventGroup,
+            ContentEventGroup.id == ContentEventMember.event_group_id,
+        )
+        .where(
+            ContentEventMember.content_id == ContentItem.id,
+            ContentEventGroup.status == EventStatus.ACTIVE,
+            ContentEventMember.review_status.in_(
+                (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
+            ),
+        )
+    )
 
 
 async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = None) -> dict:
@@ -78,7 +101,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         .where(
             and_(
                 ContentItem.topic_id.isnot(None),
-                ContentItem.duplicate_of.is_(None),
+                ~_accepted_event_member_exists(),
                 ContentItem.created_at >= start_dt,
                 ContentItem.created_at < end_dt,
             )
@@ -133,7 +156,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         .where(
             and_(
                 AiAnalysis.tags.isnot(None),
-                ContentItem.duplicate_of.is_(None),
+                ~_accepted_event_member_exists(),
                 ContentItem.created_at >= start_dt,
                 ContentItem.created_at < end_dt,
             )

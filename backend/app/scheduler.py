@@ -135,9 +135,9 @@ async def sync_and_analyze() -> None:
     # ── Phase 3: Cluster + dedup ──
     try:
         async with async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
+            from app.services.topic_clustering import cluster_topics_with_lease
 
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
+            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler")
         if claimed:
             logger.info("Scheduler: clustering done — %s", stats)
         else:
@@ -573,9 +573,9 @@ async def _topic_clustering_daily() -> None:
     logger.info("Scheduler: daily topic clustering started")
     try:
         async with async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
+            from app.services.topic_clustering import cluster_topics_with_lease
 
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler", days=2)
+            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler", days=2)
             await db.commit()
         if claimed:
             logger.info("Scheduler: daily topic clustering done — %s", stats)
@@ -600,14 +600,14 @@ async def _topic_clustering_daily() -> None:
 async def _post_sync_clustering() -> None:
     """Incremental clustering on recently analyzed content.
 
-    Uses ``cluster_and_dedup_with_lease`` which has its own cross-process
+    Uses ``cluster_topics_with_lease`` which has its own cross-process
     lease, so overlapping runs are safely skipped.
     """
     try:
         async with async_session() as db:
-            from app.services.topic_clustering import cluster_and_dedup_with_lease
+            from app.services.topic_clustering import cluster_topics_with_lease
 
-            stats, claimed = await cluster_and_dedup_with_lease(db, trigger_type="scheduler")
+            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler")
             await db.commit()
         if claimed:
             logger.info("Scheduler: post-sync clustering done — %s", stats)
@@ -840,13 +840,13 @@ async def _normalize_content_events() -> dict:
     """Run the public event-normalization slice; ``off`` is a true no-op."""
 
     mode = str(
-        getattr(settings, "EVENT_NORMALIZATION_ROLLOUT_MODE", "off")
+        getattr(settings, "EVENT_NORMALIZATION_MODE", "off")
     ).strip().lower()
     if mode == "off":
         return {"status": "off", "scanned": 0}
-    if mode not in {"shadow", "write", "serve"}:
+    if mode not in {"shadow", "write"}:
         logger.error(
-            "Scheduler: invalid EVENT_NORMALIZATION_ROLLOUT_MODE=%r; skipped",
+            "Scheduler: invalid EVENT_NORMALIZATION_MODE=%r; skipped",
             mode,
         )
         return {"status": "invalid-config", "scanned": 0}

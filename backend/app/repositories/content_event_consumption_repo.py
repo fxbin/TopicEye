@@ -57,6 +57,7 @@ class EventDisplayMember:
     crawled_at: datetime | None
     relation_type: str
     confidence: float
+    reason: str | None
 
 
 @dataclass(frozen=True)
@@ -357,6 +358,7 @@ class ContentEventConsumptionRepository:
                     ContentEventMember.content_id.label("content_id"),
                     ContentEventMember.relation_type.label("relation_type"),
                     ContentEventMember.confidence.label("confidence"),
+                    ContentEventMember.reason.label("reason"),
                     ranked_content.title.label("title"),
                     ranked_content.url.label("url"),
                     ranked_content.source_id.label("source_id"),
@@ -422,6 +424,7 @@ class ContentEventConsumptionRepository:
                         crawled_at=row["crawled_at"],
                         relation_type=_enum_value(row["relation_type"]) or "",
                         confidence=float(row["confidence"]),
+                        reason=row["reason"],
                     )
                 )
 

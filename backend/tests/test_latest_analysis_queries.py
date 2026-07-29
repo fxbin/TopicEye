@@ -455,11 +455,7 @@ async def test_clustering_uses_one_latest_analysis_per_content(monkeypatch):
             }
         ]
 
-    async def fake_dedup_candidate_clusters(clusters):
-        return {}
-
     monkeypatch.setattr(topic_clustering, "_name_clusters", fake_name_clusters)
-    monkeypatch.setattr(topic_clustering, "_dedup_candidate_clusters", fake_dedup_candidate_clusters)
     engine, session_factory = await _session_factory()
     now = datetime.now(UTC)
     async with session_factory() as db:
@@ -492,7 +488,7 @@ async def test_clustering_uses_one_latest_analysis_per_content(monkeypatch):
             )
         await db.commit()
 
-        stats = await topic_clustering.cluster_and_dedup(db, use_llm_naming=True)
+        stats = await topic_clustering.cluster_topics(db, use_llm_naming=True)
         topics = (await db.execute(select(TopicGroup))).scalars().all()
 
         assert stats["total"] == 2
@@ -509,11 +505,7 @@ async def test_clustering_topic_best_score_uses_unified_scorer(monkeypatch):
     async def fake_call_llm_json(_prompt, **_kwargs):
         return {"name": "统一评分", "summary": "看最终分"}
 
-    async def fake_dedup_candidate_clusters(clusters):
-        return {}
-
     monkeypatch.setattr(topic_clustering, "call_llm_json", fake_call_llm_json)
-    monkeypatch.setattr(topic_clustering, "_dedup_candidate_clusters", fake_dedup_candidate_clusters)
     engine, session_factory = await _session_factory()
     now = datetime.now(UTC)
     async with session_factory() as db:
@@ -574,7 +566,7 @@ async def test_clustering_topic_best_score_uses_unified_scorer(monkeypatch):
         )
         await db.commit()
 
-        stats = await topic_clustering.cluster_and_dedup(db)
+        stats = await topic_clustering.cluster_topics(db)
         topics = (await db.execute(select(TopicGroup))).scalars().all()
 
         assert stats["clusters"] == 1

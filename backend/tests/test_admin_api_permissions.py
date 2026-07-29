@@ -85,10 +85,10 @@ async def admin_api_client(monkeypatch) -> AsyncGenerator[tuple[httpx.AsyncClien
 
     monkeypatch.setattr(scheduler_api, "get_all_job_configs", fake_jobs)
 
-    async def fake_cluster_and_dedup_with_lease(db, *, trigger_type: str = "manual"):
+    async def fake_cluster_topics_with_lease(db, *, trigger_type: str = "manual"):
         return {"groups": 1}, True
 
-    monkeypatch.setattr(topics_api, "cluster_and_dedup_with_lease", fake_cluster_and_dedup_with_lease)
+    monkeypatch.setattr(topics_api, "cluster_topics_with_lease", fake_cluster_topics_with_lease)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -255,7 +255,7 @@ async def test_topic_clustering_returns_conflict_when_lease_is_active(admin_api_
     async def fake_skipped_cluster(db, *, trigger_type: str = "manual"):
         return None, False
 
-    monkeypatch.setattr(topics_api, "cluster_and_dedup_with_lease", fake_skipped_cluster)
+    monkeypatch.setattr(topics_api, "cluster_topics_with_lease", fake_skipped_cluster)
 
     response = await client.post("/topics/cluster", headers={"Authorization": f"Bearer {admin_token}"})
 

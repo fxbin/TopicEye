@@ -4,14 +4,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401 - register all FK targets in Base.metadata
 from app.core.database import Base
 from app.models.content import ContentItem
 from app.models.content_event import (
-    ContentEventGroup,
     ContentEventMember,
     EventReviewStatus,
     EventStatus,
@@ -83,8 +82,6 @@ async def _content(
     *,
     hours: int,
     owner_user_id: int | None = None,
-    duplicate_of: int | None = None,
-    similarity_score: float | None = None,
     source_name: str | None = None,
 ) -> ContentItem:
     moment = datetime(2026, 7, 29, tzinfo=UTC) + timedelta(hours=hours)
@@ -97,8 +94,6 @@ async def _content(
         published_at=moment,
         crawled_at=moment + timedelta(minutes=1),
         created_at=moment + timedelta(minutes=2),
-        duplicate_of=duplicate_of,
-        similarity_score=similarity_score,
     )
     db.add(item)
     await db.flush()
@@ -126,7 +121,9 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     )
     assert group.canonical_content_id == earlier.id
     assert group.version == 1
-    assert later.duplicate_of == earlier.id
+    assert [member.content_id for member in await _members(session, group.id)] == [
+        later.id
+    ]
 
     group = await service.set_canonical(
         group.id,
@@ -138,10 +135,9 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     assert group.canonical_content_id == later.id
     assert group.canonical_locked is True
     assert group.version == 2
-    await session.refresh(earlier)
-    await session.refresh(later)
-    assert earlier.duplicate_of == later.id
-    assert later.duplicate_of is None
+    assert [member.content_id for member in await _members(session, group.id)] == [
+        earlier.id
+    ]
 
     oldest = await _content(session, "oldest", hours=0)
     group = await service.add_member(
@@ -160,16 +156,13 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     assert group.canonical_content_id == oldest.id
     assert group.canonical_locked is False
     assert group.version == 4
-    await session.refresh(earlier)
-    await session.refresh(later)
-    await session.refresh(oldest)
-    assert oldest.duplicate_of is None
-    assert earlier.duplicate_of == oldest.id
-    assert later.duplicate_of == oldest.id
+    assert {
+        member.content_id for member in await _members(session, group.id)
+    } == {earlier.id, later.id}
 
 
 @pytest.mark.asyncio
-async def test_relation_projection_and_low_confidence_pending(session):
+async def test_relation_truth_and_low_confidence_pending(session):
     canonical = await _content(session, "canonical", hours=0)
     duplicate = await _content(session, "duplicate", hours=1)
     corroboration = await _content(session, "corroboration", hours=2)
@@ -210,22 +203,11 @@ async def test_relation_projection_and_low_confidence_pending(session):
         },
     )
 
-    await session.refresh(canonical)
-    await session.refresh(duplicate)
-    await session.refresh(corroboration)
-    await session.refresh(update)
-    await session.refresh(uncertain)
-    assert canonical.duplicate_of is None
-    assert duplicate.duplicate_of == canonical.id
-    assert duplicate.similarity_score == pytest.approx(0.99)
-    assert uncertain.duplicate_of is None
-    assert uncertain.similarity_score is None
-    assert corroboration.duplicate_of is None
-    assert corroboration.similarity_score is None
-    assert update.duplicate_of is None
-    assert update.similarity_score is None
     member_by_content = {member.content_id: member for member in await _members(session, group.id)}
     assert member_by_content[duplicate.id].review_status == EventReviewStatus.AUTO
+    assert member_by_content[duplicate.id].confidence == pytest.approx(0.99)
+    assert member_by_content[corroboration.id].relation_type == "corroboration"
+    assert member_by_content[update.id].relation_type == "update"
     assert member_by_content[uncertain.id].review_status == EventReviewStatus.PENDING
     assert await service.get_event_detail(uncertain.id, visible_user_id=None) is None
 
@@ -252,8 +234,6 @@ async def test_create_event_never_promotes_pending_candidate_to_canonical(
     member = (await _members(session, group.id))[0]
     assert member.content_id == pending_earlier.id
     assert member.review_status == EventReviewStatus.PENDING
-    await session.refresh(pending_earlier)
-    assert pending_earlier.duplicate_of is None
     assert (
         await service.get_event_detail(
             pending_earlier.id,
@@ -342,7 +322,7 @@ async def test_scope_single_membership_and_self_guards(session):
 
 
 @pytest.mark.asyncio
-async def test_move_member_recomputes_both_groups_and_flattens_projection(
+async def test_move_member_recomputes_both_groups_and_reselects_canonical(
     session,
 ):
     source_canonical = await _content(session, "source-canonical", hours=0)
@@ -368,16 +348,14 @@ async def test_move_member_recomputes_both_groups_and_flattens_projection(
     assert target.version == 2
     assert target.canonical_content_id == moving.id
     assert await _members(session, source.id) == []
-    await session.refresh(moving)
-    await session.refresh(target_canonical)
-    await session.refresh(target_child)
-    assert moving.duplicate_of is None
-    assert target_canonical.duplicate_of == moving.id
-    assert target_child.duplicate_of == moving.id
+    assert [member.content_id for member in await _members(session, target.id)] == [
+        target_canonical.id,
+        target_child.id,
+    ]
 
 
 @pytest.mark.asyncio
-async def test_review_uses_occ_and_rejected_duplicate_clears_projection(session):
+async def test_review_uses_occ_and_rejected_relation_is_not_served(session):
     canonical = await _content(session, "canonical", hours=0)
     member_content = await _content(session, "member", hours=1)
     service = ContentEventService(session)
@@ -404,9 +382,8 @@ async def test_review_uses_occ_and_rejected_duplicate_clears_projection(session)
         expected_version=1,
     )
     assert group.version == 2
-    await session.refresh(member_content)
-    assert member_content.duplicate_of is None
-    assert member_content.similarity_score is None
+    await session.refresh(member)
+    assert member.review_status == EventReviewStatus.REJECTED
     detail = await service.get_event_detail(
         canonical.id,
         visible_user_id=None,
@@ -449,44 +426,39 @@ async def test_pending_member_cannot_be_manual_canonical_and_accept_reselects_ea
     )
     assert group.version == 3
     assert group.canonical_content_id == pending_content.id
-    await session.refresh(canonical)
-    await session.refresh(pending_content)
-    assert pending_content.duplicate_of is None
-    assert canonical.duplicate_of == pending_content.id
+    assert [member.content_id for member in await _members(session, group.id)] == [
+        canonical.id
+    ]
 
 
 @pytest.mark.asyncio
-async def test_shadow_does_not_touch_legacy_projection_and_archived_clears_it(
-    session,
-):
+async def test_shadow_and_archived_events_are_not_served(session):
     canonical = await _content(session, "canonical", hours=0)
-    shadow_child = await _content(
-        session,
-        "shadow-child",
-        hours=1,
-        duplicate_of=canonical.id,
-        similarity_score=0.42,
-    )
+    shadow_child = await _content(session, "shadow-child", hours=1)
     service = ContentEventService(session)
     shadow = await service.create_event(
         [canonical.id, shadow_child.id],
         owner_user_id=None,
         status=EventStatus.SHADOW,
     )
-    await session.refresh(shadow_child)
-    assert shadow_child.duplicate_of == canonical.id
-    assert shadow_child.similarity_score == pytest.approx(0.42)
+    assert (
+        await service.get_event_detail(shadow_child.id, visible_user_id=None)
+        is None
+    )
 
     shadow.status = EventStatus.ACTIVE
-    await service.repo.sync_duplicate_projection(shadow.id)
-    await session.refresh(shadow_child)
-    assert shadow_child.similarity_score == pytest.approx(1.0)
+    await session.flush()
+    assert (
+        await service.get_event_detail(shadow_child.id, visible_user_id=None)
+        is not None
+    )
 
     shadow.status = EventStatus.ARCHIVED
-    await service.repo.sync_duplicate_projection(shadow.id)
-    await session.refresh(shadow_child)
-    assert shadow_child.duplicate_of is None
-    assert shadow_child.similarity_score is None
+    await session.flush()
+    assert (
+        await service.get_event_detail(shadow_child.id, visible_user_id=None)
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -605,59 +577,3 @@ async def test_detail_enforces_exact_private_owner_scope(session):
     detail = await service.get_event_detail(child.id, visible_user_id=7)
     assert detail is not None
     assert detail["owner_user_id"] == 7
-
-
-@pytest.mark.asyncio
-async def test_backfill_dry_run_apply_chain_and_idempotency(session):
-    canonical = await _content(session, "canonical", hours=0)
-    middle = await _content(
-        session,
-        "middle",
-        hours=1,
-        duplicate_of=canonical.id,
-        similarity_score=0.96,
-    )
-    leaf = await _content(
-        session,
-        "leaf",
-        hours=2,
-        duplicate_of=middle.id,
-        similarity_score=0.92,
-    )
-    self_link = await _content(session, "self", hours=3)
-    self_link.duplicate_of = self_link.id
-    private = await _content(session, "private", hours=4, owner_user_id=9)
-    private.duplicate_of = canonical.id
-    dangling = await _content(session, "dangling", hours=5)
-    dangling.duplicate_of = 999_999
-    cycle_a = await _content(session, "cycle-a", hours=6)
-    cycle_b = await _content(session, "cycle-b", hours=7)
-    cycle_a.duplicate_of = cycle_b.id
-    cycle_b.duplicate_of = cycle_a.id
-    await session.flush()
-    service = ContentEventService(session)
-
-    dry = await service.backfill_legacy_duplicates(apply=False)
-    assert dry.planned_events == 1
-    assert dry.planned_members == 2
-    assert dry.created_events == 0
-    assert dry.skipped_self_links == 1
-    assert dry.skipped_cross_scope_links == 1
-    assert dry.skipped_dangling_links == 1
-    assert dry.skipped_cycle_components == 1
-    group_count = await session.scalar(select(func.count()).select_from(ContentEventGroup))
-    assert group_count == 0
-
-    applied = await service.backfill_legacy_duplicates(apply=True)
-    assert applied.created_events == 1
-    assert applied.created_members == 2
-    await session.refresh(canonical)
-    await session.refresh(middle)
-    await session.refresh(leaf)
-    assert canonical.duplicate_of is None
-    assert middle.duplicate_of == canonical.id
-    assert leaf.duplicate_of == canonical.id
-
-    repeated = await service.backfill_legacy_duplicates(apply=True)
-    assert repeated.created_events == 0
-    assert repeated.skipped_existing_components == 1

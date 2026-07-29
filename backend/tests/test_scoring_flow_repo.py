@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -7,6 +7,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.database import Base
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
+from app.models.content_event import (
+    ContentEventGroup,
+    ContentEventMember,
+    EventRelationType,
+    EventReviewStatus,
+    EventStatus,
+)
 from app.models.source import Source, SourceStatus, SourceType
 from app.repositories.content_repo import ContentRepo
 from app.services.content_serialization import content_with_latest_analysis
@@ -451,8 +458,8 @@ async def test_today_picks_fallback_uses_unified_risk_threshold():
 
 
 @pytest.mark.asyncio
-async def test_report_window_excludes_ignored_and_duplicates():
-    """日报候选窗口应剔除 ignored 与 duplicate_of 内容（对齐 today-picks 口径）。"""
+async def test_report_window_excludes_ignored_and_event_members():
+    """日报候选窗口应剔除 ignored 与已归并附属内容。"""
     from app.models.ignored import IgnoredItem
     from app.repositories.ignored_repo import IgnoredRepo
 
@@ -508,10 +515,29 @@ async def test_report_window_excludes_ignored_and_duplicates():
                     source_type="RSS",
                     category="AI",
                     status=ContentStatus.ANALYZED,
-                    duplicate_of=1,
                     crawled_at=now,
                 ),
             ]
+        )
+        await db.flush()
+        event_group = ContentEventGroup(
+            id=1,
+            canonical_content_id=1,
+            first_occurrence_at=now,
+            last_occurrence_at=now,
+            status=EventStatus.ACTIVE,
+        )
+        db.add(event_group)
+        await db.flush()
+        db.add(
+            ContentEventMember(
+                event_group_id=event_group.id,
+                content_id=3,
+                relation_type=EventRelationType.DUPLICATE,
+                confidence=0.95,
+                match_method="test",
+                review_status=EventReviewStatus.AUTO,
+            )
         )
         db.add_all(
             [
@@ -534,7 +560,7 @@ async def test_report_window_excludes_ignored_and_duplicates():
         ids = {item.id for item in items}
         assert 1 in ids, "正常样本应保留"
         assert 2 not in ids, "已忽略样本应被剔除"
-        assert 3 not in ids, "重复样本应被剔除"
+        assert 3 not in ids, "事件附属样本应被剔除"
 
     await engine.dispose()
 

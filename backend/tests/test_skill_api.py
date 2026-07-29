@@ -17,8 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.api.v1 import skill as skill_api
 from app.api.v1.auth import get_current_user
-from app.core.database import Base
-from app.core.database import get_db
+from app.core.database import Base, get_db
 from app.models.user import User
 
 
@@ -83,7 +82,7 @@ async def test_skill_today_picks_returns_payload(skill_app, monkeypatch):
         return {
             "items": [{"id": 1, "title": "选题 A", "analysis": {"adjusted_curation_score": 88}}],
             "total": 1,
-            "duplicates_hidden": 0,
+            "event_members_hidden": 0,
             "topics": [],
             "page": 1,
             "page_size": 1,

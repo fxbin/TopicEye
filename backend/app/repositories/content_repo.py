@@ -167,6 +167,24 @@ class ContentRepo(BaseRepository[ContentItem]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    async def count_pending_for_analysis(self) -> int:
+        """统计仍可被分析队列领取的内容数（模型池积压深度）。
+
+        与 :meth:`list_pending_for_analysis` / :meth:`claim_pending_analysis_jobs`
+        使用完全相同的资格谓词（同一 candidate condition + ``skip_analysis=False``），
+        只计数不取行，供 ``/metrics`` 导出 ``topiceye_analysis_pending_total``。
+        保持谓词同步是 MP-P0-T4 的正确性不变量，不得在此另写一套条件。
+        """
+        now = naive_utc_now()
+        stale_cutoff = now - timedelta(minutes=ANALYSIS_STALE_MINUTES)
+        count = await self.db.scalar(
+            select(func.count())
+            .select_from(self.model)
+            .where(self._analysis_candidate_condition(stale_cutoff=stale_cutoff, now=now))
+            .where(self.model.skip_analysis.is_(False))
+        )
+        return count or 0
+
     async def claim_pending_analysis_ids(
         self,
         *,

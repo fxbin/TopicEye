@@ -31,6 +31,18 @@ Prometheus 兼容的 /metrics 端点。
 - topiceye_db_pool_size{pool}: 连接池配置大小
 - topiceye_db_pool_checked_out{pool}: 当前已借出连接数
 - topiceye_db_pool_overflow{pool}: 当前溢出连接数
+
+指标覆盖（LLM 模型池运行层 — 来自 LlmPoolMetrics，MP-P0-T3）：
+- topiceye_llm_pool_inflight{scope}: 当前在途调用数（gauge）
+- topiceye_llm_pool_max_active{scope}: 历史最大在途（gauge）
+- topiceye_llm_pool_admitted_total{scope}: 已放行调用累计（counter）
+- topiceye_llm_pool_queue_wait_seconds_total{scope}: 排队等待累计秒（counter）
+- topiceye_llm_pool_rate_limit_wait_seconds_total{scope}: 限流等待累计秒（counter）
+- topiceye_llm_pool_circuit_events_total{scope,event}: 熔断事件累计（counter）
+- topiceye_analysis_pending_total: 仍可被分析队列领取的内容数（积压深度）
+
+scope 形如 route:{routing_group}|channel:{channel_or_model}|scene:{scene}，
+为低基数聚合键，不包含 prompt、密钥或内容 id。
 """
 
 from __future__ import annotations
@@ -42,11 +54,93 @@ from fastapi import APIRouter, Query, Response
 
 from app.core.database import async_session
 from app.repositories.llm_call_log_repo import LlmCallLogRepository
+from app.repositories.content_repo import ContentRepo
 from app.repositories.metrics_query_repo import MetricsQueryRepository
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 _START_TIME = time.monotonic()
+
+
+def _render_llm_pool_metrics(
+    pool_snapshot: dict[str, dict[str, float | int]],
+) -> list[str]:
+    """把 LlmPoolMetrics.snapshot() 渲染为 Prometheus text format 行。
+
+    scope 是低基数聚合键（route|channel|scene），不含敏感字段；这里仍对值做
+    标签转义以遵守 Prometheus label 规范（双引号、反斜杠、换行）。
+    """
+    if not pool_snapshot:
+        return []
+
+    out: list[str] = []
+
+    def _esc(value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+    def _emit(name: str, metric_type: str, value: float | int, help_text: str, labels: dict[str, str]):
+        out.append(f"# HELP {name} {help_text}")
+        out.append(f"# TYPE {name} {metric_type}")
+        label_str = ",".join(f'{k}="{_esc(v)}"' for k, v in labels.items())
+        # 整数计数器保持整数表示，避免浮点显示
+        out.append(f"{name}{{{label_str}}} {value:g}")
+
+    # 按 scope 排序，保证抓取输出稳定（便于 diff / 测试断言）。
+    for scope in sorted(pool_snapshot):
+        data = pool_snapshot[scope]
+        if "active" in data:
+            _emit(
+                "topiceye_llm_pool_inflight",
+                "gauge",
+                data["active"],
+                "LLM calls currently in-flight per pool scope",
+                {"scope": scope},
+            )
+        if "max_active" in data:
+            _emit(
+                "topiceye_llm_pool_max_active",
+                "gauge",
+                data["max_active"],
+                "High-water mark of in-flight LLM calls per pool scope",
+                {"scope": scope},
+            )
+        if "admitted" in data:
+            _emit(
+                "topiceye_llm_pool_admitted_total",
+                "counter",
+                data["admitted"],
+                "LLM calls admitted per pool scope (cumulative)",
+                {"scope": scope},
+            )
+        if "queue_wait_seconds" in data:
+            _emit(
+                "topiceye_llm_pool_queue_wait_seconds_total",
+                "counter",
+                data["queue_wait_seconds"],
+                "Cumulative seconds spent waiting for a completion slot",
+                {"scope": scope},
+            )
+        if "rate_limit_wait_seconds" in data:
+            _emit(
+                "topiceye_llm_pool_rate_limit_wait_seconds_total",
+                "counter",
+                data["rate_limit_wait_seconds"],
+                "Cumulative seconds spent waiting on RPM/token admission",
+                {"scope": scope},
+            )
+        # 熔断事件计数以 circuit_{event}_total 形式存储在 scope 字典里。
+        for key, count in data.items():
+            if key.startswith("circuit_") and key.endswith("_total"):
+                event = key[len("circuit_") : -len("_total")]
+                _emit(
+                    "topiceye_llm_pool_circuit_events_total",
+                    "counter",
+                    count,
+                    "LLM pool circuit-breaker events (cumulative)",
+                    {"scope": scope, "event": event},
+                )
+
+    return out
 
 
 @router.get("")
@@ -93,6 +187,15 @@ async def prometheus_metrics():
         unread = await repo.count_notifications()
         gauge("topiceye_notifications_total", unread, "Total notifications")
 
+        # ── Analysis backlog depth（模型池积压：仍可被领取的待分析内容数）──
+        # 复用 list_pending_for_analysis / claim_pending_analysis_jobs 同一资格谓词。
+        pending = await ContentRepo(db).count_pending_for_analysis()
+        gauge(
+            "topiceye_analysis_pending_total",
+            pending,
+            "Content items still claimable by the analysis queue (backlog depth)",
+        )
+
     # ── Uptime ──
     uptime = time.monotonic() - _START_TIME
     gauge("topiceye_uptime_seconds", int(uptime), "Process uptime in seconds")
@@ -112,6 +215,19 @@ async def prometheus_metrics():
 
     collector = get_collector()
     lines.extend(collector.render_prometheus())
+
+    # ── LLM 模型池运行指标（进程内存，无 DB 访问）──
+    # LlmPoolMetrics 已记录 inflight / admitted / queue wait / 熔断事件，
+    # 这里只做 Prometheus 文本导出。scope 形如 route:{group}|channel:{x}|scene:{y}。
+    try:
+        from app.services.llm._rate_limit import get_llm_pool_metrics
+
+        pool_snapshot = get_llm_pool_metrics()
+        lines.extend(_render_llm_pool_metrics(pool_snapshot))
+    except Exception as exc:  # noqa: BLE001 — 指标导出不得阻断 /metrics
+        import logging
+
+        logging.getLogger(__name__).debug("LLM pool metrics export failed: %s", exc)
 
     # ── 数据库连接池指标 ──
     from app.core.database import engine
@@ -205,6 +321,23 @@ async def metrics_snapshot():
     except Exception:
         pass
 
+    # LLM 模型池运行指标（inflight / admitted / queue wait，MP-P0-T3）
+    llm_pool: dict = {}
+    try:
+        from app.services.llm._rate_limit import get_llm_pool_metrics
+
+        llm_pool = get_llm_pool_metrics()
+    except Exception:
+        pass
+
+    # 分析积压深度（仍可被队列领取的内容数）
+    analysis_pending = 0
+    try:
+        async with async_session() as db:
+            analysis_pending = await ContentRepo(db).count_pending_for_analysis()
+    except Exception:
+        pass
+
     return {
         "snapshot": snapshot,
         "timeseries": timeseries,
@@ -212,6 +345,8 @@ async def metrics_snapshot():
         "slow_queries": slow_queries,
         "llm_cache": cache_status,
         "process": process,
+        "llm_pool": llm_pool,
+        "analysis_pending": analysis_pending,
     }
 
 

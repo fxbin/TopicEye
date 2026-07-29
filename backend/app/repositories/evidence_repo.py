@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentItem
+from app.models.content_event import ContentEventMember
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark
 from app.models.evidence_interaction import EvidenceInteraction
 from app.models.source import Source
@@ -78,10 +79,67 @@ class EvidenceRepository:
         self.db.add(link)
         await self.db.flush()
 
+    async def add_links(self, mark_id: int, rows: list[dict[str, Any]]) -> None:
+        """Add one event's bounded evidence links with a single flush."""
+        if not rows:
+            return
+        self.db.add_all(
+            ContentEvidenceLink(mark_id=mark_id, **values)
+            for values in rows
+        )
+        await self.db.flush()
+
     async def delete_links_for_mark(self, mark_id: int) -> None:
         """Delete all links for a mark (before re-adding on recompute)."""
         await self.db.execute(
             delete(ContentEvidenceLink).where(ContentEvidenceLink.mark_id == mark_id)
+        )
+
+    async def delete_marks_for_contents(
+        self,
+        content_ids: list[int],
+        *,
+        owner_user_id: int | None,
+    ) -> None:
+        """Delete scoped marks and their cascading links in one statement."""
+        ids = sorted(set(content_ids))
+        if not ids:
+            return
+        owner_clause = (
+            ContentEvidenceMark.owner_user_id.is_(None)
+            if owner_user_id is None
+            else ContentEvidenceMark.owner_user_id == owner_user_id
+        )
+        await self.db.execute(
+            delete(ContentEvidenceMark).where(
+                ContentEvidenceMark.content_id.in_(ids),
+                owner_clause,
+            )
+        )
+
+    async def delete_noncanonical_marks_for_event_groups(
+        self,
+        event_group_ids: list[int],
+        *,
+        owner_user_id: int | None,
+    ) -> None:
+        """Ensure event members never retain legacy evidence marks."""
+        ids = sorted(set(event_group_ids))
+        if not ids:
+            return
+        member_ids = select(ContentEventMember.content_id).where(
+            ContentEventMember.event_group_id.in_(ids)
+        )
+        owner_clause = (
+            ContentEvidenceMark.owner_user_id.is_(None)
+            if owner_user_id is None
+            else ContentEvidenceMark.owner_user_id == owner_user_id
+        )
+        await self.db.execute(
+            delete(ContentEvidenceMark).where(
+                ContentEvidenceMark.content_id.in_(member_ids),
+                owner_clause,
+            )
         )
 
     async def batch_get_marks(

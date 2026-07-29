@@ -10,7 +10,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.models.content import ContentItem
+from app.repositories.content_event_consumption_repo import (
+    ContentEventConsumptionRepository,
+    EventAssignment,
+    EventDisplayGroup,
+)
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.duckdb_service import query_today_picks, query_topics
 from app.services.feedback_signal import get_feedback_scores
@@ -80,7 +86,55 @@ async def build_today_picks(
             )
             return _empty_payload()
 
-    scored_rows = _score_rows(rows)
+    original_rows = rows
+    working_rows = rows
+    event_assignments: dict[int, EventAssignment] = {}
+    event_groups: dict[int, EventDisplayGroup] = {}
+    event_counters: dict[str, int] = {}
+    serving_event_truth = False
+    normalization_mode = str(
+        settings.EVENT_NORMALIZATION_ROLLOUT_MODE or "off"
+    ).lower()
+    if normalization_mode in {"write", "serve"}:
+        try:
+            event_repo = ContentEventConsumptionRepository(db)
+            event_assignments = await event_repo.resolve_today_pick_assignments(
+                (row["id"] for row in rows if row.get("id") is not None),
+                visible_user_id=owner_user_id,
+            )
+            event_counters = _event_compare_counters(rows, event_assignments)
+            if normalization_mode == "write":
+                logger.info(
+                    "Today-picks event comparison: candidates=%d legacy_hidden=%d "
+                    "event_hidden=%d canonical_outside_window=%d",
+                    event_counters["candidate_count"],
+                    event_counters["legacy_hidden"],
+                    event_counters["event_hidden"],
+                    event_counters["canonical_outside_window"],
+                )
+            else:
+                working_rows = _apply_event_assignments(
+                    rows,
+                    event_assignments,
+                )
+                serving_event_truth = True
+                logger.info(
+                    "Today-picks event serving: candidates=%d legacy_hidden=%d "
+                    "event_hidden=%d canonical_outside_window=%d",
+                    event_counters["candidate_count"],
+                    event_counters["legacy_hidden"],
+                    event_counters["event_hidden"],
+                    event_counters["canonical_outside_window"],
+                )
+        except Exception:
+            logger.warning(
+                "Today-picks event truth unavailable; preserving legacy output",
+                exc_info=True,
+            )
+            event_assignments = {}
+            event_counters = {}
+
+    scored_rows = _score_rows(working_rows)
     if not scored_rows:
         return _empty_payload()
 
@@ -91,8 +145,50 @@ async def build_today_picks(
     # cards even when the UI only needed its first screen.
     total = len(scored_rows)
     visible_rows = scored_rows[:limit] if limit else scored_rows
-    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
-    _attach_normalization(response_items, rows)
+    response_items = [
+        _row_to_content_payload(row, breakdown)
+        for breakdown, row in visible_rows
+    ]
+    if serving_event_truth:
+        try:
+            visible_group_ids = {
+                assignment.event_group_id
+                for item in response_items
+                if (
+                    assignment := event_assignments.get(int(item["id"]))
+                ) is not None
+                and assignment.is_canonical
+            }
+            event_groups = await event_repo.load_display_groups(
+                visible_group_ids,
+                visible_user_id=owner_user_id,
+                member_limit=5,
+            )
+            _attach_event_normalization(
+                response_items,
+                original_rows,
+                event_assignments,
+                event_groups,
+            )
+        except Exception:
+            logger.warning(
+                "Today-picks event expansion failed; falling back to legacy output",
+                exc_info=True,
+            )
+            serving_event_truth = False
+            working_rows = original_rows
+            scored_rows = _score_rows(working_rows)
+            if not scored_rows:
+                return _empty_payload()
+            total = len(scored_rows)
+            visible_rows = scored_rows[:limit] if limit else scored_rows
+            response_items = [
+                _row_to_content_payload(row, breakdown)
+                for breakdown, row in visible_rows
+            ]
+            _attach_normalization(response_items, original_rows)
+    else:
+        _attach_normalization(response_items, original_rows)
 
     # Apply personalization boost (async, non-blocking for new users)
     if owner_user_id is not None:
@@ -117,7 +213,9 @@ async def build_today_picks(
         response_items,
         topic_map,
         total=total,
-        duplicates_hidden=sum(1 for row in rows if row.get("duplicate_of")),
+        duplicates_hidden=sum(
+            1 for row in working_rows if row.get("duplicate_of")
+        ),
     )
 
 
@@ -400,6 +498,131 @@ def _decode_json_value(value):
         return json.loads(stripped)
     except json.JSONDecodeError:
         return value
+
+
+def _event_compare_counters(
+    rows: list[dict],
+    assignments: dict[int, EventAssignment],
+) -> dict[str, int]:
+    candidate_ids = {
+        int(row["id"])
+        for row in rows
+        if row.get("id") is not None
+    }
+    legacy_hidden_ids = {
+        int(row["id"])
+        for row in rows
+        if row.get("id") is not None and row.get("duplicate_of") is not None
+    }
+    event_hidden_ids = {
+        content_id
+        for content_id, assignment in assignments.items()
+        if not assignment.is_canonical
+    }
+    canonical_outside_window = sum(
+        1
+        for content_id in event_hidden_ids
+        if assignments[content_id].canonical_content_id not in candidate_ids
+    )
+    return {
+        "candidate_count": len(candidate_ids),
+        "legacy_hidden": len(legacy_hidden_ids),
+        "event_hidden": len(event_hidden_ids),
+        "event_only_hidden": len(event_hidden_ids - legacy_hidden_ids),
+        "legacy_only_hidden": len(legacy_hidden_ids - event_hidden_ids),
+        "canonical_outside_window": canonical_outside_window,
+    }
+
+
+def _apply_event_assignments(
+    rows: list[dict],
+    assignments: dict[int, EventAssignment],
+) -> list[dict]:
+    """Project active event membership onto candidate rows.
+
+    Canonicals override a stale legacy ``duplicate_of`` value. Every accepted
+    event member relation is hidden from the first level. Unassigned rows keep
+    the compatibility projection.
+    """
+
+    projected: list[dict] = []
+    for row in rows:
+        content_id = row.get("id")
+        assignment = (
+            assignments.get(int(content_id))
+            if content_id is not None
+            else None
+        )
+        if assignment is None:
+            projected.append(row)
+            continue
+        item = dict(row)
+        item["_event_group_id"] = assignment.event_group_id
+        item["_event_relation_type"] = assignment.relation_type
+        item["_event_confidence"] = assignment.confidence
+        item["duplicate_of"] = (
+            None
+            if assignment.is_canonical
+            else assignment.canonical_content_id
+        )
+        projected.append(item)
+    return projected
+
+
+def _attach_event_normalization(
+    items: list[dict],
+    legacy_rows: list[dict],
+    assignments: dict[int, EventAssignment],
+    groups: dict[int, EventDisplayGroup],
+) -> None:
+    """Attach active event summaries while retaining legacy compatibility."""
+
+    _attach_normalization(items, legacy_rows)
+    for item in items:
+        assignment = assignments.get(int(item["id"]))
+        if assignment is None or not assignment.is_canonical:
+            continue
+        group = groups.get(assignment.event_group_id)
+        if group is None:
+            item["normalization"] = {
+                "canonical_id": item["id"],
+                "member_count": 0,
+                "source_count": 1,
+                "has_more": False,
+                "members": [],
+            }
+            continue
+        item["normalization"] = {
+            "canonical_id": group.canonical_content_id,
+            "member_count": group.member_count,
+            "source_count": group.source_count,
+            "has_more": group.member_count > len(group.members),
+            "members": [
+                {
+                    "id": member.content_id,
+                    "title": member.title,
+                    "url": member.url,
+                    "source_name": member.source_name,
+                    "source_type": member.source_type,
+                    "platform": member.platform,
+                    "published_at": _serialize_event_datetime(
+                        member.published_at
+                    ),
+                    "crawled_at": _serialize_event_datetime(
+                        member.crawled_at
+                    ),
+                    "relation_type": member.relation_type,
+                    "confidence": member.confidence,
+                }
+                for member in group.members
+            ],
+        }
+
+
+def _serialize_event_datetime(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
 
 
 def _attach_normalization(items: list[dict], rows: list[dict]) -> None:

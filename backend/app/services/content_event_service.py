@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentItem
@@ -171,6 +172,27 @@ class ContentEventService:
         times.extend(effective_content_time(row.content) for row in members)
         group.first_occurrence_at = min(times)
         group.last_occurrence_at = max(times)
+
+    async def _create_member_idempotent(self, **values) -> ContentEventMember:
+        """Insert a member, tolerating a lost SELECT-then-INSERT race.
+
+        ``SELECT ... FOR UPDATE`` is a no-op on SQLite, so two concurrent
+        ``add_member`` calls for the same content can both miss the existing
+        member and both reach ``create_member``. The ``uq_content_event_members_content``
+        constraint then rejects the second insert. We isolate that insert in a
+        savepoint (nested transaction) so a collision only rolls back the
+        savepoint — the caller's outer transaction state is preserved — then we
+        re-read the now-present member and return it, matching the no-op
+        semantics the caller already uses for the unchanged branch.
+        """
+        try:
+            async with self.db.begin_nested():
+                return await self.repo.create_member(**values)
+        except IntegrityError:
+            existing = await self.repo.get_member(values["content_id"])
+            if existing is not None:
+                return existing
+            raise
 
     async def create_event(
         self,
@@ -369,7 +391,7 @@ class ContentEventService:
             existing.review_status = desired_review
             member = existing
         else:
-            member = await self.repo.create_member(
+            member = await self._create_member_idempotent(
                 event_group_id=event_id,
                 content_id=content.id,
                 relation_type=relation_type,

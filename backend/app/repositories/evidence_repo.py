@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentItem
@@ -38,40 +39,67 @@ class EvidenceRepository:
         has_primary_source: bool = False,
         has_official_source: bool = False,
     ) -> ContentEvidenceMark:
-        """Insert or update a content evidence mark."""
+        """Insert or update a content evidence mark.
+
+        Tolerates a lost SELECT-then-INSERT race: two concurrent upserts for the
+        same (content_id, owner_user_id) can both miss the existing mark and
+        both insert. The unique partial index (public scope) or
+        ``uq_evidence_marks_scope`` then rejects the second insert. We isolate
+        the insert in a savepoint so a collision only rolls back the savepoint,
+        re-read the now-present mark, and fall through to the update path.
+        """
+        fields = dict(
+            cross_source_level=cross_source_level,
+            platform_count=platform_count,
+            platforms=platforms,
+            evidence_count=evidence_count,
+            independent_publisher_count=independent_publisher_count,
+            has_primary_source=has_primary_source,
+            has_official_source=has_official_source,
+        )
+        mark = await self._find_mark(content_id, owner_user_id)
+        if mark is None:
+            mark = ContentEvidenceMark(
+                content_id=content_id,
+                owner_user_id=owner_user_id,
+                **fields,
+            )
+            try:
+                async with self.db.begin_nested():
+                    self.db.add(mark)
+                    await self.db.flush()
+            except IntegrityError:
+                # A concurrent upsert won the insert race. The savepoint
+                # rollback above clears the failed pending instance from the
+                # session, so we simply re-read the now-persisted winning row
+                # and fall through to update it with this call's values.
+                mark = await self._find_mark(content_id, owner_user_id)
+                if mark is None:
+                    raise
+        self._apply_mark_fields(mark, fields)
+        await self.db.flush()
+        return mark
+
+    async def _find_mark(
+        self,
+        content_id: int,
+        owner_user_id: int | None,
+    ) -> ContentEvidenceMark | None:
         result = await self.db.execute(
             select(ContentEvidenceMark).where(
                 ContentEvidenceMark.content_id == content_id,
                 ContentEvidenceMark.owner_user_id == owner_user_id,
             )
         )
-        mark = result.scalar_one_or_none()
-        if mark:
-            mark.cross_source_level = cross_source_level
-            mark.platform_count = platform_count
-            mark.platforms = platforms
-            mark.evidence_count = evidence_count
-            mark.independent_publisher_count = independent_publisher_count
-            mark.has_primary_source = has_primary_source
-            mark.has_official_source = has_official_source
-            # Recompute is a new observation. Keep computed_at accurate for
-            # dashboards/audits instead of leaving a stale initial timestamp.
-            mark.computed_at = datetime.now(UTC)
-        else:
-            mark = ContentEvidenceMark(
-                content_id=content_id,
-                owner_user_id=owner_user_id,
-                cross_source_level=cross_source_level,
-                platform_count=platform_count,
-                platforms=platforms,
-                evidence_count=evidence_count,
-                independent_publisher_count=independent_publisher_count,
-                has_primary_source=has_primary_source,
-                has_official_source=has_official_source,
-            )
-            self.db.add(mark)
-        await self.db.flush()
-        return mark
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    def _apply_mark_fields(mark: ContentEvidenceMark, fields: dict[str, Any]) -> None:
+        for key, value in fields.items():
+            setattr(mark, key, value)
+        # Recompute is a new observation. Keep computed_at accurate for
+        # dashboards/audits instead of leaving a stale initial timestamp.
+        mark.computed_at = datetime.now(UTC)
 
     async def add_link(self, mark_id: int, **kwargs: Any) -> None:
         """Add a single evidence link."""

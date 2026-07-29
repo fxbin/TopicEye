@@ -17,7 +17,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import {
   BarChart3,
   BookOpen,
@@ -96,6 +96,93 @@ export function OverviewStrip({
   );
 }
 
+// ─── NormalizationDisclosure ────────────────────────────────────────
+
+function NormalizationDisclosure({ item }: { item: ContentItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const disclosureId = useId();
+  const normalization = item.normalization;
+
+  if (!normalization || normalization.member_count <= 0 || normalization.members.length === 0) {
+    return null;
+  }
+
+  const hiddenCount = Math.max(0, normalization.member_count - normalization.members.length);
+
+  return (
+    <div className="mb-3" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={disclosureId}
+        onClick={(event) => {
+          event.stopPropagation();
+          setExpanded((current) => !current);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-xs border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 transition hover:border-primary-border hover:bg-primary-light hover:text-primary-text"
+      >
+        <Layers3 size={13} aria-hidden="true" />
+        另有 {normalization.member_count} 条同事件内容
+        {normalization.source_count > 0 && ` · 涉及 ${normalization.source_count} 个来源`}
+        {expanded ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+      </button>
+
+      {expanded && (
+        <div
+          id={disclosureId}
+          className="mt-2 overflow-hidden rounded-sm border border-gray-200 bg-[#FBFCFE]"
+        >
+          <ul className="divide-y divide-gray-100">
+            {normalization.members.map((member) => {
+              const memberTime = member.published_at || member.crawled_at;
+              return (
+                <li key={member.id} className="px-3 py-2.5">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-500">
+                      重复表达
+                    </span>
+                    <span className="font-semibold text-gray-500">{member.source_name}</span>
+                    {memberTime && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <time dateTime={memberTime} className="text-gray-400">
+                          {timeAgo(memberTime)}
+                        </time>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 text-xs font-bold leading-5 text-gray-700">
+                      {member.title}
+                    </span>
+                    {member.url && (
+                      <a
+                        href={member.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                        className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-teal no-underline hover:underline"
+                        aria-label={`打开附属消息原文：${member.title}`}
+                      >
+                        原文 <ExternalLink size={11} aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {normalization.has_more && hiddenCount > 0 && (
+            <div className="border-t border-gray-100 px-3 py-2 text-[10px] text-gray-400">
+              其余 {hiddenCount} 条附属消息暂未载入
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LeadPick ────────────────────────────────────────────────────────
 
 export function LeadPick({
@@ -156,6 +243,7 @@ export function LeadPick({
               {recommendation}
             </p>
           )}
+          <NormalizationDisclosure item={item} />
           <PickActions
             item={item}
             analysis={analysis}
@@ -487,6 +575,7 @@ export function PickCard({
             {recommendation}
           </p>
         )}
+        <NormalizationDisclosure item={item} />
         <PickActions
           item={item}
           analysis={analysis}

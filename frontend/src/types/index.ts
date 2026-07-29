@@ -237,6 +237,31 @@ export interface UpdateSourceRequest {
 
 // ─── Content (内容) ───
 
+export type ContentNormalizationRelationType = 'duplicate';
+
+export interface ContentNormalizationMember {
+  id: number;
+  title: string;
+  url?: string | null;
+  source_name: string | null;
+  source_type: string | null;
+  platform?: string | null;
+  published_at?: string | null;
+  crawled_at?: string | null;
+  relation_type: ContentNormalizationRelationType;
+  confidence?: number | null;
+}
+
+export interface ContentNormalizationSummary {
+  canonical_id: number;
+  /** 直接附属消息数，不包含主消息。 */
+  member_count: number;
+  /** 主消息与附属消息涉及的描述性去重来源数，不代表独立证据数。 */
+  source_count: number;
+  has_more: boolean;
+  members: ContentNormalizationMember[];
+}
+
 export interface ContentItem {
   id: number;
   title: string;
@@ -262,6 +287,7 @@ export interface ContentItem {
   // Extended fields from today-picks API
   analyses?: ContentAnalysis[];
   topic_id?: number | null;
+  normalization?: ContentNormalizationSummary;
   // Legacy API field alias
   analysis?: ContentAnalysis;
 }

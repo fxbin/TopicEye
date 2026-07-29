@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 
+from app.api.v1.admin_content_events import router as admin_content_events_router
 from app.api.v1.admin_evidence import router as admin_evidence_router
 from app.api.v1.admin_prompts import router as admin_prompts_router
 from app.api.v1.admin_scoring_dashboard import router as admin_scoring_dashboard_router
 from app.api.v1.analyses import router as analyses_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.categories import router as categories_router
+from app.api.v1.content_events import router as content_events_router
 from app.api.v1.contents import router as contents_router
 from app.api.v1.creation import router as creation_router
 from app.api.v1.daily_reports import router as daily_reports_router
@@ -51,6 +53,7 @@ router.include_router(scoring_router)
 router.include_router(skill_router)
 router.include_router(users_router)
 router.include_router(sources_router)
+router.include_router(content_events_router)
 router.include_router(contents_router)
 router.include_router(topics_router)
 router.include_router(analyses_router)
@@ -85,3 +88,4 @@ router.include_router(read_records_router)
 router.include_router(admin_prompts_router)
 router.include_router(admin_scoring_dashboard_router)
 router.include_router(admin_evidence_router)
+router.include_router(admin_content_events_router)

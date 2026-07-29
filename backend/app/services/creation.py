@@ -24,6 +24,18 @@ from app.services.llm.prompts.creation import PLATFORM_PROMPTS
 logger = logging.getLogger(__name__)
 
 
+def _creation_llm_error_message(exc: Exception) -> str:
+    """Return an actionable, non-internal error message for creation callers."""
+    from app.services.llm.circuit_breaker import CircuitOpenError
+    from app.services.llm.provider import LlmCapacityUnavailableError
+
+    if isinstance(exc, LlmCapacityUnavailableError):
+        return "创作方案暂时排队等待可用模型渠道，请稍后重试。"
+    if isinstance(exc, CircuitOpenError):
+        return "创作方案服务暂时不可用，系统正在自动恢复，请稍后重试。"
+    return "创作方案生成失败，请稍后重试。"
+
+
 
 
 def _normalize_string_list(value) -> list[str]:
@@ -164,6 +176,7 @@ async def generate_creation_plan(
         return {"error": error}
     except Exception as e:
         logger.exception("Failed to generate creation plan for content %s", content_id)
+        error = _creation_llm_error_message(e)
         await _persist_creation_plan(
             db,
             user_id=user_id,
@@ -172,9 +185,9 @@ async def generate_creation_plan(
             platform=platform,
             platform_name=platform_config["name"],
             plan={},
-            error=str(e),
+            error=error,
         )
-        return {"error": str(e)}
+        return {"error": error}
 
 
 async def _persist_creation_plan(

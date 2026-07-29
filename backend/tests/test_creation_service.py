@@ -7,6 +7,8 @@ from app.core.database import Base
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
 from app.services import creation
+from app.services.llm.circuit_breaker import CircuitOpenError
+from app.services.llm.provider import LlmCapacityUnavailableError
 
 
 async def _session_with_analyzed_content():
@@ -93,4 +95,34 @@ async def test_generate_creation_plan_rejects_incomplete_llm_payload(monkeypatch
 
     assert "error" in plan
     assert "正文结构" in plan["error"]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_generate_creation_plan_hides_llm_capacity_internals(monkeypatch):
+    async def unavailable_call_llm_json(messages, scene, **_kwargs):
+        raise LlmCapacityUnavailableError(routing_group="default", next_available_at=None)
+
+    monkeypatch.setattr(creation, "call_llm_json", unavailable_call_llm_json)
+    engine, session_factory = await _session_with_analyzed_content()
+
+    async with session_factory() as db:
+        plan = await creation.generate_creation_plan(db, 1, "wechat")
+
+    assert plan["error"] == "创作方案暂时排队等待可用模型渠道，请稍后重试。"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_generate_creation_plan_hides_circuit_breaker_internals(monkeypatch):
+    async def unavailable_call_llm_json(messages, scene, **_kwargs):
+        raise CircuitOpenError("LLM circuit breaker OPEN (failures=6)")
+
+    monkeypatch.setattr(creation, "call_llm_json", unavailable_call_llm_json)
+    engine, session_factory = await _session_with_analyzed_content()
+
+    async with session_factory() as db:
+        plan = await creation.generate_creation_plan(db, 1, "wechat")
+
+    assert plan["error"] == "创作方案服务暂时不可用，系统正在自动恢复，请稍后重试。"
     await engine.dispose()

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  BarChart3,
   BookOpen,
   BrainCircuit,
   GitMerge,
@@ -11,7 +12,9 @@ import {
   Newspaper,
   RadioTower,
   Rocket,
+  ScrollText,
   Settings,
+  ShieldCheck,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -34,6 +37,9 @@ const DASHBOARD_CARDS: AdminDashboardCard[] = [
   { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit, description: '配置与评测 LLM 模型、查看用量与效果' },
   { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen, description: '维护系统级母题模板库，用户可 fork 后个性化配置' },
   { id: 'updates', label: '发版记录', href: '/admin/updates', icon: Rocket, description: '管理版本发布记录与路线图' },
+  { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', icon: ScrollText, description: '查看系统 Prompt 模板、调用频次与成本统计' },
+  { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', icon: BarChart3, description: '推荐质量评估、用户反馈分布与个性化向量统计' },
+  { id: 'evidence', label: '可信线索', href: '/admin/evidence', icon: ShieldCheck, description: '跨源证据标记统计与效果验证（交互率对比）' },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning, description: '查看与处理用户反馈、追踪修复状态' },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings, description: '邮件服务、功能开关等全局配置' },
 ];

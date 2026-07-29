@@ -157,6 +157,21 @@ class Settings(BaseSettings):
     ENRICHMENT_WORKER_CONCURRENCY: int = 3
     CLASSIFICATION_WORKER_CONCURRENCY: int = 3
 
+    # ── Content-event normalization ──
+    # Roll out in four explicit stages: off -> shadow -> write -> serve.
+    # "serve" keeps the write behavior and additionally authorizes consumers
+    # to prefer event truth; those read-path switches remain consumer-owned.
+    EVENT_NORMALIZATION_ROLLOUT_MODE: str = "off"
+    EVENT_NORMALIZATION_ROUTING_GROUP: str = "event_normalization"
+    EVENT_NORMALIZATION_MAX_ITEMS: int = 50
+    EVENT_NORMALIZATION_MAX_CANDIDATES: int = 8
+    EVENT_NORMALIZATION_MAX_BOUNDARY_LLM_CALLS: int = 10
+    EVENT_NORMALIZATION_WORKER_CONCURRENCY: int = 2
+    EVENT_NORMALIZATION_LEASE_SECONDS: int = 900
+    EVENT_NORMALIZATION_LOOKBACK_DAYS: int = 180
+    EVENT_NORMALIZATION_AUTO_ACCEPT_CONFIDENCE: float = 0.88
+    EVENT_NORMALIZATION_PREDICTION_AUDIT_MAX_BYTES: int = 65_536
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @property

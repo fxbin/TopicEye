@@ -836,6 +836,54 @@ async def _refresh_weread_stats_cache() -> None:
         logger.exception("Scheduler: WeRead stats cache refresh failed")
 
 
+async def _normalize_content_events() -> dict:
+    """Run the public event-normalization slice; ``off`` is a true no-op."""
+
+    mode = str(
+        getattr(settings, "EVENT_NORMALIZATION_ROLLOUT_MODE", "off")
+    ).strip().lower()
+    if mode == "off":
+        return {"status": "off", "scanned": 0}
+    if mode not in {"shadow", "write", "serve"}:
+        logger.error(
+            "Scheduler: invalid EVENT_NORMALIZATION_ROLLOUT_MODE=%r; skipped",
+            mode,
+        )
+        return {"status": "invalid-config", "scanned": 0}
+
+    from app.services.content_event_normalization import (
+        normalize_recent_events_with_lease,
+    )
+    from app.services.content_event_service import ContentEventConflictError
+
+    now = datetime.now(UTC)
+    bucket_minute = now.minute - (now.minute % 15)
+    bucket = now.replace(minute=bucket_minute, second=0, microsecond=0)
+    idempotency_key = f"scheduler:public:{bucket.isoformat()}"
+    async with async_session() as db:
+        try:
+            result = await normalize_recent_events_with_lease(
+                db,
+                hours=24,
+                mode=mode,
+                owner_user_id=None,
+                idempotency_key=idempotency_key,
+            )
+            await db.commit()
+            logger.info("Scheduler: content event normalization done — %s", result)
+            return result
+        except ContentEventConflictError:
+            await db.rollback()
+            logger.info(
+                "Scheduler: content event normalization skipped because a lease is active"
+            )
+            return {"status": "lease-active", "scanned": 0}
+        except Exception:
+            await db.rollback()
+            logger.exception("Scheduler: content event normalization failed")
+            return {"status": "failed", "scanned": 0}
+
+
 # ── Lifecycle helpers ─────────────────────────────────────────────────
 
 
@@ -926,6 +974,13 @@ def start_scheduler() -> None:
         trigger=IntervalTrigger(minutes=15),
         id="post_sync_evidence",
         name="Cross-source evidence discovery",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _normalize_content_events,
+        trigger=IntervalTrigger(minutes=15),
+        id="content_event_normalization",
+        name="Incremental content event normalization",
         replace_existing=True,
     )
     scheduler.add_job(

@@ -11,6 +11,12 @@ from app.models.content_event import (
     EventReviewStatus,
     EventStatus,
 )
+from app.models.content_event_run import (
+    ContentEventNormalizationLease,
+    ContentEventNormalizationRun,
+    EventNormalizationMode,
+    EventNormalizationRunStatus,
+)
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark, CrossSourceLevel, EvidenceType
 from app.models.content_relation import ContentRelation, RelationType
 from app.models.evidence_interaction import EvidenceInteraction
@@ -42,6 +48,10 @@ __all__ = [
     "EventStatus",
     "EventRelationType",
     "EventReviewStatus",
+    "ContentEventNormalizationLease",
+    "ContentEventNormalizationRun",
+    "EventNormalizationMode",
+    "EventNormalizationRunStatus",
     "ContentMetrics",
     "AiAnalysis",
     "AnalysisJobRecord",

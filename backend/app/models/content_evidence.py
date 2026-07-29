@@ -24,6 +24,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -72,6 +73,13 @@ class ContentEvidenceMark(Base):
 
     __table_args__ = (
         UniqueConstraint("content_id", "owner_user_id", name="uq_evidence_marks_scope"),
+        Index(
+            "uq_evidence_marks_public_content",
+            "content_id",
+            unique=True,
+            sqlite_where=text("owner_user_id IS NULL"),
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
         Index("ix_evidence_marks_content", "content_id"),
         Index("ix_evidence_marks_owner", "owner_user_id"),
     )

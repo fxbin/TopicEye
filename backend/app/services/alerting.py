@@ -306,6 +306,7 @@ async def send_alert(
 
     # 发到所有已配置的 webhook（任一失败不影响其他）
     any_sent = False
+    delivery_records: list[dict] = []
     async with httpx.AsyncClient(timeout=10) as client:
         for webhook_url in webhook_urls:
             if card is not None:
@@ -320,9 +321,13 @@ async def send_alert(
                 )
             else:
                 payload = _build_payload(webhook_url, text)
+            url_preview = webhook_url[:80] + ("..." if len(webhook_url) > 80 else "")
+            send_start = time.monotonic()
             try:
                 resp = await client.post(webhook_url, json=payload)
-                if resp.status_code < 300:
+                duration_ms = int((time.monotonic() - send_start) * 1000)
+                ok = resp.status_code < 300
+                if ok:
                     any_sent = True
                     logger.info("Alert sent: %s (key=%s)", title, alert_key)
                 else:
@@ -331,8 +336,35 @@ async def send_alert(
                         resp.status_code,
                         resp.text[:200],
                     )
+                delivery_records.append({
+                    "webhook_url_preview": url_preview,
+                    "status_code": resp.status_code,
+                    "success": ok,
+                    "error_message": None if ok else f"HTTP {resp.status_code}",
+                    "response_preview": resp.text[:500] if resp.text else None,
+                    "duration_ms": duration_ms,
+                })
             except Exception as exc:
+                duration_ms = int((time.monotonic() - send_start) * 1000)
                 logger.warning("Alert webhook failed (non-fatal): %s", exc)
+                delivery_records.append({
+                    "webhook_url_preview": url_preview,
+                    "status_code": None,
+                    "success": False,
+                    "error_message": str(exc)[:500],
+                    "response_preview": None,
+                    "duration_ms": duration_ms,
+                })
+
+    # 持久化推送日志（fire-and-forget，失败不影响主流程）
+    if delivery_records:
+        await _persist_delivery_logs(
+            alert_key=alert_key,
+            event_type=event_type,
+            title=title,
+            severity=severity,
+            records=delivery_records,
+        )
 
     # 仅在至少一个 webhook 发送成功时才记录去重 key，
     # 避免首次发送失败后 1 小时内重试被静默跳过。
@@ -399,6 +431,40 @@ async def alert_source_failures(failed_sources: list[dict]) -> None:
         alert_key=f"source_failures:{datetime.now(UTC).strftime('%Y-%m-%d-%H')}",
         severity="warning",
     )
+
+
+async def _persist_delivery_logs(
+    *,
+    alert_key: str,
+    event_type: str,
+    title: str,
+    severity: str,
+    records: list[dict],
+) -> None:
+    """Persist webhook delivery logs to DB (fire-and-forget, non-fatal on error)."""
+    try:
+        from app.core.database import async_session
+        from app.models.webhook_delivery_log import WebhookDeliveryLog
+
+        async with async_session() as db:
+            for rec in records:
+                db.add(
+                    WebhookDeliveryLog(
+                        alert_key=alert_key,
+                        event_type=event_type,
+                        title=title[:500],
+                        severity=severity,
+                        webhook_url_preview=rec["webhook_url_preview"],
+                        status_code=rec["status_code"],
+                        success=1 if rec["success"] else 0,
+                        error_message=rec["error_message"],
+                        response_preview=rec["response_preview"],
+                        duration_ms=rec["duration_ms"],
+                    )
+                )
+            await db.commit()
+    except Exception:
+        logger.warning("Failed to persist webhook delivery logs (non-fatal)", exc_info=True)
 
 
 

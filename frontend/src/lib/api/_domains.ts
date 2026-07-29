@@ -565,6 +565,21 @@ export const analysesApi = {
 
 // ─── Daily Report API ───
 
+export interface WebhookDeliveryLogItem {
+  id: number;
+  alert_key: string;
+  event_type: string;
+  title: string;
+  severity: string;
+  webhook_url_preview: string;
+  status_code: number | null;
+  success: boolean;
+  error_message: string | null;
+  response_preview: string | null;
+  duration_ms: number;
+  created_at: string | null;
+}
+
 export const dailyReportApi = {
   /** 获取今日日报（不存在则自动生成） */
   getToday(): Promise<Record<string, unknown>> {
@@ -679,6 +694,21 @@ export const dailyReportApi = {
     const params = new URLSearchParams({ date });
     if (edition) params.set('edition', edition);
     return request(`/daily-reports/push-webhook?${params}`, { method: 'POST' });
+  },
+
+  /** 获取 webhook 推送日志（管理员） */
+  listWebhookLogs(params?: { event_type?: string; limit?: number; offset?: number }): Promise<{
+    items: WebhookDeliveryLogItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.event_type) qs.set('event_type', params.event_type);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return request(`/daily-reports/webhook-logs${query ? '?' + query : ''}`);
   },
 
   /** 昨日追踪（公共日报）：昨日 top picks 的 24h 热度 delta + lifecycle 验证 */

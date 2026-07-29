@@ -765,3 +765,54 @@ async def delete_pick_mark(
     await repo.delete_by_user_date_title(user.id, parsed_date, pick_title)
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/webhook-logs")
+async def list_webhook_delivery_logs(
+    event_type: str | None = Query(None, description="Filter by event type"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin_user),
+):
+    """List webhook delivery logs (admin only)."""
+    from sqlalchemy import func, select
+
+    from app.models.webhook_delivery_log import WebhookDeliveryLog
+
+    stmt = select(WebhookDeliveryLog).order_by(WebhookDeliveryLog.created_at.desc())
+    count_stmt = select(func.count()).select_from(WebhookDeliveryLog)
+
+    if event_type:
+        stmt = stmt.where(WebhookDeliveryLog.event_type == event_type)
+        count_stmt = count_stmt.where(WebhookDeliveryLog.event_type == event_type)
+
+    stmt = stmt.offset(offset).limit(limit)
+
+    result = await db.execute(stmt)
+    logs = result.scalars().all()
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    return {
+        "items": [
+            {
+                "id": log.id,
+                "alert_key": log.alert_key,
+                "event_type": log.event_type,
+                "title": log.title,
+                "severity": log.severity,
+                "webhook_url_preview": log.webhook_url_preview,
+                "status_code": log.status_code,
+                "success": bool(log.success),
+                "error_message": log.error_message,
+                "response_preview": log.response_preview,
+                "duration_ms": log.duration_ms,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }

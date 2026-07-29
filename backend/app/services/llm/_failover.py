@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services.llm.model_resolver import resolve_litellm_model
+from app.services.secret_store import decrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _model_key(model_config: Any) -> str:
 def _candidate_from_db_model(model_config: Any, temperature: float, max_tokens: int) -> dict[str, Any]:
     return {
         "request_model": resolve_litellm_model(model_config),
-        "api_key": model_config.api_key,
+        "api_key": decrypt_secret(model_config.api_key),
         "api_base": model_config.api_base,
         "temperature": temperature if temperature is not None else model_config.temperature,
         "max_tokens": max_tokens if max_tokens is not None else model_config.max_tokens,

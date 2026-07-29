@@ -37,6 +37,7 @@ from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.models.llm_model import LlmModel
 from app.models.user import User
 from app.repositories.llm_model_repo import LlmModelRepository
+from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
 from app.services.llm.model_list_cache import (
     MODEL_LIST_CACHE_HEADER,
     get_cached_model_list,
@@ -138,7 +139,7 @@ def _completion_kwargs(
             }
         )
     if model.api_key:
-        kwargs["api_key"] = model.api_key
+        kwargs["api_key"] = decrypt_secret(model.api_key)
     if model.api_base:
         kwargs["api_base"] = model.api_base
     return kwargs
@@ -363,6 +364,10 @@ def _apply_model_request(model: LlmModel, req: ModelCreateRequest | ModelUpdateR
             req.cost_per_1m_input_cache_hit,
         )
     for key, value in update_data.items():
+        # api_key 在落库前加密：客户端传入的是明文（GET 只返回 api_key_set 布尔值，
+        # 不会回传已加密值）。守卫 is_encrypted_secret 防止迁移脚本或误传导致二次加密。
+        if key == "api_key" and value and not is_encrypted_secret(value):
+            value = encrypt_secret(value)
         setattr(model, key, value)
 
     if is_free_model(model.model_id):
@@ -384,7 +389,7 @@ def _new_model_from_request(req: ModelCreateRequest) -> LlmModel:
         name=req.name,
         provider=req.provider,
         model_id=req.model_id,
-        api_key=req.api_key,
+        api_key=encrypt_secret(req.api_key),
         api_base=req.api_base,
         enabled=req.enabled,
         routing_group=req.routing_group or "default",

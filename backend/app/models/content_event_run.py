@@ -26,7 +26,6 @@ from app.models.enum_types import value_enum
 class EventNormalizationMode(enum.StrEnum):
     SHADOW = "shadow"
     WRITE = "write"
-    SERVE = "serve"
 
 
 class EventNormalizationRunStatus(enum.StrEnum):
@@ -132,7 +131,7 @@ class ContentEventNormalizationRun(Base):
             name="uq_content_event_normalization_runs_scope_key",
         ),
         CheckConstraint(
-            "mode IN ('shadow', 'write', 'serve')",
+            "mode IN ('shadow', 'write')",
             name="ck_content_event_normalization_runs_mode",
         ),
         CheckConstraint(

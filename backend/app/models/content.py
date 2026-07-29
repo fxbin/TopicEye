@@ -4,7 +4,7 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -70,16 +70,6 @@ class ContentItem(Base):
     topic_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("topic_groups.id", ondelete="SET NULL"), nullable=True
     )
-    duplicate_of: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("content_items.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="Points to canonical item if duplicate",
-    )
-    similarity_score: Mapped[float | None] = mapped_column(
-        Float, default=0.0, comment="Similarity score to group representative"
-    )
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

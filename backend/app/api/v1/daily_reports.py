@@ -776,23 +776,12 @@ async def list_webhook_delivery_logs(
     _admin: User = Depends(get_current_admin_user),
 ):
     """List webhook delivery logs (admin only)."""
-    from sqlalchemy import func, select
+    from app.repositories.webhook_delivery_log_repo import WebhookDeliveryLogRepository
 
-    from app.models.webhook_delivery_log import WebhookDeliveryLog
-
-    stmt = select(WebhookDeliveryLog).order_by(WebhookDeliveryLog.created_at.desc())
-    count_stmt = select(func.count()).select_from(WebhookDeliveryLog)
-
-    if event_type:
-        stmt = stmt.where(WebhookDeliveryLog.event_type == event_type)
-        count_stmt = count_stmt.where(WebhookDeliveryLog.event_type == event_type)
-
-    stmt = stmt.offset(offset).limit(limit)
-
-    result = await db.execute(stmt)
-    logs = result.scalars().all()
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar() or 0
+    repo = WebhookDeliveryLogRepository(db)
+    logs, total = await repo.list_recent(
+        event_type=event_type, limit=limit, offset=offset
+    )
 
     return {
         "items": [

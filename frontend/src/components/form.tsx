@@ -22,13 +22,15 @@ export function FieldLabel({
   children,
   required = false,
   className,
+  htmlFor,
 }: {
   children: React.ReactNode;
   required?: boolean;
   className?: string;
+  htmlFor?: string;
 }) {
   return (
-    <label className={cx('mb-1 block text-xs font-bold text-gray-500', className)}>
+    <label htmlFor={htmlFor} className={cx('mb-1 block text-xs font-bold text-gray-500', className)}>
       {children}
       {required && <span className="text-red"> *</span>}
     </label>

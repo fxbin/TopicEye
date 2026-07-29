@@ -13,8 +13,8 @@
  * 状态：editing（正在编辑的模型）/ testing（正在测试的 id）/
  * testResult（每个模型的最近测试结果）/ showAdd（显示添加表单）。
  *
- * ModelEditForm 作为同级子组件独立在 ModelEditForm.tsx，ModelsTab 通过
- * showAdd / editing 状态控制其显示。
+ * ModelEditForm 以 AdminModal 弹窗承载，独立在 ModelEditForm.tsx，ModelsTab 通过
+ * showAdd / editing 状态控制其显示；添加保存成功后自动对该模型触发一次连接测试。
  */
 
 import React, { useState } from 'react';
@@ -78,8 +78,24 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
         </div>
       </Surface>
 
-      {showAdd && <ModelEditForm onClose={() => { setShowAdd(false); onRefresh(); }} />}
-      {editing && <ModelEditForm model={editing} onClose={() => { setEditing(null); onRefresh(); }} />}
+      {showAdd && (
+        <ModelEditForm
+          onClose={(saved, createdId) => {
+            setShowAdd(false);
+            onRefresh();
+            if (saved && createdId) void handleTest(createdId);
+          }}
+        />
+      )}
+      {editing && (
+        <ModelEditForm
+          model={editing}
+          onClose={() => {
+            setEditing(null);
+            onRefresh();
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {models.map((m) => (

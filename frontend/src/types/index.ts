@@ -237,7 +237,10 @@ export interface UpdateSourceRequest {
 
 // ─── Content (内容) ───
 
-export type ContentNormalizationRelationType = 'duplicate';
+export type ContentNormalizationRelationType =
+  | 'duplicate'
+  | 'corroboration'
+  | 'update';
 
 export interface ContentNormalizationMember {
   id: number;
@@ -250,6 +253,7 @@ export interface ContentNormalizationMember {
   crawled_at?: string | null;
   relation_type: ContentNormalizationRelationType;
   confidence?: number | null;
+  reason?: string | null;
 }
 
 export interface ContentNormalizationSummary {

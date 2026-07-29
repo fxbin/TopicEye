@@ -658,8 +658,8 @@ export default function ContentEventsAdminPage() {
             <div>
               <div className="text-sm font-black">这是有数据副作用的运行模式</div>
               <p className="mt-1 text-xs font-bold leading-5">
-                WRITE 会写入事件真源，并同步更新 legacy duplicate_of /
-                similarity_score 兼容投影。请先用相同参数完成影子验证。
+                WRITE 会写入唯一的事件真源，并立即影响用户侧的事件折叠与证据口径。
+                请先用相同参数完成影子验证。
               </p>
             </div>
           </div>

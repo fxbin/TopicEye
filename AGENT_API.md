@@ -105,7 +105,7 @@ Today's curated picks with full score breakdowns. This is the primary endpoint f
 | `limit` | int | 20 | Max items (1–100) |
 | `category` | string | — | Optional category filter (e.g. `AI`) |
 
-Returns the same shape as `GET /contents/today-picks`: `{items, total, duplicates_hidden, topics, page, page_size}`. Each `items[*].analysis` carries `adjusted_curation_score` (final ranking score) and `score_breakdown`.
+Returns the same shape as `GET /contents/today-picks`: `{items, total, event_members_hidden, topics, page, page_size}`. Each `items[*].analysis` carries `adjusted_curation_score` (final ranking score) and `score_breakdown`.
 
 ```bash
 curl "$BASE/api/v1/skill/today-picks?hours=48&limit=10" -H "Authorization: Bearer $TOKEN"

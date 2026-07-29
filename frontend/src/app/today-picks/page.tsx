@@ -106,7 +106,7 @@ function TodayPicksPage() {
   const items = data?.items || [];
   const total = data?.total || 0;
   const topics = data?.topics || [];
-  const dupCount = data?.duplicates_hidden || 0;
+  const eventMemberCount = data?.event_members_hidden || 0;
 
   // 批量获取证据标记（避免每张卡片单独 API 调用 N+1）
   const [evidenceMarks, setEvidenceMarks] = useState<Record<string, EvidenceMark>>({});
@@ -256,7 +256,7 @@ function TodayPicksPage() {
             sourceCount={sourceCount}
             topicCount={sortedTopics.length}
             avgScore={avgScore}
-            dupCount={dupCount}
+            eventMemberCount={eventMemberCount}
           />
 
           {actionError && (
@@ -356,4 +356,3 @@ function TodayPicksPage() {
     </div>
   );
 }
-

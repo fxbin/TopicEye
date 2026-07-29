@@ -49,7 +49,13 @@ import {
 } from './_today-picks-utils';
 import { getTagColor, timeAgo } from '@/lib/utils';
 import { getRecommendationReason } from '@/lib/recommendation';
-import type { ContentAnalysis, ContentItem, EvidenceMark, TopicInfo } from '@/types';
+import type {
+  ContentAnalysis,
+  ContentItem,
+  ContentNormalizationMember,
+  EvidenceMark,
+  TopicInfo,
+} from '@/types';
 
 // ─── OverviewStrip ───────────────────────────────────────────────────
 
@@ -59,20 +65,26 @@ export function OverviewStrip({
   sourceCount,
   topicCount,
   avgScore,
-  dupCount,
+  eventMemberCount,
 }: {
   total: number;
   loadedCount: number;
   sourceCount: number;
   topicCount: number;
   avgScore: number;
-  dupCount: number;
+  eventMemberCount: number;
 }) {
   const stats = [
-    { label: '精选内容', value: total, hint: loadedCount < total ? `已加载 ${loadedCount}` : '去重后', icon: Target, color: 'text-primary' },
+    { label: '精选内容', value: total, hint: loadedCount < total ? `已加载 ${loadedCount}` : '事件归并后', icon: Target, color: 'text-primary' },
     { label: '平均分', value: avgScore || '-', hint: '算法校准', icon: BarChart3, color: 'text-teal' },
     { label: '话题组', value: topicCount, hint: '聚类结果', icon: Layers3, color: 'text-purple' },
-    { label: '来源', value: sourceCount, hint: dupCount ? `隐藏重复 ${dupCount}` : '有效信源', icon: Search, color: 'text-amber' },
+    {
+      label: '来源',
+      value: sourceCount,
+      hint: eventMemberCount ? `归并附属 ${eventMemberCount}` : '有效信源',
+      icon: Search,
+      color: 'text-amber',
+    },
   ];
 
   return (
@@ -97,6 +109,24 @@ export function OverviewStrip({
 }
 
 // ─── NormalizationDisclosure ────────────────────────────────────────
+
+const NORMALIZATION_RELATION_META: Record<
+  ContentNormalizationMember['relation_type'],
+  { label: string; className: string }
+> = {
+  duplicate: {
+    label: '重复表达',
+    className: 'bg-gray-100 text-gray-600',
+  },
+  corroboration: {
+    label: '交叉佐证',
+    className: 'bg-teal/10 text-teal',
+  },
+  update: {
+    label: '后续进展',
+    className: 'bg-amber-50 text-amber-700',
+  },
+};
 
 function NormalizationDisclosure({ item }: { item: ContentItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -135,13 +165,24 @@ function NormalizationDisclosure({ item }: { item: ContentItem }) {
           <ul className="divide-y divide-gray-100">
             {normalization.members.map((member) => {
               const memberTime = member.published_at || member.crawled_at;
+              const relation = NORMALIZATION_RELATION_META[member.relation_type];
+              const confidence =
+                typeof member.confidence === 'number' && Number.isFinite(member.confidence)
+                  ? Math.round(Math.min(1, Math.max(0, member.confidence)) * 100)
+                  : null;
               return (
                 <li key={member.id} className="px-3 py-2.5">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-500">
-                      重复表达
+                    <span className={cx('rounded-full px-2 py-0.5 font-bold', relation.className)}>
+                      {relation.label}
                     </span>
                     <span className="font-semibold text-gray-500">{member.source_name}</span>
+                    {confidence !== null && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <span className="font-semibold text-gray-400">置信度 {confidence}%</span>
+                      </>
+                    )}
                     {memberTime && (
                       <>
                         <span className="text-gray-300">·</span>
@@ -168,6 +209,11 @@ function NormalizationDisclosure({ item }: { item: ContentItem }) {
                       </a>
                     )}
                   </div>
+                  {member.reason && (
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-gray-500">
+                      判断依据：{member.reason}
+                    </p>
+                  )}
                 </li>
               );
             })}

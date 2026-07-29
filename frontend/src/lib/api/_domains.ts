@@ -282,7 +282,7 @@ export const contentsApi = {
     items: ContentItem[];
     topics: TopicInfo[];
     total: number;
-    duplicates_hidden: number;
+    event_members_hidden: number;
   }> {
     const query = params
       ? '?' + new URLSearchParams(

@@ -92,6 +92,7 @@ async def build_today_picks(
     total = len(scored_rows)
     visible_rows = scored_rows[:limit] if limit else scored_rows
     response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
+    _attach_normalization(response_items, rows)
 
     # Apply personalization boost (async, non-blocking for new users)
     if owner_user_id is not None:
@@ -399,6 +400,95 @@ def _decode_json_value(value):
         return json.loads(stripped)
     except json.JSONDecodeError:
         return value
+
+
+def _attach_normalization(items: list[dict], rows: list[dict]) -> None:
+    """Attach direct duplicate summaries to visible canonical items.
+
+    ``query_today_picks`` and the OLTP fallback already return canonical and
+    duplicate rows together.  Reusing that candidate set here keeps this
+    additive response contract query-free and avoids an N+1 lookup after
+    pagination.
+
+    Only direct ``duplicate_of`` edges are assembled.  Chained duplicates are
+    deliberately not traversed because the existing semantic-dedup result is
+    the canonical source of truth and this read path must not invent a second
+    canonical owner.
+    """
+    visible_ids = {item.get("id") for item in items}
+    members_by_canonical: dict[int, dict[int, dict]] = {}
+
+    for row in rows:
+        canonical_id = row.get("duplicate_of")
+        member_id = row.get("id")
+        if (
+            canonical_id not in visible_ids
+            or member_id is None
+            or member_id == canonical_id
+        ):
+            continue
+        # Analytical joins can occasionally repeat the same content row.  The
+        # first occurrence wins and the later stable sort makes output
+        # deterministic without changing the source row.
+        members_by_canonical.setdefault(canonical_id, {}).setdefault(member_id, row)
+
+    for item in items:
+        canonical_id = item["id"]
+        member_rows = sorted(
+            members_by_canonical.get(canonical_id, {}).values(),
+            key=_normalization_member_sort_key,
+        )
+        source_keys = {
+            source_key
+            for row in (item, *member_rows)
+            if (source_key := _normalization_source_key(row)) is not None
+        }
+        item["normalization"] = {
+            "canonical_id": canonical_id,
+            "member_count": len(member_rows),
+            "source_count": len(source_keys),
+            "has_more": len(member_rows) > 5,
+            "members": [
+                {
+                    "id": row["id"],
+                    "title": row.get("title") or "",
+                    "url": row.get("url") or "",
+                    "source_name": row.get("source_name"),
+                    "source_type": row.get("source_type"),
+                    "platform": row.get("platform"),
+                    "published_at": row.get("published_at"),
+                    "crawled_at": row.get("crawled_at"),
+                    "relation_type": "duplicate",
+                    "confidence": row.get("similarity_score"),
+                }
+                for row in member_rows[:5]
+            ],
+        }
+
+
+def _normalization_member_sort_key(row: dict) -> tuple:
+    """Sort members oldest-first with a deterministic content-id tiebreaker."""
+    timestamp = row.get("published_at") or row.get("crawled_at")
+    if isinstance(timestamp, datetime):
+        timestamp = timestamp.isoformat()
+    member_id = row.get("id")
+    id_key = (0, member_id) if isinstance(member_id, int) else (1, str(member_id))
+    return (timestamp is None, str(timestamp or ""), id_key)
+
+
+def _normalization_source_key(row: dict) -> tuple | None:
+    """Return a stable source identity without treating it as evidence."""
+    source_id = row.get("source_id")
+    if source_id is not None:
+        return ("source_id", str(source_id))
+
+    source_parts = tuple(
+        str(row.get(field) or "").strip().casefold()
+        for field in ("source_name", "source_type", "platform")
+    )
+    if any(source_parts):
+        return ("source_meta", *source_parts)
+    return None
 
 
 def _dedupe_and_pack(

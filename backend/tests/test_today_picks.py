@@ -216,6 +216,119 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     assert item["analysis"]["score_breakdown"]["time_decay"] == expected["time_decay"]
     assert "raw_content" not in item
     assert "analyses" not in item
+    assert item["normalization"] == {
+        "canonical_id": 1,
+        "member_count": 1,
+        "source_count": 1,
+        "has_more": False,
+        "members": [
+            {
+                "id": 2,
+                "title": "重复样本",
+                "url": "https://example.com/duplicate",
+                "source_name": "测试信源",
+                "source_type": "RSS",
+                "platform": "rss",
+                "published_at": item["published_at"],
+                "crawled_at": item["crawled_at"],
+                "relation_type": "duplicate",
+                "confidence": None,
+            }
+        ],
+    }
+
+
+def test_attach_normalization_isolates_canonicals_caps_and_deduplicates_members():
+    canonical_items = [
+        {
+            "id": 10,
+            "source_id": 1,
+            "source_name": "来源一",
+            "source_type": "RSS",
+            "platform": "rss",
+        },
+        {
+            "id": 20,
+            "source_id": None,
+            "source_name": None,
+            "source_type": None,
+            "platform": None,
+        },
+        {
+            "id": 30,
+            "source_id": 3,
+            "source_name": "无附属来源",
+            "source_type": "RSS",
+            "platform": "rss",
+        },
+    ]
+    rows = []
+    for member_id in range(106, 99, -1):
+        rows.append(
+            {
+                "id": member_id,
+                "title": f"主记录 10 的附属 {member_id}",
+                "url": f"https://example.com/{member_id}",
+                "source_id": 1 if member_id == 100 else member_id,
+                "source_name": f"来源 {member_id}",
+                "source_type": "RSS",
+                "platform": "rss",
+                "published_at": f"2026-07-{member_id - 99:02d}T00:00:00+00:00",
+                "crawled_at": f"2026-07-{member_id - 99:02d}T01:00:00+00:00",
+                "duplicate_of": 10,
+                "similarity_score": member_id / 1000,
+            }
+        )
+    # 重复分析行不能放大 member_count。
+    rows.append(dict(rows[-1]))
+    rows.append(
+        {
+            "id": 200,
+            "title": "主记录 20 的附属",
+            "url": "https://example.com/200",
+            "source_id": 20,
+            "source_name": "来源二十",
+            "source_type": "WEB",
+            "platform": "web",
+            "published_at": "2026-07-09T00:00:00+00:00",
+            "crawled_at": "2026-07-09T01:00:00+00:00",
+            "duplicate_of": 20,
+            "similarity_score": 0.97,
+        }
+    )
+    # 只组装 direct duplicate_of；重复链 201 -> 200 不归入 canonical 20。
+    rows.append(
+        {
+            "id": 201,
+            "title": "重复链下游",
+            "url": "https://example.com/201",
+            "duplicate_of": 200,
+        }
+    )
+
+    today_picks._attach_normalization(canonical_items, rows)
+
+    first = canonical_items[0]["normalization"]
+    assert first["canonical_id"] == 10
+    assert first["member_count"] == 7
+    assert first["source_count"] == 7
+    assert first["has_more"] is True
+    assert [member["id"] for member in first["members"]] == [100, 101, 102, 103, 104]
+    assert all(member["relation_type"] == "duplicate" for member in first["members"])
+    assert first["members"][0]["confidence"] == 0.1
+
+    second = canonical_items[1]["normalization"]
+    assert second["member_count"] == 1
+    assert second["source_count"] == 1
+    assert [member["id"] for member in second["members"]] == [200]
+
+    assert canonical_items[2]["normalization"] == {
+        "canonical_id": 30,
+        "member_count": 0,
+        "source_count": 1,
+        "has_more": False,
+        "members": [],
+    }
 
 
 @pytest.mark.asyncio

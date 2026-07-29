@@ -5,9 +5,9 @@ Revises: l8a9b0c1d2e3
 Create Date: 2026-07-29 10:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "m9a0b1c2d3e4"
 down_revision = "l8a9b0c1d2e3"
@@ -33,7 +33,9 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("now()"),
+            # ANSI/SQLite CURRENT_TIMESTAMP is also accepted by PostgreSQL.
+            # Using now() directly is invalid inside a SQLite DEFAULT clause.
+            server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
     )
     op.create_index("ix_webhook_logs_created", "webhook_delivery_logs", ["created_at"])

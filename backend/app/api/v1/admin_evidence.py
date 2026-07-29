@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import get_db
-from app.models.user import User
 from app.repositories.evidence_repo import EvidenceRepository
 
 router = APIRouter(
@@ -51,7 +50,6 @@ async def get_evidence_effect_stats(
 async def trigger_evidence_discovery(
     hours: int = Query(24, ge=1, le=168, description="Lookback window in hours"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_current_admin_user),
 ):
     """Manually trigger cross-source evidence discovery."""
     from app.services.evidence_service import discover_cross_source_evidence

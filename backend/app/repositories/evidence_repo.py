@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -52,6 +53,9 @@ class EvidenceRepository:
             mark.independent_publisher_count = independent_publisher_count
             mark.has_primary_source = has_primary_source
             mark.has_official_source = has_official_source
+            # Recompute is a new observation. Keep computed_at accurate for
+            # dashboards/audits instead of leaving a stale initial timestamp.
+            mark.computed_at = datetime.now(UTC)
         else:
             mark = ContentEvidenceMark(
                 content_id=content_id,
@@ -184,6 +188,9 @@ class EvidenceRepository:
 
         profiled_result = await self.db.execute(
             select(func.count(SourceEvidenceProfile.id))
+            .select_from(SourceEvidenceProfile)
+            .join(Source, Source.id == SourceEvidenceProfile.source_id)
+            .where(Source.scope == "system")
         )
         profiled_sources = profiled_result.scalar() or 0
 
@@ -192,7 +199,11 @@ class EvidenceRepository:
             select(
                 SourceEvidenceProfile.publisher_kind,
                 func.count(SourceEvidenceProfile.id),
-            ).group_by(SourceEvidenceProfile.publisher_kind)
+            )
+            .select_from(SourceEvidenceProfile)
+            .join(Source, Source.id == SourceEvidenceProfile.source_id)
+            .where(Source.scope == "system")
+            .group_by(SourceEvidenceProfile.publisher_kind)
         )
         by_kind: dict[str, int] = {}
         for kind, cnt in kind_result:
@@ -212,7 +223,7 @@ class EvidenceRepository:
             "profiles": {
                 "total_system_sources": total_system_sources,
                 "profiled_sources": profiled_sources,
-                "unprofiled_sources": total_system_sources - profiled_sources,
+                "unprofiled_sources": max(0, total_system_sources - profiled_sources),
                 "by_kind": by_kind,
             },
         }
@@ -220,50 +231,59 @@ class EvidenceRepository:
     async def get_effect_stats(self, days: int = 7) -> dict[str, Any]:
         """Compare interaction rates between evidence-marked and unmarked content.
 
-        This is the effect validation query. It joins content_items
-        with evidence_marks (LEFT JOIN, so unmarked content is included) and
-        aggregates interaction counts per group.
+        This is a current-state cohort comparison: public content created in
+        the requested window is split by its current public evidence mark, and
+        only interactions for that same content/window cohort are aggregated.
 
         Returns a dict with:
         - marked: {total_content, interactions_by_type, total_interactions, interaction_rate}
         - unmarked: {total_content, interactions_by_type, total_interactions, interaction_rate}
         - comparison: {click_rate_lift, favorite_rate_lift, feedback_rate_lift}
         """
-        from datetime import UTC, datetime, timedelta
-
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
-        # Count content items with and without evidence marks (public scope only)
+        # Single, explicit cohort: public content created in the lookback
+        # window. Classification uses the current public evidence mark; every
+        # numerator below joins the same predicate, preventing incomparable
+        # mark/content/interaction windows.
+        public_mark = (
+            (ContentEvidenceMark.content_id == ContentItem.id)
+            & (ContentEvidenceMark.owner_user_id.is_(None))
+            & (ContentEvidenceMark.cross_source_level != "none")
+        )
+        base_content = (
+            ContentItem.owner_user_id.is_(None),
+            ContentItem.created_at >= cutoff,
+        )
+
         marked_count_result = await self.db.execute(
-            select(func.count(ContentEvidenceMark.id)).where(
-                ContentEvidenceMark.owner_user_id.is_(None),
-                ContentEvidenceMark.cross_source_level != "none",
-                ContentEvidenceMark.computed_at >= cutoff,
-            )
+            select(func.count(func.distinct(ContentItem.id)))
+            .select_from(ContentItem)
+            .join(ContentEvidenceMark, public_mark)
+            .where(*base_content)
         )
         marked_content_count = marked_count_result.scalar() or 0
 
-        # Total public content in the window
-        total_content_result = await self.db.execute(
-            select(func.count(ContentItem.id)).where(
-                ContentItem.owner_user_id.is_(None),
-                ContentItem.created_at >= cutoff,
-            )
+        unmarked_count_result = await self.db.execute(
+            select(func.count(func.distinct(ContentItem.id)))
+            .select_from(ContentItem)
+            .outerjoin(ContentEvidenceMark, public_mark)
+            .where(*base_content, ContentEvidenceMark.id.is_(None))
         )
-        total_content = total_content_result.scalar() or 0
-        unmarked_content_count = max(0, total_content - marked_content_count)
+        unmarked_content_count = unmarked_count_result.scalar() or 0
 
-        # Interactions on marked content
+        # Interactions on the same marked content cohort. DISTINCT protects
+        # historical duplicate public mark rows from multiplying an event.
         marked_interactions_result = await self.db.execute(
             select(
                 EvidenceInteraction.interaction_type,
-                func.count(EvidenceInteraction.id),
+                func.count(func.distinct(EvidenceInteraction.id)),
             )
             .select_from(EvidenceInteraction)
-            .join(ContentEvidenceMark, ContentEvidenceMark.content_id == EvidenceInteraction.content_id)
+            .join(ContentItem, ContentItem.id == EvidenceInteraction.content_id)
+            .join(ContentEvidenceMark, public_mark)
             .where(
-                ContentEvidenceMark.owner_user_id.is_(None),
-                ContentEvidenceMark.cross_source_level != "none",
+                *base_content,
                 EvidenceInteraction.created_at >= cutoff,
             )
             .group_by(EvidenceInteraction.interaction_type)
@@ -274,19 +294,21 @@ class EvidenceRepository:
             marked_by_type[itype] = cnt
             marked_total_interactions += cnt
 
-        # Interactions on unmarked content (content_id NOT in evidence_marks)
+        # Interactions on the same unmarked cohort. A public mark with level
+        # "none" deliberately joins as NULL and therefore belongs here.
         unmarked_interactions_result = await self.db.execute(
             select(
                 EvidenceInteraction.interaction_type,
-                func.count(EvidenceInteraction.id),
+                func.count(func.distinct(EvidenceInteraction.id)),
             )
             .select_from(EvidenceInteraction)
+            .join(ContentItem, ContentItem.id == EvidenceInteraction.content_id)
             .outerjoin(
                 ContentEvidenceMark,
-                (ContentEvidenceMark.content_id == EvidenceInteraction.content_id)
-                & (ContentEvidenceMark.owner_user_id.is_(None)),
+                public_mark,
             )
             .where(
+                *base_content,
                 ContentEvidenceMark.id.is_(None),
                 EvidenceInteraction.created_at >= cutoff,
             )

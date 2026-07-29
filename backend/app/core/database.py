@@ -29,6 +29,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     if not database_profile.is_sqlite:
         return
     cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA busy_timeout=30000")
     cursor.execute("PRAGMA synchronous=NORMAL")

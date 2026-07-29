@@ -4,6 +4,13 @@ from app.models.article_reader_event import ArticleReaderEvent
 from app.models.article_snapshot import ArticleSnapshot
 from app.models.category import Category
 from app.models.content import ContentItem
+from app.models.content_event import (
+    ContentEventGroup,
+    ContentEventMember,
+    EventRelationType,
+    EventReviewStatus,
+    EventStatus,
+)
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark, CrossSourceLevel, EvidenceType
 from app.models.content_relation import ContentRelation, RelationType
 from app.models.evidence_interaction import EvidenceInteraction
@@ -30,6 +37,11 @@ __all__ = [
     "SourceEvidenceProfile",
     "PublisherKind",
     "ContentItem",
+    "ContentEventGroup",
+    "ContentEventMember",
+    "EventStatus",
+    "EventRelationType",
+    "EventReviewStatus",
     "ContentMetrics",
     "AiAnalysis",
     "AnalysisJobRecord",

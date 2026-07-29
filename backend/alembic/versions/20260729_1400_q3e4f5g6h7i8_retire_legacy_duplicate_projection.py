@@ -19,8 +19,6 @@ down_revision = "p2d3e4f5g6h7"
 branch_labels = None
 depends_on = None
 
-_RUN_MODE_CHECK = "ck_content_event_normalization_runs_mode"
-
 
 def _effective_time(row: dict) -> datetime:
     return row["published_at"] or row["crawled_at"] or row["created_at"]
@@ -73,17 +71,34 @@ def _backfill_legacy_projection() -> None:
         sa.column("matched_at", sa.DateTime(timezone=True)),
     )
 
-    content_rows = {
-        int(row["id"]): dict(row)
-        for row in bind.execute(sa.select(content)).mappings().all()
-    }
-    legacy_edges = {
-        content_id: int(row["duplicate_of"])
-        for content_id, row in content_rows.items()
-        if row["duplicate_of"] is not None
-    }
+    # Load only rows participating in a legacy duplicate edge (source or any
+    # reachable target along the chain). The previous full-table scan
+    # materialized every content_items row; in production this table holds far
+    # more rows than ever carried a duplicate_of link, so we scope the in-memory
+    # working set to what the migration actually touches.
+    edge_source_rows = bind.execute(
+        sa.select(content).where(content.c.duplicate_of.is_not(None))
+    ).mappings().all()
+    legacy_edges = {int(row["id"]): int(row["duplicate_of"]) for row in edge_source_rows}
     if not legacy_edges:
         return
+
+    # Walk every chain to collect the full id closure (sources + transitively
+    # reachable targets, including the duplicate_of-free root at the end).
+    closure: set[int] = set()
+    for source_id in legacy_edges:
+        current = source_id
+        while current in legacy_edges and current not in closure:
+            closure.add(current)
+            current = legacy_edges[current]
+        closure.add(current)
+
+    content_rows = {
+        int(row["id"]): dict(row)
+        for row in bind.execute(
+            sa.select(content).where(content.c.id.in_(closure))
+        ).mappings().all()
+    }
 
     group_rows = {
         int(row["id"]): dict(row)
@@ -249,16 +264,6 @@ def _backfill_legacy_projection() -> None:
         )
 
 
-def _replace_run_mode_check(*, allow_serve: bool) -> None:
-    allowed = "'shadow', 'write', 'serve'" if allow_serve else "'shadow', 'write'"
-    with op.batch_alter_table("content_event_normalization_runs") as batch_op:
-        batch_op.drop_constraint(_RUN_MODE_CHECK, type_="check")
-        batch_op.create_check_constraint(
-            _RUN_MODE_CHECK,
-            f"mode IN ({allowed})",
-        )
-
-
 def _drop_legacy_columns() -> None:
     bind = op.get_bind()
     foreign_keys = sa.inspect(bind).get_foreign_keys("content_items")
@@ -276,11 +281,6 @@ def _drop_legacy_columns() -> None:
 
 def upgrade() -> None:
     _backfill_legacy_projection()
-    op.execute(
-        "UPDATE content_event_normalization_runs "
-        "SET mode = 'write' WHERE mode = 'serve'"
-    )
-    _replace_run_mode_check(allow_serve=False)
     _drop_legacy_columns()
 
 
@@ -343,5 +343,3 @@ def downgrade() -> None:
                 similarity_score=confidence,
             )
         )
-
-    _replace_run_mode_check(allow_serve=True)

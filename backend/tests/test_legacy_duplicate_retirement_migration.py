@@ -76,7 +76,7 @@ def _schema(engine):
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("mode", sa.String(20), nullable=False),
         sa.CheckConstraint(
-            "mode IN ('shadow', 'write', 'serve')",
+            "mode IN ('shadow', 'write')",
             name="ck_content_event_normalization_runs_mode",
         ),
     )
@@ -84,7 +84,7 @@ def _schema(engine):
     return content, groups, members, runs
 
 
-def test_upgrade_migrates_chains_then_removes_old_columns_and_serve_mode():
+def test_upgrade_migrates_chains_then_removes_old_columns():
     engine = sa.create_engine("sqlite:///:memory:")
     content, groups, members, runs = _schema(engine)
     now = datetime.now(UTC)
@@ -122,7 +122,7 @@ def test_upgrade_migrates_chains_then_removes_old_columns_and_serve_mode():
                 },
             ],
         )
-        connection.execute(runs.insert().values(id=1, mode="serve"))
+        connection.execute(runs.insert().values(id=1, mode="write"))
         migration = _load_migration()
         migration.op = Operations(MigrationContext.configure(connection))
 
@@ -170,7 +170,6 @@ def test_upgrade_migrates_chains_then_removes_old_columns_and_serve_mode():
         assert restored[0] == (1, None, None)
         assert restored[1][0:2] == (2, 1)
         assert restored[2][0:2] == (3, 1)
-        connection.execute(runs.update().values(mode="serve"))
 
     engine.dispose()
 

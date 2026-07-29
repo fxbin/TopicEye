@@ -64,7 +64,7 @@ def upgrade() -> None:
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint(
-            "mode IN ('shadow', 'write', 'serve')",
+            "mode IN ('shadow', 'write')",
             name="ck_content_event_normalization_runs_mode",
         ),
         sa.CheckConstraint(

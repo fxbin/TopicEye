@@ -49,8 +49,12 @@ import {
   pricingForProviderModel,
 } from './_model-eval-utils';
 
-/** 弹窗内容区最大高度：为标题、副标题与底部操作栏预留视口空间 */
-const MODAL_BODY_MAX_HEIGHT = '62vh';
+/**
+ * 弹窗内容区最大高度：按视口实际高度减去弹窗固定 chrome
+ *（标题/副标题/底部操作栏/内边距约 230px），避免固定 vh 比例
+ * 在高视口浪费空间、矮视口裁切输入框。
+ */
+const MODAL_BODY_MAX_HEIGHT = 'calc(100dvh - 230px)';
 /** 弹窗宽度：兼顾预设卡片双列排布与表单字段密度 */
 const MODAL_MAX_WIDTH = 720;
 
@@ -93,28 +97,6 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   const currentPreset = PROVIDER_PRESETS[form.provider] || PROVIDER_PRESETS.custom;
   const needsModelId = isEdit || presetRequires(selectedPreset, 'model_id') || presetKey === 'custom';
   const needsApiBase = presetRequires(selectedPreset, 'api_base') || presetKey === 'openai_compatible';
-  const presetDefaultRows = useMemo(() => ([
-    {
-      label: '稳定度',
-      field: 'temperature',
-      value: selectedPreset?.defaults.temperature ?? catalog?.defaults.temperature ?? form.temperature,
-    },
-    {
-      label: '输出长度',
-      field: 'max_tokens',
-      value: selectedPreset?.defaults.max_tokens ?? catalog?.defaults.max_tokens ?? form.max_tokens,
-    },
-    {
-      label: '请求上限',
-      field: 'requests_per_minute',
-      value: selectedPreset?.defaults.requests_per_minute ?? catalog?.defaults.requests_per_minute ?? form.requests_per_minute,
-    },
-    {
-      label: '失败冷却',
-      field: 'cooldown_seconds',
-      value: selectedPreset?.defaults.cooldown_seconds ?? catalog?.defaults.cooldown_seconds ?? form.cooldown_seconds,
-    },
-  ]), [catalog, form.cooldown_seconds, form.max_tokens, form.requests_per_minute, form.temperature, selectedPreset]);
 
   /**
    * 用户输入统一入口：任何字段编辑都会标记表单为脏，并清除上一次的保存错误，
@@ -343,29 +325,6 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                 })}
               </div>
             )}
-          </div>
-        )}
-
-        {selectedPreset && (
-          <div className="mb-4 grid gap-3 rounded-sm border border-gray-200 bg-gray-50 p-3 md:grid-cols-[minmax(0,1.15fr)_minmax(0,2fr)]">
-            <div className="min-w-0">
-              <div className="mb-1 text-xs font-black text-gray-500">推荐配置</div>
-              <div className="truncate text-sm font-black text-gray-900">{selectedPreset.label}</div>
-              <div className="mt-1 text-xs leading-5 text-gray-500">
-                {catalog?.help.defaults_tip || '不理解参数时先保持默认，系统会自动使用推荐值。'}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {presetDefaultRows.map((item) => (
-                <div key={item.field} className="rounded-xs border border-gray-200 bg-white px-2.5 py-2">
-                  <div className="mb-1 text-[10px] font-black text-gray-400">{item.label}</div>
-                  <div className="font-mono text-sm font-black text-gray-900">{formatPresetValue(item.value)}</div>
-                  <div className="mt-1 truncate text-[10px] text-gray-400">
-                    {catalog?.parameter_help?.[item.field]?.beginner || '默认即可'}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

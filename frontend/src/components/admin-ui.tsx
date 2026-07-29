@@ -165,6 +165,11 @@ export function AdminNoticeBanner({
  * 收敛此前 z-50/z-[1000]、bg-black/30 vs /40、rounded-md vs rounded-lg 的碎片化写法。
  * 统一：z-[1000] + bg-black/30 + Panel(rounded-lg) + 点击遮罩关闭。
  *
+ * 高度兜底：Panel 限制 max-h 为视口减 3rem 并可整体滚动，避免调用方
+ * 未自管理滚动区时在矮视口下上下裁切（2026-07-29 信源弹窗遮挡问题）。
+ * 内容较高的弹窗仍应像 ModelEditForm 一样自管理内部滚动区，本兜底
+ * 只在内容超出时兜底，正常情况下不触发。
+ *
  * 用法：
  * ```tsx
  * {showModal && (
@@ -203,7 +208,7 @@ export function AdminModal({
         onKeyDown={onKeyDown}
         className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
       >
-        <Panel className="pointer-events-auto w-full p-6 shadow-2xl" style={{ maxWidth }}>
+        <Panel className="pointer-events-auto max-h-[calc(100dvh-3rem)] w-full overflow-y-auto p-6 shadow-2xl" style={{ maxWidth }}>
           <h2 id={titleId} className="mb-5 text-lg font-black text-gray-900">{title}</h2>
           {children}
         </Panel>

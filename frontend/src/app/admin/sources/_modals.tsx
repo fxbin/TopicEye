@@ -3,16 +3,21 @@
 /**
  * Sources page 3 个模态对话框。
  *
- * - AddSourceModal       添加信源模态
- * - BatchImportModal     批量导入模态（含预览面板）
- * - EditSourceModal      编辑信源模态
+ * - AddSourceModal       添加信源模态（AdminModal 承载）
+ * - BatchImportModal     批量导入模态（含预览面板，自定义布局，保留手写结构）
+ * - EditSourceModal      编辑信源模态（AdminModal 承载）
  *
  * 从 page.tsx 抽出约 148 行 JSX，减少主页面体积。
+ *
+ * 2026-07-29：Add/Edit 从手写遮罩结构迁移到 AdminModal + AdminModalFooter，
+ * 修复 Panel 无高度约束导致矮视口下标题与底部按钮被裁切的问题；
+ * 同时删除与 AdminModal 重复的焦点管理代码。
  */
 
 import React from 'react';
 import { Upload } from 'lucide-react';
 import { Badge, Button, Panel } from '@/components/ui';
+import { AdminModal, AdminModalFooter } from '@/components/admin-ui';
 import SourceForm, { type FormState } from '@/components/SourceForm';
 import type { BackendSource } from '@/components/SourceRow';
 import { sourceTypeLabel } from '@/lib/source-sync-board';
@@ -32,25 +37,18 @@ export function AddSourceModal({
   onCreate: () => void;
   onClose: () => void;
 }) {
-  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <>
-      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="add-source-modal-title" tabIndex={-1} onKeyDown={onKeyDown} className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4">
-        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
-        <h2 id="add-source-modal-title" className="mb-6 text-xl font-black text-gray-900">添加信源</h2>
-        <SourceForm form={form} setForm={setForm} />
-        <div className="mt-7 flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
-            取消
-          </Button>
-          <Button type="button" variant="primary" onClick={onCreate} disabled={submitting || !form.name.trim()} className="px-5">
-            {submitting ? '提交中…' : '添加'}
-          </Button>
-        </div>
-        </Panel>
-      </div>
-    </>
+    <AdminModal title="添加信源" onClose={onClose}>
+      <SourceForm form={form} setForm={setForm} />
+      <AdminModalFooter>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
+          取消
+        </Button>
+        <Button type="button" variant="primary" onClick={onCreate} disabled={submitting || !form.name.trim()} className="px-5">
+          {submitting ? '提交中…' : '添加'}
+        </Button>
+      </AdminModalFooter>
+    </AdminModal>
   );
 }
 
@@ -199,24 +197,17 @@ export function EditSourceModal({
   onUpdate: () => void;
   onClose: () => void;
 }) {
-  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
   return (
-    <>
-      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="edit-source-modal-title" tabIndex={-1} onKeyDown={onKeyDown} className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4">
-        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
-        <h2 id="edit-source-modal-title" className="mb-6 text-xl font-black text-gray-900">编辑信源</h2>
-        <SourceForm form={form} setForm={setForm} />
-        <div className="mt-7 flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
-            取消
-          </Button>
-          <Button type="button" variant="primary" onClick={onUpdate} disabled={submitting || !form.name.trim()} className="px-5">
-            {submitting ? '保存中…' : '保存'}
-          </Button>
-        </div>
-        </Panel>
-      </div>
-    </>
+    <AdminModal title="编辑信源" onClose={onClose}>
+      <SourceForm form={form} setForm={setForm} />
+      <AdminModalFooter>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
+          取消
+        </Button>
+        <Button type="button" variant="primary" onClick={onUpdate} disabled={submitting || !form.name.trim()} className="px-5">
+          {submitting ? '保存中…' : '保存'}
+        </Button>
+      </AdminModalFooter>
+    </AdminModal>
   );
 }

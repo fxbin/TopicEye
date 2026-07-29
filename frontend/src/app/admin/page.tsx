@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   BookOpen,
   BrainCircuit,
+  GitMerge,
   LayoutDashboard,
   MessageSquareWarning,
   Newspaper,
@@ -28,6 +29,7 @@ interface AdminDashboardCard {
 const DASHBOARD_CARDS: AdminDashboardCard[] = [
   { id: 'sources', label: '信源管理', href: '/admin/sources', icon: RadioTower, description: '管理系统公共信源、采集频率与同步状态' },
   { id: 'contents', label: '内容管理', href: '/admin/contents', icon: Newspaper, description: '查看与维护内容池、原文快照与增强状态' },
+  { id: 'content-events', label: '内容事件治理', href: '/admin/content-events', icon: GitMerge, description: '审核同事件消息关系，影子验证并控制归一化写入' },
   { id: 'users', label: '用户管理', href: '/admin/users', icon: Users, description: '管理用户角色、套餐、封禁与密码重置' },
   { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit, description: '配置与评测 LLM 模型、查看用量与效果' },
   { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen, description: '维护系统级母题模板库，用户可 fork 后个性化配置' },

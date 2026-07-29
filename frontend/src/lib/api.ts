@@ -321,8 +321,22 @@ export const integrationsApi = {
 
 // Domain API objects extracted to lib/api/ submodules for module size.
 // Re-export for backward compat — `import { sourcesApi } from '@/lib/api'` still works.
-export { sourcesApi, contentsApi, contentCategoriesApi, favoritesApi, topicsApi, analysesApi, dailyReportApi, creationApi, viralApi, apiTokensApi, evidenceApi } from './api/_domains';
-export type { SourceBatchImportItem, ApiTokenItem, EvidenceStats, EvidenceEffectStats } from './api/_domains';
+export { sourcesApi, contentsApi, contentCategoriesApi, favoritesApi, topicsApi, analysesApi, dailyReportApi, creationApi, viralApi, apiTokensApi, evidenceApi, contentEventsAdminApi } from './api/_domains';
+export type {
+  SourceBatchImportItem,
+  ApiTokenItem,
+  EvidenceStats,
+  EvidenceEffectStats,
+  ContentEventRelation,
+  ContentEventReviewStatus,
+  ContentEventNormalizationMode,
+  ContentEventNormalizationScope,
+  ContentEventReviewItem,
+  ContentEventReviewListResponse,
+  ContentEventMutationResponse,
+  ContentEventNormalizeRequest,
+  ContentEventNormalizeResponse,
+} from './api/_domains';
 export { settingsApi, statsApi, statsJobsApi, trendsApi, feedbackApi, productFeedbackApi, adminPromptsApi, scoringDashboardApi } from './api/_analytics';
 export type { PromptRegistryItem, PromptRegistryListResponse, PromptDetailResponse, ScoringDashboardSummary, ScoringDashboardResponse } from './api/_analytics';
 export { weeklyDigestApi, monthlyDigestApi } from './api/_digests';

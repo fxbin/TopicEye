@@ -915,3 +915,102 @@ export const evidenceApi = {
     return request(`/admin/evidence/discover${query}`, { method: 'POST' });
   },
 };
+
+// ─── Content Events (内容事件归一化) Admin API ───
+
+export type ContentEventRelation = 'duplicate' | 'corroboration' | 'update';
+export type ContentEventReviewStatus = 'pending' | 'auto' | 'confirmed' | 'rejected';
+export type ContentEventNormalizationMode = 'shadow' | 'write';
+export type ContentEventNormalizationScope = 'public' | 'user';
+
+export interface ContentEventReviewItem {
+  id: number;
+  event_id: number;
+  event_version: number;
+  content_id: number;
+  title: string;
+  source_name: string | null;
+  source_type: string | null;
+  relation_type: ContentEventRelation;
+  confidence: number;
+  match_method: string | null;
+  detector_version: string | null;
+  reason: string | null;
+  review_status: ContentEventReviewStatus;
+  matched_at: string;
+  updated_at: string | null;
+}
+
+export interface ContentEventReviewListResponse {
+  items: ContentEventReviewItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ContentEventMutationResponse {
+  event_id: number;
+  version: number;
+  canonical_content_id: number;
+  canonical_locked: boolean;
+}
+
+export interface ContentEventNormalizeRequest {
+  hours: number;
+  mode: ContentEventNormalizationMode;
+  scope: ContentEventNormalizationScope;
+  owner_user_id?: number;
+}
+
+export interface ContentEventNormalizeResponse {
+  accepted: boolean;
+  idempotency_key: string;
+  mode: ContentEventNormalizationMode;
+  scope: ContentEventNormalizationScope;
+  owner_user_id: number | null;
+  result: Record<string, unknown>;
+}
+
+export const contentEventsAdminApi = {
+  /** 服务端分页读取指定审核状态的事件成员。 */
+  listReviews(params: {
+    page: number;
+    page_size: number;
+    review_status: ContentEventReviewStatus;
+  }): Promise<ContentEventReviewListResponse> {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      page_size: String(params.page_size),
+      review_status: params.review_status,
+    });
+    return request(`/admin/content-events/reviews?${query.toString()}`);
+  },
+
+  /** 接受或拒绝一条事件成员关系；expected_version 用于 OCC。 */
+  reviewMember(
+    memberId: number,
+    data: {
+      decision: 'accept' | 'reject';
+      relation_type?: ContentEventRelation;
+      reason: string;
+      expected_version: number;
+    },
+  ): Promise<ContentEventMutationResponse> {
+    return request(`/admin/content-events/members/${memberId}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 发起一次带幂等键的近期内容归一化。 */
+  normalize(
+    data: ContentEventNormalizeRequest,
+    idempotencyKey: string,
+  ): Promise<ContentEventNormalizeResponse> {
+    return request('/admin/content-events/normalize', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(data),
+    });
+  },
+};

@@ -10,6 +10,7 @@ const ADMIN_PAGE_LABELS: Record<string, string> = {
   '/admin': '概览',
   '/admin/sources': '信源管理',
   '/admin/contents': '内容管理',
+  '/admin/content-events': '内容事件治理',
   '/admin/users': '用户管理',
   '/admin/model-eval': 'AI 引擎',
   '/admin/mother-topics': '系统母题模板库',

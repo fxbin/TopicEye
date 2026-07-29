@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -65,6 +65,18 @@ class AiAnalysis(Base):
     summary_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        # Critical for latest_analysis_id_subquery: correlates on content_id,
+        # sorts by created_at DESC then id DESC. Without this index every
+        # content row triggers a full table scan on ai_analyses.
+        Index(
+            "ix_ai_analyses_content_created",
+            "content_id",
+            created_at.desc(),
+            id.desc(),
+        ),
     )
 
     content: Mapped[ContentItem] = relationship(back_populates="analyses")

@@ -93,6 +93,8 @@ class ContentItem(Base):
     __table_args__ = (
         Index("ix_content_items_owner", "owner_user_id"),
         Index("ix_content_items_owner_status", "owner_user_id", "status"),
+        Index("ix_content_items_crawled_at", crawled_at.desc()),
+        Index("ix_content_items_status_crawled", "status", crawled_at.desc()),
         UniqueConstraint("source_id", "content_hash", name="uq_content_items_source_hash"),
     )
 

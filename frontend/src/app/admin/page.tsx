@@ -13,6 +13,7 @@ import {
   RadioTower,
   Rocket,
   ScrollText,
+  Send,
   Settings,
   ShieldCheck,
   Users,
@@ -41,6 +42,7 @@ const DASHBOARD_CARDS: AdminDashboardCard[] = [
   { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', icon: BarChart3, description: '推荐质量评估、用户反馈分布与个性化向量统计' },
   { id: 'evidence', label: '可信线索', href: '/admin/evidence', icon: ShieldCheck, description: '跨源证据标记统计与效果验证（交互率对比）' },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning, description: '查看与处理用户反馈、追踪修复状态' },
+  { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', icon: Send, description: '查看 Webhook 推送记录、状态码、耗时与错误详情' },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings, description: '邮件服务、功能开关等全局配置' },
 ];
 

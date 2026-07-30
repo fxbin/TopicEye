@@ -16,6 +16,7 @@ import {
   RadioTower,
   Rocket,
   ScrollText,
+  Send,
   Settings,
   ShieldCheck,
   Users,
@@ -46,6 +47,7 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', icon: BarChart3 },
   { id: 'evidence', label: '可信线索', href: '/admin/evidence', icon: ShieldCheck },
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning },
+  { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', icon: Send },
   { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings },
 ];
 

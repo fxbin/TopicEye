@@ -1,4 +1,4 @@
-"""Metrics snapshot persistence — periodic write to SQLite + historical query.
+"""Metrics snapshot persistence — periodic write to PostgreSQL + historical query.
 
 Writes a row to ``metrics_snapshots`` every 60 seconds (driven by scheduler),
 cleaned up after 7 days.  Enables historical trend analysis beyond the
@@ -15,7 +15,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 
 from app.core.database import async_session
-from app.core.sqlite_retry import retry_write_transaction
 from app.models.metrics_snapshot import MetricsSnapshotRecord
 
 logger = logging.getLogger(__name__)
@@ -90,7 +89,7 @@ def _collect_snapshot_fields() -> dict:
 
 
 async def persist_metrics_snapshot() -> str:
-    """Write a single snapshot row to SQLite.
+    """Write a single snapshot row to PostgreSQL.
 
     Called by the scheduler every 60 seconds.  Failures are logged but
     never propagated — persistence must not block the scheduler.
@@ -104,12 +103,8 @@ async def persist_metrics_snapshot() -> str:
     try:
         async with async_session() as db:
             record = MetricsSnapshotRecord(captured_at=datetime.now(UTC), **fields)
-
-            async def _write():
-                db.add(record)
-                await db.flush()
-
-            await retry_write_transaction(db, _write)
+            db.add(record)
+            await db.flush()
             await db.commit()
         return "ok"
     except Exception as exc:

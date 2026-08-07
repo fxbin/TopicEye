@@ -132,15 +132,11 @@ async def mark_read(user_id: int, notification_id: int) -> bool:
         notif = await db.execute(select(Notification.id).where(Notification.id == notification_id, visibility))
         if notif.scalar_one_or_none() is None:
             return False
-        # 用 INSERT ... ON CONFLICT DO NOTHING (PG/SQLite) 幂等写入
+        # 用 INSERT ... ON CONFLICT DO NOTHING (PG) 幂等写入
         from sqlalchemy.dialects.postgresql import insert as pg_insert
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-        from app.core.database import database_profile
-
-        inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
         stmt = (
-            inserter(NotificationRead)
+            pg_insert(NotificationRead)
             .values(
                 user_id=user_id,
                 notification_id=notification_id,
@@ -171,14 +167,10 @@ async def mark_all_read(user_id: int) -> int:
             return 0
 
         from sqlalchemy.dialects.postgresql import insert as pg_insert
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-        from app.core.database import database_profile
-
-        inserter = sqlite_insert if database_profile.is_sqlite else pg_insert
         records = [{"user_id": user_id, "notification_id": nid} for nid in unread_ids]
         stmt = (
-            inserter(NotificationRead)
+            pg_insert(NotificationRead)
             .values(records)
             .on_conflict_do_nothing(index_elements=["user_id", "notification_id"])
         )

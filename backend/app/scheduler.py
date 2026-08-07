@@ -47,7 +47,7 @@ from app.services.job_tracker import track_job
 
 logger = logging.getLogger(__name__)
 
-# Semaphore to limit concurrent DB write tasks — SQLite single-writer constraint.
+# Concurrency limiter for source sync tasks.
 _sync_semaphore: asyncio.Semaphore | None = None
 _sync_semaphore_limit: int | None = None
 
@@ -238,7 +238,7 @@ async def _sync_single_source(source_id: int) -> None:
 
     Keep this job narrow: one source fetch + one source status update. Global
     analysis/clustering runs on its own throttled schedule so many source jobs
-    do not stampede SQLite with heavy post-sync writes.
+    do not overwhelm the DB with heavy post-sync writes.
     """
     sem = _get_semaphore()
     async with sem, async_session() as db:
@@ -911,7 +911,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Notifications cleanup at 03:30 (错开 03:00 避免和 content cleanup 抢 SQLite 写锁)
+    # Notifications cleanup at 03:30 (错开 03:00 content cleanup)
     scheduler.add_job(
         cleanup_old_notifications,
         trigger=CronTrigger(hour=3, minute=30),
@@ -920,7 +920,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Read records cleanup at 03:45 (行为偏好数据保留 180 天，错开其他 cleanup 抢 SQLite 写锁)
+    # Read records cleanup at 03:45 (行为偏好数据保留 180 天)
     scheduler.add_job(
         _cleanup_old_read_records,
         trigger=CronTrigger(hour=3, minute=45),
@@ -1093,7 +1093,7 @@ def start_scheduler() -> None:
     )
 
     # 趋势快照：每日04:30计算话题热度+关键词频率
-    # (错开 04:00 知乎抓取 + 04:15 聚类,避免 DB 写锁竞争)
+    # (错开 04:00 知乎抓取 + 04:15 聚类,避免资源竞争)
     scheduler.add_job(
         _snapshot_trends,
         trigger=CronTrigger(hour=4, minute=30),
@@ -1151,7 +1151,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # WeRead 统计缓存刷新：每日 05:00（错开 04:30 趋势快照，避免 SQLite 写锁竞争）
+    # WeRead 统计缓存刷新：每日 05:00（错开 04:30 趋势快照）
     scheduler.add_job(
         _refresh_weread_stats_cache,
         trigger=CronTrigger(hour=5, minute=0),

@@ -12,8 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import database_profile
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.core.time import utc_now
 from app.models.monthly_digest import MonthlyDigest
 from app.services.digest_base import (
@@ -72,12 +70,7 @@ async def generate_monthly_digest(
     now = utc_now()
 
     async def _claim_generation() -> tuple[MonthlyDigest, bool]:
-        if database_profile.is_sqlite:
-            await begin_immediate_for_sqlite(db)
-
-        existing_stmt = select(MonthlyDigest).where(MonthlyDigest.month_key == month_key)
-        if database_profile.is_postgresql:
-            existing_stmt = existing_stmt.with_for_update()
+        existing_stmt = select(MonthlyDigest).where(MonthlyDigest.month_key == month_key).with_for_update()
 
         existing = await db.execute(existing_stmt)
         digest = existing.scalar_one_or_none()
@@ -100,7 +93,7 @@ async def generate_monthly_digest(
             except IntegrityError:
                 await db.rollback()
                 existing = await db.execute(
-                    existing_stmt.with_for_update() if database_profile.is_postgresql else existing_stmt
+                    existing_stmt.with_for_update()
                 )
                 digest = existing.scalar_one()
                 if digest.status == "DONE":
@@ -115,12 +108,7 @@ async def generate_monthly_digest(
 
         return digest, True
 
-    digest, claimed = await retry_sqlite_locked(
-        _claim_generation,
-        attempts=4,
-        base_delay=0.1,
-        on_retry=db.rollback,
-    )
+    digest, claimed = await _claim_generation()
     if not claimed:
         return digest
 

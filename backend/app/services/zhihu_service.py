@@ -16,9 +16,8 @@ from datetime import UTC, datetime
 import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.core.database import async_session, database_profile
+from app.core.database import async_session
 from app.core.http_retry import retry_async
 from app.models.zhihu import ZhihuAlbum, ZhihuCategory
 from app.services.stats_cache import invalidate_novel_platform_stats_cache
@@ -63,11 +62,7 @@ STORY_SUBCAT_IDS = {name: cat_id for _, cat_id, name in STORY_SUBCATS}
 
 
 def _backend_insert(model):
-    if database_profile.is_sqlite:
-        return sqlite_insert(model)
-    if database_profile.is_postgresql:
-        return postgresql_insert(model)
-    raise RuntimeError(f"Unsupported database backend for Zhihu upsert: {database_profile.backend}")
+    return postgresql_insert(model)
 
 
 def _upsert_zhihu_category_statement(rec: dict):

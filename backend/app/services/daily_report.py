@@ -14,8 +14,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import database_profile
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
@@ -668,18 +666,14 @@ async def generate_daily_report(
     now = _local_now()
 
     async def _claim_generation() -> tuple[DailyReport, bool]:
-        if database_profile.is_sqlite:
-            await begin_immediate_for_sqlite(db)
-
         existing_stmt = (
             select(DailyReport)
             .where(DailyReport.report_date == report_date)
             .where(DailyReport.edition == normalized_edition)
             .where(DailyReport.cutoff_at == window_end)
             .where(_owner_filter(owner_user_id))
+            .with_for_update()
         )
-        if database_profile.is_postgresql:
-            existing_stmt = existing_stmt.with_for_update()
 
         existing = await db.execute(existing_stmt)
         report = existing.scalar_one_or_none()
@@ -709,7 +703,7 @@ async def generate_daily_report(
             except IntegrityError:
                 await db.rollback()
                 existing = await db.execute(
-                    existing_stmt.with_for_update() if database_profile.is_postgresql else existing_stmt
+                    existing_stmt.with_for_update()
                 )
                 report = existing.scalar_one()
                 if report.status == "DONE" and not force:
@@ -729,12 +723,7 @@ async def generate_daily_report(
 
         return report, True
 
-    report, claimed = await retry_sqlite_locked(
-        _claim_generation,
-        attempts=4,
-        base_delay=0.1,
-        on_retry=db.rollback,
-    )
+    report, claimed = await _claim_generation()
     if not claimed:
         return report
 

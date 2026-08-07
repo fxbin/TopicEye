@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import async_session
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.scheduled_job import JobExecutionLog, ScheduledJob
 
 logger = logging.getLogger(__name__)
@@ -69,7 +68,6 @@ async def _claim_job_run(job_key: str, name: str, description: str, timeout: int
         async with async_session() as db:
 
             async def _claim(*, now: datetime = now) -> bool:
-                await begin_immediate_for_sqlite(db)
                 existing = await db.execute(
                     select(ScheduledJob).where(ScheduledJob.job_key == job_key).with_for_update()
                 )
@@ -112,7 +110,7 @@ async def _claim_job_run(job_key: str, name: str, description: str, timeout: int
                 return True
 
             try:
-                claimed = await retry_sqlite_locked(_claim, on_retry=db.rollback)
+                claimed = await _claim()
                 await db.commit()
                 return claimed
             except IntegrityError:

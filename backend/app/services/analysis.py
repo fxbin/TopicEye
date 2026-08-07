@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.sqlite_retry import is_sqlite_locked, retry_sqlite_locked
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
 from app.repositories.content_repo import ANALYSIS_STALE_MINUTES, ContentRepo
@@ -701,12 +700,6 @@ async def analyze_one_claimed(
         if heartbeat_task is not None:
             await _stop_heartbeat(heartbeat_task)
         await db.rollback()
-        if is_sqlite_locked(e):
-            logger.warning("Skipped analysis for content id=%d: database is locked", content_id)
-            if raise_on_failure:
-                raise
-            return None
-
         logger.error("Failed to analyze content id=%d: %s", content_id, e)
         await _mark_content_error(db, content_id, fencing_token=fencing_token)
         if raise_on_failure:

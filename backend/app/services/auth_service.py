@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.sqlite_retry import retry_sqlite_locked
 from app.core.user_identity import normalize_email
 from app.models.user import User, UserApiToken, UserOAuthAccount, UserSession
 
@@ -175,7 +174,7 @@ async def get_or_create_oauth_user(
         )
         return user
 
-    return await retry_sqlite_locked(_create_oauth_only_user, on_retry=db.rollback)
+    return await _create_oauth_only_user()
 
 
 async def _link_oauth_account(
@@ -263,7 +262,7 @@ async def create_session(db: AsyncSession, user: User, *, days: int = 30) -> tup
         await db.refresh(session)
         return session
 
-    await retry_sqlite_locked(insert_session, on_retry=db.rollback)
+    await insert_session()
     return token, session
 
 

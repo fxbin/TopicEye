@@ -76,11 +76,7 @@ class DuckDBAnalytics:
 
     def __init__(self) -> None:
         self._local = threading.local()
-        self._profile = create_database_profile(
-            settings.DATABASE_URL,
-            sqlite_domain_split_enabled=settings.DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED,
-            sqlite_domain_dir=settings.DATABASE_SQLITE_DOMAIN_DIR,
-        )
+        self._profile = create_database_profile(settings.DATABASE_URL)
         self._attach_alias = "oltp_db"
         self._available: bool | None = None  # tri-state: None=unchecked
         self._last_error: str | None = None

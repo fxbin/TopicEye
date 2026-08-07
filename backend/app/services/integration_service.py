@@ -6,7 +6,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.user_integration import UserIntegration
 from app.services.secret_store import decrypt_secret, encrypt_secret
 
@@ -62,7 +61,6 @@ async def claim_user_integration_sync(
     lease_cutoff = now - timedelta(seconds=max(int(lease_seconds), 1))
 
     async def _claim() -> UserIntegration | None:
-        await begin_immediate_for_sqlite(db)
         result = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id).with_for_update())
         integration = result.scalar_one_or_none()
         if integration is None:
@@ -82,7 +80,7 @@ async def claim_user_integration_sync(
         await db.flush()
         return integration
 
-    return await retry_sqlite_locked(_claim, on_retry=db.rollback)
+    return await _claim()
 
 
 async def mark_user_integration_sync_error(

@@ -12,7 +12,6 @@ from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.analysis_job import AnalysisJobRecord
 from app.repositories.content_repo import ContentRepo
 
@@ -144,7 +143,6 @@ async def _persist_job_snapshot(job: AnalysisJob, *, required: bool = False) -> 
         async with async_session() as db:
 
             async def _write_snapshot() -> None:
-                await begin_immediate_for_sqlite(db)
                 record = await db.get(AnalysisJobRecord, job.job_id)
                 if record is None:
                     record = AnalysisJobRecord(job_id=job.job_id, status=job.status, content_ids=[])
@@ -160,7 +158,7 @@ async def _persist_job_snapshot(job: AnalysisJob, *, required: bool = False) -> 
                 record.error_message = job.error_message
                 await db.commit()
 
-            await retry_sqlite_locked(_write_snapshot, attempts=3, base_delay=0.05, on_retry=db.rollback)
+            await _write_snapshot()
         return True
     except Exception as exc:
         logger.warning("Analysis job %s snapshot persistence failed: %s", job.job_id, exc)

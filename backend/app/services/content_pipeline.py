@@ -16,11 +16,9 @@ from typing import Any
 import httpx
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import database_profile
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceStatus, SourceType
 
@@ -623,8 +621,4 @@ def _build_douyin_metrics(meta: dict) -> dict:
 
 def _backend_insert(model):
     """Pick the dialect-appropriate INSERT for ``on_conflict_*`` upserts."""
-    if database_profile.is_sqlite:
-        return sqlite_insert(model)
-    if database_profile.is_postgresql:
-        return postgresql_insert(model)
-    raise RuntimeError(f"Unsupported database backend for on_conflict upsert: {database_profile.backend}")
+    return postgresql_insert(model)

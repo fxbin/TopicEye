@@ -217,7 +217,7 @@ async def _zhihu_current(db: AsyncSession) -> tuple[int, list[dict], list[dict]]
 # ── 黑岩 / 点众（trending 体系，复用 TrendingSnapshot 快照） ──────────
 
 
-async def _trending_history(db: AsyncSession, source: str, start_date: str, end_date: str) -> dict:
+async def _trending_history(db: AsyncSession, source: str, start_date: date, end_date: date) -> dict:
     """从 TrendingSnapshot 对比首末日 rank，算黑岩/点众的周内排名变化。
 
     快照结构（trending_snapshot.save_snapshot）每条只存 rank/title/url/hot_value。
@@ -369,11 +369,11 @@ async def build_weekly_webnovel_report(db: AsyncSession, days: int = 7) -> dict:
     zhihu_count, zhihu_current, zhihu_categories = await _zhihu_current(db)
 
     # ── 黑岩（trending 快照对比） ──
-    heiyan_history = await _trending_history(db, "heiyan", start_iso, end_iso)
+    heiyan_history = await _trending_history(db, "heiyan", start, today)
     heiyan_count, heiyan_categories = await _trending_current(db, "heiyan")
 
     # ── 点众（trending 快照对比） ──
-    ishugui_history = await _trending_history(db, "ishugui", start_iso, end_iso)
+    ishugui_history = await _trending_history(db, "ishugui", start, today)
     ishugui_count, ishugui_categories = await _trending_current(db, "ishugui")
 
     # ── 每平台 movement 收集 ──

@@ -88,10 +88,10 @@ Output strictly in this JSON format (no other text):
   "tags": ["tag1", "tag2"],
   "scores": {{
     "quality_score": <0-100, information density and logical coherence>,
-    "hot_score": <0-100, current热度 and spread velocity>,
+    "hot_score": <0-100, current heat and spread velocity>,
     "freshness_score": <0-100, freshness and timeliness>,
-    "creator_score": <0-100, value for creators'选题 decisions>,
-    "viral_score": <0-100, viral传播 potential>,
+    "creator_score": <0-100, value for creators' topic-selection decisions>,
+    "viral_score": <0-100, viral spread potential>,
     "risk_score": <0-100, content risk>
   }},
   "risk_notes": "中文风险说明或空字符串。规则：当risk_score > 50时，必须填写具体风险说明（如：话题敏感、可能引发争议、涉及未证实信息、版权风险等），20字以内；当risk_score <= 50时，输出空字符串 \"\"",

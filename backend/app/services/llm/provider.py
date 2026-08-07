@@ -31,6 +31,7 @@ from app.services.llm._call_engine import (
     _is_rate_limit_error,
     _parse_reset_time,
 )
+from litellm.exceptions import UnsupportedParamsError
 from app.services.llm._failover import _candidate_from_db_model, _failover, _model_key
 from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
@@ -114,8 +115,15 @@ async def call_llm_with_metadata(
     max_tokens: int = 2000,
     scene: str = "general",
     routing_group: str = "default",
+    response_format: dict | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Call LLM with automatic ordered failover and return the selected route metadata."""
+    """Call LLM with automatic ordered failover and return the selected route metadata.
+
+    ``response_format`` is passed through to litellm's ``acompletion``.
+    When a provider does not support it (``UnsupportedParamsError``),
+    the failover loop retries that candidate without ``response_format``
+    so JSON-mode callers still get a usable text response.
+    """
     # Circuit breaker: skip LLM call entirely when in OPEN state
     from app.services.llm.circuit_breaker import get_llm_circuit_breaker
 
@@ -144,6 +152,7 @@ async def call_llm_with_metadata(
             max_tokens,
             scene,
             routing_group,
+            response_format=response_format,
         )
         await breaker.record_success()
         cache.set(
@@ -175,6 +184,7 @@ async def _call_llm_with_metadata_inner(
     max_tokens: int = 2000,
     scene: str = "general",
     routing_group: str = "default",
+    response_format: dict | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Call LLM with automatic ordered failover and return the selected route metadata."""
     db_models = await _model_cache.get_route_models(routing_group)
@@ -196,6 +206,24 @@ async def _call_llm_with_metadata_inner(
 
         try:
             logger.info("Calling LLM candidate: %s", request_model)
+            response = await _call_with_retry(
+                messages,
+                request_model,
+                candidate["api_key"],
+                api_base,
+                candidate["temperature"],
+                candidate["max_tokens"],
+                response_format,
+                model_config,
+                scene,
+            )
+            _failover.on_success(key)
+            return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
+        except UnsupportedParamsError:
+            # Provider doesn't support response_format (e.g. some GLM / DeepSeek
+            # endpoints). Retry the same candidate without it so JSON-mode
+            # callers still get a parseable text response.
+            logger.info("Model %s doesn't support response_format, retrying without", request_model)
             response = await _call_with_retry(
                 messages,
                 request_model,
@@ -272,6 +300,10 @@ async def call_llm(
     return response
 
 
+# Default JSON mode for all call_llm_json* callers.
+_JSON_RESPONSE_FORMAT = {"type": "json_object"}
+
+
 async def call_llm_json_with_metadata(
     messages: list,
     temperature: float = 0.2,
@@ -295,6 +327,7 @@ async def call_llm_json_with_metadata(
             max_tokens=max_tokens,
             scene=scene,
             routing_group=routing_group,
+            response_format=_JSON_RESPONSE_FORMAT,
         )
 
         text = raw.strip()

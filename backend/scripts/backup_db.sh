@@ -5,9 +5,7 @@
 # 用法：
 #   ./scripts/backup_db.sh [backup_dir]
 #
-# 自动检测 DATABASE_URL（从 .env 或环境变量），按 backend 类型备份：
-#   - SQLite: 直接 cp 数据库文件（停服时安全；运行时用 sqlite3 .backup）
-#   - PostgreSQL: pg_dump 自定义格式压缩
+# 自动检测 DATABASE_URL（从 .env 或环境变量），使用 pg_dump 备份 PostgreSQL。
 #
 # 保留策略：默认保留最近 7 份，更早的自动删除。
 # 适合配 cron：每天凌晨跑一次。
@@ -31,29 +29,9 @@ if [[ -z "$DATABASE_URL" ]]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
-echo "[$(date)] Backup started → $BACKUP_DIR (DATABASE_URL prefix: ${DATABASE_URL%%://*})"
+echo "[$(date)] Backup started → $BACKUP_DIR"
 
-if [[ "$DATABASE_URL" == sqlite* ]]; then
-    # ── SQLite backup ──
-    # 提取 db 文件路径（去掉 sqlite+aiosqlite:/// 前缀）
-    DB_PATH="${DATABASE_URL#*:///}"
-    DB_PATH="${DB_PATH#*://}"  # 兼容 sqlite:///path
-    if [[ ! -f "$DB_PATH" ]]; then
-        echo "ERROR: SQLite file not found: $DB_PATH" >&2
-        exit 1
-    fi
-    BACKUP_FILE="$BACKUP_DIR/topiceye_${TIMESTAMP}.db"
-
-    # 用 sqlite3 .backup（在线热备，不阻塞写入；比 cp 更安全）
-    if command -v sqlite3 &>/dev/null; then
-        sqlite3 "$DB_PATH" ".backup '$BACKUP_FILE'"
-        echo "[$(date)] SQLite online backup → $BACKUP_FILE"
-    else
-        cp "$DB_PATH" "$BACKUP_FILE"
-        echo "[$(date)] SQLite cold copy → $BACKUP_FILE (sqlite3 not available)"
-    fi
-
-elif [[ "$DATABASE_URL" == postgresql* ]]; then
+if [[ "$DATABASE_URL" == postgresql* ]]; then
     # ── PostgreSQL backup ──
     BACKUP_FILE="$BACKUP_DIR/topiceye_${TIMESTAMP}.dump"
 
@@ -73,7 +51,7 @@ elif [[ "$DATABASE_URL" == postgresql* ]]; then
     echo "[$(date)] PostgreSQL backup → $BACKUP_FILE"
 
 else
-    echo "ERROR: Unsupported DATABASE_URL: ${DATABASE_URL%%+*}" >&2
+    echo "ERROR: Unsupported DATABASE_URL: ${DATABASE_URL%%+*}. Use postgresql+asyncpg://." >&2
     exit 1
 fi
 

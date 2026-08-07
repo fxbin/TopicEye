@@ -12,7 +12,7 @@
 #     ./scripts/rollback_migration.sh a1b2c3d4 # 回退到指定版本
 #
 # 顺序（安全优先）：
-#   1) 先跑 backup_db.sh 产出一份迁移前备份（SQLite 热备 / PG pg_dump）
+#   1) 先跑 backup_db.sh 产出一份迁移前备份（PG pg_dump）
 #   2) 打印当前 alembic 版本，再执行 alembic downgrade <target>
 #   3) 打印回退后的版本供核对
 #

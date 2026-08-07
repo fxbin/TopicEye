@@ -7,27 +7,26 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - backend-data:/app/data
     environment:
       - APP_ENV=${APP_ENV:-development}
-      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:///./data/topiceye.db}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://topiceye:topiceye@postgres:5432/topiceye}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - AUTO_CREATE_TABLES_ON_STARTUP=${AUTO_CREATE_TABLES_ON_STARTUP:-true}
       - CACHE_WARMUP_ENABLED=${CACHE_WARMUP_ENABLED:-true}
       - STARTUP_SEED_ENABLED=${STARTUP_SEED_ENABLED:-true}
-      - DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED=${DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED:-false}
-      - DATABASE_SQLITE_DOMAIN_DIR=${DATABASE_SQLITE_DOMAIN_DIR:-./data/domains}
       - DUCKDB_THREADS=${DUCKDB_THREADS:-2}
       - DUCKDB_MEMORY_LIMIT=${DUCKDB_MEMORY_LIMIT:-256MB}
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
       # macOS bind mount 下 inotify 不穿透，强制 watchfiles 轮询以启用热重载
       - WATCHFILES_FORCE_POLLING=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
-    profiles: ["postgres"]
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-topiceye}
       - POSTGRES_USER=${POSTGRES_USER:-topiceye}
@@ -36,6 +35,11 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-topiceye}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   frontend:
@@ -58,5 +62,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend-data:
   postgres-data:

@@ -6,7 +6,7 @@ Follow the existing project history. Recent commits use concise Conventional
 Commit-style messages with Chinese summaries:
 
 ```text
-fix(auth): 降低登录链路 SQLite 写锁等待
+fix(auth): 降低登录链路数据库写锁等待
 fix(cache): 重试统计工作台启动预热
 fix(trending): 合并重复信源筛选项
 ```
@@ -125,10 +125,8 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 
 ### 存量违规与迁移策略
 
-`api/v1/` 层的**硬违规（直接写 ORM 查询）已基本清零**：目前仅剩 `_db_write.py`
-一处刻意保留（SQLite 低层写入助手，PRAGMA busy_timeout 用 `text()` + `db.execute`），
-它是分层的合法边界，已在检查中豁免。剩余的 `import sqlalchemy` 绝大多数是
-`AsyncSession` 类型注解与 `sqlalchemy.exc` 异常类等**已列入例外**的用法。
+`api/v1/` 层的**硬违规（直接写 ORM 查询）已基本清零**。剩余的 `import sqlalchemy`
+绝大多数是 `AsyncSession` 类型注解与 `sqlalchemy.exc` 异常类等**已列入例外**的用法。
 
 **机器强制**：`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`
 出现在 `api/v1/*.py` 会被 CI 的 `backend-layering` 作业阻断（本地跑 `make layering`
@@ -192,9 +190,8 @@ async def list_topics(db: AsyncSession = Depends(get_db)):
 
 数据库迁移属高风险操作，执行前先备份、出问题有回滚路径：
 
-- **前置备份**：`cd backend && ./scripts/backup_db.sh`（SQLite 在线热备 / PG pg_dump，默认保留 7 份）。
+- **前置备份**：`cd backend && ./scripts/backup_db.sh`（PG pg_dump，默认保留 7 份）。
 - **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。会先自动备份，再执行
   `alembic downgrade <target>`（`target` 可选，默认 `-1` 回退一格；也可传具体 revision 或 `base`）。
 - **验证**：先在测试环境跑 `alembic downgrade -1`，确认上一版 schema 被恢复且应用能启动，再到生产执行。
-- SQLite 缺大多数 ALTER 能力，迁移依赖 batch 模式重建表（见 `alembic/env.py` 的 `render_as_batch`），
-  因此回滚前的备份尤为重要。
+- `alembic/env.py` 的 `render_as_batch=True` 对 PostgreSQL 无害，保留 batch 模式备用。

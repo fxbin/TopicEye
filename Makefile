@@ -13,7 +13,7 @@
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev test test-backend test-frontend \
+.PHONY: help setup dev dev-db test test-backend test-frontend \
         lint lint-backend lint-frontend layering backup
 
 help:  ## 列出所有可用目标
@@ -24,12 +24,15 @@ setup:  ## 安装后端(dev)与前端依赖
 	cd backend && pip install -r requirements-dev.txt
 	cd frontend && npm ci
 
-dev:  ## docker compose 起全栈（backend + frontend）
+dev:  ## docker compose 起全栈（backend + frontend + postgres）
 	docker compose up
+
+dev-db:  ## 仅启动 PostgreSQL（本地开发用）
+	docker compose up postgres
 
 test: test-backend test-frontend  ## 跑后端 + 前端测试
 
-test-backend:  ## 后端 pytest（对应 CI backend-sqlite）
+test-backend:  ## 后端 pytest（需要 PG 运行在 localhost:5432）
 	cd backend && python -m pytest tests/ -q
 
 test-frontend:  ## 前端 vitest + 覆盖率门禁（对应 CI frontend-tests）
@@ -46,5 +49,5 @@ layering:  ## 分层纪律检查：api/v1 禁止直接 ORM 查询 / 禁用 impor
 lint-frontend:  ## 前端类型检查（AGENTS.md 首选，比 npm run lint 稳）
 	cd frontend && npx tsc --noEmit
 
-backup:  ## 备份数据库（SQLite 热备 / PG pg_dump，保留最近 7 份）
+backup:  ## 备份数据库（PG pg_dump，保留最近 7 份）
 	cd backend && ./scripts/backup_db.sh

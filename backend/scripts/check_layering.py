@@ -13,9 +13,6 @@
 `from app.models import <ORMModel>` 与 `<ORMModel>` 混在 Enum / User 依赖注入里的情况，
 仍靠 AGENTS.md 的人工评审 checklist 兜底。
 
-ALLOWLIST：`_db_write.py` 是刻意的 SQLite 低层写入助手（PRAGMA busy_timeout 用
-`text()` + `db.execute`），是分层的合法边界，豁免。
-
 用法：
     python scripts/check_layering.py            # 检查默认目录
     python scripts/check_layering.py app/api/v1 # 指定目录
@@ -33,7 +30,8 @@ from pathlib import Path
 API_DIR = Path("app/api/v1")
 
 # 刻意豁免的文件名（分层的合法低层边界）。
-ALLOWLIST = {"_db_write.py"}
+# _db_write.py 不再需要豁免——SQLite PRAGMA 调用已随 SQLite 分支移除。
+ALLOWLIST: set[str] = set()
 
 # 允许的 sqlalchemy 子模块前缀（值对象 / 类型注解 / 异常类）。
 ALLOWED_SQLALCHEMY_PREFIXES = ("sqlalchemy.ext.asyncio", "sqlalchemy.exc")

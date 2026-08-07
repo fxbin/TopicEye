@@ -1,9 +1,7 @@
 # =============================================================================
-# TopicEye CI — 跑后端测试在 SQLite（默认）+ PostgreSQL（防跨 DB bug）
+# TopicEye CI — 后端测试在 PostgreSQL + 前端类型检查 + 前端单元测试
 # =============================================================================
-# 这次 INSERT 排除自增主键的 bug 就是 SQLite 测试通过但 PG 生产全挂。
-# PG matrix 让 CI 自动抓这类跨 DB 兼容性问题。
-#
+# SQLite 分支已移除，PostgreSQL 是唯一支持的 OLTP 后端。
 # 前端 tsc 类型检查单独一个 job。
 # =============================================================================
 
@@ -16,26 +14,8 @@ on:
     branches: [main]
 
 jobs:
-  # ── Backend tests on SQLite ──
-  backend-sqlite:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: pip install -r requirements-dev.txt
-      - name: Run tests (SQLite)
-        env:
-          DATABASE_URL: "sqlite:///./test_ci.db"
-        run: python -m pytest tests/ -q --tb=short
-
-  # ── Backend tests on PostgreSQL (防跨 DB bug) ──
-  backend-postgres:
+  # ── Backend tests on PostgreSQL ──
+  backend-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -64,16 +44,9 @@ jobs:
       - name: Run tests (PostgreSQL)
         env:
           DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
-        # 只跑关键写入路径测试（这些是 SQLite/PG 差异最容易暴露的地方）
-        run: |
-          python -m pytest \
-            tests/test_content_pipeline.py \
-            tests/test_notification_per_user.py \
-            tests/test_creation_history.py \
-            tests/test_api_token_auth.py \
-            tests/test_migrations.py \
-            tests/test_analysis_recovery.py \
-            -q --tb=short
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: python -m pytest tests/ -q --tb=short
 
   # ── Frontend type check ──
   frontend-types:

@@ -58,7 +58,19 @@ import type {
   ScoringFlowResponse,
   TopicGroupResponse,
 } from '@/types/contents';
-import type { TrendPoint, TrendKeywordItem } from '@/types/trends';
+import type {
+  TrendEvidenceCalculation,
+  TrendEvidenceDailyCount,
+  TrendEvidenceFilter,
+  TrendEvidenceItem,
+  TrendEvidenceRequest,
+  TrendEvidenceResponse,
+  TrendEvidenceScope,
+  TrendEvidenceSummary,
+  TrendKeywordItem,
+  TrendPoint,
+  TrendProvenanceStatus,
+} from '@/types/trends';
 import type {
   IssueFeedbackSeverity,
   IssueFeedbackStatus,
@@ -128,6 +140,15 @@ export type {
   TopicGroupResponse,
   TrendPoint,
   TrendKeywordItem,
+  TrendProvenanceStatus,
+  TrendEvidenceFilter,
+  TrendEvidenceRequest,
+  TrendEvidenceScope,
+  TrendEvidenceSummary,
+  TrendEvidenceCalculation,
+  TrendEvidenceDailyCount,
+  TrendEvidenceItem,
+  TrendEvidenceResponse,
   IssueFeedbackSeverity,
   IssueFeedbackStatus,
   ProductUpdateKind,

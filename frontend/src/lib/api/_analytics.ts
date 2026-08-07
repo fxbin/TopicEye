@@ -7,7 +7,12 @@ import { request } from './_core';
 export type FeedbackType = 'like' | 'dislike' | 'skip' | 'not_relevant' | 'outdated' | 'great_pick';
 import type { IssueFeedbackItem, IssueFeedbackListResponse, IssueFeedbackSeverity, IssueFeedbackStatus, ProductUpdateEntry, ProductUpdateItem, ProductUpdateKind, ProductUpdateListResponse, ProductUpdateStatus } from '@/types/product-feedback';
 import type { JobStatsByJobKey, JobStatsResponse, RSSHubInstance, StatsCategoryItem, StatsDashboard, StatsNovelPlatform, StatsOverview, StatsSourceItem, StatsTrendItem } from '@/types/stats';
-import type { TrendKeywordItem, TrendPoint } from '@/types/trends';
+import type {
+  TrendEvidenceFilter,
+  TrendEvidenceResponse,
+  TrendKeywordItem,
+  TrendPoint,
+} from '@/types/trends';
 
 /** 邮件 Provider 配置响应（api_key / smtp_password 脱敏） */
 export interface EmailProviderConfig {
@@ -201,6 +206,36 @@ export const trendsApi = {
     const days = params?.days ?? 7;
     const limit = params?.limit ?? 50;
     return request(`/trends/keywords?days=${days}&limit=${limit}`);
+  },
+
+  /** Frozen member records for one topic snapshot day. */
+  topicEvidence(
+    topicId: number,
+    date: string,
+    params?: { filter?: TrendEvidenceFilter; page?: number; page_size?: number },
+  ): Promise<TrendEvidenceResponse> {
+    const query = new URLSearchParams({
+      date,
+      filter: params?.filter ?? 'all',
+      page: String(params?.page ?? 1),
+      page_size: String(params?.page_size ?? 20),
+    });
+    return request(`/trends/topics/${topicId}/evidence?${query.toString()}`);
+  },
+
+  /** Member records that contributed to a keyword aggregate in the selected window. */
+  keywordEvidence(
+    keyword: string,
+    params?: { days?: number; filter?: TrendEvidenceFilter; page?: number; page_size?: number },
+  ): Promise<TrendEvidenceResponse> {
+    const query = new URLSearchParams({
+      keyword,
+      days: String(params?.days ?? 7),
+      filter: params?.filter ?? 'all',
+      page: String(params?.page ?? 1),
+      page_size: String(params?.page_size ?? 20),
+    });
+    return request(`/trends/keywords/evidence?${query.toString()}`);
   },
 };
 
@@ -413,4 +448,3 @@ export const scoringDashboardApi = {
     return request(`/admin/scoring-dashboard?days=${days}`);
   },
 };
-

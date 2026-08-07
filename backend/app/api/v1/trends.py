@@ -13,13 +13,20 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
-from app.core.database import async_session
+from app.core.database import async_session, get_db
+from app.schemas.trend import TrendEvidenceResponse
 from app.services import duckdb_service
-from app.services.trends import snapshot_daily_trends
+from app.services.trends import (
+    get_keyword_trend_evidence,
+    get_topic_trend_evidence,
+    snapshot_daily_trends,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trends", tags=["trends"])
@@ -67,3 +74,49 @@ async def keyword_cloud(
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc
     response.headers.update(ANALYTICS_HEADERS)
     return {"days": days, "keywords": keywords}
+
+
+@router.get("/topics/{topic_id}/evidence", response_model=TrendEvidenceResponse)
+async def topic_trend_evidence(
+    topic_id: int,
+    snapshot_date: date = Query(..., alias="date", description="Snapshot date (YYYY-MM-DD)"),
+    evidence_filter: Literal["all", "selected", "evidenced"] = Query("all", alias="filter"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> TrendEvidenceResponse:
+    """Drill through one public topic trend point to its frozen member set."""
+    payload = await get_topic_trend_evidence(
+        db,
+        topic_id=topic_id,
+        snapshot_date=snapshot_date,
+        evidence_filter=evidence_filter,
+        page=page,
+        page_size=page_size,
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Trend snapshot not found")
+    return TrendEvidenceResponse(**payload)
+
+
+@router.get("/keywords/evidence", response_model=TrendEvidenceResponse)
+async def keyword_trend_evidence(
+    keyword: str = Query(..., min_length=1, max_length=200),
+    days: int = Query(7, ge=1, le=30),
+    evidence_filter: Literal["all", "selected", "evidenced"] = Query("all", alias="filter"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> TrendEvidenceResponse:
+    """Drill through a public keyword's frozen members across a date interval."""
+    payload = await get_keyword_trend_evidence(
+        db,
+        keyword=keyword,
+        days=days,
+        evidence_filter=evidence_filter,
+        page=page,
+        page_size=page_size,
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Trend keyword snapshots not found")
+    return TrendEvidenceResponse(**payload)

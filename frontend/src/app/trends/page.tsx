@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Activity,
   ArrowDownRight,
@@ -20,11 +20,14 @@ import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Metric, Panel, PanelTitle, cx } from '@/components/ui';
 import { CHART_COLORS } from '@/lib/design-tokens';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
+import TrendEvidenceDrawer from './TrendEvidenceDrawer';
 import { useFetch } from '@/hooks/useFetch';
 import { trendsApi, type TrendPoint, type TrendKeywordItem as KeywordItem } from '@/lib/api';
+import type { TrendEvidenceRequest } from '@/types/trends';
 
 interface TopicSeries {
   key: string;
+  topicId: number;
   name: string;
   pts: TrendPoint[];
   total: number;
@@ -84,11 +87,13 @@ function MiniBars({
   counts,
   color,
   maxCount,
+  onOpenEvidence,
 }: {
   dates: string[];
   counts: number[];
   color: string;
   maxCount: number;
+  onOpenEvidence: (date: string) => void;
 }) {
   return (
     <div
@@ -99,8 +104,14 @@ function MiniBars({
         const count = counts[index] || 0;
         const height = count ? Math.max(8, (count / maxCount) * 50) : 3;
         return (
-          <div key={date} className="flex h-[58px] min-w-0 flex-col justify-end">
-            <div
+          <button
+            key={date}
+            type="button"
+            onClick={() => onOpenEvidence(date)}
+            className="flex h-[58px] min-w-0 flex-col justify-end rounded-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={`查看 ${date} 的 ${count} 条来源明细`}
+          >
+            <span
               title={`${date}: ${count} 条`}
               className="rounded-t-xs rounded-b-[2px]"
               style={{
@@ -109,7 +120,7 @@ function MiniBars({
                 opacity: count ? 0.82 : 0.45,
               }}
             />
-          </div>
+          </button>
         );
       })}
     </div>
@@ -135,14 +146,17 @@ function TopicCard({
   maxCount,
   color,
   rank,
+  onOpenEvidence,
 }: {
   topic: TopicSeries;
   dates: string[];
   maxCount: number;
   color: string;
   rank: number;
+  onOpenEvidence: (request: TrendEvidenceRequest) => void;
 }) {
   const counts = dates.map((date) => topic.pts.find((point) => point.date === date)?.content_count || 0);
+  const latestDate = topic.pts[topic.pts.length - 1]?.date;
 
   return (
     <Panel className="overflow-hidden shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
@@ -174,8 +188,31 @@ function TopicCard({
 
       <div className="grid items-end gap-4 px-4.5 pb-4 pl-[72px] sm:grid-cols-[150px_minmax(0,1fr)]">
         <Sparkline data={counts} color={color} />
-        <MiniBars dates={dates} counts={counts} color={color} maxCount={maxCount} />
+        <MiniBars
+          dates={dates}
+          counts={counts}
+          color={color}
+          maxCount={maxCount}
+          onOpenEvidence={(date) => onOpenEvidence({
+            kind: 'topic',
+            topicId: topic.topicId,
+            topicName: topic.name,
+            date,
+          })}
+        />
       </div>
+
+      {latestDate && (
+        <div className="flex justify-end px-4.5 pb-3 pl-[72px]">
+          <button
+            type="button"
+            onClick={() => onOpenEvidence({ kind: 'topic', topicId: topic.topicId, topicName: topic.name, date: latestDate })}
+            className="text-[11px] font-bold text-primary hover:underline"
+          >
+            查看最新快照的来源明细
+          </button>
+        </div>
+      )}
 
       {topic.topItems.length > 0 && (
         <div className="flex flex-col gap-2 border-t border-gray-100 px-4.5 py-3 pl-[72px]">
@@ -199,7 +236,13 @@ function TopicCard({
   );
 }
 
-function KeywordBoard({ keywords }: { keywords: KeywordItem[] }) {
+function KeywordBoard({
+  keywords,
+  onOpenEvidence,
+}: {
+  keywords: KeywordItem[];
+  onOpenEvidence: (keyword: string) => void;
+}) {
   if (keywords.length === 0) {
     return <EmptyState icon={Filter} title="暂无关键词数据" desc="等待趋势快照生成后会出现关键词频率。" />;
   }
@@ -211,17 +254,25 @@ function KeywordBoard({ keywords }: { keywords: KeywordItem[] }) {
         const ratio = keyword.count / max;
         const color = COLORS[index % COLORS.length];
         return (
-          <Panel key={keyword.keyword} className="p-3.5">
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <span className="truncate text-sm font-black text-gray-900">{keyword.keyword}</span>
-              <span className="font-mono text-xs font-black" style={{ color }}>{keyword.count}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${Math.max(8, Math.round(ratio * 100))}%`, background: color }}
-              />
-            </div>
+          <Panel key={keyword.keyword} className="p-0">
+            <button
+              type="button"
+              onClick={() => onOpenEvidence(keyword.keyword)}
+              className="block w-full p-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={`查看关键词「${keyword.keyword}」的来源明细`}
+            >
+              <div className="mb-2.5 flex items-center justify-between gap-3">
+                <span className="truncate text-sm font-black text-gray-900">{keyword.keyword}</span>
+                <span className="font-mono text-xs font-black" style={{ color }}>{keyword.count}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${Math.max(8, Math.round(ratio * 100))}%`, background: color }}
+                />
+              </div>
+              <div className="mt-2 text-[10px] font-bold text-primary">查看来源明细</div>
+            </button>
           </Panel>
         );
       })}
@@ -317,7 +368,13 @@ function ControlPanel({
   );
 }
 
-function KeywordPanel({ keywords }: { keywords: KeywordItem[] }) {
+function KeywordPanel({
+  keywords,
+  onOpenEvidence,
+}: {
+  keywords: KeywordItem[];
+  onOpenEvidence: (keyword: string) => void;
+}) {
   return (
     <Panel className="p-4">
       <PanelTitle icon={Hash} title="高频热词" />
@@ -325,13 +382,16 @@ function KeywordPanel({ keywords }: { keywords: KeywordItem[] }) {
         {keywords.slice(0, 18).map((keyword, index) => {
           const color = COLORS[index % COLORS.length];
           return (
-            <span
+            <button
+              type="button"
+              onClick={() => onOpenEvidence(keyword.keyword)}
+              aria-label={`查看关键词「${keyword.keyword}」的来源明细`}
               key={keyword.keyword}
               className="rounded-full border px-2 py-1 text-[11px] font-black"
               style={{ color, background: `${color}10`, borderColor: `${color}22` }}
             >
               {keyword.keyword}
-            </span>
+            </button>
           );
         })}
         {keywords.length === 0 && <span className="text-xs text-gray-400">暂无热词</span>}
@@ -367,11 +427,11 @@ function SignalPanel({ topics }: { topics: TopicSeries[] }) {
 }
 
 function buildTopicSeries(trends: TrendPoint[]): TopicSeries[] {
-  const byTopic = new Map<string, { name: string; pts: TrendPoint[]; total: number; picks: number }>();
+  const byTopic = new Map<string, { id: number; name: string; pts: TrendPoint[]; total: number; picks: number }>();
   for (const point of trends) {
     const key = `${point.topic_id}:${point.topic_name}`;
     if (!byTopic.has(key)) {
-      byTopic.set(key, { name: point.topic_name, pts: [], total: 0, picks: 0 });
+      byTopic.set(key, { id: point.topic_id, name: point.topic_name, pts: [], total: 0, picks: 0 });
     }
     const entry = byTopic.get(key)!;
     entry.pts.push(point);
@@ -391,6 +451,7 @@ function buildTopicSeries(trends: TrendPoint[]): TopicSeries[] {
       .sort((a, b) => b.score - a.score);
     return {
       key,
+      topicId: entry.id,
       name: entry.name,
       pts,
       total: entry.total,
@@ -408,6 +469,7 @@ function buildTopicSeries(trends: TrendPoint[]): TopicSeries[] {
 export default function TrendsPage() {
   const [days, setDays] = useState(7);
   const [activeTab, setActiveTab] = useState<'topics' | 'keywords'>('topics');
+  const [evidenceRequest, setEvidenceRequest] = useState<TrendEvidenceRequest | null>(null);
 
   type TrendsPayload = { trends: TrendPoint[]; keywords: KeywordItem[] };
   const { data, loading, error, refetch } = useFetch<TrendsPayload>(
@@ -435,6 +497,9 @@ export default function TrendsPage() {
   const totalPicks = trends.reduce((sum, trend) => sum + trend.pick_count, 0);
   const totalContent = trends.reduce((sum, trend) => sum + trend.content_count, 0);
   const topMomentum = sortedTopics[0]?.momentum || 0;
+  const openKeywordEvidence = useCallback((keyword: string) => {
+    setEvidenceRequest({ kind: 'keyword', keyword, days });
+  }, [days]);
 
   return (
     <div className="fade-in h-full overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_42%,#EEF2F5_100%)] px-4 pb-8 sm:px-6 lg:px-10">
@@ -492,6 +557,7 @@ export default function TrendsPage() {
                       maxCount={maxCount}
                       color={COLORS[index % COLORS.length]}
                       rank={index + 1}
+                      onOpenEvidence={setEvidenceRequest}
                     />
                   ))}
                 </div>
@@ -505,20 +571,25 @@ export default function TrendsPage() {
             tabIndex={0}
             hidden={activeTab !== 'keywords'}
           >
-            {loading ? <LoadingState label="加载中…" minHeight="320px" /> : <KeywordBoard keywords={keywords} />}
+            {loading ? (
+              <LoadingState label="加载中…" minHeight="320px" />
+            ) : (
+              <KeywordBoard keywords={keywords} onOpenEvidence={openKeywordEvidence} />
+            )}
           </section>
         </main>
 
         <aside className="flex flex-col gap-3.5 xl:sticky xl:top-[88px]">
           <ControlPanel days={days} setDays={setDays} activeTab={activeTab} setActiveTab={setActiveTab} />
           <SignalPanel topics={sortedTopics} />
-          <KeywordPanel keywords={keywords} />
+          <KeywordPanel keywords={keywords} onOpenEvidence={openKeywordEvidence} />
           <Button type="button" variant="secondary" onClick={() => void refetch()} disabled={loading} className="w-full">
             <Loader2 size={13} className={loading ? 'animate-spin' : 'hidden'} />
             刷新趋势
           </Button>
         </aside>
       </div>
+      <TrendEvidenceDrawer request={evidenceRequest} onClose={() => setEvidenceRequest(null)} />
     </div>
   );
 }

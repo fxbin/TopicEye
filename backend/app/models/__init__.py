@@ -32,7 +32,7 @@ from app.models.scheduled_job import JobExecutionLog, ScheduledJob
 from app.models.source import Source
 from app.models.source_evidence_profile import PublisherKind, SourceEvidenceProfile
 from app.models.topic import TopicGroup
-from app.models.trend import TopicTrend
+from app.models.trend import TopicTrend, TopicTrendMember
 from app.models.trending import TrendingItem, TrendingSnapshot
 from app.models.user import User, UserSession
 from app.models.user_interest_vector import UserInterestVector
@@ -83,4 +83,5 @@ __all__ = [
     "UserInterestVector",
     "PromptRegistry",
     "TopicTrend",
+    "TopicTrendMember",
 ]

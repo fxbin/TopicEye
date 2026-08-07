@@ -17,6 +17,7 @@ from app.repositories.content_event_consumption_repo import (
     EventDisplayGroup,
 )
 from app.repositories.ignored_repo import IgnoredRepo
+from app.services.content_summary import clean_content_summary
 from app.services.duckdb_service import query_today_picks, query_topics
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
@@ -380,19 +381,23 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "viral_score": row.get("viral_score") or 0,
         "risk_score": row.get("risk_score") or 0,
         "platform_fit": _decode_json_value(row.get("platform_fit")),
-        "recommended_reason": row.get("recommended_reason"),
-        "summary": row.get("ai_summary"),
-        "key_points": _decode_json_value(row.get("key_points")),
-        "audience_emotion": row.get("audience_emotion"),
-        "creator_angles": _decode_json_value(row.get("creator_angles")),
-        "title_suggestions": _decode_json_value(row.get("title_suggestions")),
-        "outline_suggestions": _decode_json_value(row.get("outline_suggestions")),
+        # Historical AI analyses may have copied RSS/Atom HTML from the
+        # original summary.  These fields are displayed directly in the
+        # today-picks analysis drawer, so normalise them at this read-model
+        # boundary as well as ContentItem.summary below.
+        "recommended_reason": _clean_optional_text(row.get("recommended_reason")),
+        "summary": _clean_optional_text(row.get("ai_summary")),
+        "key_points": _clean_text_list(row.get("key_points")),
+        "audience_emotion": _clean_optional_text(row.get("audience_emotion")),
+        "creator_angles": _clean_text_list(row.get("creator_angles")),
+        "title_suggestions": _clean_text_list(row.get("title_suggestions")),
+        "outline_suggestions": _clean_text_list(row.get("outline_suggestions")),
         "xiaohongshu_plan": _decode_json_value(row.get("xiaohongshu_plan")),
         "short_video_plan": _decode_json_value(row.get("short_video_plan")),
         "risk_notes": _decode_json_value(row.get("risk_notes")),
         "curation_score": row.get("curation_score") or 0,
         "tags": analysis_tags,
-        "recommendation": row.get("recommendation"),
+        "recommendation": _clean_optional_text(row.get("recommendation")),
         "info_density": row.get("info_density") or 0,
         "actionability": row.get("actionability") or 0,
         "source_weight": row.get("analysis_source_weight") or row.get("source_weight") or 0,
@@ -414,7 +419,7 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "published_at": row.get("published_at"),
         "crawled_at": row.get("crawled_at"),
         "content_hash": row.get("content_hash"),
-        "summary": row.get("summary"),
+        "summary": clean_content_summary(row.get("summary")),
         "cover_url": row.get("cover_url"),
         "category": row.get("category"),
         "tags": content_tags,
@@ -440,6 +445,28 @@ def _decode_json_value(value):
         return json.loads(stripped)
     except json.JSONDecodeError:
         return value
+
+
+def _clean_optional_text(value):
+    """Clean a rendered text field while preserving non-text/absent values."""
+    return clean_content_summary(value) if isinstance(value, str) else value
+
+
+def _clean_text_list(value):
+    """Decode and clean a rendered string list, dropping metadata-only rows."""
+    decoded = _decode_json_value(value)
+    if not isinstance(decoded, list):
+        return decoded
+
+    cleaned: list = []
+    for item in decoded:
+        if not isinstance(item, str):
+            cleaned.append(item)
+            continue
+        text = clean_content_summary(item)
+        if text:
+            cleaned.append(text)
+    return cleaned
 
 
 def _apply_event_assignments(

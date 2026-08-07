@@ -222,6 +222,40 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_today_picks_cleans_legacy_ai_summary_and_key_points(monkeypatch):
+    metadata_html = (
+        '<p>Article URL: <a href="https://example.com/article">https://example.com/article</a></p>'
+        '<p>Comments URL: <a href="https://example.com/comments">https://example.com/comments</a></p>'
+    )
+    rows = _duckdb_rows()
+    rows[0].update(
+        {
+            "summary": metadata_html,
+            "ai_summary": metadata_html,
+            "recommended_reason": metadata_html,
+            "recommendation": metadata_html,
+            "key_points": json.dumps([metadata_html, "<p>保留的核心观点</p>"]),
+            "creator_angles": json.dumps([metadata_html, "<p>保留的创作角度</p>"]),
+            "title_suggestions": json.dumps(["<strong>保留的标题</strong>"]),
+        }
+    )
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_kwargs: rows)
+    monkeypatch.setattr(today_picks, "query_topics", lambda: [])
+
+    payload = await today_picks.build_today_picks(FailingSession(), hours=48, limit=1)
+
+    item = payload["items"][0]
+    analysis = item["analysis"]
+    assert item["summary"] == ""
+    assert analysis["summary"] == ""
+    assert analysis["recommended_reason"] == ""
+    assert analysis["recommendation"] == ""
+    assert analysis["key_points"] == ["保留的核心观点"]
+    assert analysis["creator_angles"] == ["保留的创作角度"]
+    assert analysis["title_suggestions"] == ["保留的标题"]
+
+
+@pytest.mark.asyncio
 async def test_build_today_picks_filters_prescreened_items_with_unified_scorer(monkeypatch):
     query_args = []
 

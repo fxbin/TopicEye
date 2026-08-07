@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.user_identity import normalize_email
-from app.models.user import User, UserApiToken, UserOAuthAccount, UserSession
+from app.models.user import User, UserApiToken, UserOAuthAccount, UserRole, UserSession
 
 _HASH_ALGORITHM = "pbkdf2_sha256"
 _HASH_ITERATIONS = 260_000
@@ -66,7 +66,7 @@ async def create_user(
     email: str,
     password: str,
     display_name: str | None = None,
-    role: str = "user",
+    role: str = UserRole.USER.value,
 ) -> User:
     user = User(
         email=normalize_email(email),
@@ -88,9 +88,7 @@ class OAuthAccountConflictError(Exception):
     """
 
 
-async def get_oauth_account(
-    db: AsyncSession, *, provider: str, provider_user_id: str
-) -> UserOAuthAccount | None:
+async def get_oauth_account(db: AsyncSession, *, provider: str, provider_user_id: str) -> UserOAuthAccount | None:
     result = await db.execute(
         select(UserOAuthAccount).where(
             UserOAuthAccount.provider == provider,
@@ -137,9 +135,7 @@ async def get_or_create_oauth_user(
     # 2 & 3. 邮箱冲突时的合并 / 拒绝
     if existing_user:
         if not email_verified:
-            raise OAuthAccountConflictError(
-                "该邮箱已注册但 OAuth 邮箱未验证，请先用密码登录后在设置页绑定第三方账号"
-            )
+            raise OAuthAccountConflictError("该邮箱已注册但 OAuth 邮箱未验证，请先用密码登录后在设置页绑定第三方账号")
         # 已验证 → 自动合并：把 oauth_account 挂到现有账号
         await _link_oauth_account(
             db,
@@ -217,15 +213,15 @@ async def ensure_admin_user(
             email=email,
             password=password,
             display_name=display_name,
-            role="admin",
+            role=UserRole.ADMIN.value,
         )
 
     changed = False
     if user.password_hash == "__seeded_after_startup__":
         user.password_hash = hash_password(password)
         changed = True
-    if user.role != "admin":
-        user.role = "admin"
+    if user.role != UserRole.ADMIN.value:
+        user.role = UserRole.ADMIN.value
         changed = True
     if not user.is_active:
         user.is_active = True
@@ -409,9 +405,7 @@ async def revoke_all_user_sessions(db: AsyncSession, user_id: int, *, keep_token
     ]
     if keep_token is not None:
         conditions.append(UserSession.token_hash != hash_token(keep_token))
-    result = await db.execute(
-        update(UserSession).where(*conditions).values(revoked_at=datetime.now(UTC))
-    )
+    result = await db.execute(update(UserSession).where(*conditions).values(revoked_at=datetime.now(UTC)))
     return int(result.rowcount or 0)
 
 

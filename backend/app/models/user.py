@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import enum
 from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+class UserRole(str, enum.Enum):
+    """用户角色枚举。
+
+    继承 ``str`` 保证 ``UserRole.ADMIN == "admin"`` 为 True，
+    存量字符串比较无需改动即可工作。
+    """
+
+    USER = "user"
+    ADMIN = "admin"
 
 
 class User(Base):
@@ -17,7 +29,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default=UserRole.USER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

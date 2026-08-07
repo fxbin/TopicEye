@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
 from app.models.mother_topic import MotherTopic
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.content_repo import ContentRepo
 from app.repositories.mother_topic_repo import MotherTopicRepository
 
@@ -115,7 +115,7 @@ def _assert_can_modify(topic: MotherTopic, current_user: User) -> None:
     - 用户私有 fork：仅 owner 可改
     """
     if topic.owner_user_id is None:
-        if current_user.role != "admin":
+        if current_user.role != UserRole.ADMIN.value:
             raise HTTPException(status_code=403, detail="系统模板不可修改，请先 fork 到自己的母题")
     elif topic.owner_user_id != current_user.id:
         # Mask as 404 to avoid leaking existence (与 sources /me 模式一致)
@@ -141,7 +141,7 @@ async def list_mother_topics(
     """
     repo = MotherTopicRepository(db)
     if scope == "all":
-        if current_user.role != "admin":
+        if current_user.role != UserRole.ADMIN.value:
             raise HTTPException(status_code=403, detail="仅管理员可查看全量母题")
         topics = await repo.list_all_for_admin(active_only=active_only)
     else:
@@ -163,7 +163,7 @@ async def create_mother_topic(
     - 普通用户创建私有 fork（owner_user_id=current_user.id）
     """
     # 普通用户创建私有母题；admin 创建系统模板
-    owner_user_id = None if current_user.role == "admin" else current_user.id
+    owner_user_id = None if current_user.role == UserRole.ADMIN.value else current_user.id
 
     # 同 scope 内 name 唯一性校验（DB 层有 unique constraint 兜底，这里提前拦截给更好的错误信息）
     repo = MotherTopicRepository(db)
@@ -199,7 +199,7 @@ async def fork_default_templates(
     但不强制拦截 —— 便于测试。
     """
     repo = MotherTopicRepository(db)
-    if current_user.role == "admin":
+    if current_user.role == UserRole.ADMIN.value:
         # admin 不需要 fork，直接返回当前系统模板数
         templates = await repo.list_system_templates()
         return {"forked": 0, "skipped": len(templates), "message": "管理员无需 fork，可直接维护系统模板"}

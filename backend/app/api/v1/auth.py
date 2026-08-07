@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.request_utils import client_ip
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.auth import (
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -197,7 +197,7 @@ async def get_optional_current_user(
 
 
 async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "admin":
+    if current_user.role != UserRole.ADMIN.value:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required") from None
     return current_user
 
@@ -209,7 +209,7 @@ def is_admin(user: User | None) -> bool:
     auth + ``admin_view`` query flag). For strict admin-only endpoints prefer
     ``Depends(get_current_admin_user)``.
     """
-    return bool(user and user.role == "admin")
+    return bool(user and user.role == UserRole.ADMIN.value)
 
 
 def require_admin_view(admin_view: bool, user: User | None) -> None:
@@ -246,7 +246,9 @@ async def send_code(data: SendCodeRequest, request: Request, db: AsyncSession = 
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码已发送，请稍后再试") from None
     except EmailNotConfiguredError:
         logger.warning("Send-code failed (email not configured): email=%s, ip=%s", data.email, client_ip(request))
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员") from None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="邮件服务尚未配置，请联系管理员"
+        ) from None
     except VerificationError as exc:
         logger.warning("Send-code failed: email=%s, ip=%s, exc=%s", data.email, client_ip(request), exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_admin_user, is_admin
 from app.core.database import get_db
 from app.core.validators import validate_password_strength
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.user_repo import UserRepository
 from app.services.auth_service import hash_password, normalize_email, revoke_all_user_sessions
 
@@ -33,7 +33,6 @@ router = APIRouter(
 
 # 改套餐仅允许 free↔pro 互转；studio/enterprise 为"规划中"，不开放手动修改
 _ALLOWED_PLAN_VALUES = {"free", "pro"}
-
 
 
 # ── 响应 / 请求模型 ──────────────────────────────────────────────────
@@ -72,7 +71,7 @@ class UserCreateRequest(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
     display_name: str | None = Field(None, max_length=100)
-    role: str = Field("user", description="user / admin")
+    role: str = Field(UserRole.USER.value, description="user / admin")
     plan: str = Field("free", description="free / pro")
     is_active: bool = True
 
@@ -117,7 +116,7 @@ async def _load_user_or_404(db: AsyncSession, user_id: int) -> User:
 
 async def _assert_not_last_admin(repo: UserRepository, target: User) -> None:
     """封禁或降级 admin 时，确保系统中至少还剩一个活跃 admin。"""
-    if target.role != "admin" and target.is_active:
+    if target.role != UserRole.ADMIN.value and target.is_active:
         return
     count = await repo.count_active_admins()
     if count <= 1:
@@ -141,7 +140,7 @@ async def create_user(
     - 管理员设定初始密码，需自行转交用户
     - 不创建 session，用户需自行登录
     """
-    if req.role not in {"user", "admin"}:
+    if req.role not in {UserRole.USER.value, UserRole.ADMIN.value}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="角色仅支持 user / admin")
     if req.plan not in _ALLOWED_PLAN_VALUES:
         raise HTTPException(
@@ -228,7 +227,7 @@ async def update_user(
     if req.role is None and req.is_active is None and req.plan is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未提供任何更新字段")
 
-    if req.role is not None and req.role not in {"user", "admin"}:
+    if req.role is not None and req.role not in {UserRole.USER.value, UserRole.ADMIN.value}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="角色仅支持 user / admin")
     if req.plan is not None and req.plan not in _ALLOWED_PLAN_VALUES:
         raise HTTPException(
@@ -243,16 +242,15 @@ async def update_user(
 
         if target.id == current_user.id:  # noqa: SIM102
             # 禁止对自己执行封禁 / 降级（改自己的 plan 不受限）
-            if req.is_active is False or (req.role is not None and req.role != "admin"):
+            if req.is_active is False or (req.role is not None and req.role != UserRole.ADMIN.value):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="不能封禁或降级当前登录的管理员账号",
                 )
 
         # 封禁或降级 admin 前，确保还剩至少一个活跃 admin
-        will_lose_admin = (
-            (req.is_active is False and is_admin(target))
-            or (req.role == "user" and is_admin(target))
+        will_lose_admin = (req.is_active is False and is_admin(target)) or (
+            req.role == UserRole.USER.value and is_admin(target)
         )
         if will_lose_admin:
             await _assert_not_last_admin(repo, target)

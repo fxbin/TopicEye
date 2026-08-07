@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from sqlalchemy import func, or_, select
 
 from app.core.user_identity import normalize_email
-from app.models.user import User, UserOAuthAccount
+from app.models.user import User, UserOAuthAccount, UserRole
 from app.repositories.base import BaseRepository
 
 
@@ -25,9 +25,7 @@ class UserRepository(BaseRepository[User]):
 
     async def get_by_email(self, email: str) -> User | None:
         """按邮箱查找用户（normalized），用于唯一性检查。"""
-        result = await self.db.execute(
-            select(User).where(User.email == normalize_email(email))
-        )
+        result = await self.db.execute(select(User).where(User.email == normalize_email(email)))
         return result.scalar_one_or_none()
 
     async def count_active_admins(self) -> int:
@@ -36,7 +34,7 @@ class UserRepository(BaseRepository[User]):
         供 _assert_not_last_admin 护栏使用：封禁或降级 admin 前确保至少剩一个活跃 admin。
         """
         result = await self.db.execute(
-            select(func.count(User.id)).where(User.role == "admin", User.is_active.is_(True))
+            select(func.count(User.id)).where(User.role == UserRole.ADMIN.value, User.is_active.is_(True))
         )
         return int(result.scalar() or 0)
 
@@ -85,9 +83,7 @@ class UserRepository(BaseRepository[User]):
         if not user_ids:
             return {}
         result = await self.db.execute(
-            select(UserOAuthAccount.user_id, UserOAuthAccount.provider).where(
-                UserOAuthAccount.user_id.in_(user_ids)
-            )
+            select(UserOAuthAccount.user_id, UserOAuthAccount.provider).where(UserOAuthAccount.user_id.in_(user_ids))
         )
         oauth_map: dict[int, list[str]] = {}
         for uid, provider in result.all():

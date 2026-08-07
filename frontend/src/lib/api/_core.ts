@@ -5,7 +5,8 @@
  * - BASE_URL / AUTH_TOKEN_STORAGE_KEY / FAVORITE_STATE_BATCH_SIZE 常量
  * - formatApiErrorDetail    错误详情格式化
  * - getAuthToken/setAuthToken  token 存取
- * - request<T>              通用 fetch 封装（鉴权 + 错误处理 + JSON 解析）
+ * - getAuthTokenExpiresAt/setAuthTokenExpiresAt  token 过期时间存取
+ * - request<T>              通用 fetch 封装（鉴权 + 401 自动 refresh + 错误处理 + JSON 解析）
  * - assertUniqueIds         ID 去重校验
  * - chunkArray              数组分块
  *
@@ -17,6 +18,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 export { BASE_URL };
 
 export const AUTH_TOKEN_STORAGE_KEY = 'topiceye_auth_token';
+export const AUTH_TOKEN_EXPIRES_AT_KEY = 'topiceye_auth_expires_at';
 export const FAVORITE_STATE_BATCH_SIZE = 200;
 
 function formatDetailItem(item: unknown): string | undefined {
@@ -87,11 +89,81 @@ export function setAuthToken(token: string | null): void {
       localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
     } else {
       localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      localStorage.removeItem(AUTH_TOKEN_EXPIRES_AT_KEY);
     }
   } catch {}
 }
 
-/** Generic fetch wrapper with error handling */
+export function getAuthTokenExpiresAt(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(AUTH_TOKEN_EXPIRES_AT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthTokenExpiresAt(expiresAt: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (expiresAt) {
+      localStorage.setItem(AUTH_TOKEN_EXPIRES_AT_KEY, expiresAt);
+    } else {
+      localStorage.removeItem(AUTH_TOKEN_EXPIRES_AT_KEY);
+    }
+  } catch {}
+}
+
+// ── Token refresh 机制 ──────────────────────────────────────────────
+//
+// 当 request<T>() 收到 401 时，自动调用 POST /auth/refresh 尝试续期。
+// 续期成功 → 重试原请求；续期失败 → 抛出原始 401 错误（触发上层登出）。
+//
+// 并发保护：多个请求同时 401 时，只发一个 refresh，其余等同一个 Promise。
+// _refreshPromise !== null 表示 refresh 正在进行中。
+
+let _refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  // 已有 refresh 在进行中，复用同一个 Promise
+  if (_refreshPromise) return _refreshPromise;
+
+  const currentToken = getAuthToken();
+  if (!currentToken) return false;
+
+  _refreshPromise = (async () => {
+    try {
+      const url = `${BASE_URL}/auth/refresh`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json() as {
+        access_token: string;
+        expires_at: string;
+        user: unknown;
+      };
+
+      // token 不旋转（后端返回同一个 token），只更新 expires_at
+      setAuthTokenExpiresAt(data.expires_at);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      _refreshPromise = null;
+    }
+  })();
+
+  return _refreshPromise;
+}
+
+/** Generic fetch wrapper with error handling + auto token refresh on 401 */
 export async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -117,6 +189,32 @@ export async function request<T>(
     ) as Error & { isNetworkError?: boolean };
     networkErr.isNetworkError = true;
     throw networkErr;
+  }
+
+  // 401 自动 refresh：尝试续期后重试原请求（仅限非 refresh 端点自身）
+  if (response.status === 401 && !endpoint.includes('/auth/refresh')) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      // 用新 token 重试原请求
+      const newToken = getAuthToken();
+      const retryConfig: RequestInit = {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
+          ...options.headers,
+        },
+      };
+      try {
+        response = await fetch(url, retryConfig);
+      } catch (err) {
+        const networkErr = new Error(
+          err instanceof Error ? err.message : 'Network request failed'
+        ) as Error & { isNetworkError?: boolean };
+        networkErr.isNetworkError = true;
+        throw networkErr;
+      }
+    }
   }
 
   if (!response.ok) {

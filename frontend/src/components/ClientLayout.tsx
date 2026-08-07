@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import NotificationBell from '@/components/NotificationBell';
-import { authApi, getAuthToken, setAuthToken, settingsApi, sourcesApi, contentsApi, favoritesApi } from '@/lib/api';
+import { authApi, getAuthToken, getAuthTokenExpiresAt, setAuthToken, setAuthTokenExpiresAt, settingsApi, sourcesApi, contentsApi, favoritesApi } from '@/lib/api';
 import {
   favoriteItemToTargetKey,
   getContentFavoriteKey,
@@ -168,6 +168,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   const applyAuthSession = useCallback((session: AuthTokenResponse) => {
     setAuthToken(session.access_token);
+    setAuthTokenExpiresAt(session.expires_at);
     setCurrentUser(session.user);
   }, []);
 
@@ -269,6 +270,23 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         return;
       }
       try {
+        // 启动时只在 session 即将过期时主动 refresh（剩余 < SESSION_REFRESH_THRESHOLD）。
+        // 远未过期时跳过 refresh，直接拉 me()，减少一次网络请求。
+        // refresh 失败（token 已过期超宽限期）不在此处登出，留给 me() 的
+        // 401 拦截器处理。
+        const expiresAtStr = getAuthTokenExpiresAt();
+        const shouldRefresh = !expiresAtStr
+          || new Date(expiresAtStr) < new Date(Date.now() + 7 * 86400000);
+        if (shouldRefresh) {
+          try {
+            const refreshed = await authApi.refresh();
+            if (!cancelled) {
+              setAuthTokenExpiresAt(refreshed.expires_at);
+            }
+          } catch {
+            // refresh 失败不阻塞——继续走 me()，me() 的 401 拦截器会再试一次
+          }
+        }
         const user = await authApi.me();
         if (!cancelled) setCurrentUser(user);
       } catch (err) {

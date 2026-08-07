@@ -192,13 +192,15 @@ import {
   request,
   getAuthToken,
   setAuthToken,
+  getAuthTokenExpiresAt,
+  setAuthTokenExpiresAt,
   formatApiErrorDetail,
   assertUniqueIds,
   chunkArray,
   BASE_URL,
   FAVORITE_STATE_BATCH_SIZE,
 } from './api/_core';
-export { getAuthToken, setAuthToken, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE };
+export { getAuthToken, setAuthToken, getAuthTokenExpiresAt, setAuthTokenExpiresAt, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE };
 
 // ─── Auth API ───
 
@@ -231,6 +233,11 @@ export const authApi = {
 
   logout(): Promise<{ logged_out: boolean }> {
     return request('/auth/logout', { method: 'POST' });
+  },
+
+  /** 续期当前 session（主动调用，返回更新后的 expires_at）。 */
+  refresh(): Promise<AuthTokenResponse> {
+    return request('/auth/refresh', { method: 'POST' });
   },
 
   /** 用户自助修改密码（校验旧密码，成功后撤销其他设备会话）。 */

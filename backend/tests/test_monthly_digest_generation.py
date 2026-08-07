@@ -1,7 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 
@@ -76,43 +75,6 @@ async def test_generate_monthly_digest_reclaims_stale_generating(monkeypatch):
     assert digest.id == existing.id
     assert digest.status == "ERROR"
     assert "暂无分析数据" in digest.overview
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_generate_monthly_digest_retries_sqlite_claim_lock(monkeypatch):
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    now = datetime(2026, 6, 8, 12, 0, 0)
-    calls = {"begin": 0}
-    monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
-
-    async def flaky_begin_immediate(_db):
-        calls["begin"] += 1
-        if calls["begin"] == 1:
-            raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
-
-    async def fake_fetch(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(monthly_digest, "begin_immediate_for_sqlite", flaky_begin_immediate)
-    monkeypatch.setattr(monthly_digest, "fetch_analyzed_content_with_expanded_window", fake_fetch)
-
-    # sqlite claim lock 重试路径: 必须 is_sqlite=True 才会进 begin_immediate 分支
-    class FakeProfile:
-        is_sqlite = True
-        is_postgresql = False
-
-    monkeypatch.setattr(monthly_digest, "database_profile", FakeProfile())
-
-    async with session_factory() as db:
-        digest = await generate_monthly_digest(db, reference_date=date(2026, 6, 8))
-
-    assert calls["begin"] == 2
-    assert digest.status == "ERROR"
     await engine.dispose()
 
 

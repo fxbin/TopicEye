@@ -166,7 +166,7 @@ async def test_record_llm_call_updates_existing_request_id():
 
 
 @pytest.mark.asyncio
-async def test_record_llm_call_in_new_session_uses_extended_sqlite_lock_retry(monkeypatch):
+async def test_record_llm_call_in_new_session_writes_directly(monkeypatch):
     calls = {}
 
     class FakeSession:
@@ -195,18 +195,7 @@ async def test_record_llm_call_in_new_session_uses_extended_sqlite_lock_retry(mo
     def fake_async_session():
         return FakeSession()
 
-    async def fake_retry(operation, *, attempts, base_delay, on_retry):
-        calls["attempts"] = attempts
-        calls["base_delay"] = base_delay
-        calls["on_retry"] = on_retry
-        await operation()
-
-    async def fake_begin_immediate(_db):
-        calls["begin_immediate"] = True
-
     monkeypatch.setattr("app.core.database.async_session", fake_async_session)
-    monkeypatch.setattr("app.core.sqlite_retry.retry_sqlite_locked", fake_retry)
-    monkeypatch.setattr("app.core.sqlite_retry.begin_immediate_for_sqlite", fake_begin_immediate)
 
     await record_llm_call_in_new_session(
         model=None,
@@ -216,11 +205,7 @@ async def test_record_llm_call_in_new_session_uses_extended_sqlite_lock_retry(mo
         duration_ms=123,
     )
 
-    assert calls["attempts"] == llm_usage.LLM_USAGE_LOG_RETRY_ATTEMPTS
-    assert calls["base_delay"] == llm_usage.LLM_USAGE_LOG_RETRY_BASE_DELAY
-    assert calls["on_retry"].__name__ == "rollback"
     assert calls["scalar_checked"] == 1
-    assert calls["begin_immediate"] is True
     assert calls["added"] is True
     assert calls["flushed"] is True
     assert calls["committed"] is True

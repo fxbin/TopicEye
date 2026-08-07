@@ -238,68 +238,6 @@ async def test_single_enrichment_claim_marks_latest_processing_and_skips_reclaim
 
 
 @pytest.mark.asyncio
-async def test_pending_enrichment_claim_retries_sqlite_write_lock(monkeypatch):
-    engine, session_factory = await _session_factory()
-    now = datetime.now(UTC)
-    calls = {"begin": 0}
-
-    async def flaky_begin_immediate(_db):
-        calls["begin"] += 1
-        if calls["begin"] == 1:
-            raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
-
-    monkeypatch.setattr("app.repositories.analysis_repo.begin_immediate_for_sqlite", flaky_begin_immediate)
-
-    # sqlite write lock 重试路径: 必须 is_sqlite=True 才会进 begin_immediate 分支
-    class FakeProfile:
-        is_sqlite = True
-        is_postgresql = False
-
-    monkeypatch.setattr("app.repositories.analysis_repo.database_profile", FakeProfile())
-
-    async with session_factory() as db:
-        db.add(
-            ContentItem(
-                id=1,
-                title="增强锁重试",
-                url="https://example.com/enrichment-lock-retry",
-                category="AI",
-                status=ContentStatus.ANALYZED,
-                crawled_at=now,
-            )
-        )
-        db.add(
-            AiAnalysis(
-                id=1,
-                content_id=1,
-                curation_score=75,
-                info_density=90,
-                actionability=90,
-                source_weight=70,
-                creator_score=90,
-                viral_score=80,
-                freshness_score=90,
-                quality_score=90,
-                hot_score=80,
-                risk_score=0,
-                enrichment_status="pending",
-                created_at=now,
-            )
-        )
-        await db.commit()
-
-        claimed_ids = await AnalysisRepository(db).claim_pending_enrichment_ids(min_score=55, limit=10)
-        await db.commit()
-        analysis = await db.get(AiAnalysis, 1)
-
-        assert calls["begin"] == 2
-        assert claimed_ids == [1]
-        assert analysis.enrichment_status == "processing"
-
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
 async def test_pending_enrichment_claim_uses_skip_locked_for_postgresql(monkeypatch):
     engine, session_factory = await _session_factory()
     now = datetime.now(UTC)

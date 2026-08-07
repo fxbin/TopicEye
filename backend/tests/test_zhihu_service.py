@@ -1,8 +1,6 @@
-from datetime import datetime, timezone, UTC
-from types import SimpleNamespace
+from datetime import UTC, datetime
 
-import pytest
-from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.dialects import postgresql
 
 from app.services import zhihu_service
 
@@ -48,28 +46,16 @@ def _album_record():
     }
 
 
-def test_zhihu_category_upsert_uses_sqlite_profile(monkeypatch):
-    monkeypatch.setattr(
-        zhihu_service,
-        "database_profile",
-        SimpleNamespace(is_sqlite=True, is_postgresql=False, backend="sqlite"),
-    )
-
+def test_zhihu_category_upsert_uses_postgresql_profile():
     stmt = zhihu_service._upsert_zhihu_category_statement(_category_record())
-    sql = str(stmt.compile(dialect=sqlite.dialect()))
+    sql = str(stmt.compile(dialect=postgresql.dialect()))
 
     assert "INSERT INTO zhihu_categories" in sql
     assert "ON CONFLICT (zhihu_id) DO UPDATE SET" in sql
     assert "parent_id = excluded.parent_id" in sql
 
 
-def test_zhihu_album_upsert_uses_postgresql_profile(monkeypatch):
-    monkeypatch.setattr(
-        zhihu_service,
-        "database_profile",
-        SimpleNamespace(is_sqlite=False, is_postgresql=True, backend="postgresql"),
-    )
-
+def test_zhihu_album_upsert_uses_postgresql_profile():
     stmt = zhihu_service._upsert_zhihu_album_statement(_album_record())
     sql = str(stmt.compile(dialect=postgresql.dialect()))
 
@@ -77,14 +63,3 @@ def test_zhihu_album_upsert_uses_postgresql_profile(monkeypatch):
     assert "ON CONFLICT (business_id, sort_type) DO UPDATE SET" in sql
     assert "author_desc = excluded.author_desc" in sql
     assert "business_line = excluded.business_line" in sql
-
-
-def test_zhihu_upsert_rejects_unknown_database_backend(monkeypatch):
-    monkeypatch.setattr(
-        zhihu_service,
-        "database_profile",
-        SimpleNamespace(is_sqlite=False, is_postgresql=False, backend="mysql"),
-    )
-
-    with pytest.raises(RuntimeError, match="Unsupported database backend"):
-        zhihu_service._upsert_zhihu_category_statement(_category_record())

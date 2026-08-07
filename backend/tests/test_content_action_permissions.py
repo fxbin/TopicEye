@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.main  # noqa: F401 - import all models for Base.metadata
 from app.api.v1 import auth as auth_api
 from app.api.v1 import contents as contents_api
-from app.api.v1 import _db_write as db_write_api
 from app.core.database import Base
 from datetime import datetime, timezone, UTC
 from app.models.content import ContentItem, ContentStatus
@@ -347,18 +346,6 @@ async def test_ignore_actions_use_sqlite_lock_retry(monkeypatch):
         )
         await db.commit()
 
-    retry_calls = 0
-
-    async def retry_spy(operation, **kwargs):
-        nonlocal retry_calls
-        retry_calls += 1
-        assert kwargs["attempts"] == 3
-        assert kwargs["base_delay"] == 0.1
-        assert kwargs["on_retry"] is not None
-        return await operation()
-
-    monkeypatch.setattr(db_write_api, "retry_sqlite_locked", retry_spy)
-
     app = FastAPI()
     app.include_router(contents_api.router)
 
@@ -388,7 +375,6 @@ async def test_ignore_actions_use_sqlite_lock_retry(monkeypatch):
         )
         assert unignored.status_code == 200
 
-    assert retry_calls == 2
     await engine.dispose()
 
 

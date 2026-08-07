@@ -11,8 +11,6 @@ from sqlalchemy.exc import IntegrityError
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from app.core import database
-
 _MIGRATION_PATH = (
     Path(__file__).parents[1]
     / "alembic"
@@ -214,27 +212,3 @@ def test_postgresql_migration_defines_symmetric_trigger_lifecycle():
     assert "DROP TRIGGER IF EXISTS trg_content_event_member_not_canonical" in drop_sql
     assert "DROP TRIGGER IF EXISTS trg_content_event_canonical_not_member" in drop_sql
     assert "DROP FUNCTION IF EXISTS" in drop_sql
-
-
-def test_application_sqlite_connections_enable_foreign_keys(monkeypatch):
-    statements: list[str] = []
-
-    class Cursor:
-        def execute(self, statement):
-            statements.append(statement)
-
-        def close(self):
-            pass
-
-    class Connection:
-        def cursor(self):
-            return Cursor()
-
-    monkeypatch.setattr(
-        database,
-        "database_profile",
-        SimpleNamespace(is_sqlite=True),
-    )
-    database.set_sqlite_pragma(Connection(), None)
-
-    assert statements[0] == "PRAGMA foreign_keys=ON"

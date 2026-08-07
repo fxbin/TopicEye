@@ -98,30 +98,6 @@ class _ReadOnlyTokenLookupSession:
         return self.user
 
 
-class _LockedCreateSessionDb:
-    def __init__(self):
-        self.add_count = 0
-        self.flush_count = 0
-        self.refresh_count = 0
-        self.rollback_count = 0
-
-    def add(self, item):
-        self.add_count += 1
-        self.item = item
-
-    async def flush(self):
-        self.flush_count += 1
-        if self.flush_count == 1:
-            raise OperationalError("INSERT user_sessions", {}, Exception("database is locked"))
-
-    async def refresh(self, item):
-        self.refresh_count += 1
-        assert item is self.item
-
-    async def rollback(self):
-        self.rollback_count += 1
-
-
 @pytest.mark.asyncio
 async def test_auth_service_registers_lowercase_email_and_hashes_password():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -176,21 +152,6 @@ async def test_get_user_for_token_does_not_write_last_seen():
 
     assert current_user is user
     assert db.execute_count == 1
-
-
-@pytest.mark.asyncio
-async def test_create_session_retries_sqlite_locked_insert():
-    user = User(id=7, email="locked@example.com", password_hash="hash", display_name="Locked")
-    db = _LockedCreateSessionDb()
-
-    token, session = await create_session(db, user)
-
-    assert token
-    assert session.user_id == user.id
-    assert db.add_count == 2
-    assert db.flush_count == 2
-    assert db.refresh_count == 1
-    assert db.rollback_count == 1
 
 
 @pytest.mark.asyncio

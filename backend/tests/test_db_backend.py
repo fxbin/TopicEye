@@ -11,42 +11,9 @@ from app.core.db_backend import (
     duckdb_extension_name,
     ensure_aware_utc,
     redact_database_secrets,
-    sqlite_domain_urls,
     sync_database_url,
 )
 from app.core.time import naive_utc_now
-
-
-def test_sqlite_profile_and_duckdb_attach_sql(tmp_path):
-    db_path = tmp_path / "topiceye.db"
-    url = f"sqlite:///{db_path}"
-
-    profile = create_database_profile(url)
-
-    assert database_backend(url) == "sqlite"
-    assert profile.is_sqlite
-    assert profile.url.startswith("sqlite+aiosqlite:///")
-    assert async_database_url(url).startswith("sqlite+aiosqlite:///")
-    assert profile.sync_url.startswith("sqlite:///")
-    assert profile.sqlite_path == str(db_path)
-    assert duckdb_extension_name(profile) == "sqlite"
-    assert duckdb_attach_sql(profile) == f"ATTACH '{db_path}' AS oltp_db (TYPE SQLITE, READ_ONLY)"
-
-    diagnostics = database_diagnostics(profile)
-    assert diagnostics["oltp"] == {
-        "backend": "sqlite",
-        "async_driver": "aiosqlite",
-        "sync_driver": "sqlite",
-        "sqlite_path": str(db_path),
-        "sqlite_domain_split_enabled": False,
-        "sqlite_domain_count": 0,
-    }
-    assert diagnostics["analytics"] == {
-        "backend": "duckdb",
-        "attach_source": "sqlite",
-        "attach_mode": "read_only",
-        "extension": "sqlite",
-    }
 
 
 def test_postgresql_profile_and_duckdb_attach_sql():
@@ -71,7 +38,6 @@ def test_postgresql_profile_and_duckdb_attach_sql():
     assert diagnostics["oltp"]["backend"] == "postgresql"
     assert diagnostics["oltp"]["async_driver"] == "asyncpg"
     assert diagnostics["oltp"]["sync_driver"] == "postgresql+psycopg"
-    assert diagnostics["oltp"]["sqlite_path"] is None
     assert diagnostics["analytics"] == {
         "backend": "duckdb",
         "attach_source": "postgresql",
@@ -108,34 +74,11 @@ def test_database_secret_redaction_covers_urls_conninfo_and_attach_sql():
     assert "postgresql+asyncpg://topiceye:***@localhost:5432/topiceye" in redacted
 
 
-def test_sqlite_domain_urls_are_explicit_opt_in(tmp_path):
-    url = "sqlite+aiosqlite:///./topiceye.db"
-
-    default_profile = create_database_profile(url, sqlite_domain_split_enabled=False)
-    split_profile = create_database_profile(
-        url,
-        sqlite_domain_split_enabled=True,
-        sqlite_domain_dir=str(tmp_path),
-    )
-
-    assert default_profile.sqlite_domain_urls == {}
-    assert set(split_profile.sqlite_domain_urls) >= {"content", "topics", "trending", "webnovel", "ops"}
-    assert sqlite_domain_urls(url, str(tmp_path))["content"].endswith("topiceye_content.db")
-
-
 def test_database_profile_rejects_unsupported_backend():
     url = "mysql+aiomysql://topiceye:secret@localhost:3306/topiceye"
 
-    assert database_backend(url) == "unknown"
-
-    try:
+    with pytest.raises(ValueError, match="Unsupported database backend"):
         create_database_profile(url)
-    except ValueError as exc:
-        assert "Unsupported database backend for DATABASE_URL" in str(exc)
-        assert "sqlite+aiosqlite://" in str(exc)
-        assert "postgresql+asyncpg://" in str(exc)
-    else:
-        raise AssertionError("unsupported database backend should be rejected")
 
 
 # ── 回归测试:naive/aware 混用 ──────────────────────────────

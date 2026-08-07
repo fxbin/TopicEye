@@ -371,48 +371,6 @@ async def test_failed_analysis_uses_exponential_retry_and_terminal_state(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_claim_pending_analysis_ids_retries_sqlite_write_lock(monkeypatch):
-    engine, session_factory = await _session_factory()
-    calls = {"begin": 0}
-
-    async def flaky_begin_immediate(_db):
-        calls["begin"] += 1
-        if calls["begin"] == 1:
-            raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
-
-    monkeypatch.setattr("app.repositories.content_repo.begin_immediate_for_sqlite", flaky_begin_immediate)
-
-    # sqlite write lock 重试路径: 必须 is_sqlite=True 才会进 begin_immediate 分支
-    class FakeProfile:
-        is_sqlite = True
-        is_postgresql = False
-
-    monkeypatch.setattr("app.repositories.content_repo.database_profile", FakeProfile())
-
-    async with session_factory() as db:
-        db.add(
-            ContentItem(
-                id=1,
-                title="锁重试认领内容",
-                url="https://example.com/claim-lock-retry",
-                status=ContentStatus.PENDING,
-                crawled_at=datetime.now(UTC),
-            )
-        )
-        await db.commit()
-
-        claimed_ids = await ContentRepo(db).claim_pending_analysis_ids(limit=10, hours=24)
-        await db.commit()
-
-        content = await db.get(ContentItem, 1)
-
-    assert calls["begin"] == 2
-    assert claimed_ids == [1]
-    assert content.status == ContentStatus.ANALYZING
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
 async def test_claim_pending_analysis_ids_uses_skip_locked_for_postgresql(monkeypatch):
     engine, session_factory = await _session_factory()
     calls = {"skip_locked": 0}
@@ -612,33 +570,6 @@ async def test_analysis_job_status_persists_for_memory_miss(monkeypatch):
     assert status["analyzed_ids"] == [1]
     assert status["failed_ids"] == [2]
     assert status["pending_ids"] == []
-    await engine.dispose()
-    await reset_analysis_jobs()
-
-
-@pytest.mark.asyncio
-async def test_analysis_job_snapshot_retries_sqlite_lock(monkeypatch):
-    await reset_analysis_jobs()
-    engine, session_factory = await _session_factory()
-    calls = {"begin": 0}
-
-    async def flaky_begin_immediate(_db):
-        calls["begin"] += 1
-        if calls["begin"] == 1:
-            raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
-
-    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)
-    monkeypatch.setattr(analysis_jobs, "begin_immediate_for_sqlite", flaky_begin_immediate)
-
-    job = await create_analysis_job([1])
-
-    async with session_factory() as db:
-        record = await db.get(AnalysisJobRecord, job.job_id)
-
-    assert calls["begin"] == 2
-    assert record is not None
-    assert record.status == "QUEUED"
-    assert record.content_ids == [1]
     await engine.dispose()
     await reset_analysis_jobs()
 
@@ -1674,36 +1605,6 @@ async def test_analyze_single_failure_sets_error_cooldown_timestamp(monkeypatch)
 
     assert stored_content.status == ContentStatus.ERROR
     assert stored_content.updated_at > old_timestamp
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_analyze_batch_skips_sqlite_locked_item_without_crashing(monkeypatch):
-    async def locked_write(*args, **kwargs):
-        raise OperationalError("UPDATE content_items", {}, Exception("database is locked"))
-
-    monkeypatch.setattr(analysis, "retry_sqlite_locked", locked_write)
-    monkeypatch.setattr("app.repositories.content_repo.retry_sqlite_locked", locked_write)
-    engine, session_factory = await _session_factory()
-
-    async with session_factory() as db:
-        db.add(
-            ContentItem(
-                id=1,
-                title="数据库锁测试内容",
-                url="https://example.com/sqlite-locked",
-                status=ContentStatus.PENDING,
-                raw_content="用于验证 SQLite 锁定时分析批处理不会因为回滚后的 ORM 属性访问而崩溃。",
-            )
-        )
-        await db.commit()
-
-        results = await analysis.analyze_batch([1], db)
-
-        stored_content = await db.get(ContentItem, 1)
-
-    assert results == []
-    assert stored_content.status == ContentStatus.PENDING
     await engine.dispose()
 
 

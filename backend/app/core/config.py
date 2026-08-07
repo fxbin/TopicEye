@@ -8,15 +8,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     # ── Database ──
-    DATABASE_URL: str = "sqlite+aiosqlite:///./topiceye.db"
-    DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED: bool = False
-    DATABASE_SQLITE_DOMAIN_DIR: str = "./data/domains"
-    # SQLite 写锁等待（毫秒）。默认 30s；批量写场景临时降到 500ms
-    # 以快速返回 503，避免长事务拖慢读路径。
-    SQLITE_BUSY_TIMEOUT_MS: int = 30000
-    SQLITE_BUSY_TIMEOUT_BATCH_MS: int = 500
+    DATABASE_URL: str = "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye"
     # DuckDB connects in-memory and ATTACHes the configured OLTP database
-    # READ_ONLY. SQLite and PostgreSQL are both supported as DuckDB sources.
+    # READ_ONLY. PostgreSQL is the supported DuckDB source.
     DUCKDB_THREADS: int = 2
     DUCKDB_MEMORY_LIMIT: str = "256MB"
     DUCKDB_EXTENSION_DIR: str = "./data/duckdb_extensions"

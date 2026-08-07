@@ -65,13 +65,11 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Derive a sync URL from the configured DATABASE_URL. Alembic runs synchronously.
-_profile = create_database_profile(
-    settings.DATABASE_URL,
-    sqlite_domain_split_enabled=settings.DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED,
-    sqlite_domain_dir=settings.DATABASE_SQLITE_DOMAIN_DIR,
-)
+_profile = create_database_profile(settings.DATABASE_URL)
 target_metadata = Base.metadata
-_is_sqlite = _profile.is_sqlite
+# render_as_batch=True is harmless on PostgreSQL and keeps batch mode available
+# for any future schema rebuilds.
+_render_as_batch = True
 
 
 def _resolve_url() -> str:
@@ -87,7 +85,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         # SQLite lacks most ALTER forms; batch mode rebuilds tables instead.
-        render_as_batch=_is_sqlite,
+        render_as_batch=_render_as_batch,
     )
 
     with context.begin_transaction():
@@ -109,7 +107,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=_is_sqlite,
+            render_as_batch=_render_as_batch,
         )
 
         with context.begin_transaction():

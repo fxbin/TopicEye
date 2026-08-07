@@ -103,13 +103,9 @@ def run_startup_migrations() -> None:
 
     On PostgreSQL, acquires a session-level advisory lock (key 1) before
     running upgrade to prevent multiple containers from racing on the
-    same migration. SQLite is single-writer so the lock is a no-op there.
+    same migration.
     """
-    profile = create_database_profile(
-        settings.DATABASE_URL,
-        sqlite_domain_split_enabled=settings.DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED,
-        sqlite_domain_dir=settings.DATABASE_SQLITE_DOMAIN_DIR,
-    )
+    profile = create_database_profile(settings.DATABASE_URL)
     sync_url = profile.sync_url
     _migration_lock_key = 7103251  # arbitrary constant; all containers share
 

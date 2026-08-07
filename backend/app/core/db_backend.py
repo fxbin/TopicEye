@@ -1,68 +1,22 @@
 """Database backend configuration helpers.
 
-The app uses SQLAlchemy for OLTP writes and DuckDB for OLAP reads.  Keep the
-backend detection here so SQLite/PostgreSQL differences do not leak through the
+The app uses SQLAlchemy (PostgreSQL) for OLTP writes and DuckDB for OLAP reads.
+Keep the backend detection here so database differences do not leak through the
 service layer.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
 from sqlalchemy.engine import URL, make_url
 
 logger = logging.getLogger(__name__)
 
-DatabaseBackend = Literal["sqlite", "postgresql", "unknown"]
-SUPPORTED_DATABASE_BACKENDS = {"sqlite", "postgresql"}
-
-
-SQLITE_DOMAIN_TABLES: dict[str, tuple[str, ...]] = {
-    "content": (
-        "sources",
-        "content_items",
-        "content_metrics",
-        "ai_analyses",
-        "ignored_items",
-        "user_feedback",
-    ),
-    "topics": (
-        "categories",
-        "topic_groups",
-        "topic_trends",
-        "mother_topics",
-        "daily_reports",
-        "weekly_digests",
-        "monthly_digests",
-    ),
-    "trending": (
-        "trending_items",
-        "trending_snapshots",
-    ),
-    "webnovel": (
-        "fanqie_categories",
-        "fanqie_books",
-        "fanqie_rank_snapshots",
-        "qimao_books",
-        "zhihu_albums",
-        "zhihu_categories",
-        "zhihu_rank_snapshots",
-    ),
-    "ops": (
-        "app_settings",
-        "notifications",
-        "scheduled_jobs",
-        "job_execution_logs",
-        "llm_models",
-        "model_evaluations",
-        "llm_call_logs",
-    ),
-}
+DatabaseBackend = Literal["postgresql"]
 
 
 @dataclass(frozen=True)
@@ -71,131 +25,62 @@ class DatabaseProfile:
     backend: DatabaseBackend
     async_driver: str | None
     sync_url: str
-    sqlite_path: str | None
-    sqlite_domain_urls: dict[str, str]
-
-    @property
-    def is_sqlite(self) -> bool:
-        return self.backend == "sqlite"
 
     @property
     def is_postgresql(self) -> bool:
-        return self.backend == "postgresql"
+        return True
 
 
 def database_backend(url: str) -> DatabaseBackend:
     driver = make_url(url).drivername.split("+", 1)[0]
-    if driver == "sqlite":
-        return "sqlite"
     if driver in {"postgresql", "postgres"}:
         return "postgresql"
-    return "unknown"
+    raise ValueError(
+        f"Unsupported database backend for DATABASE_URL: {driver}. "
+        "Use postgresql+asyncpg://."
+    )
 
 
 def sync_database_url(url: str) -> str:
     parsed = make_url(url)
-    backend = database_backend(url)
-    if backend == "sqlite":
-        return _render_url(parsed.set(drivername="sqlite"))
-    if backend == "postgresql":
-        # Alembic uses a sync engine and needs the sync driver. ``asyncpg`` is
-        # async-only and incompatible with ``create_engine``; use ``psycopg``
-        # (the project pins ``psycopg[binary]==3.2.13``) for migrations and
-        # the runtime sync paths (lock acquisition, etc.).
-        return _render_url(parsed.set(drivername="postgresql+psycopg"))
-    return _render_url(parsed)
+    # Alembic uses a sync engine and needs the sync driver. ``asyncpg`` is
+    # async-only and incompatible with ``create_engine``; use ``psycopg``
+    # (the project pins ``psycopg[binary]==3.2.13``) for migrations and
+    # the runtime sync paths (lock acquisition, etc.).
+    return _render_url(parsed.set(drivername="postgresql+psycopg"))
 
 
 def async_database_url(url: str) -> str:
     parsed = make_url(url)
+    return _render_url(parsed.set(drivername="postgresql+asyncpg"))
+
+
+def create_database_profile(url: str) -> DatabaseProfile:
     backend = database_backend(url)
-    if backend == "sqlite":
-        return _render_url(parsed.set(drivername="sqlite+aiosqlite"))
-    if backend == "postgresql":
-        return _render_url(parsed.set(drivername="postgresql+asyncpg"))
-    return _render_url(parsed)
-
-
-def sqlite_path_from_url(url: str) -> str | None:
-    parsed = make_url(url)
-    if database_backend(url) != "sqlite":
-        return None
-    database = parsed.database
-    if database in {None, "", ":memory:"}:
-        return database
-    return os.path.abspath(database)
-
-
-def sqlite_domain_urls(base_url: str, domain_dir: str) -> dict[str, str]:
-    """Build SQLite URLs for optional domain split storage.
-
-    This does not activate routing by itself.  It gives future repository-level
-    routing a deterministic set of files while keeping single-file SQLite as the
-    compatibility default.
-    """
-    if database_backend(base_url) != "sqlite":
-        return {}
-    root = Path(domain_dir).expanduser().resolve()
-    return {domain: f"sqlite+aiosqlite:///{root / f'topiceye_{domain}.db'}" for domain in SQLITE_DOMAIN_TABLES}
-
-
-def create_database_profile(
-    url: str,
-    *,
-    sqlite_domain_split_enabled: bool = False,
-    sqlite_domain_dir: str = "./data/domains",
-) -> DatabaseProfile:
-    backend = database_backend(url)
-    if backend not in SUPPORTED_DATABASE_BACKENDS:
-        driver = make_url(url).drivername
-        raise ValueError(
-            "Unsupported database backend for DATABASE_URL: "
-            f"{driver}. Use sqlite+aiosqlite:// or postgresql+asyncpg://."
-        )
     normalized_url = async_database_url(url)
     normalized = make_url(normalized_url)
-    domain_urls = (
-        sqlite_domain_urls(normalized_url, sqlite_domain_dir)
-        if backend == "sqlite" and sqlite_domain_split_enabled
-        else {}
-    )
     return DatabaseProfile(
         url=normalized_url,
         backend=backend,
         async_driver=normalized.drivername.split("+", 1)[1] if "+" in normalized.drivername else None,
         sync_url=sync_database_url(normalized_url),
-        sqlite_path=sqlite_path_from_url(normalized_url),
-        sqlite_domain_urls=domain_urls,
     )
-
-
-def sqlalchemy_connect_args(profile: DatabaseProfile) -> dict:
-    if profile.is_sqlite:
-        return {"check_same_thread": False}
-    return {}
 
 
 def database_diagnostics(profile: DatabaseProfile) -> dict:
     """Return a safe database diagnostics payload for health endpoints."""
-    analytics = {
-        "backend": "duckdb",
-        "attach_source": profile.backend,
-        "attach_mode": "read_only",
-        "extension": None,
-    }
-    if profile.is_sqlite or profile.is_postgresql:
-        analytics["extension"] = duckdb_extension_name(profile)
-
     return {
         "oltp": {
             "backend": profile.backend,
             "async_driver": profile.async_driver,
             "sync_driver": make_url(profile.sync_url).drivername,
-            "sqlite_path": profile.sqlite_path if profile.is_sqlite else None,
-            "sqlite_domain_split_enabled": bool(profile.sqlite_domain_urls),
-            "sqlite_domain_count": len(profile.sqlite_domain_urls),
         },
-        "analytics": analytics,
+        "analytics": {
+            "backend": "duckdb",
+            "attach_source": profile.backend,
+            "attach_mode": "read_only",
+            "extension": duckdb_extension_name(profile),
+        },
     }
 
 
@@ -232,26 +117,13 @@ def redact_database_secrets(message: str | None, profile: DatabaseProfile) -> st
 
 def duckdb_attach_sql(profile: DatabaseProfile, *, alias: str = "oltp_db") -> str:
     """Return the DuckDB ATTACH statement for the configured OLTP backend."""
-    if profile.is_sqlite:
-        if not profile.sqlite_path or profile.sqlite_path == ":memory:":
-            raise ValueError("DuckDB analytics requires a file-backed SQLite database")
-        path = _duckdb_sql_literal(profile.sqlite_path)
-        return f"ATTACH '{path}' AS {alias} (TYPE SQLITE, READ_ONLY)"
-
-    if profile.is_postgresql:
-        conninfo = _postgres_conninfo(make_url(profile.url))
-        conninfo = _duckdb_sql_literal(conninfo)
-        return f"ATTACH '{conninfo}' AS {alias} (TYPE postgres, READ_ONLY)"
-
-    raise ValueError(f"Unsupported DuckDB analytics backend: {profile.backend}")
+    conninfo = _postgres_conninfo(make_url(profile.url))
+    conninfo = _duckdb_sql_literal(conninfo)
+    return f"ATTACH '{conninfo}' AS {alias} (TYPE postgres, READ_ONLY)"
 
 
 def duckdb_extension_name(profile: DatabaseProfile) -> str:
-    if profile.is_sqlite:
-        return "sqlite"
-    if profile.is_postgresql:
-        return "postgres"
-    raise ValueError(f"Unsupported DuckDB analytics backend: {profile.backend}")
+    return "postgres"
 
 
 def _postgres_conninfo(url: URL) -> str:
@@ -291,9 +163,8 @@ def ensure_aware_utc(dt: datetime | None) -> datetime | None:
     """把从 DB 读出的 datetime 规范成 aware UTC.
 
     背景: PG 列改 TIMESTAMP WITH TIME ZONE 后读出是 aware;
-    SQLite 端 DateTime(timezone=True) 仍丢 tzinfo, 读出是 naive.
-    代码层 (datetime.now(timezone.utc)) 是 aware, 跟 naive 混用比较会抛
-    TypeError. 在比较点统一调这个 helper 把 naive 当 UTC 处理.
+    代码层 (datetime.now(timezone.utc)) 也是 aware.
+    在比较点统一调这个 helper 把 naive 当 UTC 处理 (兼容旧数据).
 
     输入 None 返回 None; 输入 aware 转 UTC; 输入 naive 假设已经是 UTC 加 tzinfo.
     """
@@ -307,10 +178,7 @@ def ensure_aware_utc(dt: datetime | None) -> datetime | None:
 def ensure_naive_utc(dt: datetime | None) -> datetime | None:
     """把 datetime 转 naive UTC, 用于 SQL 查询参数.
 
-    背景: SQLite aiosqlite driver 不支持 aware datetime 作为 SQL 绑定参数,
-    会抛 TypeError. PG asyncpg 接受 naive (session 设 UTC 时按 UTC 解释).
-    所以所有 SQL where 条件里的 datetime 参数统一用 naive UTC.
-
+    PG asyncpg 接受 naive (session 设 UTC 时按 UTC 解释).
     Python 层比较 (now - t) 仍用 aware (ensure_aware_utc).
     """
     if dt is None:

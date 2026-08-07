@@ -40,6 +40,8 @@ from app.services.llm.prompts.analysis import (
     ANALYSIS_PROMPT_EN,
     PAPER_ANALYSIS_PROMPT,
     PAPER_SYSTEM_PROMPT,
+    PRESCREEN_PROMPT,
+    PRESCREEN_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_EN,
 )
@@ -54,25 +56,6 @@ async def _call_llm_json_with_metadata(messages: list, **kwargs) -> tuple[dict[s
         return await call_llm_json(messages, **kwargs), {}
     return await call_llm_json_with_metadata(messages, **kwargs)
 
-
-PRESCREEN_SYSTEM_PROMPT = """你是内容选题预筛模型。只输出 JSON，不要输出解释。"""
-PRESCREEN_PROMPT = """
-请对下面内容做低成本预筛，判断是否必须升级到深度分析模型。
-
-输出 JSON 字段：
-{{
-  "score": 0-100,
-  "confidence": 0-1,
-  "should_escalate": true/false,
-  "reason": "不超过80字的判断理由",
-  "tags": ["最多5个标签"]
-}}
-
-升级标准：高价值、低置信、信息密度高、争议风险高、适合深挖、需要完整创作建议。
-
-标题：{title}
-内容：{content}
-"""
 
 # ── Language detection (no external deps) ─────────────────────────────
 

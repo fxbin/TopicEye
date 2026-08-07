@@ -36,6 +36,7 @@ from app.services.content_list_cache import (
 )
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.content_serialization import content_with_latest_analysis, latest_analysis_from_item
+from app.services.content_summary import clean_content_summary
 from app.services.favorite_cache import invalidate_favorite_cache
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
 from app.services.scoring_flow import (
@@ -280,7 +281,7 @@ async def list_contents(
                             "published_at": raw.get("published_at"),
                             "crawled_at": raw.get("crawled_at"),
                             "content_hash": raw.get("content_hash"),
-                            "summary": raw.get("summary"),
+                            "summary": clean_content_summary(raw.get("summary")),
                             "cover_url": raw.get("cover_url"),
                             "category": raw.get("category"),
                             "tags": raw.get("tags"),

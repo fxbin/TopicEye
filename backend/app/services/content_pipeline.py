@@ -28,6 +28,7 @@ from app.models.source import Source, SourceStatus, SourceType
 from app.services._error_redaction import redact_source_sync_error  # noqa: F401 — re-export
 from app.services.classifier import classify_async
 from app.services.content_read_cache import invalidate_content_read_caches
+from app.services.content_summary import clean_content_summary
 from app.services.dedup import build_hash
 from app.services.llm_pre_filter import apply_pre_filter
 from app.services.scraper_http import build_scraper_client_kwargs
@@ -226,7 +227,11 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         eligible_entries: list[dict[str, Any]] = []
         for entry in candidate_entries:
             title = entry.get("title", "")
-            summary = entry.get("summary", "")
+            # RSS/Atom descriptions are often HTML.  Normalise at the model
+            # boundary so every scraper stores a display-safe, readable
+            # summary instead of relying on individual scraper conventions.
+            summary = clean_content_summary(entry.get("summary", ""))
+            entry["summary"] = summary
             entry_hash = entry.get("_content_hash")  # per-entry hash (fix: was reusing outer-loop ch)
 
             item = ContentItem(

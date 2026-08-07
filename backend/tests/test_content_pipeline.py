@@ -230,6 +230,68 @@ async def test_ingest_from_source_reuses_category_names_per_source(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ingest_from_source_normalizes_html_summary_before_persisting_or_classifying(monkeypatch):
+    class FakeScraper:
+        def __init__(self, source_url, source_config):
+            self.source_url = source_url
+            self.source_config = source_config
+
+        async def fetch(self, client):
+            return [
+                {
+                    "title": "Show HN: Label Your AI Writing as AI Writing",
+                    "url": "https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting",
+                    "summary": (
+                        '<p>Article URL: <a href="https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting">'
+                        "https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting</a></p>"
+                        '<p>Comments URL: <a href="https://news.ycombinator.com/item?id=1">'
+                        "https://news.ycombinator.com/item?id=1</a></p>"
+                    ),
+                }
+            ]
+
+    classified_summaries = []
+
+    async def fake_get_active_category_names(db):
+        return ["AI"]
+
+    async def fake_classify_async(title, summary, db, category_names=None, auto_create_new_category=True):
+        classified_summaries.append(summary)
+        return {"category": "AI", "tags": ["disclosure"], "is_new_category": False, "confidence": 0.8}
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: FakeScraper)
+    monkeypatch.setattr(content_pipeline, "_get_active_category_names", fake_get_active_category_names)
+    monkeypatch.setattr(content_pipeline, "classify_async", fake_classify_async)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        async with session_factory() as db:
+            source = Source(
+                id=1,
+                name="Hacker News",
+                url="https://news.ycombinator.com/rss",
+                source_type=SourceType.RSS,
+                enabled=True,
+            )
+            db.add(source)
+            await db.commit()
+
+            stats = await content_pipeline.ingest_from_source(source, db)
+            stored = await db.scalar(select(ContentItem))
+
+        assert stats == {"fetched": 1, "new": 1, "duplicates": 0}
+        assert stored is not None
+        assert stored.summary is None
+        assert classified_summaries == [""]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_ingest_from_source_classifies_new_entries_with_bounded_concurrency(monkeypatch):
     class FakeScraper:
         def __init__(self, source_url, source_config):

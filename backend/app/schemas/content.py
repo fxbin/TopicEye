@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, field_serializer
 
 from app.schemas.analysis import AiAnalysisResponse
+from app.services.content_summary import clean_content_summary
 from app.services.zhihu_url import normalize_zhihu_url
 
 
@@ -36,6 +37,12 @@ class ContentResponse(BaseModel):
     @field_serializer("url")
     def serialize_url(self, value: str) -> str:
         return normalize_zhihu_url(value)
+
+    @field_serializer("summary")
+    def serialize_summary(self, value: str | None) -> str | None:
+        # Response-level fallback covers records ingested before summary
+        # normalisation was introduced without changing raw article bodies.
+        return clean_content_summary(value) or None
 
 
 class ContentMetricsResponse(BaseModel):

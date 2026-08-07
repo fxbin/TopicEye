@@ -35,13 +35,12 @@ from app.api.v1.llm_models import (
 )
 from app.core.config import settings
 from app.core.database import async_session, get_db
-from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.models.llm_model import ModelEvaluation
 from app.repositories.llm_evaluation_repo import ModelEvaluationRepository
 from app.repositories.llm_model_repo import LlmModelRepository
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
-# _retry_write 现在从 app.core.sqlite_retry 导入（retry_write_transaction 别名）
+# _retry_write 已移除——PostgreSQL 不需要应用层重试
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -190,7 +189,7 @@ async def _run_one_evaluation(
                     current.error_message = "模型配置缺少 API Key，请在模型配置中补充后再测评。"
                     await eval_db.flush()
 
-                await _retry_write(eval_db, _mark_missing_key)
+                await _mark_missing_key()
                 await eval_db.commit()
 
         await _run_db_write(_write_missing_key)
@@ -227,7 +226,7 @@ async def _run_one_evaluation(
                     current.auto_score = _auto_score_response(content)
                     await eval_db.flush()
 
-                await _retry_write(eval_db, _mark_done)
+                await _mark_done()
                 await eval_db.commit()
 
         await _run_db_write(_write_done)
@@ -255,8 +254,8 @@ async def _run_one_evaluation(
                     current.duration_ms = duration_ms
                     await eval_db.flush()
 
-                await _retry_write(eval_db, _mark_failed)
-            await eval_db.commit()
+                await _mark_failed()
+                await eval_db.commit()
 
         await _run_db_write(_write_failed)
         await record_llm_call_in_new_session(
@@ -310,7 +309,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
             evaluations.append((model, eval_record))
         await db.flush()
 
-    await _retry_write(db, _create_records)
+    await _create_records()
     await db.commit()
 
     async def _mark_all_running():
@@ -322,7 +321,7 @@ async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)
             current.status = "RUNNING"
             await db.flush()
 
-    await _retry_write(db, _mark_all_running)
+    await _mark_all_running()
     await db.commit()
 
     concurrency = min(_normalize_evaluation_concurrency(), len(evaluations))

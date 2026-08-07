@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, is_admin
 from app.core.database import get_db
-from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.core.validators import validate_password_strength
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -35,8 +34,6 @@ router = APIRouter(
 # 改套餐仅允许 free↔pro 互转；studio/enterprise 为"规划中"，不开放手动修改
 _ALLOWED_PLAN_VALUES = {"free", "pro"}
 
-
-# _retry_write 现在从 app.core.sqlite_retry 导入（retry_write_transaction 别名）
 
 
 # ── 响应 / 请求模型 ──────────────────────────────────────────────────
@@ -173,7 +170,7 @@ async def create_user(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册") from None
         return user
 
-    user = await _retry_write(db, _apply)
+    user = await _apply()
     await db.commit()
     return {
         "id": user.id,
@@ -269,7 +266,7 @@ async def update_user(
         await db.flush()
         return target
 
-    target = await _retry_write(db, _apply)
+    target = await _apply()
     await db.commit()
     return {
         "id": target.id,
@@ -307,7 +304,7 @@ async def reset_password(
         revoked = await revoke_all_user_sessions(db, target.id)
         return target, revoked
 
-    target, revoked = await _retry_write(db, _apply)
+    target, revoked = await _apply()
     await db.commit()
     return {
         "id": target.id,

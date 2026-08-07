@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1._db_write import write_with_503
 from app.api.v1.auth import get_current_user
-from app.core.database import database_profile, get_db
-from app.core.sqlite_retry import begin_immediate_for_sqlite
+from app.core.database import get_db
 from app.models.feedback import (
     FEEDBACK_SCORE_DELTAS,
     FeedbackType,
@@ -91,8 +90,6 @@ async def submit_feedback(
         ) from None
 
     async def _write():
-        if database_profile.is_sqlite and not db.in_transaction():
-            await begin_immediate_for_sqlite(db)
         try:
             return await _write_feedback(data, db, current_user, fb_type)
         except IntegrityError as exc:

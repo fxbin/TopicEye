@@ -33,7 +33,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.config import settings
 from app.core.database import async_session, get_db  # noqa: F401 — async_session 保留供测试 monkeypatch
-from app.core.sqlite_retry import retry_write_transaction as _retry_write
 from app.models.llm_model import LlmModel
 from app.models.user import User
 from app.repositories.llm_model_repo import LlmModelRepository
@@ -268,7 +267,7 @@ class ModelUpdateRequest(BaseModel):
 
 
 async def _retry_write_and_invalidate_models(db: AsyncSession, operation):
-    result = await _retry_write(db, operation)
+    result = await operation()
     await db.commit()
     await invalidate_model_cache()
     invalidate_model_list_cache()

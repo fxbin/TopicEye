@@ -113,6 +113,15 @@ class Settings(BaseSettings):
     AUTH_LOGIN_ATTEMPTS_PER_MINUTE: int = 20
     AUTH_REGISTER_ATTEMPTS_PER_MINUTE: int = 10
     AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE: int = 5
+    AUTH_REFRESH_ATTEMPTS_PER_MINUTE: int = 20
+
+    # ── Session management ──
+    # Session 有效期（天）。默认 30 天。
+    SESSION_DAYS: int = 30
+    # 滑动续期阈值（天）。当 session 剩余有效期低于此值时，
+    # get_user_for_token 会自动延长 expires_at 到 SESSION_DAYS。
+    # 设为 0 可禁用滑动续期。
+    SESSION_REFRESH_THRESHOLD_DAYS: int = 7
 
     # ── Request handling ──
     # 是否信任反向代理透传的 X-Forwarded-For 首段作为客户端真实 IP。

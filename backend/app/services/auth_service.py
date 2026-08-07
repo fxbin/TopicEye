@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.user_identity import normalize_email
 from app.models.user import User, UserApiToken, UserOAuthAccount, UserSession
 
@@ -248,7 +249,13 @@ async def authenticate_user(db: AsyncSession, *, email: str, password: str) -> U
     return user
 
 
-async def create_session(db: AsyncSession, user: User, *, days: int = 30) -> tuple[str, UserSession]:
+async def create_session(db: AsyncSession, user: User, *, days: int | None = None) -> tuple[str, UserSession]:
+    """创建一个新的浏览器登录会话。
+
+    days 默认读 settings.SESSION_DAYS（30 天）。
+    """
+    if days is None:
+        days = settings.SESSION_DAYS
     token = new_session_token()
     session = UserSession(
         user_id=user.id,
@@ -273,7 +280,7 @@ async def get_user_for_token(db: AsyncSession, token: str) -> User | None:
 
     # 1. Try session token (浏览器登录会话)
     result = await db.execute(
-        select(UserSession.id, User.id)
+        select(UserSession.id, UserSession.expires_at, User.id)
         .join(User, User.id == UserSession.user_id)
         .where(
             UserSession.token_hash == token_h,
@@ -284,7 +291,27 @@ async def get_user_for_token(db: AsyncSession, token: str) -> User | None:
     )
     row = result.first()
     if row:
-        _, user_id = row
+        session_id, expires_at, user_id = row
+        # 滑动续期：剩余有效期低于阈值时自动延长
+        threshold_days = settings.SESSION_REFRESH_THRESHOLD_DAYS
+        if threshold_days > 0:
+            remaining = expires_at - now if expires_at else timedelta(0)
+            if remaining < timedelta(days=threshold_days):
+                new_expires_at = now + timedelta(days=settings.SESSION_DAYS)
+                # 使用 savepoint：失败时只回滚续期操作，不影响请求事务中的其他变更
+                try:
+                    async with db.begin_nested():
+                        await db.execute(
+                            update(UserSession)
+                            .where(
+                                UserSession.id == session_id,
+                                # 幂等保护：只在目标值更大时更新，避免并发请求重复写
+                                UserSession.expires_at < new_expires_at,
+                            )
+                            .values(expires_at=new_expires_at, last_seen_at=now)
+                        )
+                except Exception:
+                    pass  # savepoint 已自动回滚，主事务不受影响
         return await db.get(User, user_id)
 
     # 2. Fallback to API token (脚本/CI 场景)
@@ -328,6 +355,44 @@ async def revoke_token(db: AsyncSession, token: str) -> bool:
     session.revoked_at = datetime.now(UTC)
     await db.flush()
     return True
+
+
+async def refresh_session(db: AsyncSession, token: str) -> tuple[User, UserSession] | None:
+    """显式续期当前 session。
+
+    接受一个有效的（未过期、未撤销）session token，将 expires_at
+    延长到 now + SESSION_DAYS，并返回 (user, session)。
+
+    如果 token 无效或已过期，返回 None——调用方应翻译为 401。
+
+    设计决策：token 不旋转（返回同一个 token）。理由是简化前端实现
+    （只需更新 expires_at，无需同步新 token）。风险是 token 泄露后
+    无法通过 refresh 自动失效，依赖改密 / 撤销 session 兜底。
+    """
+    now = datetime.now(UTC)
+    token_h = hash_token(token)
+    result = await db.execute(
+        select(UserSession)
+        .join(User, User.id == UserSession.user_id)
+        .where(
+            UserSession.token_hash == token_h,
+            UserSession.revoked_at.is_(None),
+            User.is_active.is_(True),
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        return None
+    # 允许已过期但未撤销的 session 在宽限期内续期（避免用户在边界过期后被强制登出）
+    # 宽限期 = SESSION_REFRESH_THRESHOLD_DAYS，超过宽限期则拒绝续期
+    if session.expires_at <= now - timedelta(days=settings.SESSION_REFRESH_THRESHOLD_DAYS):
+        return None
+    session.expires_at = now + timedelta(days=settings.SESSION_DAYS)
+    await db.flush()
+    user = await db.get(User, session.user_id)
+    if user is None or not user.is_active:
+        return None
+    return user, session
 
 
 async def revoke_all_user_sessions(db: AsyncSession, user_id: int, *, keep_token: str | None = None) -> int:

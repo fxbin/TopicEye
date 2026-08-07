@@ -27,6 +27,7 @@ from app.services.auth_service import (
     create_user,
     get_user_by_email,
     get_user_for_token,
+    refresh_session,
     revoke_token,
 )
 from app.services.email_verification_service import (
@@ -82,6 +83,14 @@ async def enforce_send_code_rate_limit(request: Request) -> None:
         request,
         action="send_code",
         max_attempts=settings.AUTH_SEND_CODE_ATTEMPTS_PER_MINUTE,
+    )
+
+
+async def enforce_refresh_rate_limit(request: Request) -> None:
+    _enforce_auth_rate_limit(
+        request,
+        action="refresh",
+        max_attempts=settings.AUTH_REFRESH_ATTEMPTS_PER_MINUTE,
     )
 
 
@@ -219,6 +228,38 @@ async def login(data: AuthLoginRequest, request: Request, db: AsyncSession = Dep
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post(
+    "/refresh",
+    response_model=AuthTokenResponse,
+    dependencies=[Depends(enforce_refresh_rate_limit)],
+)
+async def refresh(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """续期当前 session。
+
+    接受当前有效的 Bearer token，延长 session 过期时间，返回
+    更新后的 expires_at。token 本身不变（不旋转），前端只需更新
+    本地存储的 expires_at。
+
+    如果 token 无效或已过期超过宽限期，返回 401。
+    """
+    token = _extract_bearer_token(authorization)
+    result = await refresh_session(db, token)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    user, session = result
+    await db.commit()
+    logger.info("Session refreshed: user_id=%d, ip=%s", user.id, client_ip(request))
+    return AuthTokenResponse(
+        access_token=token,
+        expires_at=session.expires_at,
+        user=UserResponse.model_validate(user),
+    )
 
 
 @router.post("/logout")

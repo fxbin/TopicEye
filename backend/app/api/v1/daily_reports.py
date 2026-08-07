@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import logging
 from datetime import date as date_cls, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import async_session, get_db
-from app.models.user import User
 from app.repositories.content_repo import ContentRepo
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.repositories.pick_mark_repo import PickMarkRepository
@@ -24,6 +24,9 @@ from app.schemas.daily_report import (
 )
 from app.services.daily_report import LOCAL_TZ, WEEKDAYS, generate_daily_report, get_latest_today_report
 from app.services.plan_catalog import plan_allows_private_source
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +237,7 @@ async def trigger_generate_version(
 
     # 快速创建 GENERATING 占位记录（如果还没有）
     from app.services.daily_report import VALID_EDITIONS
+
     if normalized_edition not in VALID_EDITIONS:
         normalized_edition = "manual"
 
@@ -252,8 +256,7 @@ async def trigger_generate_version(
         return report
 
     if report:
-        report.status = "GENERATING"
-        report.updated_at = datetime.now(LOCAL_TZ)
+        repo.mark_generating(report)
     else:
         report = repo.create_generating_placeholder(
             report_date_iso=parsed_date.isoformat(),
@@ -264,7 +267,7 @@ async def trigger_generate_version(
             cutoff_at=parsed_cutoff,
         )
 
-    await db.commit()
+    await repo.commit()
     report_id = report.id
     report_date_iso = parsed_date.isoformat()
 
@@ -284,11 +287,7 @@ async def trigger_generate_version(
                 # 标记失败
                 try:
                     bg_repo = DailyReportRepository(bg_db)
-                    fail_report = await bg_repo.get_by_id(report_id)
-                    if fail_report:
-                        fail_report.status = "ERROR"
-                        fail_report.overview = f"生成失败: {str(e)[:200]}"
-                        await bg_db.commit()
+                    await bg_repo.mark_error(report_id, f"生成失败: {str(e)[:200]}")
                 except Exception:
                     pass
 
@@ -296,6 +295,7 @@ async def trigger_generate_version(
 
     # 返回 GENERATING 状态（HTTP 202 Accepted）
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=202,
         content={
@@ -351,13 +351,45 @@ def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:
     - 按长度排序优先长词（专有名词通常更长），去重后取前 N 个
     """
     import re as _re
+
     if not title:
         return []
-    stopwords = {"的", "了", "在", "是", "和", "与", "或", "为", "我", "你", "他", "她", "它", "也", "都", "就", "把", "被", "着",
-                 "the", "a", "an", "of", "to", "in", "on", "at", "by", "for", "with"}
+    stopwords = {
+        "的",
+        "了",
+        "在",
+        "是",
+        "和",
+        "与",
+        "或",
+        "为",
+        "我",
+        "你",
+        "他",
+        "她",
+        "它",
+        "也",
+        "都",
+        "就",
+        "把",
+        "被",
+        "着",
+        "the",
+        "a",
+        "an",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "with",
+    }
     # 中文用 jieba 切词
     try:
         import jieba
+
         chinese_words = [w for w in jieba.lcut_for_search(title) if len(w) >= 2 and w not in stopwords]
     except Exception:
         # fallback: regex 粗切
@@ -416,10 +448,12 @@ async def get_sparkline(
     points: list[dict] = []
     for b in range(min_bucket, now_bucket + 1):
         ts_dt = datetime.fromtimestamp(b * bucket_seconds)
-        points.append({
-            "ts": ts_dt.isoformat(),
-            "count": bucket_counts.get(b, 0),
-        })
+        points.append(
+            {
+                "ts": ts_dt.isoformat(),
+                "count": bucket_counts.get(b, 0),
+            }
+        )
 
     # 相对变化率基线（避免不同选题绝对值差异过大）：用平均值作 baseline
     counts = [p["count"] for p in points]
@@ -516,9 +550,7 @@ async def _build_yesterday_tracking(
         today_date = datetime.now(LOCAL_TZ).date()
     yesterday_iso = (today_date - timedelta(days=1)).isoformat()
 
-    yesterday_report = await report_repo.get_yesterday_report(
-        yesterday_iso, owner_user_id=owner_user_id
-    )
+    yesterday_report = await report_repo.get_yesterday_report(yesterday_iso, owner_user_id=owner_user_id)
     base: dict = {
         "has_yesterday": False,
         "report_date": yesterday_iso,
@@ -645,9 +677,7 @@ async def get_my_yesterday_tracking(
     """昨日追踪（我的日报，Pro+）。额外返回 your_marked（昨日 write/watch 标记的今日进展）。"""
     if not plan_allows_private_source(user.plan):
         raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
-    return await _build_yesterday_tracking_public(
-        db, report_date=report_date, owner_user_id=user.id, user_id=user.id
-    )
+    return await _build_yesterday_tracking_public(db, report_date=report_date, owner_user_id=user.id, user_id=user.id)
 
 
 async def _build_yesterday_tracking_public(
@@ -734,9 +764,12 @@ async def upsert_pick_mark(
     repo = PickMarkRepository(db)
     mark = await repo.find_existing(user.id, parsed_date, pick_title)
     if mark:
-        mark.action = action
-        mark.pick_category = pick_category or mark.pick_category
-        mark.pick_source_url = pick_source_url or mark.pick_source_url
+        repo.update_mark(
+            mark,
+            action=action,
+            pick_category=pick_category,
+            pick_source_url=pick_source_url,
+        )
     else:
         repo.add_new(
             user_id=user.id,
@@ -746,7 +779,7 @@ async def upsert_pick_mark(
             pick_category=pick_category,
             pick_source_url=pick_source_url,
         )
-    await db.commit()
+    await repo.commit()
     return {"status": "ok", "action": action}
 
 
@@ -763,7 +796,7 @@ async def delete_pick_mark(
     parsed_date = date_type.fromisoformat(report_date)
     repo = PickMarkRepository(db)
     await repo.delete_by_user_date_title(user.id, parsed_date, pick_title)
-    await db.commit()
+    await repo.commit()
     return {"status": "deleted"}
 
 
@@ -779,9 +812,7 @@ async def list_webhook_delivery_logs(
     from app.repositories.webhook_delivery_log_repo import WebhookDeliveryLogRepository
 
     repo = WebhookDeliveryLogRepository(db)
-    logs, total = await repo.list_recent(
-        event_type=event_type, limit=limit, offset=offset
-    )
+    logs, total = await repo.list_recent(event_type=event_type, limit=limit, offset=offset)
 
     return {
         "items": [

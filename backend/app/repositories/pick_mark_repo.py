@@ -5,6 +5,7 @@
 业务逻辑（如周报 pick-tracking 的标题模糊匹配）仍留在 api/service 层，
 本 repo 只负责纯粹的 CRUD + 按 user/date/title 范围查询。
 """
+
 from __future__ import annotations
 
 import logging
@@ -109,8 +110,7 @@ class PickMarkRepository(BaseRepository[PickMark]):
         """创建并 db.add 一个新标记，返回实例引用（不 flush/refresh）。
 
         供 upsert_pick_mark 端点使用——api 层不直接 import ORM 模型类，
-        也不直接 db.add。事务边界（db.commit）由调用方控制，
-        与历史行为完全等价（原 db.add 后由 api 层 db.commit）。
+        也不直接 db.add。事务边界（commit）由调用方通过 ``repo.commit()`` 控制。
         """
         mark = self.model(
             user_id=user_id,
@@ -122,3 +122,21 @@ class PickMarkRepository(BaseRepository[PickMark]):
         )
         self.db.add(mark)
         return mark
+
+    def update_mark(
+        self,
+        mark: PickMark,
+        *,
+        action: str,
+        pick_category: str | None = None,
+        pick_source_url: str | None = None,
+    ) -> None:
+        """更新已有标记的属性（原地修改，不 commit）。
+
+        供 upsert_pick_mark 端点使用——api 层不直接修改 ORM 属性。
+        ``pick_category`` / ``pick_source_url`` 为 None 时保留原值。
+        事务边界（commit）由调用方通过 ``repo.commit()`` 控制。
+        """
+        mark.action = action
+        mark.pick_category = pick_category or mark.pick_category
+        mark.pick_source_url = pick_source_url or mark.pick_source_url

@@ -39,6 +39,13 @@ class BaseRepository[ModelType]:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def commit(self) -> None:
+        """Commit the current transaction.
+
+        供 api 层通过 repo 控制事务边界，避免直接访问 db session。
+        """
+        await self.db.commit()
+
     # ── Read ────────────────────────────────────────────────────────
 
     async def get_by_id(self, id: int) -> ModelType | None:

@@ -6,12 +6,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
 from app.models.daily_report import DailyReport
 from app.repositories.base import BaseRepository
+
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 logger = logging.getLogger(__name__)
 
@@ -176,11 +180,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
 
     async def list_recent_with_limit(self, limit: int = 7) -> Sequence[DailyReport]:
         """返回最近的 N 条日报（所有 edition），按 report_date 和 cutoff_at 倒序。"""
-        stmt = (
-            select(self.model)
-            .order_by(self.model.report_date.desc(), self.model.cutoff_at.desc())
-            .limit(limit)
-        )
+        stmt = select(self.model).order_by(self.model.report_date.desc(), self.model.cutoff_at.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -285,8 +285,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         """创建并 db.add 一个 GENERATING 占位日报记录，返回实例引用。
 
         供 trigger_generate_version 端点使用——api 层不直接 import ORM 模型类，
-        也不直接 db.add。实例属性修改（如 status / updated_at）由调用方负责，
-        最终 db.commit() 也由调用方控制事务边界。
+        也不直接 db.add。事务边界（commit）由调用方通过 ``repo.commit()`` 控制。
         """
         report = self.model(
             report_date=report_date_iso,
@@ -300,3 +299,25 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         )
         self.db.add(report)
         return report
+
+    def mark_generating(self, report: DailyReport) -> None:
+        """将已有日报记录标记为 GENERATING（原地修改属性，不 commit）。
+
+        供 trigger_generate_version 端点使用——api 层不直接修改 ORM 属性。
+        事务边界（commit）由调用方通过 ``repo.commit()`` 控制。
+        """
+        report.status = "GENERATING"
+        report.updated_at = datetime.now(LOCAL_TZ)
+
+    async def mark_error(self, report_id: int, error_msg: str) -> None:
+        """按主键加载日报记录并标记为 ERROR（含 overview 错误信息）。
+
+        供后台生成任务失败时使用——api 层不直接修改 ORM 属性。
+        自动 commit，因为调用方（后台 task）使用独立 session，
+        无需跨 repo 协调事务。
+        """
+        report = await self.get_by_id(report_id)
+        if report:
+            report.status = "ERROR"
+            report.overview = error_msg
+            await self.db.commit()

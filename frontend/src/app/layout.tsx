@@ -3,6 +3,7 @@ import { DM_Sans, DM_Mono, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import ClientLayout from '@/components/ClientLayout';
 import SkipToContent from '@/components/SkipToContent';
+import { prefetchInitialData } from '@/lib/server-prefetch';
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -32,16 +33,21 @@ export const metadata: Metadata = {
   description: 'AI 驱动的创作者选题推荐平台，帮你发现下一个爆款选题',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // SSR 预取首屏数据（auth/me + feature-flags + 侧边栏计数），
+  // 消除客户端 useEffect 串行拉取导致的白屏。
+  // 后端不可达时返回 null，客户端 Provider 会 fallback 到 useEffect。
+  const initialData = await prefetchInitialData();
+
   return (
     <html lang="zh-CN" className={`${dmSans.variable} ${dmMono.variable} ${notoSerif.variable}`} suppressHydrationWarning>
       <body>
         <SkipToContent />
-        <ClientLayout>{children}</ClientLayout>
+        <ClientLayout initialData={initialData}>{children}</ClientLayout>
       </body>
     </html>
   );

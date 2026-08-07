@@ -34,13 +34,25 @@ export function useAuthContext() {
 
 // ── Provider ──────────────────────────────────────────────────
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({
+  children,
+  initialUser = null,
+  initialFeatureFlags,
+}: {
+  children: React.ReactNode;
+  initialUser?: AuthUser | null;
+  initialFeatureFlags?: Record<string, boolean>;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>({});
-  const [featuresLoading, setFeaturesLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(initialUser);
+  // 如果 SSR 预取已返回用户信息，则跳过 authLoading 白屏阶段。
+  const [authLoading, setAuthLoading] = useState(!initialUser);
+  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>(
+    initialFeatureFlags ?? {},
+  );
+  // 同理：SSR 已预取 feature flags 时不走 loading。
+  const [featuresLoading, setFeaturesLoading] = useState(!initialFeatureFlags);
 
   const applyAuthSession = useCallback((session: AuthTokenResponse) => {
     setAuthToken(session.access_token);
@@ -66,7 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 启动时校验 token、拉用户信息
+  // SSR 预取已返回用户信息时跳过此 useEffect，避免重复请求。
+  // 仅在 SSR 未返回用户（后端不可达 / 无 token）时走原有客户端拉取路径。
   useEffect(() => {
+    if (initialUser) return; // SSR 已预取，跳过
     let cancelled = false;
 
     (async () => {
@@ -112,7 +127,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 拉取功能模块开关（管理员端点，普通用户 403 时回退空对象——所有 feature 视为关）
+  // SSR 预取已返回 feature flags 时跳过此 useEffect。
   useEffect(() => {
+    if (initialFeatureFlags) return; // SSR 已预取，跳过
     let cancelled = false;
     (async () => {
       if (!getAuthToken()) {

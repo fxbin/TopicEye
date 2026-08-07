@@ -61,7 +61,6 @@ export function useFavoritesContext() {
 
 const FAVORITES_STORAGE_KEY = 'topiceye_favorites';
 const FAVORITE_TARGETS_STORAGE_KEY = 'topiceye_favorite_targets';
-const FAVORITE_INDEX_PAGE_SIZE = 200;
 
 function userStorageKey(baseKey: string, userId: number | null): string {
   return userId ? `${baseKey}:user:${userId}` : baseKey;
@@ -109,30 +108,24 @@ function saveFavoriteTargetsToStorage(userId: number | null, favSet: Set<string>
   } catch {}
 }
 
-async function fetchAllFavoriteItems(): Promise<{ items: FavoriteItem[]; total: number }> {
-  const firstPage = await favoritesApi.list({ page: 1, page_size: FAVORITE_INDEX_PAGE_SIZE });
-  const total = firstPage.total || 0;
-  const items = [...(firstPage.items || [])];
-  const totalPages = Math.ceil(total / FAVORITE_INDEX_PAGE_SIZE);
-
-  if (totalPages <= 1) {
-    return { items, total };
-  }
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, index) => (
-      favoritesApi.list({ page: index + 2, page_size: FAVORITE_INDEX_PAGE_SIZE })
-    ))
-  );
-  for (const page of remainingPages) {
-    items.push(...(page.items || []));
-  }
-  return { items, total };
-}
+// `fetchAllFavoriteItems` 已被 `favoritesApi.index()` 替换：
+// 旧方案分页拉取全量 FavoriteItem（含 title/snapshot/tags 等重字段），
+// 新方案只拉 4 个索引字段（id/target_type/target_key/target_id），
+// 单次请求 + payload 缩减 ~10x。
 
 // ── Provider ──────────────────────────────────────────────────
 
-export function FavoritesProvider({ children }: { children: React.ReactNode }) {
+export function FavoritesProvider({
+  children,
+  initialCounts = null,
+}: {
+  children: React.ReactNode;
+  initialCounts?: {
+    todayPicks: number;
+    sourceCount: number;
+    favoriteTotal: number;
+  } | null;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, authLoading } = useAuthContext();
@@ -145,9 +138,9 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
   const [favoriteTargetPendingKeys, setFavoriteTargetPendingKeys] = useState<Set<string>>(new Set());
   const favoriteTargetPendingRef = useRef<Set<string>>(new Set());
   const [contentCount, setContentCount] = useState(0);
-  const [sourceCount, setSourceCount] = useState(0);
-  const [favoriteTotal, setFavoriteTotal] = useState(0);
-  const [todayPicksCount, setTodayPicksCount] = useState(0);
+  const [sourceCount, setSourceCount] = useState(initialCounts?.sourceCount ?? 0);
+  const [favoriteTotal, setFavoriteTotal] = useState(initialCounts?.favoriteTotal ?? 0);
+  const [todayPicksCount, setTodayPicksCount] = useState(initialCounts?.todayPicks ?? 0);
 
   const refreshCounts = useCallback(async () => {
     try {
@@ -166,22 +159,22 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
         setFavoriteTargetIds(new Map());
         return;
       }
-      const [counts, sources, allFavorites] = await Promise.all([
+      const [counts, sources, favIndex] = await Promise.all([
         isTodayPicksPage ? Promise.resolve(null) : contentsApi.todayCount(),
         isAdmin(currentUser)
           ? sourcesApi.list({ page_size: 1 })
           : sourcesApi.listMine({ page_size: 1 }),
-        fetchAllFavoriteItems(),
+        favoritesApi.index(),
       ]);
       if (counts) setTodayPicksCount(counts.today_picks || 0);
       setSourceCount(sources ? sources.total || sources.items?.length || 0 : 0);
-      setFavoriteTotal(allFavorites.total || 0);
+      setFavoriteTotal(favIndex.total || 0);
 
       const targetKeys = new Set<string>();
       const targetIds = new Map<string, number>();
       const contentIds = new Set<number>();
-      for (const item of allFavorites.items || []) {
-        const key = favoriteItemToTargetKey(item);
+      for (const item of favIndex.items || []) {
+        const key = item.target_key;
         targetKeys.add(key);
         targetIds.set(key, item.id);
         if (item.target_type === 'content' && item.target_id) {
@@ -201,7 +194,11 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
       setFavoriteTargets(new Set());
       setFavoriteTargetIds(new Map());
       setFavoriteTotal(0);
-      void refreshCounts();
+      // 未登录用户仍需 today-picks 计数（侧边栏 badge），
+      // 但 SSR 未预取时才走客户端拉取。
+      if (!initialCounts) {
+        void refreshCounts();
+      }
       return;
     }
 
@@ -213,8 +210,37 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
     }
     setFavoriteTargets(storedFavoriteTargets);
     setFavoriteTargetIds(new Map());
-    void refreshCounts();
-  }, [authLoading, currentUser, refreshCounts]);
+    // SSR 已预取计数时，仅拉取完整收藏列表（更新 favorites Set / targetIds），
+    // 跳过重复的计数请求。未预取时走原有 refreshCounts 全量拉取。
+    if (initialCounts) {
+      // SSR 已预取计数，仅需拉取收藏索引填充 favorites Set / targetIds / targetKeys
+      void (async () => {
+        try {
+          const favIndex = await favoritesApi.index();
+          const targetKeys = new Set<string>();
+          const targetIds = new Map<string, number>();
+          const contentIds = new Set<number>();
+          for (const item of favIndex.items || []) {
+            const key = item.target_key;
+            targetKeys.add(key);
+            targetIds.set(key, item.id);
+            if (item.target_type === 'content' && item.target_id) {
+              contentIds.add(item.target_id as number);
+            }
+          }
+          setFavoriteTargets(targetKeys);
+          setFavoriteTargetIds(targetIds);
+          setFavorites(contentIds);
+          // 用服务端返回的精确 total 校正 SSR 预取值
+          setFavoriteTotal(favIndex.total || 0);
+        } catch {
+          // 静默失败，保留 SSR 预取的初始值
+        }
+      })();
+    } else {
+      void refreshCounts();
+    }
+  }, [authLoading, currentUser, refreshCounts, initialCounts]);
 
   // Sync favorites to localStorage whenever it changes
   useEffect(() => {

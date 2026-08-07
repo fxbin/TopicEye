@@ -219,6 +219,25 @@ class FavoriteRepo:
         )
         return result.scalars().all(), total
 
+    async def list_index(self) -> list[dict]:
+        """Return lightweight index of all favorites (id, target_type, target_key, target_id).
+
+        Used by the frontend to build in-memory Sets/Maps for O(1) favorite lookups
+        without fetching heavy fields (title, snapshot, tags, note, etc.).
+        """
+        result = await self.db.execute(
+            select(
+                FavoriteItem.id,
+                FavoriteItem.target_type,
+                FavoriteItem.target_key,
+                FavoriteItem.target_id,
+            ).where(FavoriteItem.user_id == self.user_id)
+        )
+        return [
+            {"id": row.id, "target_type": row.target_type, "target_key": row.target_key, "target_id": row.target_id}
+            for row in result.all()
+        ]
+
     async def next_position_for_status(self, status: FavoriteStatus | str) -> int:
         result = await self.db.execute(
             select(func.min(FavoriteItem.position))

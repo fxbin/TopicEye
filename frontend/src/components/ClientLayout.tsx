@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import NotificationBell from '@/components/NotificationBell';
 import { AppProvider, useAuthContext, useFavoritesContext, useAppContext } from '@/providers/AppProvider';
+import type { PrefetchData } from '@/lib/server-prefetch';
 
 // Backward compat: 38 个消费者从 @/components/ClientLayout 导入 useAppContext
 export { useAppContext };
@@ -22,9 +23,15 @@ const ADMIN_PATH_PREFIX = '/admin';
  *
  * 本组件只负责布局 chrome 渲染（Sidebar / NotificationBell）和 compactNav 响应式状态。
  */
-export default function ClientLayout({ children }: { children: React.ReactNode }) {
+export default function ClientLayout({
+  children,
+  initialData,
+}: {
+  children: React.ReactNode;
+  initialData: PrefetchData;
+}) {
   return (
-    <AppProvider>
+    <AppProvider initialData={initialData}>
       <LayoutChrome>{children}</LayoutChrome>
     </AppProvider>
   );

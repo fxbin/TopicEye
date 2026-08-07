@@ -141,6 +141,32 @@ async def list_favorites(
     )
 
 
+@router.get("/index")
+async def favorite_index(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lightweight index of all user favorites — only id, target_type, target_key, target_id.
+
+    Used by the frontend sidebar to build in-memory Sets for O(1) lookups
+    without fetching heavy fields (title, snapshot, tags, etc.) or paginating.
+    """
+    cache_key = f"user:{current_user.id}:index"
+    cached = get_cached_json(cache_key)
+    if cached:
+        content, age_seconds = cached
+        return _favorite_cache_hit_response(content, age_seconds)
+
+    items = await FavoriteRepo(db, current_user.id).list_index()
+    payload = {"items": items, "total": len(items)}
+    content = set_cached_json(cache_key, payload)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"X-Favorites-Cache": "MISS"},
+    )
+
+
 @router.post("", response_model=FavoriteResponse, status_code=201)
 async def create_favorite(
     data: FavoriteCreate,

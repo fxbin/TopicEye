@@ -365,6 +365,11 @@ export const favoritesApi = {
     return request(`/favorites${query}`);
   },
 
+  /** Lightweight index — only id/target_type/target_key/target_id, no pagination. */
+  index(): Promise<{ items: Array<{ id: number; target_type: string; target_key: string; target_id: number | null }>; total: number }> {
+    return request('/favorites/index');
+  },
+
   create(data: FavoriteCreatePayload): Promise<FavoriteItem> {
     return request('/favorites', {
       method: 'POST',

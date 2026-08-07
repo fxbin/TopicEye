@@ -15,9 +15,10 @@ type Status = 'loading' | 'error' | 'success';
  * 后端在 OAuth 成功后 302 到 /oauth/callback#token=xxx&expires_at=xxx，
  * 失败则 302 到 /oauth/callback?error=xxx。
  *
- * 本页读取 URL fragment（fragment 不进 server log / Referer），
- * 取出 token → 拉 me() → 写入 Context → 跳首页，并用 history.replaceState
- * 清理 URL 避免token残留在浏览器历史。
+ * 认证 token 通过 HttpOnly cookie 下发（浏览器自动携带），
+ * fragment 中的 token 仅用于兼容与 presence 标记设置。
+ * 本页读取 URL fragment → 设置 presence cookie → 拉 me() → 写入 Context → 跳首页，
+ * 并用 history.replaceState 清理 URL 避免残留。
  */
 export default function OauthCallbackPage() {
   const router = useRouter();
@@ -55,8 +56,9 @@ export default function OauthCallbackPage() {
       }
 
       try {
-        // 先把 token 写进 localStorage，让 me() 请求带上 Authorization header
-        setAuthToken(token);
+        // token 已在 HttpOnly cookie 中（后端 302 响应设置）。
+        // 设置 presence cookie 让前端判断登录状态，然后拉 me()。
+        setAuthToken('1');
         const user = await authApi.me();
         if (cancelled) return;
 

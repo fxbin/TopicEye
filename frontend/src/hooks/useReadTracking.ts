@@ -7,8 +7,8 @@
  * - 纯前端用 setInterval 累计本地停留时长，不每次发请求（避免高频写库）。
  * - 仅在 targetKey 变化 / 页面隐藏 / 组件卸载时上报一次累计时长。
  * - 卸载上报用 navigator.sendBeacon（fetch 在 unload 时会被浏览器取消）；
- *   sendBeacon 不走 request() 封装，需手写 URL + token。
- * - 未登录（无 token）时静默跳过，不影响阅读体验。
+ *   sendBeacon 同源时自动携带 cookie，跨域时不携带。
+ * - 未登录（无 auth cookie）时静默跳过，不影响阅读体验。
  *
  * 用法：
  *   useReadTracking('daily_report', report?.report_date, report?.id);
@@ -60,8 +60,7 @@ export function useReadTracking(
     if (accumulatedMsRef.current <= 0) return;
     if (reportedRef.current) return;
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return;
-    const token = getAuthToken();
-    if (!token) return; // 未登录不上报
+    if (!getAuthToken()) return; // 未登录不上报
     const duration_ms = accumulatedMsRef.current;
     reportedRef.current = true;
     accumulatedMsRef.current = 0;
@@ -87,8 +86,7 @@ export function useReadTracking(
       sessionRef.current = null;
       return;
     }
-    const token = getAuthToken();
-    if (!token) return; // 未登录不追踪
+    if (!getAuthToken()) return; // 未登录不追踪
 
     // targetKey 变化：先 flush 旧会话，再开启新会话
     const prev = sessionRef.current;

@@ -8,7 +8,7 @@ import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents'
 import type { ArticleReaderSnapshot, ContentItem, ContentAnalysis, ContentRelation, EvidenceMark, EvidenceLink, PaginatedResponse, SyncResult, TopicInfo, TopicFilterParams, ContentFilterParams, FavoriteItem, FavoriteStatus, FavoriteTargetType, YesterdayTrackingData } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
 import type { Source, CreateSourceRequest, UpdateSourceRequest } from '@/types';
-import { assertUniqueIds, chunkArray, getAuthToken, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
+import { assertUniqueIds, chunkArray, BASE_URL, formatApiErrorDetail, FAVORITE_STATE_BATCH_SIZE } from './_core';
 import type { TopicGroupResponse } from '@/types/contents';
 
 // ─── Sources API ───
@@ -109,11 +109,10 @@ export const sourcesApi = {
   importOPML(file: File): Promise<{ created: number; skipped: number; total: number; message: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    const token = getAuthToken();
     return fetch(`${BASE_URL}/sources/import-opml`, {
       method: 'POST',
       body: formData,
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      credentials: 'include',
     }).then(async (response) => {
       const text = await response.text();
       const payload = text ? JSON.parse(text) : undefined;
@@ -336,8 +335,7 @@ export const contentsApi = {
     interactionType: 'click' | 'favorite' | 'unfavorite' | 'adopt' | 'feedback_positive' | 'feedback_negative',
   ): void {
     const url = `${BASE_URL}/contents/${contentId}/evidence-interaction?interaction_type=${interactionType}`;
-    const token = getAuthToken();
-    fetch(url, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => {});
+    fetch(url, { method: 'POST', credentials: 'include' }).catch(() => {});
   },
 };
 

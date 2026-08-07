@@ -1,12 +1,18 @@
 /**
  * API client 核心基础设施（从 lib/api.ts 抽出）。
  *
+ * 安全设计：
+ * - Auth token 存储在 HttpOnly cookie 中，JS 无法读取，防 XSS 窃取。
+ * - 所有 fetch 请求通过 credentials: 'include' 自动携带 cookie。
+ * - getAuthToken() 仅检查非 HttpOnly 的存在标记 cookie，返回 "1" 或 null。
+ * - getAuthTokenExpiresAt() 从非 HttpOnly cookie 读取过期时间。
+ *
  * 包含：
- * - BASE_URL / AUTH_TOKEN_STORAGE_KEY / FAVORITE_STATE_BATCH_SIZE 常量
+ * - BASE_URL / FAVORITE_STATE_BATCH_SIZE 常量
  * - formatApiErrorDetail    错误详情格式化
- * - getAuthToken/setAuthToken  token 存取
+ * - getAuthToken/setAuthToken  登录状态存取（cookie，非真实 token）
  * - getAuthTokenExpiresAt/setAuthTokenExpiresAt  token 过期时间存取
- * - request<T>              通用 fetch 封装（鉴权 + 401 自动 refresh + 错误处理 + JSON 解析）
+ * - request<T>              通用 fetch 封装（鉴权 cookie + 401 自动 refresh + 错误处理 + JSON 解析）
  * - assertUniqueIds         ID 去重校验
  * - chunkArray              数组分块
  *
@@ -17,9 +23,11 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 export { BASE_URL };
 
-export const AUTH_TOKEN_STORAGE_KEY = 'topiceye_auth_token';
-export const AUTH_TOKEN_EXPIRES_AT_KEY = 'topiceye_auth_expires_at';
 export const FAVORITE_STATE_BATCH_SIZE = 200;
+
+// Cookie 名称（与后端 config.py 保持一致）
+const AUTH_PRESENCE_COOKIE = 'topiceye_auth_present';
+const AUTH_EXPIRES_COOKIE = 'topiceye_auth_expires_at';
 
 function formatDetailItem(item: unknown): string | undefined {
   if (!item) return undefined;
@@ -73,45 +81,57 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// ── Cookie 读写工具 ──────────────────────────────────────────────────
+
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setCookie(name: string, value: string, maxAgeDays: number): void {
+  if (typeof document === 'undefined') return;
+  const maxAge = maxAgeDays * 86400;
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax`;
+}
+
+function deleteCookie(name: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=; max-age=0; path=/; SameSite=Lax`;
+}
+
+// ── 登录状态管理（基于 cookie，不存储真实 token） ────────────────────
+//
+// 真实 token 在 HttpOnly cookie 中，JS 无法读取。
+// AUTH_PRESENCE_COOKIE 是一个非 HttpOnly 的标记 cookie，值为 "1"。
+// getAuthToken() 返回该标记值或 null，用于判断是否已登录。
+// setAuthToken() 设置或清除该标记。
+// setAuthToken('any-truthy-string') → 标记为已登录
+// setAuthToken(null) → 标记为已登出
+
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return getCookie(AUTH_PRESENCE_COOKIE);
 }
 
 export function setAuthToken(token: string | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (token) {
-      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    } else {
-      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      localStorage.removeItem(AUTH_TOKEN_EXPIRES_AT_KEY);
-    }
-  } catch {}
-}
-
-export function getAuthTokenExpiresAt(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(AUTH_TOKEN_EXPIRES_AT_KEY);
-  } catch {
-    return null;
+  if (token) {
+    setCookie(AUTH_PRESENCE_COOKIE, '1', 30);
+  } else {
+    deleteCookie(AUTH_PRESENCE_COOKIE);
+    deleteCookie(AUTH_EXPIRES_COOKIE);
   }
 }
 
+export function getAuthTokenExpiresAt(): string | null {
+  return getCookie(AUTH_EXPIRES_COOKIE);
+}
+
 export function setAuthTokenExpiresAt(expiresAt: string | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (expiresAt) {
-      localStorage.setItem(AUTH_TOKEN_EXPIRES_AT_KEY, expiresAt);
-    } else {
-      localStorage.removeItem(AUTH_TOKEN_EXPIRES_AT_KEY);
-    }
-  } catch {}
+  if (expiresAt) {
+    setCookie(AUTH_EXPIRES_COOKIE, expiresAt, 30);
+  } else {
+    deleteCookie(AUTH_EXPIRES_COOKIE);
+  }
 }
 
 // ── Token refresh 机制 ──────────────────────────────────────────────
@@ -128,17 +148,17 @@ async function tryRefreshToken(): Promise<boolean> {
   // 已有 refresh 在进行中，复用同一个 Promise
   if (_refreshPromise) return _refreshPromise;
 
-  const currentToken = getAuthToken();
-  if (!currentToken) return false;
+  // 检查是否存在登录标记 cookie
+  if (!getAuthToken()) return false;
 
   _refreshPromise = (async () => {
     try {
       const url = `${BASE_URL}/auth/refresh`;
       const response = await fetch(url, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${currentToken}`,
         },
       });
 
@@ -150,7 +170,8 @@ async function tryRefreshToken(): Promise<boolean> {
         user: unknown;
       };
 
-      // token 不旋转（后端返回同一个 token），只更新 expires_at
+      // 后端已通过 Set-Cookie 更新了 HttpOnly cookie，
+      // 前端只需更新 expires_at 辅助 cookie
       setAuthTokenExpiresAt(data.expires_at);
       return true;
     } catch {
@@ -169,12 +190,11 @@ export async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
-  const token = getAuthToken();
   const config: RequestInit = {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   };
@@ -195,13 +215,12 @@ export async function request<T>(
   if (response.status === 401 && !endpoint.includes('/auth/refresh')) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
-      // 用新 token 重试原请求
-      const newToken = getAuthToken();
+      // 重试原请求（cookie 已更新，credentials: 'include' 自动携带）
       const retryConfig: RequestInit = {
         ...options,
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
           ...options.headers,
         },
       };

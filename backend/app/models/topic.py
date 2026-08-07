@@ -9,6 +9,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -30,6 +31,13 @@ class TopicGroup(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        # list_ordered_by_best_score() — ORDER BY best_score DESC
+        Index("ix_topic_groups_best_score", best_score.desc()),
+        # get_or_create(name) — WHERE name = ?
+        Index("ix_topic_groups_name", "name"),
     )
 
     # Relationships

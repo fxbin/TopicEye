@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -30,3 +30,8 @@ class ContentMetrics(Base):
     )
 
     content: Mapped[ContentItem] = relationship(back_populates="metrics")
+
+    __table_args__ = (
+        # selectinload(ContentItem.metrics) — WHERE content_id IN (...)
+        Index("ix_content_metrics_content_id", "content_id"),
+    )

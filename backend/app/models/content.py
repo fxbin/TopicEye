@@ -85,6 +85,10 @@ class ContentItem(Base):
         Index("ix_content_items_owner_status", "owner_user_id", "status"),
         Index("ix_content_items_crawled_at", crawled_at.desc()),
         Index("ix_content_items_status_crawled", "status", crawled_at.desc()),
+        # list_all_by_topic_id() — WHERE topic_id = ? ORDER BY crawled_at DESC
+        Index("ix_content_items_topic_id", "topic_id"),
+        # source_health_repo — WHERE source_id = ? / GROUP BY source_id
+        Index("ix_content_items_source_id", "source_id"),
         UniqueConstraint("source_id", "content_hash", name="uq_content_items_source_hash"),
     )
 

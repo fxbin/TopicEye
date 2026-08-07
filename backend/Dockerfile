@@ -1,15 +1,16 @@
-FROM python:3.12-slim
+# ── Stage 1: Builder ──────────────────────────────────────────────
+# Install dependencies with build tools, compile native extensions,
+# pre-download DuckDB extensions. These artifacts are copied to the
+# runtime stage; gcc / g++ / headers stay here and are discarded.
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# 1) 先单独装 duckdb 并触发 postgres 扩展下载到 /root/.duckdb/extensions
-#    国内服务器从 extensions.duckdb.org 拉扩展经常被 GFW 阻断或极慢，
-#    在 build 阶段就把它预下载好。requirements.txt 里再装 duckdb 时是 no-op。
-#    后续运行时 INSTALL postgres; LOAD postgres; 不会再下载（除非被清空）。
-ARG DUCKDB_VERSION=1.2.2
-RUN pip install --no-cache-dir "duckdb==${DUCKDB_VERSION}" && \
-    python -c "import duckdb; con=duckdb.connect(':memory:'); con.execute('INSTALL postgres; LOAD postgres;')" && \
-    rm -rf /root/.cache/pip
+# Build tools for packages that may need compilation
+# (mini-racer → V8 C++ bindings, lxml/trafilatura, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -17,11 +18,39 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_RETRIES=5 \
     PIP_INDEX_URL=${PIP_INDEX_URL}
 
-# 2) 装剩余依赖（duckdb 已就位，pip 会跳过）
+# Use a virtualenv so we can copy the entire install as one unit
+# into the runtime stage without touching system site-packages.
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache/pip
 
+# Pre-download DuckDB postgres extension to the runtime path.
+# 国内服务器从 extensions.duckdb.org 拉扩展经常被 GFW 阻断或极慢，
+# 在 build 阶段预下载到 DUCKDB_EXTENSION_DIR，运行时 INSTALL 是 no-op。
+ARG DUCKDB_EXTENSION_DIR=/app/data/duckdb_extensions
+RUN mkdir -p ${DUCKDB_EXTENSION_DIR} && \
+    python -c "import duckdb; con=duckdb.connect(':memory:'); con.execute(\"SET extension_directory='${DUCKDB_EXTENSION_DIR}'\"); con.execute('INSTALL postgres; LOAD postgres;')"
+
+# ── Stage 2: Runtime ──────────────────────────────────────────────
+# Slim image: no gcc, no dev headers, no pip cache.
+# Only the venv, DuckDB extensions, and application code.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy venv (all installed packages + console scripts like uvicorn)
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Copy pre-downloaded DuckDB extensions to the path the app expects
+COPY --from=builder /app/data/duckdb_extensions /app/data/duckdb_extensions
+
+# Copy application code
 COPY . .
 
 EXPOSE 8000

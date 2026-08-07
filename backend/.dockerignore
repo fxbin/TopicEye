@@ -22,3 +22,13 @@ venv/
 
 *.log
 logs/
+
+# Build & test artifacts not needed at runtime
+tests/
+scripts/
+docs/
+Dockerfile
+.dockerignore
+requirements-dev.txt
+.git/
+.github/

@@ -123,6 +123,22 @@ class Settings(BaseSettings):
     # 设为 0 可禁用滑动续期。
     SESSION_REFRESH_THRESHOLD_DAYS: int = 7
 
+    # ── Auth cookie ──
+    # 认证 token 通过 HttpOnly cookie 下发，前端 JS 无法读取，
+    # 降低 XSS 窃取 token 的风险。Bearer header 仍然支持（API 客户端）。
+    AUTH_COOKIE_NAME: str = "topiceye_auth"
+    # 非生产环境（HTTP）必须设为 False；HTTPS 部署设为 True。
+    AUTH_COOKIE_SECURE: bool = False
+    # lax 允许顶层导航携带 cookie（OAuth 回调 302 需要此行为）。
+    # 生产环境如需更严格可设为 "strict"（注意 OAuth 跳转可能丢失 cookie）。
+    AUTH_COOKIE_SAMESITE: str = "lax"
+    # 留空则绑定当前域名；跨子域可设为 ".example.com"。
+    AUTH_COOKIE_DOMAIN: str = ""
+    # 非 HttpOnly 的存在标记 cookie 名，前端据此判断是否登录。
+    AUTH_PRESENCE_COOKIE_NAME: str = "topiceye_auth_present"
+    # 非 HttpOnly 的过期时间 cookie 名，前端用于 refresh 逻辑。
+    AUTH_EXPIRES_COOKIE_NAME: str = "topiceye_auth_expires_at"
+
     # ── Request handling ──
     # 是否信任反向代理透传的 X-Forwarded-For 首段作为客户端真实 IP。
     # 部署在 Nginx / Caddy / CDN 后应保持 True；直接暴露公网时设为 False

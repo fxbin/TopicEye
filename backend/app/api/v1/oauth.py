@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.auth import _set_auth_cookies
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.oauth import ENABLED_PROVIDERS, oauth
@@ -116,12 +117,15 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     access_token, session = await create_session(db, user)
     logger.info("OAuth login success: provider=%s, user_id=%d, email=%s", provider, user.id, email)
 
-    # token 走 fragment，expires_at 一并传给前端用于过期判断
+    # token 通过 HttpOnly cookie 下发（浏览器自动携带）；
+    # expires_at 走 fragment 给前端做 refresh 判断（兼容旧逻辑）
     fragment = urlencode({
         "token": access_token,
         "expires_at": session.expires_at.isoformat(),
     })
-    return _frontend_redirect(fragment=fragment)
+    response = _frontend_redirect(fragment=fragment)
+    _set_auth_cookies(response, access_token, session.expires_at)
+    return response
 
 
 # ── 已启用 provider 列表（前端据此渲染按钮）──────────────────────────

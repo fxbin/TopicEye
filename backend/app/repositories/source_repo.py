@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.source import Source, SourceStatus
 from app.repositories.base import BaseRepository
 
@@ -218,7 +217,6 @@ async def claim_source_sync(
     interval_cutoff = now - timedelta(seconds=max(int(min_interval_seconds), 0))
 
     async def _claim() -> Source | None:
-        await begin_immediate_for_sqlite(db)
         result = await db.execute(select(Source).where(Source.id == source_id).with_for_update())
         source = result.scalar_one_or_none()
         if source is None:
@@ -241,4 +239,4 @@ async def claim_source_sync(
         await db.flush()
         return source
 
-    return await retry_sqlite_locked(_claim, on_retry=db.rollback)
+    return await _claim()

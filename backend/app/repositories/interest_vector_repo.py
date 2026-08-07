@@ -6,9 +6,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.core.database import database_profile
 from app.models.user_interest_vector import UserInterestVector
 from app.repositories.base import BaseRepository
 
@@ -39,34 +37,19 @@ class InterestVectorRepository(BaseRepository[UserInterestVector]):
         if not tag_lower:
             return
 
-        if database_profile.is_postgresql:
-            stmt = pg_insert(UserInterestVector).values(
-                user_id=user_id,
-                tag=tag_lower,
-                weight=weight,
-                signal_source=signal_source,
-            )
-            stmt = stmt.on_conflict_do_update(
-                constraint="uq_user_interest_tag",
-                set_={
-                    "weight": weight,
-                    "signal_source": signal_source,
-                },
-            )
-        else:
-            stmt = sqlite_insert(UserInterestVector).values(
-                user_id=user_id,
-                tag=tag_lower,
-                weight=weight,
-                signal_source=signal_source,
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["user_id", "tag"],
-                set_={
-                    "weight": weight,
-                    "signal_source": signal_source,
-                },
-            )
+        stmt = pg_insert(UserInterestVector).values(
+            user_id=user_id,
+            tag=tag_lower,
+            weight=weight,
+            signal_source=signal_source,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_user_interest_tag",
+            set_={
+                "weight": weight,
+                "signal_source": signal_source,
+            },
+        )
 
         await self.db.execute(stmt)
         await self.db.flush()

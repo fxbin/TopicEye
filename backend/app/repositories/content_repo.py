@@ -22,7 +22,6 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import database_profile
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.core.time import naive_utc_now
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_event import (
@@ -232,9 +231,6 @@ class ContentRepo(BaseRepository[ContentItem]):
         """Atomically claim eligible work and return durable ownership tokens."""
 
         async def _claim() -> list[AnalysisClaim]:
-            if database_profile.is_sqlite:
-                await begin_immediate_for_sqlite(self.db)
-
             claimed_at = naive_utc_now()
             stale_cutoff = claimed_at - timedelta(minutes=ANALYSIS_STALE_MINUTES)
             candidate_condition = self._analysis_candidate_condition(stale_cutoff=stale_cutoff, now=claimed_at)
@@ -287,12 +283,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             await self.db.flush()
             return claims
 
-        return await retry_sqlite_locked(
-            _claim,
-            attempts=4,
-            base_delay=0.1,
-            on_retry=self.db.rollback,
-        )
+        return await _claim()
 
     async def claim_analysis_job(self, content_id: int) -> AnalysisClaim | None:
         """Claim one eligible item and return its fencing token.
@@ -332,12 +323,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 lease_expires_at=lease_expires_at,
             )
 
-        return await retry_sqlite_locked(
-            _claim,
-            attempts=4,
-            base_delay=0.1,
-            on_retry=self.db.rollback,
-        )
+        return await _claim()
 
     async def renew_analysis_lease(self, content_id: int, fencing_token: str) -> bool:
         """Extend a claim only if this worker still owns its fencing token."""

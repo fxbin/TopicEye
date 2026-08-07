@@ -6,8 +6,6 @@ from __future__ import annotations
 
 from sqlalchemy import func, or_, select, update
 
-from app.core.database import database_profile
-from app.core.sqlite_retry import begin_immediate_for_sqlite, retry_sqlite_locked
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
 from app.models.source import Source
@@ -95,9 +93,6 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         """Claim unified-scored enrichment candidates so concurrent batches do not duplicate work."""
 
         async def _claim() -> list[int]:
-            if database_profile.is_sqlite:
-                await begin_immediate_for_sqlite(self.db)
-
             candidate_ids = await self.get_pending_enrichment_ids(min_score, limit)
             if not candidate_ids:
                 return []
@@ -114,8 +109,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
                     )
                 )
             )
-            if database_profile.is_postgresql:
-                lock_stmt = lock_stmt.with_for_update(skip_locked=True)
+            lock_stmt = lock_stmt.with_for_update(skip_locked=True)
 
             result = await self.db.execute(lock_stmt)
             locked_rows = result.all()
@@ -153,19 +147,12 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
             refreshed_content_ids = {int(row[0]) for row in refreshed.all()}
             return [content_id for content_id in ordered_content_ids if content_id in refreshed_content_ids]
 
-        return await retry_sqlite_locked(
-            _claim,
-            attempts=4,
-            base_delay=0.1,
-            on_retry=self.db.rollback,
-        )
+        return await _claim()
 
     async def claim_enrichment_for_content(self, content_id: int) -> AiAnalysis | None:
         """Claim the latest analysis for one content item before running enrichment."""
 
         async def _claim() -> AiAnalysis | None:
-            if database_profile.is_sqlite:
-                await begin_immediate_for_sqlite(self.db)
 
             latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
             lock_stmt = (
@@ -179,8 +166,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
                     )
                 )
             )
-            if database_profile.is_postgresql:
-                lock_stmt = lock_stmt.with_for_update(skip_locked=True)
+            lock_stmt = lock_stmt.with_for_update(skip_locked=True)
 
             result = await self.db.execute(lock_stmt)
             analysis = result.scalar_one_or_none()
@@ -205,12 +191,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
             analysis.enrichment_status = "processing"
             return analysis
 
-        return await retry_sqlite_locked(
-            _claim,
-            attempts=4,
-            base_delay=0.1,
-            on_retry=self.db.rollback,
-        )
+        return await _claim()
 
     async def list_with_score_filter(
         self,

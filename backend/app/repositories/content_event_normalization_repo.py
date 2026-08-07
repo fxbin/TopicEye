@@ -9,7 +9,6 @@ from datetime import datetime
 from sqlalchemy import exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.sqlite_retry import begin_immediate_for_sqlite
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_event import (
     ContentEventGroup,
@@ -47,10 +46,8 @@ class ContentEventNormalizationRepository:
         return ContentEventGroup.owner_user_id == owner_user_id
 
     async def begin_claim_transaction(self) -> None:
-        """Take SQLite's write lock before the first claim query."""
-
-        if not self.db.in_transaction():
-            await begin_immediate_for_sqlite(self.db)
+        """No-op — PostgreSQL handles row-level locking via SELECT FOR UPDATE."""
+        pass
 
     async def get_run(
         self,

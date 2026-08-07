@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     # 跳过启动期预热，优先保证 API 先可用（对应查询已有 SQLAlchemy 兜底）。
     DUCKDB_STARTUP_INIT_ENABLED: bool = True
 
+    # ── Connection pool ──
+    # SQLAlchemy async engine 连接池参数。
+    # pool_size: 常驻连接数；max_overflow: 超出后的临时连接上限。
+    # pool_recycle: 连接回收周期（秒），防止 PG 端 idle timeout 断连。
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_RECYCLE_SECONDS: int = 3600
+
     # ── Alerting ──
     ALERT_WEBHOOK_URL: str = ""  # 飞书/钉钉/Slack incoming webhook URL
     # 站点根 URL，用于 webhook 卡片中的"查看全部"按钮生成绝对链接。

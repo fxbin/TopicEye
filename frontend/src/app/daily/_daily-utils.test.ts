@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   localDateString,
   formatDateTime,
-  formatTimeOnly,
   parseJson,
   pickKey,
   isEnglishTitle,
@@ -41,18 +40,6 @@ describe('formatDateTime', () => {
 
   it('非法日期字符串回退原始值', () => {
     expect(formatDateTime('not-a-date')).toBe('not-a-date');
-  });
-});
-
-describe('formatTimeOnly', () => {
-  it('空值返回空字符串', () => {
-    expect(formatTimeOnly(null)).toBe('');
-    expect(formatTimeOnly(undefined)).toBe('');
-  });
-
-  it('合法 ISO 日期返回 HH:MM', () => {
-    const result = formatTimeOnly('2026-06-15T10:30:00Z');
-    expect(result).toMatch(/^\d{2}:\d{2}$/);
   });
 });
 

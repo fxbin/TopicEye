@@ -107,13 +107,6 @@ export const EDITION_LABELS: Record<string, string> = {
   legacy: '历史日报',
 };
 
-export const CALENDAR_STATUS_META: Record<string, { label: string; text: string; bg: string; border: string; active: string }> = {
-  DONE: { label: '已完成', text: 'text-teal', bg: 'bg-teal-light', border: 'border-teal-border', active: 'bg-teal text-white border-teal' },
-  ERROR: { label: '失败', text: 'text-red', bg: 'bg-red-light', border: 'border-red-light', active: 'bg-red text-white border-red' },
-  MISSING: { label: '缺失', text: 'text-amber', bg: 'bg-amber-light', border: 'border-amber-border', active: 'bg-amber text-white border-amber' },
-  GENERATING: { label: '生成中', text: 'text-primary', bg: 'bg-primary-light', border: 'border-primary-border', active: 'bg-primary text-white border-primary' },
-};
-
 export const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
   '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
   '见顶': { label: '→ 见顶', color: 'text-amber', bg: 'bg-amber-light' },
@@ -147,13 +140,6 @@ export function formatDateTime(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-export function formatTimeOnly(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.slice(11, 16);
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
 export function parseJson(val: unknown) {

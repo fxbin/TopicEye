@@ -15,13 +15,7 @@ import { ArrowRight, Loader2, TrendingDown, TrendingUp, Minus } from 'lucide-rea
 import { Panel, cx } from '@/components/ui';
 import { dailyReportApi } from '@/lib/api';
 import type { YesterdayTrackingData, YesterdayPickStatus } from '@/types';
-
-// lifecycle chip 配色，与 daily/page.tsx 的 LIFECYCLE_META 对齐
-const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
-  '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
-  '见顶': { label: '→ 见顶', color: 'text-amber', bg: 'bg-amber-light' },
-  '退潮': { label: '↓ 退潮', color: 'text-gray-400', bg: 'bg-gray-100' },
-};
+import { LIFECYCLE_META } from './_daily-utils';
 
 function LifecycleChip({ lifecycle }: { lifecycle: string | null }) {
   if (!lifecycle) {

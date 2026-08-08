@@ -29,29 +29,6 @@ import {
   displaySourceTitle,
 } from './_daily-utils';
 
-// ── StatBox ──────────────────────────────────────────────────────────
-
-export function StatBox({ label, value, tone = 'neutral' }: { label: string; value: React.ReactNode; tone?: 'primary' | 'red' | 'neutral' }) {
-  return (
-    <div className={cx(
-      'rounded-sm border px-3 py-2.5',
-      tone === 'primary' && 'border-primary-border bg-primary-light',
-      tone === 'red' && 'border-red-light bg-red-light',
-      tone === 'neutral' && 'border-gray-200 bg-gray-50',
-    )}>
-      <div className="mb-1 text-[10px] text-gray-500">{label}</div>
-      <div className={cx(
-        'font-mono text-xl font-black',
-        tone === 'primary' && 'text-primary',
-        tone === 'red' && 'text-red',
-        tone === 'neutral' && 'text-gray-900',
-      )}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 // ── PickCard (feature tier) ──────────────────────────────────────────
 
 export interface PickCardProps {

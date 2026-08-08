@@ -36,11 +36,11 @@ EXPLORE_PROMPT = """我是一条待创作的素材，请帮我发现自己看不
 {{
   "assumptions": [
     {{
-      "assumption": "常被默认的假设",
-      "challenge": "如果反过来会怎样",
-      "direction": "基于挑战的创作方向",
-      "unique_value": "独特价值",
-      "pitfall": "最容易掉进的陷阱"
+      "assumption": "",
+      "challenge": "",
+      "direction": "",
+      "unique_value": "",
+      "pitfall": ""
     }}
   ]
 }}"""
@@ -67,11 +67,11 @@ FOCUS_PROMPT = """用户已从探索期的方向中选择了一个。你的任�
 
 只输出JSON：
 {{
-  "question": "本轮追问的问题",
+  "question": "",
   "dimension": "audience|conflict|differentiation",
   "round": 1,
   "can_converge": false,
-  "reason": "为什么还需要继续追问 / 为什么可以收敛了"
+  "reason": ""
 }}"""
 
 
@@ -92,28 +92,28 @@ CONVERGE_PROMPT = """基于前面的探索和追问对话，输出结构化创�
 
 输出JSON格式：
 {{
-  "titles": ["标题1", "标题2", "标题3"],
+  "titles": [""],
   "platform_structure": {{
-    "hook": "开头hook",
-    "body": ["要点1", "要点2", "要点3"],
-    "cta": "结尾互动引导"
+    "hook": "",
+    "body": [""],
+    "cta": ""
   }},
   "decisions": [
     {{
-      "decision": "做了什么决策",
+      "decision": "",
       "confidence": "high|medium|low",
-      "reason": "为什么这么决定"
+      "reason": ""
     }}
   ],
   "assumptions_status": [
     {{
-      "assumption": "假设描述",
+      "assumption": "",
       "status": "verified|unverified",
-      "evidence": "验证依据或空字符串"
+      "evidence": ""
     }}
   ],
-  "risk_warning": "风险提示文本或空字符串（待验证假设>60%时必填）",
-  "tone": "建议语气/风格",
+  "risk_warning": "",
+  "tone": "",
   "self_evaluation": {{
     "structure_score": <0-100, 方案结构完整性：标题/hook/正文/结尾是否齐备且逻辑连贯>,
     "executability_score": <0-100, 可执行性：用户拿到方案后能否直接开始创作，还是需要大量补充>,
@@ -143,21 +143,21 @@ PLATFORM_PROMPTS = {
 
 输出JSON格式：
 {
-  "titles": ["标题1", "标题2", "标题3"],
-  "cover_slogan": "封面文案",
+  "titles": [""],
+  "cover_slogan": "",
   "structure": {
-    "hook": "开头hook",
-    "points": ["要点1", "要点2", "要点3"],
-    "cta": "结尾互动引导"
+    "hook": "",
+    "points": [""],
+    "cta": ""
   },
-  "tags": ["标签1", "标签2"],
-  "tone": "建议语气/风格",
+  "tags": [""],
+  "tone": "",
   "self_evaluation": {
     "structure_score": <0-100, 结构完整性>,
     "executability_score": <0-100, 可执行性>,
     "differentiation_score": <0-100, 差异化>,
     "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
-    "warnings": ["具体问题1"]
+    "warnings": [""]
   }
 }""",
     },
@@ -174,25 +174,25 @@ PLATFORM_PROMPTS = {
 
 输出JSON格式：
 {
-  "titles": ["标题1", "标题2", "标题3"],
+  "titles": [""],
   "total_seconds": 60,
   "scenes": [
     {
       "seq": 1,
       "seconds": 3,
-      "visual": "画面描述",
-      "narration": "旁白文案"
+      "visual": "",
+      "narration": ""
     }
   ],
-  "hook": "开头3秒hook文案",
-  "cta": "结尾互动引导",
-  "bgm_suggestion": "背景音乐建议",
+  "hook": "",
+  "cta": "",
+  "bgm_suggestion": "",
   "self_evaluation": {
     "structure_score": <0-100, 结构完整性>,
     "executability_score": <0-100, 可执行性>,
     "differentiation_score": <0-100, 差异化>,
     "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
-    "warnings": ["具体问题1"]
+    "warnings": [""]
   }
 }""",
     },
@@ -209,26 +209,26 @@ PLATFORM_PROMPTS = {
 
 输出JSON格式：
 {
-  "titles": ["标题1", "标题2", "标题3"],
+  "titles": [""],
   "outline": [
     {
       "section": 1,
-      "heading": "小节标题",
-      "points": ["论点1", "论点2"],
-      "evidence": "支撑素材建议",
-      "image_hint": "配图建议(如需要)"
+      "heading": "",
+      "points": [""],
+      "evidence": "",
+      "image_hint": ""
     }
   ],
-  "opening": "开头引入方式",
-  "closing": "结尾金句",
+  "opening": "",
+  "closing": "",
   "word_count_estimate": 2000,
-  "key_quote": "文内可引用的金句",
+  "key_quote": "",
   "self_evaluation": {
     "structure_score": <0-100, 结构完整性>,
     "executability_score": <0-100, 可执行性>,
     "differentiation_score": <0-100, 差异化>,
     "overall_score": <0-100, 综合=structure*0.3+executability*0.35+differentiation*0.35>,
-    "warnings": ["具体问题1"]
+    "warnings": [""]
   }
 }""",
     },

@@ -28,11 +28,11 @@ ENRICHMENT_PROMPT = """以下是一篇待Enrich的内容：
 
 请严格按以下 JSON 格式输出：
 {{
-  "background_knowledge": "这件事的背景知识（30字以内）",
-  "why_matters": "为什么这事对内容创作者重要（30字以内）",
-  "related_angles": ["相关角度1（同一话题的不同切入）", "相关角度2"],
-  "creator_tips": ["创作者可以用这个角度切入", "或者这个角度"],
-  "story_hooks": ["适合做短视频的hook开场", "适合做图文的标题方向"]
+  "background_knowledge": "背景知识（≤30字）",
+  "why_matters": "为什么对创作者重要（≤30字）",
+  "related_angles": [""],
+  "creator_tips": [""],
+  "story_hooks": [""]
 }}
 
 注意：

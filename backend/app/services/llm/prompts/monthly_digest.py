@@ -14,28 +14,25 @@ MONTHLY_DIGEST_PROMPT = """你是一位资深内容策划顾问。请根据以�
 {{
   "overview": "一段350字以内的本月热点概述，用专业且有洞察力的口吻，梳理本月最值得关注的内容趋势、长期变化和创作机会",
   "takeaway": "一句话核心要点，适合作为月刊标题/推送文案",
-  "keywords": ["关键词1", "关键词2", "关键词3", "关键词4", "关键词5", "关键词6"],
+  "keywords": [""],
   "trends": [
-    {{"title": "月度趋势标题", "desc": "趋势描述（60字内）", "color": "#3B82F6", "momentum": "up"}}
+    {{"title": "", "desc": "趋势描述（≤60字）", "color": "#3B82F6", "momentum": "up"}}
   ],
   "top_picks": [
-    {{"rank": 1, "source_idx": 1, "source_title": "上方数据的原文标题（逐字复制，勿改写）", "title": "观点化选题标题（可改写为更吸引创作者的标题）", "source": "来源名称", "category": "分类", "reason": "中文摘要式推荐理由（70字内，概括核心信息+为什么值得写）", "score": 85, "platforms": ["公众号", "小红书"]}}
+    {{"rank": 1, "source_idx": 1, "source_title": "逐字复制上方数据原文标题", "title": "观点化选题标题", "source": "", "category": "", "reason": "中文摘要式推荐理由（≤70字，概括核心信息+为什么值得写）", "score": 85, "platforms": ["公众号"]}}
   ],
   "category_summary": {{
-    "AI": {{"count": 5, "avg_score": 78, "top_title": "最热标题"}},
-    "产品": {{"count": 3, "avg_score": 72, "top_title": "最热标题"}}
+    "AI": {{"count": 5, "avg_score": 78, "top_title": ""}}
   }},
   "platform_tips": {{
-    "公众号": ["本月创作建议1", "本月创作建议2"],
-    "小红书": ["本月创作建议1", "本月创作建议2"],
-    "视频号": ["本月创作建议1", "本月创作建议2"],
-    "抖音": ["本月创作建议1"]
+    "公众号": [""],
+    "小红书": [""]
   }},
   "topic_clusters": [
-    {{"name": "话题名称", "count": 5, "heat": 90, "representative_title": "代表文章标题"}}
+    {{"name": "", "count": 5, "heat": 90, "representative_title": ""}}
   ],
   "action_items": [
-    {{"title": "建议选题", "angle": "切入角度（30字内）", "difficulty": "简单/中等/困难", "platform": "推荐平台"}}
+    {{"title": "", "angle": "切入角度（≤30字）", "difficulty": "简单/中等/困难", "platform": ""}}
   ]
 }}
 

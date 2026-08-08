@@ -29,5 +29,5 @@ USER_TEMPLATE = """请分析以下热点话题，生成创作角度推荐。
 {titles}
 
 请生成以下JSON格式的回答（严格JSON，不要有其他文字）：
-{{"common_angles": ["角度1", "角度2", "角度3"], "contrast_angles": [{{"angle": "反差角度描述", "reasoning": "为什么这个角度有效"}}, {{"angle": "另一个反差角度", "reasoning": "为什么有效"}}], "angle_note": "一句话总结这个话题的核心创作洞察"}}
+{{"common_angles": [""], "contrast_angles": [{{"angle": "", "reasoning": ""}}], "angle_note": "一句话总结核心创作洞察"}}
 """

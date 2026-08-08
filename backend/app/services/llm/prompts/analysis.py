@@ -23,9 +23,9 @@ ANALYSIS_PROMPT = """请对以下内容进行完整分析。
 
 请严格按以下 JSON 格式输出（不要输出任何其他内容）：
 {{
-  "summary": "一句话摘要（30字以内）",
-  "key_points": ["核心观点1", "核心观点2", "核心观点3"],
-  "tags": ["标签1", "标签2"],
+  "summary": "一句话摘要（≤30字）",
+  "key_points": [""],
+  "tags": [""],
   "scores": {{
     "quality_score": <0-100, 信息密度和逻辑性>,
     "hot_score": <0-100, 当前热度和传播速度>,
@@ -42,8 +42,8 @@ ANALYSIS_PROMPT = """请对以下内容进行完整分析。
     "curation_score": <0-100, 综合精选分（加权：信息密度30%+可操作性25%+创作者价值20%+爆文潜力15%+来源10%，风险分>70则扣20分）>
   }},
   "recommendation": "中文摘要式推荐理由（50字以内）。先用一句话概括这条内容的核心信息，再点出为什么值得关注/适合写；不要翻译腔、不要英文、不要营销夸张词、不要只写行动建议。例：'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'）",
-  "creator_angles": ["创作角度1", "创作角度2", "创作角度3"],
-  "title_suggestions": ["建议标题1", "建议标题2", "建议标题3"]
+  "creator_angles": [""],
+  "title_suggestions": [""]
 }}
 
 精选分（curation_score）评判标准：
@@ -80,11 +80,11 @@ ANALYSIS_PROMPT_EN = """Analyze the following content thoroughly.
 Title: {title}
 Content: {content}
 
-Output strictly in this JSON format (no other text):
+Output strictly in this JSON format (no other text). All text values must be in Chinese:
 
 {{
-  "summary": "中文一句话摘要（30字以内）",
-  "key_points": ["中文核心观点1", "中文核心观点2", "中文核心观点3"],
+  "summary": "one-line summary, ≤30 chars",
+  "key_points": ["key point 1", "key point 2", "key point 3"],
   "tags": ["tag1", "tag2"],
   "scores": {{
     "quality_score": <0-100, information density and logical coherence>,
@@ -94,16 +94,16 @@ Output strictly in this JSON format (no other text):
     "viral_score": <0-100, viral spread potential>,
     "risk_score": <0-100, content risk>
   }},
-  "risk_notes": "中文风险说明或空字符串。规则：当risk_score > 50时，必须填写具体风险说明（如：话题敏感、可能引发争议、涉及未证实信息、版权风险等），20字以内；当risk_score <= 50时，输出空字符串 \"\"",
+  "risk_notes": "risk notes or empty string. If risk_score > 50, provide specific risk (e.g. sensitive, controversial, unverified, copyright), ≤20 chars; if <= 50, output \"\"",
   "curation": {{
-    "info_density": <0-100, info density: pure share/empty talk=0-20, has opinions=40-60, has data/case/method=70-100>,
-    "actionability": <0-100, actionability: pure news=10-30, reference value=40-60, directly actionable=70-100>,
-    "source_weight": <0-100, source authority: anonymous/spam=10-30, second-hand=40-60, first-hand/official/KOL=70-100>,
-    "curation_score": <0-100, 综合精选分（weighted: info density 30%+ actionability 25%+ creator value 20%+ viral potential 15%+ source 10%, risk>70 deducts 20 points）>
+    "info_density": <0-100, pure share/empty talk=0-20, has opinions=40-60, has data/case/method=70-100>,
+    "actionability": <0-100, pure news=10-30, reference value=40-60, directly actionable=70-100>,
+    "source_weight": <0-100, anonymous/spam=10-30, second-hand=40-60, first-hand/official/KOL=70-100>,
+    "curation_score": <0-100, weighted: info density 30%+ actionability 25%+ creator value 20%+ viral potential 15%+ source 10%, risk>70 deducts 20 points>
   }},
-  "recommendation": "中文摘要式推荐理由（50字以内）。先用一句话概括这条英文内容的核心信息，再点出为什么值得中文创作者关注/适合写；不要输出英文、不要翻译腔、不要营销夸张词、不要只写行动建议。例：'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
-  "creator_angles": ["中文创作角度1", "中文创作角度2", "中文创作角度3"],
-  "title_suggestions": ["中文建议标题1", "中文建议标题2", "中文建议标题3"]
+  "recommendation": "summary-style recommendation, ≤50 chars. Summarize core info in one sentence, then explain why it's worth writing about. No marketing buzzwords, no action-only suggestions. Example: 'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
+  "creator_angles": ["creator angle 1", "creator angle 2", "creator angle 3"],
+  "title_suggestions": ["suggested title 1", "suggested title 2", "suggested title 3"]
 }}
 
 Curation score (curation_score) guidelines:
@@ -141,8 +141,8 @@ PAPER_ANALYSIS_PROMPT = """请对以下英文学术论文进行分析解读。
 请严格按以下 JSON 格式输出（不要输出任何其他内容）：
 {{
   "summary": "结构化中文概述（150-200字）。分四点讲清：①这篇论文要解决什么问题 ②用了什么方法/思路 ③得到什么结果 ④为什么重要。用创作者能懂的语言，避免堆砌术语，不要翻译腔。",
-  "key_points": ["中文核心观点1：方法/发现", "中文核心观点2：结果/数据", "中文核心观点3：意义/影响"],
-  "tags": ["论文标签1", "论文标签2"],
+  "key_points": ["方法/发现", "结果/数据", "意义/影响"],
+  "tags": [""],
   "scores": {{
     "quality_score": <0-100, 论文质量和严谨度>,
     "hot_score": <0-100, 当前学术/行业关注度>,
@@ -164,8 +164,8 @@ PAPER_ANALYSIS_PROMPT = """请对以下英文学术论文进行分析解读。
     "deep_read_score": <0-100，精读价值分。≥70 判为 true>,
     "deep_read_reason": "中文，30字以内，说明为什么值得/不值得精读。例：'提出全新 agent 框架，开源可复现，是 agent 领域重要进展'"
   }},
-  "creator_angles": ["中文创作角度1：可写的选题方向", "中文创作角度2", "中文创作角度3"],
-  "title_suggestions": ["中文标题建议1（适合做选题）", "中文标题建议2", "中文标题建议3"]
+  "creator_angles": ["可写的选题方向", ""],
+  "title_suggestions": ["适合做选题", ""]
 }}
 
 精读价值（deep_read_score）评判标准：

@@ -24,8 +24,10 @@ export function AppProvider({ children, initialData }: { children: React.ReactNo
   );
 }
 
-// ── Backward-compatible hook: combines all three contexts ─────
+// ── Backward-compatible hook: combines all three stores ──────
 // 38 个消费者继续用 useAppContext()，无需改动。
+// 新代码推荐直接使用 useAuthStore / useFavoritesStore / useReaderStore
+// 配合 selector 实现细粒度订阅，避免不必要 re-render。
 
 export function useAppContext(): AppContextType {
   const auth = useAuthContext();
@@ -36,3 +38,8 @@ export function useAppContext(): AppContextType {
 
 // Re-export individual hooks for new code that wants granular access
 export { useAuthContext, useFavoritesContext, useReaderContext };
+
+// Re-export store hooks with selector support for new code
+export { useAuthStore } from './AuthProvider';
+export { useFavoritesStore } from './FavoritesProvider';
+export { useReaderStore } from './ReaderProvider';

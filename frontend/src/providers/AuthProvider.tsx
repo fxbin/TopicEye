@@ -1,35 +1,51 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { authApi, getAuthToken, getAuthTokenExpiresAt, setAuthToken, setAuthTokenExpiresAt, settingsApi } from '@/lib/api';
+import { useStore } from 'zustand';
+import { getAuthToken, getAuthTokenExpiresAt, setAuthToken, setAuthTokenExpiresAt, authApi, settingsApi } from '@/lib/api';
 import { canAccessPath, requiredAccessForPath } from '@/lib/navigation';
-import type { AuthTokenResponse, AuthUser } from '@/types';
+import type { AuthUser } from '@/types';
+import { createAuthStore, type AuthStore, type AuthState, type AuthContextType } from '@/stores/authStore';
 
-// ── Context type ──────────────────────────────────────────────
+// ── Context: holds the per-instance store ─────────────────────
 
-export interface AuthContextType {
-  currentUser: AuthUser | null;
-  authLoading: boolean;
-  enabledFeatures: Record<string, boolean>;
-  featuresLoading: boolean;
-  applyAuthSession: (session: AuthTokenResponse) => void;
-  updateEnabledFeatures: (flags: Record<string, boolean>) => void;
-  logout: () => Promise<void>;
+const AuthStoreContext = createContext<AuthStore | null>(null);
+
+// ── Hooks ─────────────────────────────────────────────────────
+
+/**
+ * 细粒度 selector hook（新代码推荐使用）。
+ * 只在选中的 state slice 变化时 re-render。
+ *
+ * @example
+ * const currentUser = useAuthStore(s => s.currentUser);
+ * const logout = useAuthStore(s => s.logout);
+ */
+export function useAuthStore<T>(selector: (s: AuthState) => T): T {
+  const store = useContext(AuthStoreContext);
+  if (!store) throw new Error('useAuthStore must be used within AuthProvider');
+  return useStore(store, selector);
 }
 
-const AuthContext = createContext<AuthContextType>({
-  currentUser: null,
-  authLoading: true,
-  enabledFeatures: {},
-  featuresLoading: true,
-  applyAuthSession: () => {},
-  updateEnabledFeatures: () => {},
-  logout: async () => {},
-});
+/**
+ * 向后兼容 hook：订阅整个 auth store（与原 useContext(AuthContext) 行为一致）。
+ * 38 个现有消费者通过 useAppContext() 间接使用，无需改动。
+ */
+export function useAuthContext(): AuthContextType {
+  const store = useContext(AuthStoreContext);
+  if (!store) throw new Error('useAuthContext must be used within AuthProvider');
+  return useStore(store);
+}
 
-export function useAuthContext() {
-  return useContext(AuthContext);
+/**
+ * 获取 AuthStore 实例（非响应式，用于跨 store 依赖注入）。
+ * 仅在 Provider 内部使用。
+ */
+export function useAuthStoreApi(): AuthStore {
+  const store = useContext(AuthStoreContext);
+  if (!store) throw new Error('useAuthStoreApi must be used within AuthProvider');
+  return store;
 }
 
 // ── Provider ──────────────────────────────────────────────────
@@ -43,43 +59,27 @@ export function AuthProvider({
   initialUser?: AuthUser | null;
   initialFeatureFlags?: Record<string, boolean>;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(initialUser);
-  // 如果 SSR 预取已返回用户信息，则跳过 authLoading 白屏阶段。
-  const [authLoading, setAuthLoading] = useState(!initialUser);
-  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>(
-    initialFeatureFlags ?? {},
-  );
-  // 同理：SSR 已预取 feature flags 时不走 loading。
-  const [featuresLoading, setFeaturesLoading] = useState(!initialFeatureFlags);
+  const pathname = usePathname();
 
-  const applyAuthSession = useCallback((session: AuthTokenResponse) => {
-    setAuthToken(session.access_token);
-    setAuthTokenExpiresAt(session.expires_at);
-    setCurrentUser(session.user);
-  }, []);
+  // per-instance store（useRef 保证 SSR 安全：每个请求/组件实例独立 store）
+  const storeRef = useRef<AuthStore | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createAuthStore({
+      user: initialUser,
+      featureFlags: initialFeatureFlags,
+    });
+  }
+  const store = storeRef.current;
 
-  const updateEnabledFeatures = useCallback((flags: Record<string, boolean>) => {
-    setEnabledFeatures(flags || {});
-  }, []);
-
-  const logout = useCallback(async () => {
-    try {
-      if (getAuthToken()) {
-        await authApi.logout();
-      }
-    } catch {
-      // Local logout should still clear stale or invalid sessions.
-    } finally {
-      setAuthToken(null);
-      setCurrentUser(null);
-    }
-  }, []);
+  // 读取响应式 state（用于路由守卫 effect）
+  const authLoading = useStore(store, (s) => s.authLoading);
+  const featuresLoading = useStore(store, (s) => s.featuresLoading);
+  const currentUser = useStore(store, (s) => s.currentUser);
+  const enabledFeatures = useStore(store, (s) => s.enabledFeatures);
 
   // 启动时校验 token、拉用户信息
   // SSR 预取已返回用户信息时跳过此 useEffect，避免重复请求。
-  // 仅在 SSR 未返回用户（后端不可达 / 无 token）时走原有客户端拉取路径。
   useEffect(() => {
     if (initialUser) return; // SSR 已预取，跳过
     let cancelled = false;
@@ -87,17 +87,14 @@ export function AuthProvider({
     (async () => {
       const token = getAuthToken();
       if (!token) {
-        setAuthLoading(false);
+        store.setState({ authLoading: false });
         return;
       }
       try {
         // 启动时只在 session 即将过期时主动 refresh（剩余 < SESSION_REFRESH_THRESHOLD）。
-        // 远未过期时跳过 refresh，直接拉 me()，减少一次网络请求。
-        // refresh 失败（token 已过期超宽限期）不在此处登出，留给 me() 的
-        // 401 拦截器处理。
         const expiresAtStr = getAuthTokenExpiresAt();
-        const shouldRefresh = !expiresAtStr
-          || new Date(expiresAtStr) < new Date(Date.now() + 7 * 86400000);
+        const shouldRefresh =
+          !expiresAtStr || new Date(expiresAtStr) < new Date(Date.now() + 7 * 86400000);
         if (shouldRefresh) {
           try {
             const refreshed = await authApi.refresh();
@@ -109,67 +106,65 @@ export function AuthProvider({
           }
         }
         const user = await authApi.me();
-        if (!cancelled) setCurrentUser(user);
+        if (!cancelled) store.setState({ currentUser: user });
       } catch (err) {
         // 仅在 token 真正无效（401/403）时登出；
         // 网络错误（后端重启中）或 5xx 保留 token，避免热更新期间被误登出。
-        const isAuthFail = err instanceof Error && (err as Error & { isAuthError?: boolean }).isAuthError;
+        const isAuthFail =
+          err instanceof Error && (err as Error & { isAuthError?: boolean }).isAuthError;
         if (isAuthFail) {
+          // Token 无效（401/403）→ 清本地 token，不调后端 logout（也会失败）
           setAuthToken(null);
-          if (!cancelled) setCurrentUser(null);
+          if (!cancelled) store.setState({ currentUser: null });
         }
       } finally {
-        if (!cancelled) setAuthLoading(false);
+        if (!cancelled) store.setState({ authLoading: false });
       }
     })();
 
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [store, initialUser]);
 
-  // 拉取功能模块开关（管理员端点，普通用户 403 时回退空对象——所有 feature 视为关）
+  // 拉取功能模块开关（管理员端点，普通用户 403 时回退空对象）
   // SSR 预取已返回 feature flags 时跳过此 useEffect。
   useEffect(() => {
     if (initialFeatureFlags) return; // SSR 已预取，跳过
     let cancelled = false;
     (async () => {
       if (!getAuthToken()) {
-        setFeaturesLoading(false);
+        store.setState({ featuresLoading: false });
         return;
       }
       try {
         const { flags } = await settingsApi.getFeatureFlags();
-        if (!cancelled) setEnabledFeatures(flags || {});
+        if (!cancelled) store.setState({ enabledFeatures: flags || {} });
       } catch {
         // 非管理员或端点不可用：保持默认空对象（feature 全部视为关）
-        if (!cancelled) setEnabledFeatures({});
+        if (!cancelled) store.setState({ enabledFeatures: {} });
       } finally {
-        if (!cancelled) setFeaturesLoading(false);
+        if (!cancelled) store.setState({ featuresLoading: false });
       }
     })();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [store, initialFeatureFlags]);
 
   // 路由守卫：feature 关闭或权限不足时踢回首页/登录
   useEffect(() => {
     if (authLoading || featuresLoading) return;
     if (canAccessPath(pathname, currentUser, enabledFeatures)) return;
-    // feature 关闭的路径踢回首页（登录用户也可能命中）；权限不足按原有逻辑
-    router.replace(requiredAccessForPath(pathname, enabledFeatures) === 'admin' && currentUser ? '/' : '/login');
+    router.replace(
+      requiredAccessForPath(pathname, enabledFeatures) === 'admin' && currentUser
+        ? '/'
+        : '/login',
+    );
   }, [authLoading, featuresLoading, currentUser, enabledFeatures, pathname, router]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        currentUser,
-        authLoading,
-        enabledFeatures,
-        featuresLoading,
-        applyAuthSession,
-        updateEnabledFeatures,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthStoreContext.Provider value={store}>{children}</AuthStoreContext.Provider>;
 }
+
+// Re-export types for backward compat
+export type { AuthContextType };

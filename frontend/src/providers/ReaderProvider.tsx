@@ -1,38 +1,62 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useRef } from 'react';
+import { useStore } from 'zustand';
 import { ReaderDrawer } from '@/components/ReaderDrawer';
+import {
+  createReaderStore,
+  type ReaderStore,
+  type ReaderState,
+  type ReaderContextType,
+} from '@/stores/readerStore';
 
-// ── Context type ──────────────────────────────────────────────
+// ── Context: holds the per-instance store ─────────────────────
 
-export interface ReaderContextType {
-  /** 全局站内阅读抽屉：任意页面调用即可从右侧滑出正文（统一交互入口） */
-  openReader: (contentId: number) => void;
+const ReaderStoreContext = createContext<ReaderStore | null>(null);
+
+// ── Hooks ─────────────────────────────────────────────────────
+
+/**
+ * 细粒度 selector hook（新代码推荐使用）。
+ *
+ * @example
+ * const openReader = useReaderStore(s => s.openReader);
+ */
+export function useReaderStore<T>(selector: (s: ReaderState) => T): T {
+  const store = useContext(ReaderStoreContext);
+  if (!store) throw new Error('useReaderStore must be used within ReaderProvider');
+  return useStore(store, selector);
 }
 
-const ReaderContext = createContext<ReaderContextType>({
-  openReader: () => {},
-});
-
-export function useReaderContext() {
-  return useContext(ReaderContext);
+/** 向后兼容 hook（与原 useContext(ReaderContext) 行为一致） */
+export function useReaderContext(): ReaderContextType {
+  const store = useContext(ReaderStoreContext);
+  if (!store) throw new Error('useReaderContext must be used within ReaderProvider');
+  return useStore(store, (s) => ({ openReader: s.openReader }));
 }
 
 // ── Provider ──────────────────────────────────────────────────
 
 export function ReaderProvider({ children }: { children: React.ReactNode }) {
-  // 全局站内阅读抽屉：contentId 非空即打开、null 关闭；挂在根层，所有页面共用一个实例
-  const [readerContentId, setReaderContentId] = useState<number | null>(null);
+  // per-instance store
+  const storeRef = useRef<ReaderStore | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createReaderStore();
+  }
+  const store = storeRef.current;
 
-  const openReader = useCallback((contentId: number) => {
-    setReaderContentId(contentId);
-  }, []);
+  // ReaderDrawer 只需要 readerContentId 和 closeReader
+  const readerContentId = useStore(store, (s) => s.readerContentId);
+  const closeReader = useStore(store, (s) => s.closeReader);
 
   return (
-    <ReaderContext.Provider value={{ openReader }}>
+    <ReaderStoreContext.Provider value={store}>
       {children}
       {/* 全局站内阅读抽屉：所有页面统一从这里滑出，页面只需调用 openReader(contentId) */}
-      <ReaderDrawer contentId={readerContentId} onClose={() => setReaderContentId(null)} />
-    </ReaderContext.Provider>
+      <ReaderDrawer contentId={readerContentId} onClose={closeReader} />
+    </ReaderStoreContext.Provider>
   );
 }
+
+// Re-export types for backward compat
+export type { ReaderContextType };

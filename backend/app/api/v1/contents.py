@@ -707,7 +707,7 @@ async def translate_reader_content(
         snapshot = await translate_snapshot(db, content)
     except Exception as exc:
         logger.error("Translation failed: content_id=%d, exc=%s", content.id, exc)
-        raise HTTPException(status_code=502, detail=f"翻译失败: {exc}") from exc
+        raise HTTPException(status_code=502, detail="翻译失败，请稍后重试") from exc
 
     return ArticleReaderResponse(
         content_id=content.id,

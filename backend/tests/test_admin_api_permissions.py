@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import app.main  # noqa: F401 - import all models for Base.metadata
 from app.api.v1 import (
+    analyses as analyses_api,
     auth as auth_api,
     fanqie as fanqie_api,
     llm_models as llm_models_api,
@@ -57,6 +58,7 @@ async def admin_api_client(monkeypatch) -> AsyncGenerator[tuple[httpx.AsyncClien
     app.include_router(llm_models_api.router)
     app.include_router(scheduler_api.router)
     app.include_router(topics_api.router)
+    app.include_router(analyses_api.router)
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with session_factory() as session:
@@ -77,6 +79,7 @@ async def admin_api_client(monkeypatch) -> AsyncGenerator[tuple[httpx.AsyncClien
         webnovel_reports_api.get_db,
         llm_models_api.get_db,
         topics_api.get_db,
+        analyses_api.get_db,
     }:
         app.dependency_overrides[dependency] = override_get_db
 
@@ -261,3 +264,50 @@ async def test_topic_clustering_returns_conflict_when_lease_is_active(admin_api_
 
     assert response.status_code == 409
     assert "正在运行" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_batch_analysis_requires_admin(admin_api_client, monkeypatch):
+    """Batch and pending analysis endpoints must require admin role.
+
+    These endpoints trigger LLM calls for multiple content items — allowing
+    any authenticated user to invoke them would enable cost abuse.
+    """
+    client, user_token, admin_token = admin_api_client
+
+    # Stub out the actual analysis work so the test doesn't call LLM APIs
+    async def fake_analyze_batch(content_ids, assume_claimed=False):
+        return []
+
+    async def fake_claim_pending(db, *, limit, hours):
+        return []
+
+    monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fake_analyze_batch)
+    monkeypatch.setattr(
+        "app.repositories.content_repo.ContentRepo.claim_pending_analysis_ids",
+        fake_claim_pending,
+    )
+
+    # /analyses/batch — anonymous → 401, user → 403, admin → 200
+    batch_url = "/analyses/batch"
+
+    anonymous = await client.post(batch_url, json=[1, 2])
+    assert anonymous.status_code == 401
+
+    ordinary = await client.post(batch_url, json=[1, 2], headers={"Authorization": f"Bearer {user_token}"})
+    assert ordinary.status_code == 403
+
+    admin = await client.post(batch_url, json=[1, 2], headers={"Authorization": f"Bearer {admin_token}"})
+    assert admin.status_code == 200
+
+    # /analyses/pending — anonymous → 401, user → 403, admin → 200
+    pending_url = "/analyses/pending"
+
+    anonymous_pending = await client.post(pending_url)
+    assert anonymous_pending.status_code == 401
+
+    ordinary_pending = await client.post(pending_url, headers={"Authorization": f"Bearer {user_token}"})
+    assert ordinary_pending.status_code == 403
+
+    admin_pending = await client.post(pending_url, headers={"Authorization": f"Bearer {admin_token}"})
+    assert admin_pending.status_code == 200

@@ -4,10 +4,12 @@ AI Analysis API endpoints.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.repositories.analysis_repo import AnalysisRepository
@@ -17,13 +19,12 @@ from app.services.analysis import analyze_batch_concurrent, analyze_content, ana
 from app.services.analysis_jobs import (
     AnalysisJobPersistenceError,
     create_analysis_job,
-    finish_analysis_job,
     get_analysis_job,
-    mark_analysis_job_running,
     run_analysis_job,
 )
 
 router = APIRouter(prefix="/analyses", tags=["analyses"], dependencies=[Depends(get_current_user)])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/content/{content_id}", response_model=AiAnalysisResponse)
@@ -61,13 +62,15 @@ async def analyze_single(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") from e
+        logger.exception("Analysis failed for content_id=%d", content_id)
+        raise HTTPException(status_code=500, detail="Analysis failed") from e
 
 
 @router.post("/batch", response_model=list[AiAnalysisResponse])
 async def analyze_batch_endpoint(
     content_ids: list[int],
     db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin_user),
 ):
     """Analyze multiple content items by IDs."""
     if not content_ids:
@@ -86,6 +89,7 @@ async def analyze_all_pending(
     sync: bool = Query(False, description="Run analysis synchronously for diagnostics"),
     background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin_user),
 ):
     """Trigger analysis for pending content items, optionally scoped to a recent window."""
     content_repo = ContentRepo(db)

@@ -48,6 +48,11 @@ def _backend_callback_url(request: Request, provider: str) -> str:
 def _frontend_redirect(fragment: str | None = None, error: str | None = None) -> RedirectResponse:
     """构造跳回前端的响应。token 走 fragment，错误走 query。"""
     target = settings.OAUTH_FRONTEND_REDIRECT_URL
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAUTH_FRONTEND_REDIRECT_URL 未配置，无法完成 OAuth 回调。",
+        )
     if error:
         sep = "&" if "?" in target else "?"
         target = f"{target}{sep}{urlencode({'error': error})}"

@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_LOCAL_SECRET_KEY = "topiceye-local-dev-secret-change-me"
@@ -8,7 +9,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     # ── Database ──
-    DATABASE_URL: str = "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye"
+    # 留空则启动时报错；本地开发请在 .env 中设置（参考 .env.example）。
+    DATABASE_URL: str = ""
     # DuckDB connects in-memory and ATTACHes the configured OLTP database
     # READ_ONLY. PostgreSQL is the supported DuckDB source.
     DUCKDB_THREADS: int = 2
@@ -42,9 +44,9 @@ class Settings(BaseSettings):
     APP_SECRET_KEY: str = DEFAULT_LOCAL_SECRET_KEY
     INTEGRATION_SECRET_KEY: str | None = None
 
-    # CORS — comma-separated origins. Defaults cover the local dev frontend
-    # (Next.js serves on 3000); set CORS_ORIGINS for any deployed frontend.
-    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # CORS — comma-separated origins. 留空则不允许任何跨域请求；
+    # 本地开发请在 .env 中设置（参考 .env.example）。
+    CORS_ORIGINS: str = ""
 
     SCHEDULER_ENABLED: bool = True
     CACHE_WARMUP_ENABLED: bool = True
@@ -159,8 +161,9 @@ class Settings(BaseSettings):
     OAUTH_GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
-    # OAuth 登录成功后重定向到的前端回调页（token 走 URL fragment 传回）
-    OAUTH_FRONTEND_REDIRECT_URL: str = "http://localhost:3000/oauth/callback"
+    # OAuth 登录成功后重定向到的前端回调页（token 走 URL fragment 传回）。
+    # 留空则 OAuth 回调会返回 400；部署时必须通过 .env 设置。
+    OAUTH_FRONTEND_REDIRECT_URL: str = ""
 
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
@@ -199,6 +202,28 @@ class Settings(BaseSettings):
     EVENT_NORMALIZATION_PREDICTION_AUDIT_MAX_BYTES: int = 65_536
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _validate_database_url(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "DATABASE_URL 未设置。请在 .env 中配置 PostgreSQL 连接字符串，"
+                "参考 .env.example。"
+            )
+        return v
+
+    @field_validator("OAUTH_FRONTEND_REDIRECT_URL")
+    @classmethod
+    def _validate_oauth_redirect_url(cls, v: str) -> str:
+        # 允许空字符串（OAuth 未启用时不强制要求）；
+        # 但如果填了值，必须是合法的 http(s) URL。
+        if v and not v.startswith(("http://", "https://")):
+            raise ValueError(
+                f"OAUTH_FRONTEND_REDIRECT_URL 必须是 http:// 或 https:// 开头的 URL，"
+                f"当前值: {v!r}"
+            )
+        return v
 
     @property
     def is_production(self) -> bool:

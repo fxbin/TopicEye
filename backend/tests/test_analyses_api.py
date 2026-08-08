@@ -81,7 +81,7 @@ async def test_analyze_single_404_safe_message(api_client: tuple[httpx.AsyncClie
     client, token = api_client
     resp = await client.post(
         "/analyses/content/99999",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
     detail = resp.json()["detail"]
@@ -97,7 +97,7 @@ async def test_get_analysis_404(api_client: tuple[httpx.AsyncClient, str]):
     client, token = api_client
     resp = await client.get(
         "/analyses/content/99999",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Analysis not found"
@@ -109,7 +109,7 @@ async def test_list_analyses_empty(api_client: tuple[httpx.AsyncClient, str]):
     client, token = api_client
     resp = await client.get(
         "/analyses",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -125,7 +125,7 @@ async def test_list_analyses_pagination_params(api_client: tuple[httpx.AsyncClie
     client, token = api_client
     resp = await client.get(
         "/analyses?page=2&page_size=5",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -139,7 +139,7 @@ async def test_list_analyses_score_filters(api_client: tuple[httpx.AsyncClient, 
     client, token = api_client
     resp = await client.get(
         "/analyses?min_creator_score=50&min_viral_score=30",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -154,7 +154,7 @@ async def test_list_analyses_invalid_page(api_client: tuple[httpx.AsyncClient, s
     client, token = api_client
     resp = await client.get(
         "/analyses?page=0",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 422
 
@@ -165,32 +165,79 @@ async def test_list_analyses_invalid_page_size(api_client: tuple[httpx.AsyncClie
     client, token = api_client
     resp = await client.get(
         "/analyses?page_size=200",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 422
 
 
+@pytest_asyncio.fixture
+async def admin_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str], None]:
+    """In-memory SQLite + AsyncClient with an admin user token."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as db:
+        user = await create_user(db, email="admin@example.com", password="Password123", role="admin")
+        token, _ = await create_session(db, user)
+        db.add(Source(name="Test", url="https://example.com", source_type="RSS", status="active"))
+        await db.flush()
+        db.add(ContentItem(
+            title="Test Article",
+            url="https://example.com/article",
+            source_id=1,
+            source_name="Test",
+            source_type="RSS",
+            status="crawled",
+            content_hash="abc123",
+        ))
+        await db.commit()
+
+    app = FastAPI()
+    app.include_router(auth_api.router)
+    app.include_router(analyses_api.router)
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[auth_api.get_db] = override_get_db
+    app.dependency_overrides[analyses_api.get_db] = override_get_db
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, token
+
+    await engine.dispose()
+
+
 @pytest.mark.asyncio
-async def test_batch_empty_list_rejected(api_client: tuple[httpx.AsyncClient, str]):
-    """batch endpoint rejects empty content_ids list."""
-    client, token = api_client
+async def test_batch_empty_list_rejected(admin_client: tuple[httpx.AsyncClient, str]):
+    """batch endpoint rejects empty content_ids list (admin only)."""
+    client, token = admin_client
     resp = await client.post(
         "/analyses/batch",
         json=[],
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
     assert "No content IDs" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio
-async def test_batch_too_many_rejected(api_client: tuple[httpx.AsyncClient, str]):
-    """batch endpoint rejects >50 content_ids."""
-    client, token = api_client
+async def test_batch_too_many_rejected(admin_client: tuple[httpx.AsyncClient, str]):
+    """batch endpoint rejects >50 content_ids (admin only)."""
+    client, token = admin_client
     resp = await client.post(
         "/analyses/batch",
         json=list(range(51)),
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
     assert "Maximum 50" in resp.json()["detail"]
@@ -202,7 +249,7 @@ async def test_get_analysis_job_404(api_client: tuple[httpx.AsyncClient, str]):
     client, token = api_client
     resp = await client.get(
         "/analyses/jobs/nonexistent-job-id",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Analysis job not found"

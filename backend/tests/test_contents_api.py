@@ -79,7 +79,7 @@ async def test_get_content_404(contents_client: tuple[httpx.AsyncClient, str]):
     client, token = contents_client
     resp = await client.get(
         "/contents/99999",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
 
@@ -90,7 +90,7 @@ async def test_get_content_existing(contents_client: tuple[httpx.AsyncClient, st
     client, token = contents_client
     resp = await client.get(
         "/contents/1",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -104,7 +104,7 @@ async def test_today_count_structure(contents_client: tuple[httpx.AsyncClient, s
     client, token = contents_client
     resp = await client.get(
         "/contents/today-count",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -122,7 +122,7 @@ async def test_translate_404_for_nonexistent_content(
     client, token = contents_client
     resp = await client.post(
         "/contents/99999/reader/translate",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Content not found"
@@ -144,7 +144,7 @@ async def test_translate_error_safe_message(
     # for the seeded content. The error should be 502 with safe message.
     resp = await client.post(
         "/contents/1/reader/translate",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     if resp.status_code == 502:
         detail = resp.json()["detail"]
@@ -163,7 +163,7 @@ async def test_evidence_batch_invalid_ids(
     client, token = contents_client
     resp = await client.get(
         "/contents/evidence-batch?ids=abc,def",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
 
@@ -176,7 +176,7 @@ async def test_evidence_batch_empty_ids(
     client, token = contents_client
     resp = await client.get(
         "/contents/evidence-batch?ids=",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
 
@@ -190,7 +190,7 @@ async def test_evidence_batch_too_many_ids(
     ids = ",".join(str(i) for i in range(201))
     resp = await client.get(
         f"/contents/evidence-batch?ids={ids}",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
 
@@ -203,7 +203,7 @@ async def test_list_contents_default_pagination(
     client, token = contents_client
     resp = await client.get(
         "/contents",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -221,7 +221,7 @@ async def test_list_contents_with_category_filter(
     client, token = contents_client
     resp = await client.get(
         "/contents?category=科技",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -236,7 +236,7 @@ async def test_ignore_content_404(
     client, token = contents_client
     resp = await client.post(
         "/contents/99999/ignore",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
 
@@ -245,10 +245,13 @@ async def test_ignore_content_404(
 async def test_unignore_content_404(
     contents_client: tuple[httpx.AsyncClient, str],
 ):
-    """unignore_content returns 404 for non-existent ignore record."""
+    """unignore_content is idempotent: returns 200 with removed=False for non-existent ignore."""
     client, token = contents_client
     resp = await client.delete(
         "/contents/99999/ignore",
-        cookies={"session_token": token},
+        headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ignored"] is False
+    assert data["removed"] is False

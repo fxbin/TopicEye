@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.db_backend import ensure_aware_utc
 from app.core.user_identity import normalize_email
 from app.models.user import User, UserApiToken, UserOAuthAccount, UserRole, UserSession
 
@@ -289,6 +290,7 @@ async def get_user_for_token(db: AsyncSession, token: str) -> User | None:
     if row:
         session_id, expires_at, user_id = row
         # 滑动续期：剩余有效期低于阈值时自动延长
+        expires_at = ensure_aware_utc(expires_at)
         threshold_days = settings.SESSION_REFRESH_THRESHOLD_DAYS
         if threshold_days > 0:
             remaining = expires_at - now if expires_at else timedelta(0)

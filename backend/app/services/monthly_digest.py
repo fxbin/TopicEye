@@ -29,7 +29,7 @@ from app.services.digest_context import (
 )
 from app.services.digest_fallback import build_digest_fallback
 from app.services.llm import call_llm_json
-from app.services.llm.prompts.monthly_digest import MONTHLY_DIGEST_PROMPT
+from app.services.llm.prompts.digest import build_monthly_digest_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def generate_monthly_digest(
         return digest
 
     category_stats = build_category_stats(items_data)
-    prompt = MONTHLY_DIGEST_PROMPT.format(
+    prompt = build_monthly_digest_prompt(
         month_label=month_label,
         items_text=build_items_text(items_data, limit=40),
         category_text=build_category_text(category_stats),

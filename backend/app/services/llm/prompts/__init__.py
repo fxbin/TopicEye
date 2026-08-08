@@ -6,7 +6,7 @@ a specific service layer.  Import the ones you need:
 
     from app.services.llm.prompts.analysis import SYSTEM_PROMPT, ANALYSIS_PROMPT
     from app.services.llm.prompts.enrichment import SYSTEM_PROMPT, ENRICHMENT_PROMPT
-    from app.services.llm.prompts.creation import PLATFORM_PROMPTS
+    from app.services.llm.prompts.creation import PLATFORM_PROMPTS, PLATFORM_NAMES
     from app.services.llm.prompts.daily_report import SYSTEM_PROMPT, REPORT_PROMPT
     from app.services.llm.prompts.angle_recommend import SYSTEM_PROMPT, USER_TEMPLATE
 

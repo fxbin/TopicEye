@@ -125,13 +125,25 @@ CONVERGE_PROMPT = """基于前面的探索和追问对话，输出结构化创�
 
 
 # ── 快速模式：平台一次性生成提示词 ──────────────────────────────
-# 注意：以下 instruction 是原始字符串，不经过 .format()。
+# PLATFORM_PROMPTS 仅被快速模式 (app.services.creation) 使用：
+#   - "name"       → 平台展示名（也用于持久化记录）
+#   - "instruction" → 系统 prompt（原始字符串，不经过 .format()）
+# 探索模式 (app.services.creation_explore) 只需平台展示名，
+# 用 PLATFORM_NAMES 轻量查询即可，无需 import 整个 PLATFORM_PROMPTS。
+#
+# 注意：instruction 是原始字符串，不经过 .format()。
 # JSON 大括号用单 {} 是有意的——模型需要看到正确的 JSON 示例。
 # 如需在这些模板中使用 .format() 变量替换，必须先把所有 { 替换为 {{、} 替换为 }}。
 
+PLATFORM_NAMES: dict[str, str] = {
+    "xiaohongshu": "小红书图文",
+    "short_video": "短视频脚本",
+    "wechat": "公众号长文",
+}
+
 PLATFORM_PROMPTS = {
     "xiaohongshu": {
-        "name": "小红书图文",
+        "name": PLATFORM_NAMES["xiaohongshu"],
         "instruction": """你是一个小红书爆款内容策划师。基于以下素材，生成小红书图文创作方案。
 
 要求：
@@ -162,7 +174,7 @@ PLATFORM_PROMPTS = {
 }""",
     },
     "short_video": {
-        "name": "短视频脚本",
+        "name": PLATFORM_NAMES["short_video"],
         "instruction": """你是一个短视频脚本策划师。基于以下素材，生成60秒短视频脚本。
 
 要求：
@@ -197,7 +209,7 @@ PLATFORM_PROMPTS = {
 }""",
     },
     "wechat": {
-        "name": "公众号长文",
+        "name": PLATFORM_NAMES["wechat"],
         "instruction": """你是一个公众号爆款文章策划师。基于以下素材，生成公众号长文大纲。
 
 要求：

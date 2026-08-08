@@ -148,16 +148,16 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
     {
         "name": "weekly_digest_prompt",
         "scene": "weekly_digest",
-        "description": "周报提示词",
-        "module": "app.services.llm.prompts.weekly_digest",
-        "attr": "WEEKLY_DIGEST_PROMPT",
+        "description": "周报提示词（统一模板，参数化生成）",
+        "module": "app.services.llm.prompts.digest",
+        "attr": "DIGEST_PROMPT",
     },
     {
         "name": "monthly_digest_prompt",
         "scene": "monthly_digest",
-        "description": "月报提示词",
-        "module": "app.services.llm.prompts.monthly_digest",
-        "attr": "MONTHLY_DIGEST_PROMPT",
+        "description": "月报提示词（统一模板，参数化生成）",
+        "module": "app.services.llm.prompts.digest",
+        "attr": "DIGEST_PROMPT",
     },
     {
         "name": "angle_recommend_system",

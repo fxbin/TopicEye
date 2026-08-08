@@ -29,7 +29,7 @@ from app.services.digest_context import (
 )
 from app.services.digest_fallback import build_digest_fallback
 from app.services.llm import call_llm_json
-from app.services.llm.prompts.weekly_digest import WEEKLY_DIGEST_PROMPT
+from app.services.llm.prompts.digest import build_weekly_digest_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ async def generate_weekly_digest(
     cat_stats = _build_category_stats(items_data)
     category_text = build_category_text(cat_stats)
 
-    prompt = WEEKLY_DIGEST_PROMPT.format(
+    prompt = build_weekly_digest_prompt(
         week_label=week_label,
         items_text=items_text,
         category_text=category_text,

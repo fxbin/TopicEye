@@ -304,6 +304,7 @@ async def classify_async(
         CLASSIFICATION_PROMPT,
         SYSTEM_PROMPT,
     )
+    from app.utils.prompt_safety import sanitize_prompt_input
 
     # Get current category list for the prompt. Ingestion can pass a per-source
     # snapshot to avoid one DB query per new item.
@@ -346,9 +347,9 @@ async def classify_async(
             {
                 "role": "user",
                 "content": CLASSIFICATION_PROMPT.format(
-                    categories=categories_str,
-                    title=title,
-                    summary=summary or "无摘要",
+                    categories=sanitize_prompt_input(categories_str, max_chars=500),
+                    title=sanitize_prompt_input(title, max_chars=500),
+                    summary=sanitize_prompt_input(summary or "无摘要", max_chars=500),
                 ),
             },
         ]

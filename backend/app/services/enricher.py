@@ -36,6 +36,8 @@ from app.repositories.analysis_queries import (
 )
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.llm import call_llm_json
+from app.services.llm.prompts.enrichment import ENRICHMENT_PROMPT, SYSTEM_PROMPT
+from app.utils.prompt_safety import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +170,12 @@ async def enrich_content(
         {
             "role": "user",
             "content": ENRICHMENT_PROMPT.format(
-                title=content.title,
-                summary=analysis.summary or "无",
-                tags=tags_str or "无",
+                title=sanitize_prompt_input(content.title, max_chars=500),
+                summary=sanitize_prompt_input(analysis.summary or "无", max_chars=500),
+                tags=sanitize_prompt_input(tags_str or "无", max_chars=200),
                 curation_score=analysis.curation_score or 0,
-                source_name=content.source_name or "未知",
-                related_items=related_text,
+                source_name=sanitize_prompt_input(content.source_name or "未知", max_chars=200),
+                related_items=sanitize_prompt_input(related_text, max_chars=2000),
             ),
         },
     ]

@@ -22,6 +22,7 @@ from app.services.digest_base import is_active_generating as _digest_is_active_g
 from app.services.digest_fallback import build_daily_editorial_fallback
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.daily_report import REPORT_PROMPT, SYSTEM_PROMPT
+from app.utils.prompt_safety import sanitize_prompt_input
 from app.services.scoring_engine import score_items
 from app.services.scoring_inputs import build_scoring_inputs
 from app.services.zhihu_url import normalize_zhihu_url
@@ -669,8 +670,8 @@ async def generate_daily_report(
         edition_label=_edition_label(normalized_edition),
         window_start=window_start.strftime("%Y-%m-%d %H:%M"),
         window_end=window_end.strftime("%Y-%m-%d %H:%M"),
-        curated_items_text=curated_text,
-        background_items_text=background_text,
+        curated_items_text=sanitize_prompt_input(curated_text, max_chars=6000),
+        background_items_text=sanitize_prompt_input(background_text, max_chars=8000),
     )
 
     try:

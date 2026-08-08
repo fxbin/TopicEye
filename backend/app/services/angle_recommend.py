@@ -20,6 +20,7 @@ from typing import Any
 
 from app.services.llm import call_llm_json  # noqa: E402
 from app.services.llm.prompts.angle_recommend import SYSTEM_PROMPT, USER_TEMPLATE
+from app.utils.prompt_safety import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +45,10 @@ async def generate_angles_for_topic(
             "angle_note": "...",
         }
     """
-    # 防御 prompt injection：清洗用户输入，移除控制字符，限制长度
-    clean_topic = re.sub(r"[\x00-\x1f\x7f]", "", topic)[:40]
-    clean_keywords = re.sub(r"[\x00-\x1f\x7f]", "", ", ".join(keywords))[:200]
-    clean_titles = "\n".join(f"- {t}" for t in platform_titles[:8])
-    # 限制标题总长度，防止超长输入耗尽 LLM token
-    if len(clean_titles) > 2000:
-        clean_titles = clean_titles[:2000] + "\n...(truncated)"
+    # 防御 prompt injection：统一用 sanitize_prompt_input 清洗
+    clean_topic = sanitize_prompt_input(topic, max_chars=40)
+    clean_keywords = sanitize_prompt_input(", ".join(keywords), max_chars=200)
+    clean_titles = sanitize_prompt_input("\n".join(f"- {t}" for t in platform_titles[:8]), max_chars=2000)
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},

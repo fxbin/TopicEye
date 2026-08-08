@@ -45,6 +45,7 @@ from app.services.llm.prompts.analysis import (
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_EN,
 )
+from app.utils.prompt_safety import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ async def _run_lite_prescreen(
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     messages = [
         {"role": "system", "content": PRESCREEN_SYSTEM_PROMPT},
-        {"role": "user", "content": PRESCREEN_PROMPT.format(title=title, content=truncated[:1800])},
+        {"role": "user", "content": PRESCREEN_PROMPT.format(title=sanitize_prompt_input(title, max_chars=500), content=sanitize_prompt_input(truncated, max_chars=1800))},
     ]
     result, metadata = await _call_llm_json_with_metadata(
         messages,
@@ -423,7 +424,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": analysis_prompt.format(title=title, content=truncated)},
+        {"role": "user", "content": analysis_prompt.format(title=sanitize_prompt_input(title, max_chars=500), content=sanitize_prompt_input(truncated, max_chars=3000))},
     ]
 
     analysis_mode = "pro_only"

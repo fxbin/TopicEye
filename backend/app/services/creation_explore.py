@@ -1,10 +1,9 @@
 """
 Explore-mode creation plan service — three-step scaffolding flow.
 
-This module implements the "衰减式脚手架" architecture from the roundtable
-discussion (Round 4-5). It coexists with the existing fast-mode
-``generate_creation_plan`` — fast mode is a one-shot call, explore mode is
-a three-step conversation:
+Implements a "衰减式脚手架" (diminishing scaffolding) architecture.
+Coexists with fast-mode ``generate_creation_plan`` — fast mode is a
+one-shot call, explore mode is a three-step conversation:
 
   1. explore  — assumption challenge + direction generation  (AI: 100%)
   2. focus    — Socratic questioning, user redirects freely     (AI: 50%)
@@ -33,8 +32,9 @@ from app.services.llm.prompts.creation import (
     CONVERGE_PROMPT,
     EXPLORE_PROMPT,
     FOCUS_PROMPT,
-    PLATFORM_PROMPTS,
+    PLATFORM_NAMES,
 )
+from app.utils.prompt_safety import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -148,12 +148,12 @@ async def generate_explore_directions(
     info = _build_source_info(analysis)
 
     user_msg = EXPLORE_PROMPT.format(
-        title=content.title,
-        source_name=content.source_name or "",
-        summary=info["summary"],
-        key_points=info["key_points"],
-        tags=info["tags"],
-        creator_angles=info["creator_angles"],
+        title=sanitize_prompt_input(content.title, max_chars=500),
+        source_name=sanitize_prompt_input(content.source_name or "", max_chars=200),
+        summary=sanitize_prompt_input(info["summary"], max_chars=1000),
+        key_points=sanitize_prompt_input(info["key_points"], max_chars=1000),
+        tags=sanitize_prompt_input(info["tags"], max_chars=300),
+        creator_angles=sanitize_prompt_input(info["creator_angles"], max_chars=500),
     )
 
     messages = [
@@ -208,11 +208,11 @@ async def generate_focus_questions(
     info = _build_source_info(analysis)
 
     user_msg = FOCUS_PROMPT.format(
-        selected_direction=selected_direction,
-        unique_value=unique_value,
-        pitfall=pitfall,
-        summary=info["summary"],
-        key_points=info["key_points"],
+        selected_direction=sanitize_prompt_input(selected_direction, max_chars=500),
+        unique_value=sanitize_prompt_input(unique_value, max_chars=500),
+        pitfall=sanitize_prompt_input(pitfall, max_chars=500),
+        summary=sanitize_prompt_input(info["summary"], max_chars=1000),
+        key_points=sanitize_prompt_input(info["key_points"], max_chars=1000),
     )
 
     # Build conversation context from previous rounds
@@ -282,8 +282,8 @@ async def generate_converge_plan(
     content, analysis = fetched
     info = _build_source_info(analysis)
 
-    platform_config = PLATFORM_PROMPTS.get(platform)
-    if not platform_config:
+    platform_name = PLATFORM_NAMES.get(platform)
+    if not platform_name:
         return {"error": f"不支持的平台: {platform}"}
 
     # Format focus answers into a readable string
@@ -292,10 +292,10 @@ async def generate_converge_plan(
         q = qa.get("question", "")
         a = qa.get("user_answer", "")
         focus_text_parts.append(f"问：{q}\n答：{a}")
-    focus_answers_text = "\n\n".join(focus_text_parts) if focus_text_parts else "无追问记录"
+    focus_answers_text = sanitize_prompt_input("\n\n".join(focus_text_parts) if focus_text_parts else "无追问记录", max_chars=2000)
 
     user_msg = CONVERGE_PROMPT.format(
-        platform_name=platform_config["name"],
+        platform_name=platform_name,
         selected_direction=selected_direction,
         focus_answers=focus_answers_text,
         title=content.title,
@@ -328,13 +328,13 @@ async def generate_converge_plan(
         return {"error": "收敛期未返回可用标题"}
     plan["titles"] = titles
 
-    # Extract and validate self-evaluation (Sprint 3: 创作方案自评)
+    # Normalize and validate self-evaluation block
     plan = _attach_self_evaluation(plan)
 
     plan["_meta"] = {
         "content_id": content_id,
         "platform": platform,
-        "platform_name": platform_config["name"],
+        "platform_name": platform_name,
         "mode": "explore",
         "phase": "converge",
     }
@@ -346,7 +346,7 @@ async def generate_converge_plan(
         content_id=content_id,
         content_title=content.title,
         platform=platform,
-        platform_name=platform_config["name"],
+        platform_name=platform_name,
         plan=plan,
     )
 

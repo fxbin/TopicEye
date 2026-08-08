@@ -144,3 +144,30 @@ jobs:
           python-version: "3.12"
       - name: Check API layering
         run: python scripts/check_layering.py
+
+  # ── 依赖安全扫描 ──
+  # pip-audit 扫描 Python 已安装包的已知漏洞（PyPI Advisory DB）。
+  # npm audit 扫描前端依赖树（--audit-level=high 只在高危/严重时失败）。
+  # 两者均使用 continue-on-error 以渐进式上线，待基线稳定后改为阻断。
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Backend pip-audit
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          pip install -r requirements-dev.txt
+          pip-audit --strict
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend npm audit
+        working-directory: frontend
+        continue-on-error: true
+        run: npm audit --audit-level=high

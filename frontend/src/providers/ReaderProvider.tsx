@@ -32,7 +32,8 @@ export function useReaderStore<T>(selector: (s: ReaderState) => T): T {
 export function useReaderContext(): ReaderContextType {
   const store = useContext(ReaderStoreContext);
   if (!store) throw new Error('useReaderContext must be used within ReaderProvider');
-  return useStore(store, (s) => ({ openReader: s.openReader }));
+  // openReader 是 createStore 创建的稳定引用，直接返回不会触发额外 re-render
+  return { openReader: useStore(store, (s) => s.openReader) };
 }
 
 // ── Provider ──────────────────────────────────────────────────

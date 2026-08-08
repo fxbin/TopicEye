@@ -128,11 +128,8 @@ function saveFavoriteTargetsToStorage(userId: number | null, favSet: Set<string>
 }
 
 // ── Non-reactive pending guards ───────────────────────────────
-// 模块级变量：同步防重入，不需要触发 re-render。
-// 每次 createFavoritesStore 时重置，保证 per-instance 隔离。
-
-let _favoritePending: Set<number> = new Set();
-let _favoriteTargetPending: Set<string> = new Set();
+// 使用闭包变量而非模块级变量，保证每个 store 实例独立隔离。
+// 不需要触发 re-render，所以不放入 store state。
 
 // ── Factory ───────────────────────────────────────────────────
 
@@ -141,9 +138,9 @@ export function createFavoritesStore(deps: {
   router: { push: (path: string) => void };
   initialCounts?: { todayPicks: number; sourceCount: number; favoriteTotal: number } | null;
 }): FavoritesStore {
-  // 重置 pending guards for new store instance
-  _favoritePending = new Set();
-  _favoriteTargetPending = new Set();
+  // 闭包级 pending guards：per-instance 隔离，不污染模块状态
+  const _favoritePending: Set<number> = new Set();
+  const _favoriteTargetPending: Set<string> = new Set();
 
   const { authStore, router, initialCounts } = deps;
 

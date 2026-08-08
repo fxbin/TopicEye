@@ -84,8 +84,8 @@ Output strictly in this JSON format (no other text). All text values must be in 
 
 {{
   "summary": "one-line summary, ≤30 chars",
-  "key_points": ["key point 1", "key point 2", "key point 3"],
-  "tags": ["tag1", "tag2"],
+  "key_points": [""],
+  "tags": [""],
   "scores": {{
     "quality_score": <0-100, information density and logical coherence>,
     "hot_score": <0-100, current heat and spread velocity>,
@@ -102,8 +102,8 @@ Output strictly in this JSON format (no other text). All text values must be in 
     "curation_score": <0-100, weighted: info density 30%+ actionability 25%+ creator value 20%+ viral potential 15%+ source 10%, risk>70 deducts 20 points>
   }},
   "recommendation": "summary-style recommendation, ≤50 chars. Summarize core info in one sentence, then explain why it's worth writing about. No marketing buzzwords, no action-only suggestions. Example: 'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
-  "creator_angles": ["creator angle 1", "creator angle 2", "creator angle 3"],
-  "title_suggestions": ["suggested title 1", "suggested title 2", "suggested title 3"]
+  "creator_angles": [""],
+  "title_suggestions": [""]
 }}
 
 Curation score (curation_score) guidelines:

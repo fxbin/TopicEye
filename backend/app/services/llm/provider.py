@@ -222,21 +222,36 @@ async def _call_llm_with_metadata_inner(
         except UnsupportedParamsError:
             # Provider doesn't support response_format (e.g. some GLM / DeepSeek
             # endpoints). Retry the same candidate without it so JSON-mode
-            # callers still get a parseable text response.
+            # callers still get a parseable text response. If the retry also
+            # fails (rate limit / timeout / etc.), fall through to the generic
+            # except block below so failover to the next candidate still works.
             logger.info("Model %s doesn't support response_format, retrying without", request_model)
-            response = await _call_with_retry(
-                messages,
-                request_model,
-                candidate["api_key"],
-                api_base,
-                candidate["temperature"],
-                candidate["max_tokens"],
-                None,
-                model_config,
-                scene,
-            )
-            _failover.on_success(key)
-            return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
+            try:
+                response = await _call_with_retry(
+                    messages,
+                    request_model,
+                    candidate["api_key"],
+                    api_base,
+                    candidate["temperature"],
+                    candidate["max_tokens"],
+                    None,
+                    model_config,
+                    scene,
+                )
+                _failover.on_success(key)
+                return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
+            except Exception as exc:
+                last_exc = exc
+                if _is_deterministic_request_error(exc):
+                    logger.info("LLM request rejected; keeping route healthy: %s", exc)
+                    raise
+                reset_time = _parse_reset_time(exc) if _is_rate_limit_error(exc) else None
+                _failover.on_failure(
+                    key,
+                    reset_at=reset_time,
+                    cooldown_seconds=candidate["cooldown_seconds"],
+                )
+                record_llm_pool_circuit_event(model_config, scene, "candidate_failed")
         except Exception as exc:
             last_exc = exc
             if _is_deterministic_request_error(exc):

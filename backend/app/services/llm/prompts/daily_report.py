@@ -42,7 +42,7 @@ REPORT_PROMPT = """## 日报窗口
   "takeaway": "适合做推送标题的一句话，20字内，必须带一个冲突或一个数字，禁止'XX成新焦点''XX时代来了'这类万能句式",
   "keywords": [""],
   "trends": [
-    {{"title": "趋势标题", "desc": "趋势描述（30字内）", "color": "#3B82F6", "momentum": "up"}}
+    {{"title": "", "desc": "趋势描述（≤30字）", "color": "#3B82F6", "momentum": "up"}}
   ],
   "top_picks": [
     {{

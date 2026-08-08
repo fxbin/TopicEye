@@ -224,15 +224,19 @@ async def generate_focus_questions(
                 messages.append({"role": "user", "content": qa["user_answer"]})
 
     if user_redirect:
-        messages.append({
-            "role": "user",
-            "content": f"方向不对，我要走另一条路。{user_redirect}",
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": f"方向不对，我要走另一条路。{user_redirect}",
+            }
+        )
 
-    messages.append({
-        "role": "user",
-        "content": f"这是第 {focus_round} 轮追问，请输出本轮问题。",
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": f"这是第 {focus_round} 轮追问，请输出本轮问题。",
+        }
+    )
 
     try:
         result = await asyncio.wait_for(
@@ -292,7 +296,9 @@ async def generate_converge_plan(
         q = qa.get("question", "")
         a = qa.get("user_answer", "")
         focus_text_parts.append(f"问：{q}\n答：{a}")
-    focus_answers_text = sanitize_prompt_input("\n\n".join(focus_text_parts) if focus_text_parts else "无追问记录", max_chars=2000)
+    focus_answers_text = sanitize_prompt_input(
+        "\n\n".join(focus_text_parts) if focus_text_parts else "无追问记录", max_chars=2000
+    )
 
     user_msg = CONVERGE_PROMPT.format(
         platform_name=platform_name,

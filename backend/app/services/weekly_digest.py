@@ -115,9 +115,7 @@ async def generate_weekly_digest(
                 await db.flush()
             except IntegrityError:
                 await db.rollback()
-                existing = await db.execute(
-                    existing_stmt.with_for_update()
-                )
+                existing = await db.execute(existing_stmt.with_for_update())
                 digest = existing.scalar_one()
                 if digest.status == "DONE":
                     return digest, False
@@ -221,14 +219,10 @@ async def generate_weekly_digest(
             # ── 飞书富卡片：overview + Top 3 精选，每段独立 div + HR 分割 ──
             feishu_elements: list[dict] = []
             if overview_text:
-                feishu_elements.append(
-                    {"tag": "div", "text": {"tag": "lark_md", "content": overview_text}}
-                )
+                feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": overview_text}})
             if top_picks_raw:
                 feishu_elements.append({"tag": "hr"})
-                feishu_elements.append(
-                    {"tag": "div", "text": {"tag": "lark_md", "content": "**本周精选 Top 3：**"}}
-                )
+                feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "**本周精选 Top 3：**"}})
                 for i, pick in enumerate(top_picks_raw[:3], start=1):
                     title = pick.get("title") or f"选题 {i}"
                     category = pick.get("category", "")

@@ -22,10 +22,10 @@ from app.services.digest_base import is_active_generating as _digest_is_active_g
 from app.services.digest_fallback import build_daily_editorial_fallback
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.daily_report import REPORT_PROMPT, SYSTEM_PROMPT
-from app.utils.prompt_safety import sanitize_prompt_input
 from app.services.scoring_engine import score_items
 from app.services.scoring_inputs import build_scoring_inputs
 from app.services.zhihu_url import normalize_zhihu_url
+from app.utils.prompt_safety import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,17 @@ GENERATING_STALE_AFTER = timedelta(minutes=10)
 # 后端兜底校验常量（不信任 LLM 输出的枚举/字段约束）
 _VALID_LIFECYCLE = {"上升期", "见顶", "退潮"}
 _BRIEF_ALLOWED_FIELDS = {
-    "source_idx", "source_title", "source_title_zh", "editorial_title", "title",
-    "tier", "category", "reason", "platforms", "source_url", "score",
+    "source_idx",
+    "source_title",
+    "source_title_zh",
+    "editorial_title",
+    "title",
+    "tier",
+    "category",
+    "reason",
+    "platforms",
+    "source_url",
+    "score",
     "content_id",  # 站内阅读所需：ReaderDrawer 按 content_id 取正文
 }
 
@@ -271,9 +280,7 @@ def _match_picks_to_curated(
     matchable_items = curated_for_prompt
     curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
     curated_by_title = {item["title"]: item for item in matchable_items}
-    curated_by_url = {
-        normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")
-    }
+    curated_by_url = {normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")}
     curated_titles = set(curated_by_title)
     selected_source_ids: list[int] = []
     picks: list[dict] = []
@@ -317,9 +324,7 @@ def _match_picks_to_curated(
                 pick.pop("lifecycle", None)
             # angles 过滤问句 + 限 3 条
             angles = pick.get("angles") or []
-            pick["angles"] = [
-                a for a in angles if isinstance(a, str) and not a.strip().endswith(("？", "?"))
-            ][:3]
+            pick["angles"] = [a for a in angles if isinstance(a, str) and not a.strip().endswith(("？", "?"))][:3]
         picks.append(pick)
         if matched_item["id"] not in selected_source_ids:
             selected_source_ids.append(matched_item["id"])
@@ -353,16 +358,12 @@ def build_daily_report_card(
 
     # 1. takeaway — 一句话推送标题
     if takeaway:
-        feishu_elements.append(
-            {"tag": "div", "text": {"tag": "lark_md", "content": f"**{takeaway}**"}}
-        )
+        feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{takeaway}**"}})
         feishu_elements.append({"tag": "hr"})
 
     # 2. overview — 主编判断
     if overview_text:
-        feishu_elements.append(
-            {"tag": "div", "text": {"tag": "lark_md", "content": overview_text}}
-        )
+        feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": overview_text}})
 
     # 3. 深度精讲 section
     if feature_picks:
@@ -384,21 +385,13 @@ def build_daily_report_card(
             if time_window:
                 meta_parts.append(f"⏰ {time_window}")
             meta_str = f" · {' · '.join(meta_parts)}" if meta_parts else ""
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**{i}. {title}**{meta_str}"}}
-            )
+            feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{i}. {title}**{meta_str}"}})
             if reason:
-                feishu_elements.append(
-                    {"tag": "note", "elements": [
-                        {"tag": "plain_text", "content": f"💡 {reason}"}
-                    ]}
-                )
+                feishu_elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": f"💡 {reason}"}]})
             if angles:
                 angles_text = " | ".join(angles[:3])
                 feishu_elements.append(
-                    {"tag": "note", "elements": [
-                        {"tag": "plain_text", "content": f"✍️ {angles_text}"}
-                    ]}
+                    {"tag": "note", "elements": [{"tag": "plain_text", "content": f"✍️ {angles_text}"}]}
                 )
             if source_url:
                 feishu_elements.append(
@@ -419,9 +412,7 @@ def build_daily_report_card(
             meta_str = f" · {category}" if category else ""
             if source_url:
                 meta_str += f" · [📄 原文]({source_url})"
-            feishu_elements.append(
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"{i}. {title}{meta_str}"}}
-            )
+            feishu_elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"{i}. {title}{meta_str}"}})
 
     # 5. 如果有更多未展示的
     if len(picks) > show_count:
@@ -525,7 +516,11 @@ async def _push_daily_report_success(
 
     try:
         await push_daily_report_webhook(
-            report, picks, report_date, normalized_edition, force=False,
+            report,
+            picks,
+            report_date,
+            normalized_edition,
+            force=False,
         )
     except Exception:
         logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)
@@ -599,9 +594,7 @@ async def generate_daily_report(
                 await db.flush()
             except IntegrityError:
                 await db.rollback()
-                existing = await db.execute(
-                    existing_stmt.with_for_update()
-                )
+                existing = await db.execute(existing_stmt.with_for_update())
                 report = existing.scalar_one()
                 if report.status == "DONE" and not force:
                     return report, False

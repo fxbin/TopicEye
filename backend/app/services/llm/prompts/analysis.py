@@ -101,7 +101,7 @@ Output strictly in this JSON format (no other text). All text values must be in 
     "source_weight": <0-100, anonymous/spam=10-30, second-hand=40-60, first-hand/official/KOL=70-100>,
     "curation_score": <0-100, weighted: info density 30%+ actionability 25%+ creator value 20%+ viral potential 15%+ source 10%, risk>70 deducts 20 points>
   }},
-  "recommendation": "summary-style recommendation, ≤50 chars. Summarize core info in one sentence, then explain why it's worth writing about. No marketing buzzwords, no action-only suggestions. Example: 'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
+  "recommendation": "中文摘要式推荐理由（≤50 chars）。Summarize core info in one sentence, then explain why it's worth writing about. 不要输出英文、不要营销夸张词、不要只写行动建议。Example: 'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
   "creator_angles": [""],
   "title_suggestions": [""]
 }}

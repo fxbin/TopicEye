@@ -11,10 +11,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import Any, Mapping
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -155,7 +155,13 @@ async def _run_lite_prescreen(
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     messages = [
         {"role": "system", "content": PRESCREEN_SYSTEM_PROMPT},
-        {"role": "user", "content": PRESCREEN_PROMPT.format(title=sanitize_prompt_input(title, max_chars=500), content=sanitize_prompt_input(truncated, max_chars=1800))},
+        {
+            "role": "user",
+            "content": PRESCREEN_PROMPT.format(
+                title=sanitize_prompt_input(title, max_chars=500),
+                content=sanitize_prompt_input(truncated, max_chars=1800),
+            ),
+        },
     ]
     result, metadata = await _call_llm_json_with_metadata(
         messages,
@@ -424,7 +430,13 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": analysis_prompt.format(title=sanitize_prompt_input(title, max_chars=500), content=sanitize_prompt_input(truncated, max_chars=3000))},
+        {
+            "role": "user",
+            "content": analysis_prompt.format(
+                title=sanitize_prompt_input(title, max_chars=500),
+                content=sanitize_prompt_input(truncated, max_chars=3000),
+            ),
+        },
     ]
 
     analysis_mode = "pro_only"

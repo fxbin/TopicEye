@@ -80,6 +80,7 @@ DIGEST_PROMPT = """你是一位资深内容策划顾问。请根据以下{period
 
 # ── Factory helpers ────────────────────────────────────────────
 
+
 def build_weekly_digest_prompt(
     week_label: str,
     items_text: str,

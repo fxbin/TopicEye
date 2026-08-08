@@ -206,9 +206,7 @@ async def sync_prompt_registry(db: AsyncSession) -> int:
         preview = content[:500]
 
         # Check if existing record needs updating
-        result = await db.execute(
-            select(PromptRegistry).where(PromptRegistry.name == entry["name"])
-        )
+        result = await db.execute(select(PromptRegistry).where(PromptRegistry.name == entry["name"]))
         existing = result.scalar_one_or_none()
 
         if existing is not None:

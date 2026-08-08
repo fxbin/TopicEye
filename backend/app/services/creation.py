@@ -36,8 +36,6 @@ def _creation_llm_error_message(exc: Exception) -> str:
     return "创作方案生成失败，请稍后重试。"
 
 
-
-
 def _normalize_string_list(value) -> list[str]:
     if not isinstance(value, list):
         return []

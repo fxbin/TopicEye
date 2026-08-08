@@ -92,9 +92,7 @@ async def generate_monthly_digest(
                 await db.flush()
             except IntegrityError:
                 await db.rollback()
-                existing = await db.execute(
-                    existing_stmt.with_for_update()
-                )
+                existing = await db.execute(existing_stmt.with_for_update())
                 digest = existing.scalar_one()
                 if digest.status == "DONE":
                     return digest, False

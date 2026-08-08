@@ -30,7 +30,6 @@ from sqlalchemy import select
 # Only import what scheduler.py itself calls; external callers should import
 # from app._post_sync_pipeline directly.
 from app._post_sync_pipeline import (
-    _drain_pending_analysis,
     _request_post_sync_pipeline,
     _run_post_sync_pipeline,
 )
@@ -95,69 +94,6 @@ scheduler = AsyncIOScheduler(
 
 
 @track_job(
-    "sync_and_analyze",
-    name="全量信源同步+分析",
-    timeout=600,
-    description="同步所有启用的信源，自动分析新内容，聚类+趋势快照",
-)
-async def sync_and_analyze() -> None:
-    """Legacy: sync all enabled sources, then auto-analyze new pending content."""
-    logger.info("Scheduler: sync_and_analyze started")
-
-    # ── Phase 1: Sync sources ──
-    async with async_session() as db:
-        source_repo = SourceRepository(db)
-        sources = await source_repo.get_enabled_sources()
-
-        for source in sources:
-            try:
-                stats = await ingest_from_source(source, db)
-                logger.info("Scheduler: synced source '%s' — %s", source.name, stats)
-            except Exception:
-                logger.exception("Scheduler: failed to sync source '%s' (id=%d)", source.name, source.id)
-            await db.commit()
-
-    logger.info("Scheduler: sync finished (%d sources)", len(sources))
-
-    # ── Phase 2: Auto-analyze pending content ──
-    analysis_stats = await _drain_pending_analysis()
-
-    if analysis_stats["attempted"] == 0:
-        logger.info("Scheduler: no pending content to analyze")
-        return
-
-    if analysis_stats["remaining"]:
-        logger.info(
-            "Scheduler: pending backlog remains after analysis drain — %s; continuing with analyzed subset",
-            analysis_stats,
-        )
-
-    # ── Phase 3: Cluster + dedup ──
-    try:
-        async with async_session() as db:
-            from app.services.topic_clustering import cluster_topics_with_lease
-
-            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler")
-        if claimed:
-            logger.info("Scheduler: clustering done — %s", stats)
-        else:
-            logger.info("Scheduler: clustering skipped because another run holds the lease")
-    except Exception:
-        logger.exception("Scheduler: clustering failed")
-
-    # ── Phase 4: Trend snapshot ──
-    try:
-        async with async_session() as db:
-            from app.services.trends import snapshot_daily_trends
-
-            stats = await snapshot_daily_trends(db)
-            await db.commit()
-        logger.info("Scheduler: trend snapshot done — %s", stats)
-    except Exception:
-        logger.exception("Scheduler: trend snapshot failed")
-
-
-@track_job(
     "dispatch_analysis_jobs",
     name="恢复持久化分析任务",
     timeout=600,
@@ -184,7 +120,6 @@ async def _recover_analysis_jobs_on_startup() -> None:
 async def cleanup_old_content() -> None:
     """Remove pending content older than 90 days."""
     logger.info("Scheduler: cleanup_old_content started")
-    datetime.now(UTC) - timedelta(days=90)
 
     async with async_session() as db:
         content_repo = ContentRepo(db)

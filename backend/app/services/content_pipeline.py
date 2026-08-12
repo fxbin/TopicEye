@@ -57,6 +57,35 @@ def _ensure_datetime(value: Any) -> datetime | None:
 
 
 
+# ── 平台级硬规则：零成本 content_type 判定 ─────────────────────────
+# 不依赖 LLM，在入库时直接根据 platform 设置形态
+_PLATFORM_CONTENT_TYPE: dict[str, str] = {
+    "arXiv": "论文",
+}
+
+
+def _parse_source_content_type(source: Source) -> str | None:
+    """从 source.category 的 `/` 分隔符解析内容形态。
+
+    source.category 格式："topic/format"（如 "AI/论文"）
+    - 有 `/`：返回 `/` 后的部分，经 _normalize_content_type 标准化
+    - 无 `/`：回退到平台级硬规则
+    """
+    from app.services.classifier import _normalize_content_type
+
+    raw_cat = source.category or ""
+    if "/" in raw_cat:
+        parts = raw_cat.split("/", 1)
+        ct = _normalize_content_type(parts[1])
+        if ct:
+            return ct
+
+    # 回退：平台级硬规则
+    if source.platform:
+        return _PLATFORM_CONTENT_TYPE.get(source.platform)
+    return None
+
+
 async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]:
     """
     Full ingestion pipeline for a single source.
@@ -246,6 +275,8 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
                 summary=summary or None,
                 raw_content=entry.get("raw_content") or None,
                 cover_url=entry.get("cover_url"),
+                category=source.category.split("/", 1)[0] if source.category and "/" in source.category else source.category,
+                content_type=_parse_source_content_type(source),
                 status=ContentStatus.PENDING,
             )
             # LLM 规则过滤层（参照 content-signal-radar lowSignalPenalty）：
@@ -297,10 +328,19 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         for entry, class_result in classified_entries:
             category = class_result["category"]
             tags = class_result["tags"]
+            # LLM 返回的 content_type 覆盖源级默认值；
+            # keyword fast-path 返回 None 时保留入库时解析的 source.category 值
+            llm_content_type = class_result.get("content_type")
+            update_values: dict[str, Any] = {
+                "category": category,
+                "tags": tags if tags else None,
+            }
+            if llm_content_type:
+                update_values["content_type"] = llm_content_type
             await db.execute(
                 update(ContentItem)
                 .where(ContentItem.id == inserted_content_ids[entry["_content_hash"]])
-                .values(category=category, tags=tags if tags else None)
+                .values(**update_values)
             )
             if category:
                 category_counts[category] = category_counts.get(category, 0) + 1

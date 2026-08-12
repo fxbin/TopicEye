@@ -37,6 +37,52 @@ CATEGORIES: list[str] = [
     "其他",
 ]
 
+# ── 内容形态（双轴分类的 format 轴） ────────────────────────────────
+# 与 category（主题轴）正交，描述内容的呈现形态/意图
+CONTENT_TYPES: list[str] = [
+    "论文",      # 学术论文 / 预印本
+    "技术",      # 技术文章 / 工程实践
+    "资讯",      # 新闻 / 行业动态
+    "教程",      # 教程 / 指南 / How-to
+    "观点",      # 评论 / 分析 / 观点
+    "工具",      # 工具 / 产品发布
+    "体验",      # 体验测评 / 用户研究
+    "成长",      # 个人成长 / 思维方法
+    "讨论",      # 社区讨论 / 问答
+    "项目",      # 开源项目 / Side Project
+]
+
+# 信源 category 中 `/` 后的形态别名 -> 标准化 content_type
+_CONTENT_TYPE_ALIASES: dict[str, str] = {
+    "论文": "论文",
+    "paper": "论文",
+    "学术": "论文",
+    "技术": "技术",
+    "tech": "技术",
+    "资讯": "资讯",
+    "新闻": "资讯",
+    "news": "资讯",
+    "教程": "教程",
+    "tutorial": "教程",
+    "指南": "教程",
+    "观点": "观点",
+    "评论": "观点",
+    "opinion": "观点",
+    "工具": "工具",
+    "tool": "工具",
+    "产品": "工具",
+    "体验": "体验",
+    "review": "体验",
+    "测评": "体验",
+    "成长": "成长",
+    "思维": "成长",
+    "讨论": "讨论",
+    "discussion": "讨论",
+    "项目": "项目",
+    "project": "项目",
+    "开源": "项目",
+}
+
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "AI": [
         "AI",
@@ -231,6 +277,28 @@ def classify(text: str) -> str:
     return scores.most_common(1)[0][0]
 
 
+def _normalize_content_type(value: str | None) -> str | None:
+    """将信源 category 中的形态部分或 LLM 返回的 content_type 标准化。
+
+    >>> _normalize_content_type("论文")
+    '论文'
+    >>> _normalize_content_type("paper")
+    '论文'
+    >>> _normalize_content_type("")
+    None
+    """
+    if not value:
+        return None
+    key = str(value).strip().lower()
+    if not key:
+        return None
+    # 精确匹配优先
+    if key in _CONTENT_TYPE_ALIASES:
+        return _CONTENT_TYPE_ALIASES[key]
+    # 原值回退（允许新形态值透传，但截断长度）
+    return str(value).strip()[:50]
+
+
 def _get_keyword_score(text: str) -> float:
     """
     Returns a 0.0-1.0 confidence score for keyword-based classification.
@@ -287,12 +355,13 @@ async def classify_async(
     Classify content using LLM with dynamic category discovery.
 
     Fast-path: keyword fallback is tried FIRST. If confidence is high
-    enough (>0.6 keyword score), skip LLM entirely and use keyword result.
+    enough (>=0.4 keyword score), skip LLM entirely and use keyword result.
     Only falls back to LLM when keyword score is low (category=其他 or low score).
 
     Returns:
         {
             "category": str,          # 分类名称
+            "content_type": str|None, # 内容形态（论文/技术/资讯/...）
             "tags": list[str],        # 关键词标签
             "is_new_category": bool,  # 是否为新发现的分类
             "confidence": float,      # 置信度
@@ -333,6 +402,7 @@ async def classify_async(
     if keyword_category != "其他" and keyword_score >= 0.4:
         return {
             "category": keyword_category,
+            "content_type": None,  # keyword fast-path 不判定形态
             "tags": keyword_tags,
             "is_new_category": False,
             "confidence": keyword_score,
@@ -362,6 +432,7 @@ async def classify_async(
         )
 
         category = _normalize_category_name(result.get("category"))
+        content_type = _normalize_content_type(result.get("content_type"))
         tags = _normalize_llm_tags(result.get("tags"))
         # 显式 bool 解析：bool("false") 在 Python 是 True，弱模型返回字符串会污染分类表
         _raw_new = result.get("is_new_category", False)
@@ -390,6 +461,7 @@ async def classify_async(
 
         return {
             "category": category,
+            "content_type": content_type,
             "tags": tags,
             "is_new_category": is_new,
             "confidence": confidence,
@@ -401,6 +473,7 @@ async def classify_async(
         tags = extract_tags(text_input)
         return {
             "category": category,
+            "content_type": None,
             "tags": tags,
             "is_new_category": False,
             "confidence": 0.3,

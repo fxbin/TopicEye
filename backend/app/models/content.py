@@ -50,6 +50,9 @@ class ContentItem(Base):
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 内容形态（双轴分类的 format 轴）：论文/技术/资讯/教程/观点/工具/体验/成长/讨论/项目
+    # 由 source.category 的 `/` 分隔符解析或 LLM 分类填充
+    content_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tags: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     status: Mapped[str] = mapped_column(value_enum(ContentStatus), nullable=False, default=ContentStatus.PENDING)

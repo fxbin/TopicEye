@@ -69,3 +69,4 @@ htmlcov/
 .qoder/
 .brooks-lint-history.json
 .vidt/
+.node-version

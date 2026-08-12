@@ -350,6 +350,7 @@ async def list_contents(
 @router.get("/today-picks")
 async def today_picks(
     category: str | None = Query(None, description="Filter by category"),
+    content_type: str | None = Query(None, description="Filter by content type (论文/技术/资讯/...)"),
     time_range: str | None = Query(None, description="Time range: 24h, 48h, 7d"),
     limit: int | None = Query(None, ge=1, le=200, description="Limit returned items while preserving total"),
     current_user: User | None = Depends(get_optional_current_user),
@@ -359,6 +360,7 @@ async def today_picks(
 
     params = TodayPicksCacheParams(
         category=category,
+        content_type=content_type,
         hours={"24h": 24, "7d": 168}.get(time_range or "", 48),
         limit=limit,
         user_id=current_user.id if current_user is not None else None,
@@ -377,7 +379,7 @@ async def today_picks(
 
     try:
         async with async_session() as db:
-            build_kwargs = {"category": category, "hours": params.hours, "limit": params.limit}
+            build_kwargs = {"category": category, "content_type": content_type, "hours": params.hours, "limit": params.limit}
             if current_user is not None:
                 build_kwargs["owner_user_id"] = current_user.id
             payload = await build_today_picks(db, **build_kwargs)

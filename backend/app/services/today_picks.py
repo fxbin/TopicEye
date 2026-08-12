@@ -33,6 +33,7 @@ async def build_today_picks(
     db: AsyncSession,
     *,
     category: str | None = None,
+    content_type: str | None = None,
     hours: int = 48,
     limit: int | None = None,
     owner_user_id: int | None = None,
@@ -53,6 +54,7 @@ async def build_today_picks(
         query_kwargs = {
             "hours": hours,
             "category": category,
+            "content_type": content_type,
             "limit": limit,
             # DuckDB supplies candidates; the unified scorer below is the only final gate.
             "curation_threshold": 0,
@@ -73,6 +75,7 @@ async def build_today_picks(
                 db,
                 hours=hours,
                 category=category,
+                content_type=content_type,
                 limit=limit,
                 owner_user_id=owner_user_id,
             )
@@ -171,6 +174,7 @@ async def _build_today_picks_via_oltp(
     *,
     hours: int,
     category: str | None,
+    content_type: str | None = None,
     limit: int | None,
     owner_user_id: int | None = None,
 ) -> list[dict]:
@@ -201,6 +205,8 @@ async def _build_today_picks_via_oltp(
     )
     if category:
         stmt = stmt.where(ContentItem.category == category)
+    if content_type:
+        stmt = stmt.where(ContentItem.content_type == content_type)
     if owner_user_id is None:
         stmt = stmt.where(ContentItem.owner_user_id.is_(None))
     else:
@@ -268,6 +274,7 @@ async def _build_today_picks_via_oltp(
                 "raw_content": item.raw_content,
                 "cover_url": item.cover_url,
                 "category": item.category,
+                "content_type": item.content_type,
                 "tags": item.tags,
                 "language": item.language,
                 "status": str(item.status) if item.status else "analyzed",
@@ -422,6 +429,7 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "summary": clean_content_summary(row.get("summary")),
         "cover_url": row.get("cover_url"),
         "category": row.get("category"),
+        "content_type": row.get("content_type"),
         "tags": content_tags,
         "language": row.get("language"),
         "status": row.get("status") or "analyzed",

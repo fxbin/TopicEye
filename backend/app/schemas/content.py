@@ -24,6 +24,7 @@ class ContentResponse(BaseModel):
     raw_content: str | None = None
     cover_url: str | None = None
     category: str | None = None
+    content_type: str | None = None
     tags: Any | None = None
     language: str | None = None
     status: str

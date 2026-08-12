@@ -35,6 +35,7 @@ class PicksMixin:
         weight_bonus: int = 8,
         risk_threshold: float | None = None,
         category: str | None = None,
+        content_type: str | None = None,
         limit: int | None = None,
         visible_user_id: int | None = None,
         public_only: bool = True,
@@ -56,6 +57,10 @@ class PicksMixin:
         if category:
             category_clause = " AND c.category = ?"
             params.append(category)
+        content_type_clause = ""
+        if content_type:
+            content_type_clause = " AND c.content_type = ?"
+            params.append(content_type)
         visibility_clause, visibility_params = self._content_visibility_clause(
             conn,
             public_only=public_only,
@@ -79,7 +84,7 @@ class PicksMixin:
                 c.platform, c.author,
                 c.published_at, c.crawled_at,
                 c.content_hash, c.summary, c.cover_url,
-                c.category, c.tags, c.language, c.status, c.is_favorited,
+                c.category, c.content_type, c.tags, c.language, c.status, c.is_favorited,
                 c.topic_id,
                 c.created_at, c.updated_at,
                 a.id AS analysis_id, a.created_at AS analysis_created_at,
@@ -114,6 +119,7 @@ class PicksMixin:
               AND a.risk_score <= {risk_threshold}
               AND a.curation_score IS NOT NULL
               {category_clause}
+              {content_type_clause}
               {visibility_clause}
             ORDER BY adjusted_curation_score DESC
         """,
@@ -135,6 +141,7 @@ class PicksMixin:
             "summary",
             "cover_url",
             "category",
+            "content_type",
             "tags",
             "language",
             "status",

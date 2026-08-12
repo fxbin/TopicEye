@@ -510,7 +510,7 @@ async def _topic_clustering_daily() -> None:
         async with async_session() as db:
             from app.services.topic_clustering import cluster_topics_with_lease
 
-            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler", days=2)
+            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler", days=2, use_llm_naming=True)
             await db.commit()
         if claimed:
             logger.info("Scheduler: daily topic clustering done — %s", stats)
@@ -542,7 +542,7 @@ async def _post_sync_clustering() -> None:
         async with async_session() as db:
             from app.services.topic_clustering import cluster_topics_with_lease
 
-            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler")
+            stats, claimed = await cluster_topics_with_lease(db, trigger_type="scheduler", use_llm_naming=True)
             await db.commit()
         if claimed:
             logger.info("Scheduler: post-sync clustering done — %s", stats)

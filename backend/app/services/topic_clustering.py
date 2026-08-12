@@ -28,9 +28,28 @@ from app.services.scoring_engine import ScoringInput, score_items
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ──────────────────────────────────────────────────────────
-CLUSTER_TAG_OVERLAP = 1  # min shared tags to be in same cluster
+CLUSTER_TAG_OVERLAP = 2  # min shared tags to be in same cluster (>=2 reduces false merges)
 MIN_CLUSTER_SIZE = 2  # min items to form a topic group
 CLUSTER_LLM_CONCURRENCY = 3
+
+# ── Tag quality filter ─────────────────────────────────────────────────
+# Stopwords that carry no topic signal — verbs, fillers, generic actions.
+# These are excluded from clustering AND naming to prevent noise.
+_TAG_STOPWORDS: frozenset[str] = frozenset({
+    # Chinese filler / verbs
+    "推出", "发布", "什么是", "如何", "为什么", "怎么",
+    "解析", "分析", "解读", "盘点", "汇总", "一览",
+    "新", "最", "热", "爆", "火", "全", "大",
+    "看到", "发现", "说明", "表示", "认为", "指出",
+    "进行", "开始", "继续", "已经", "正在", "可以",
+    # English filler
+    "studying", "discovered", "new", "best", "top",
+    "how", "why", "what", "vs", "vs.",
+})
+
+# Tags shorter than this are too ambiguous for clustering (e.g. "AI", "5G")
+# but still kept for display in keywords list.
+_TAG_MIN_CLUSTER_LEN = 2
 TOPIC_CLUSTERING_JOB_KEY = "topic_clustering"
 TOPIC_CLUSTERING_JOB_NAME = "话题聚类"
 TOPIC_CLUSTERING_JOB_TIMEOUT = 600
@@ -51,6 +70,19 @@ def _extract_tags(item: dict) -> set[str]:
     if not isinstance(raw, list):
         raw = []
     return {str(t).strip().lower() for t in raw if str(t).strip()}
+
+
+def _filter_clustering_tags(tags: set[str]) -> set[str]:
+    """Filter tags for clustering: remove stopwords and too-short tags.
+
+    Short tags (len < _TAG_MIN_CLUSTER_LEN) and stopwords are excluded
+    from the *clustering* step to reduce false merges, but they may
+    still appear in the keywords list for display.
+    """
+    return {
+        t for t in tags
+        if len(t) >= _TAG_MIN_CLUSTER_LEN and t not in _TAG_STOPWORDS
+    }
 
 
 def _union_find_cluster(
@@ -74,7 +106,9 @@ def _union_find_cluster(
         if ra != rb:
             parent[ra] = rb
 
-    tag_sets = [_extract_tags(item) for item in items]
+    # Use filtered tags for clustering to reduce false merges caused by
+    # generic / stopword tags.  Unfiltered tags are still used for naming.
+    tag_sets = [_filter_clustering_tags(_extract_tags(item)) for item in items]
 
     if CLUSTER_TAG_OVERLAP <= 1:
         # Fast path for the current product rule: any shared tag connects items.
@@ -127,25 +161,40 @@ async def _name_clusters(
 
         prompt = [
             {
+                "role": "system",
+                "content": (
+                    "你是一个话题命名助手。根据多篇内容标题和标签，"
+                    "生成自然、准确的话题名称。\n\n"
+                    "命名规则：\n"
+                    "- 话题名必须是自然语言短语，不要用顿号/逗号拼接关键词\n"
+                    "- 6-15字，概括核心主题而非罗列标签\n"
+                    "- 优先提炼技术/产品/事件名称，避免使用动词\n"
+                    "- 好例子：'大模型上下文缓存优化'、'宇树人形机器人量产'、'arXiv论文精选'\n"
+                    "- 坏例子：'AI、模型'、'推出、发布'、'parser、pricing'\n"
+                ),
+            },
+            {
                 "role": "user",
                 "content": (
                     "以下是同一话题的多篇内容标题：\n"
                     + "\n".join(f"- {t}" for t in titles)
                     + f"\n\n关键标签：{', '.join(top_tags)}\n\n"
                     "请为这个话题生成：\n"
-                    "1. 话题名称（8字以内，精炼概括）\n"
+                    "1. 话题名称（自然语言，6-15字）\n"
                     "2. 一句话摘要（20字以内）\n\n"
                     '返回JSON：{"name": "话题名", "summary": "一句话"}'
                 ),
-            }
+            },
         ]
 
         try:
             data = await call_llm_json(prompt, scene="topic_clustering")
-            name = data.get("name", "未命名话题")[:20]
-            summary = data.get("summary", "")[:50]
+            name = (data.get("name") or "").strip()[:30]
+            summary = (data.get("summary") or "").strip()[:60]
+            if not name:
+                name = _auto_name_from_best_title(cluster)
         except Exception:
-            name = "、".join(top_tags[:2]) if top_tags else "未命名话题"
+            name = _auto_name_from_best_title(cluster)
             summary = ""
 
         best = max(cluster, key=lambda x: x.get("adjusted_score", x.get("curation_score", 0)))
@@ -173,7 +222,7 @@ async def cluster_topics_with_lease(
     *,
     trigger_type: str = "manual",
     days: int = 7,
-    use_llm_naming: bool = False,
+    use_llm_naming: bool = True,
 ) -> tuple[dict | None, bool]:
     """Run clustering under a cross-process lease.
 
@@ -219,15 +268,40 @@ async def cluster_topics_with_lease(
         await job_tracker._release_job_run(TOPIC_CLUSTERING_JOB_KEY, status)
 
 
+def _auto_name_from_best_title(cluster: list[dict]) -> str:
+    """Fallback: use the best-scoring item's title (truncated) as topic name.
+
+    This produces far more natural names than tag concatenation
+    (e.g. '荣耀 Robot Phone 手机搭载 Agentic OS' vs 'AI、模型').
+    """
+    best = max(cluster, key=lambda x: x.get("adjusted_score", x.get("curation_score", 0)))
+    title = (best.get("title") or "").strip()
+    if not title:
+        return "未命名话题"
+    # Truncate at a natural break point if possible
+    if len(title) <= 15:
+        return title
+    # Try to cut at a punctuation mark near 15 chars
+    for i in range(15, min(len(title), 25)):
+        if title[i] in "，、：—— ー·,":
+            return title[:i].rstrip("，、：—— ー·,")
+    return title[:15]
+
+
 def _auto_name_group(cluster: list[dict]) -> dict:
-    """Generate topic metadata from tag union without calling LLM."""
+    """Generate topic metadata without calling LLM.
+
+    Uses the best-scoring item's title as the topic name instead of
+    mechanically concatenating tags, producing natural-language names.
+    """
     tags_union: set[str] = set()
     for item in cluster:
         tags_union |= _extract_tags(item)
     top_tags = list(tags_union)[:4]
     best = max(cluster, key=lambda x: x.get("adjusted_score", x.get("curation_score", 0)))
+    name = _auto_name_from_best_title(cluster)
     return {
-        "name": "、".join(top_tags[:2]) if top_tags else "未命名话题",
+        "name": name,
         "summary": "",
         "keywords": top_tags,
         "item_ids": [item["id"] for item in cluster],
@@ -240,7 +314,7 @@ async def cluster_topics(
     db: AsyncSession,
     *,
     days: int = 7,
-    use_llm_naming: bool = False,
+    use_llm_naming: bool = True,
 ) -> dict:
     """Run clustering on recent unassigned content. Returns stats.
 
@@ -248,8 +322,8 @@ async def cluster_topics(
     that have no ``topic_id`` yet. Already-assigned items and existing
     TopicGroups are left untouched.
 
-    By default LLM naming is OFF and topics are auto-named from tag unions.
-    Event membership is deliberately not inferred here.
+    LLM naming is ON by default (with auto-name fallback when LLM is
+    unavailable). Event membership is deliberately not inferred here.
     """
 
     # 1. Fetch recent analyzed items that still lack a topic_id

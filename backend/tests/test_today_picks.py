@@ -80,6 +80,7 @@ def _duckdb_rows():
             "raw_content": None,
             "cover_url": None,
             "category": "AI",
+            "content_type": None,
             "tags": ["AI"],
             "language": "zh",
             "status": "analyzed",
@@ -186,7 +187,7 @@ async def test_build_today_picks_uses_duckdb_payload_without_orm(monkeypatch):
     monkeypatch.setattr(
         today_picks,
         "query_today_picks",
-        lambda hours=48, category=None, limit=None, curation_threshold=55: _duckdb_rows(),
+        lambda hours=48, category=None, content_type=None, limit=None, curation_threshold=55: _duckdb_rows(),
     )
     monkeypatch.setattr(
         today_picks,
@@ -259,11 +260,12 @@ async def test_today_picks_cleans_legacy_ai_summary_and_key_points(monkeypatch):
 async def test_build_today_picks_filters_prescreened_items_with_unified_scorer(monkeypatch):
     query_args = []
 
-    def fake_query_today_picks(hours=48, category=None, limit=None, curation_threshold=55):
+    def fake_query_today_picks(hours=48, category=None, content_type=None, limit=None, curation_threshold=55):
         query_args.append(
             {
                 "hours": hours,
                 "category": category,
+                "content_type": content_type,
                 "limit": limit,
                 "curation_threshold": curation_threshold,
             }
@@ -288,7 +290,7 @@ async def test_build_today_picks_filters_prescreened_items_with_unified_scorer(m
 async def test_build_today_picks_lets_unified_scorer_decide_mid_risk_candidates(monkeypatch):
     query_args = []
 
-    def fake_query_today_picks(hours=48, category=None, limit=None, curation_threshold=55):
+    def fake_query_today_picks(hours=48, category=None, content_type=None, limit=None, curation_threshold=55):
         query_args.append(
             {
                 "curation_threshold": curation_threshold,
@@ -319,7 +321,7 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     transport = httpx.ASGITransport(app=app)
     calls = {"count": 0}
 
-    async def fake_build_today_picks(db, *, category=None, hours=48, limit=None):
+    async def fake_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None):
         calls["count"] += 1
         return {"items": [], "total": 0, "event_members_hidden": 0, "topics": [], "page": 1, "page_size": 0}
 
@@ -339,7 +341,7 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
 
     invalidate_json_cache()
 
-    async def fail_build_today_picks(db, *, category=None, hours=48, limit=None):
+    async def fail_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None):
         raise RuntimeError("duckdb unavailable")
 
     monkeypatch.setattr("app.services.today_picks.build_today_picks", fail_build_today_picks)
@@ -387,7 +389,7 @@ async def test_today_picks_cache_and_build_are_user_scoped(monkeypatch):
     transport = httpx.ASGITransport(app=app)
     calls: list[int | None] = []
 
-    async def fake_build_today_picks(db, *, category=None, hours=48, limit=None, owner_user_id=None):
+    async def fake_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None, owner_user_id=None):
         calls.append(owner_user_id)
         return {
             "items": [{"id": owner_user_id or 0}],

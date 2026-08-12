@@ -38,6 +38,7 @@ async def test_classify_async_rejects_unknown_existing_category(monkeypatch):
 
     assert result == {
         "category": "其他",
+        "content_type": None,
         "tags": [],
         "is_new_category": False,
         "confidence": 0.3,

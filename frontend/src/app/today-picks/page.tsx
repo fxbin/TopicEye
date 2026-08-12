@@ -50,6 +50,7 @@ function TodayPicksPage() {
   const { toggleFavorite, currentUser, reportTodayPicksTotal, openReader } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
+  const [selectedContentType, setSelectedContentType] = useState(searchParams.get('content_type') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
   const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
@@ -59,9 +60,10 @@ function TodayPicksPage() {
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const updateURL = useCallback((cat: string, level: string, tr: string) => {
+  const updateURL = useCallback((cat: string, ct: string, level: string, tr: string) => {
     const params = new URLSearchParams();
     if (cat) params.set('category', cat);
+    if (ct) params.set('content_type', ct);
     if (level) params.set('level', level);
     if (tr && tr !== DEFAULT_TIME_RANGE) params.set('time_range', tr);
     const qs = params.toString();
@@ -71,36 +73,43 @@ function TodayPicksPage() {
   const setCategory = (cat: string) => {
     setSelectedCategory(cat);
     setLoadLimit(INITIAL_PICK_LIMIT);
-    updateURL(cat, selectedLevel, selectedTimeRange);
+    updateURL(cat, selectedContentType, selectedLevel, selectedTimeRange);
+  };
+  const setContentType = (ct: string) => {
+    setSelectedContentType(ct);
+    setLoadLimit(INITIAL_PICK_LIMIT);
+    updateURL(selectedCategory, ct, selectedLevel, selectedTimeRange);
   };
   const setLevel = (level: string) => {
     const next = selectedLevel === level ? '' : level;
     setSelectedLevel(next);
-    updateURL(selectedCategory, next, selectedTimeRange);
+    updateURL(selectedCategory, selectedContentType, next, selectedTimeRange);
   };
   const setTimeRange = (tr: string) => {
     setSelectedTimeRange(tr);
     setLoadLimit(INITIAL_PICK_LIMIT);
-    updateURL(selectedCategory, selectedLevel, tr);
+    updateURL(selectedCategory, selectedContentType, selectedLevel, tr);
   };
   const clearFilters = () => {
     setSelectedCategory('');
+    setSelectedContentType('');
     setSelectedLevel('');
     setSelectedTimeRange(DEFAULT_TIME_RANGE);
     setLoadLimit(INITIAL_PICK_LIMIT);
-    updateURL('', '', DEFAULT_TIME_RANGE);
+    updateURL('', '', '', DEFAULT_TIME_RANGE);
   };
 
   // 数据获取：从手写 useEffect+fetch 迁移到 useFetch（含竞态保护、enabled、refetch）。
   const fetchPicks = useCallback(() => {
-    const params: { category?: string; time_range?: string; limit?: number } = {};
+    const params: { category?: string; content_type?: string; time_range?: string; limit?: number } = {};
     if (selectedCategory) params.category = selectedCategory;
+    if (selectedContentType) params.content_type = selectedContentType;
     params.time_range = selectedTimeRange;
     params.limit = selectedTimeRange === '7d' ? Math.max(loadLimit, 80) : loadLimit;
     return contentsApi.todayPicks(params);
-  }, [loadLimit, selectedCategory, selectedTimeRange]);
+  }, [loadLimit, selectedCategory, selectedContentType, selectedTimeRange]);
 
-  const { data, loading } = useFetch(fetchPicks, [loadLimit, selectedCategory, selectedTimeRange]);
+  const { data, loading } = useFetch(fetchPicks, [loadLimit, selectedCategory, selectedContentType, selectedTimeRange]);
 
   // 从 data 派生各状态
   const items = data?.items || [];
@@ -149,11 +158,12 @@ function TodayPicksPage() {
   const standaloneItems = topicMap.get(null) || [];
   const activeFilterCount = [
     selectedCategory,
+    selectedContentType,
     selectedLevel,
     selectedTimeRange !== DEFAULT_TIME_RANGE ? selectedTimeRange : '',
   ].filter(Boolean).length;
   const isDefaultWindow = selectedTimeRange === DEFAULT_TIME_RANGE;
-  const hasNonTimeFilters = Boolean(selectedCategory || selectedLevel);
+  const hasNonTimeFilters = Boolean(selectedCategory || selectedContentType || selectedLevel);
   const sortedItems = useMemo(() => [...filteredItems].sort((a, b) => scoreOf(b) - scoreOf(a)), [filteredItems]);
   const visibleContentIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
   const contentFavoriteState = useContentFavoriteStates(visibleContentIds);
@@ -340,10 +350,12 @@ function TodayPicksPage() {
         <aside className="sticky top-[88px] flex flex-col gap-3.5 max-lg:static max-lg:row-start-1">
           <FilterPanel
             selectedCategory={selectedCategory}
+            selectedContentType={selectedContentType}
             selectedLevel={selectedLevel}
             selectedTimeRange={selectedTimeRange}
             activeFilterCount={activeFilterCount}
             onCategory={setCategory}
+            onContentType={setContentType}
             onLevel={setLevel}
             onTimeRange={setTimeRange}
             onClear={clearFilters}

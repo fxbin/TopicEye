@@ -40,6 +40,7 @@ import ScoreBreakdownChart from '@/components/ScoreBreakdownChart';
 import EvidenceTag from '@/components/EvidenceTag';
 import {
   CATEGORIES,
+  CONTENT_TYPES,
   RECOMMEND_LEVELS,
   LEVEL_CONFIG,
   TIME_RANGES,
@@ -316,19 +317,23 @@ export function LeadPick({
 
 export function FilterPanel({
   selectedCategory,
+  selectedContentType,
   selectedLevel,
   selectedTimeRange,
   activeFilterCount,
   onCategory,
+  onContentType,
   onLevel,
   onTimeRange,
   onClear,
 }: {
   selectedCategory: string;
+  selectedContentType: string;
   selectedLevel: string;
   selectedTimeRange: string;
   activeFilterCount: number;
   onCategory: (cat: string) => void;
+  onContentType: (ct: string) => void;
   onLevel: (level: string) => void;
   onTimeRange: (range: string) => void;
   onClear: () => void;
@@ -397,6 +402,26 @@ export function FilterPanel({
                 {categoriesExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
             )}
+          </div>
+        </div>
+        <div>
+          <FilterLabel icon={Filter}>形态</FilterLabel>
+          <div className="flex flex-wrap gap-1.5">
+            {(CONTENT_TYPES as readonly string[]).map((ct) => (
+              <button
+                key={ct}
+                type="button"
+                onClick={() => onContentType(ct === '全部' ? '' : ct)}
+                className={cx(
+                  'rounded-full border px-2.5 py-1 text-xs transition',
+                  selectedContentType === ct || (!selectedContentType && ct === '全部')
+                    ? 'border-teal-border bg-teal-light font-black text-teal'
+                    : 'border-gray-200 bg-white font-semibold text-gray-600 hover:border-gray-300',
+                )}
+              >
+                {ct}
+              </button>
+            ))}
           </div>
         </div>
         {activeFilterCount > 0 && (
@@ -606,6 +631,7 @@ export function PickCard({
           <span className="text-[11px] text-gray-300">/</span>
           <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
           {item.category && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{item.category}</span>}
+          {item.content_type && <span className="rounded-full bg-teal-light px-2 py-0.5 text-[10px] font-bold text-teal">{item.content_type}</span>}
           {tags.slice(0, 3).map((tag) => (
             <span key={tag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: getTagColor(tag), background: `${getTagColor(tag)}12` }}>
               {tag}

@@ -9,12 +9,12 @@
  * - getAnalysis / scoreOf / tagsOf（纯函数工具）
  */
 
-import { CATEGORIES, LEVEL_CONFIG_CLASSES } from '@/lib/design-tokens';
+import { CATEGORIES, CONTENT_TYPES, LEVEL_CONFIG_CLASSES } from '@/lib/design-tokens';
 import { getRecommendLevelLabel } from '@/lib/utils';
 import type { ContentAnalysis, ContentItem } from '@/types';
 
 // re-export 让调用方 import 路径不变
-export { CATEGORIES };
+export { CATEGORIES, CONTENT_TYPES };
 
 export const RECOMMEND_LEVELS = ['强烈建议写', '值得观察', '适合深挖', '适合蹭热点', '不建议追', '信号不足'] as const;
 

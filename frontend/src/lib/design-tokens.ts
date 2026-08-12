@@ -116,6 +116,10 @@ export const CHART_COLORS: readonly string[] = [
 export const CATEGORIES = ['全部', 'AI', '职场', '商业', '教育', '自媒体', '科技', '生活', '产品'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/** 内容形态列表（双轴分类的 format 轴） */
+export const CONTENT_TYPES = ['全部', '论文', '技术', '资讯', '教程', '观点', '工具', '体验', '成长', '讨论', '项目'] as const;
+export type ContentType = (typeof CONTENT_TYPES)[number];
+
 // 注：RecommendLevel 类型的唯一来源是 @/types，此处不再保留副本。
 // LEVEL_CONFIG 的 key 用 as RecommendLevel[] 访问即可。
 

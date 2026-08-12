@@ -60,7 +60,7 @@ export const contentsApi = {
   },
 
   /** 当日精选（自动 Top 30%） */
-  todayPicks(params?: { category?: string; time_range?: string; limit?: number }): Promise<{
+  todayPicks(params?: { category?: string; content_type?: string; time_range?: string; limit?: number }): Promise<{
     items: ContentItem[];
     topics: TopicInfo[];
     total: number;

@@ -282,6 +282,7 @@ export interface ContentItem {
   raw_content?: string | null;
   cover_url?: string | null;
   category: string;
+  content_type?: string | null;
   tags?: string[];
   language?: string | null;
   status?: string;

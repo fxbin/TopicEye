@@ -58,7 +58,8 @@ class PicksMixin:
             category_clause = " AND c.category = ?"
             params.append(category)
         content_type_clause = ""
-        if content_type:
+        has_content_type = self._oltp_column_exists(conn, "content_items", "content_type")
+        if content_type and has_content_type:
             content_type_clause = " AND c.content_type = ?"
             params.append(content_type)
         visibility_clause, visibility_params = self._content_visibility_clause(
@@ -72,6 +73,13 @@ class PicksMixin:
             if self._oltp_column_exists(conn, "ai_analyses", "source_weight")
             else "CAST(NULL AS DOUBLE) AS analysis_source_weight"
         )
+        # 与 owner_user_id / source_weight 同策略：未迁移的只读快照/测试库
+        # 可能还没有 content_type 列，此时 SELECT NULL 保持列位稳定，避免整端点报错。
+        content_type_expr = (
+            "c.content_type"
+            if has_content_type
+            else "CAST(NULL AS VARCHAR) AS content_type"
+        )
         _ = limit
 
         results = conn.execute(
@@ -84,7 +92,7 @@ class PicksMixin:
                 c.platform, c.author,
                 c.published_at, c.crawled_at,
                 c.content_hash, c.summary, c.cover_url,
-                c.category, c.content_type, c.tags, c.language, c.status, c.is_favorited,
+                c.category, {content_type_expr}, c.tags, c.language, c.status, c.is_favorited,
                 c.topic_id,
                 c.created_at, c.updated_at,
                 a.id AS analysis_id, a.created_at AS analysis_created_at,

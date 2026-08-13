@@ -47,8 +47,9 @@ _TAG_STOPWORDS: frozenset[str] = frozenset({
     "how", "why", "what", "vs", "vs.",
 })
 
-# Tags shorter than this are too ambiguous for clustering (e.g. "AI", "5G")
-# but still kept for display in keywords list.
+# Single-character tags (length < 2, e.g. 新/热/火) carry no topic signal and
+# are excluded from clustering, but still kept for display in keywords list.
+# Note: 2-char tags like "AI"/"5G" DO pass this filter (len >= 2).
 _TAG_MIN_CLUSTER_LEN = 2
 TOPIC_CLUSTERING_JOB_KEY = "topic_clustering"
 TOPIC_CLUSTERING_JOB_NAME = "话题聚类"

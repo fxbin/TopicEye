@@ -51,6 +51,9 @@ _TAG_STOPWORDS: frozenset[str] = frozenset({
 # are excluded from clustering, but still kept for display in keywords list.
 # Note: 2-char tags like "AI"/"5G" DO pass this filter (len >= 2).
 _TAG_MIN_CLUSTER_LEN = 2
+
+# Punctuation at which a title can be naturally truncated for topic naming.
+_TITLE_BOUNDARY_PUNCT = "，、：—— ー·,"
 TOPIC_CLUSTERING_JOB_KEY = "topic_clustering"
 TOPIC_CLUSTERING_JOB_NAME = "话题聚类"
 TOPIC_CLUSTERING_JOB_TIMEOUT = 600
@@ -284,8 +287,11 @@ def _auto_name_from_best_title(cluster: list[dict]) -> str:
         return title
     # Try to cut at a punctuation mark near 15 chars
     for i in range(15, min(len(title), 25)):
-        if title[i] in "，、：—— ー·,":
-            return title[:i].rstrip("，、：—— ー·,")
+        if title[i] in _TITLE_BOUNDARY_PUNCT:
+            cut = title[:i]
+            while cut and cut[-1] in _TITLE_BOUNDARY_PUNCT:
+                cut = cut[:-1]
+            return cut
     return title[:15]
 
 

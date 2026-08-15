@@ -1,0 +1,46 @@
+name: Diagnostic #45 DuckDB Today Picks
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  today-picks-trace:
+    if: github.head_ref == 'diag-45-duckdb-today-picks-trace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Capture exact Today Picks regressions
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 180s python -m pytest -vv --tb=long
+          tests/test_duckdb_service.py::test_today_picks_query_uses_latest_analysis_only
+          tests/test_duckdb_service.py::test_today_picks_query_applies_aggregated_feedback
+          tests/test_duckdb_service.py::test_today_picks_query_uses_unified_risk_threshold_for_candidates
+          tests/test_duckdb_service.py::test_today_picks_query_excludes_ignored_content

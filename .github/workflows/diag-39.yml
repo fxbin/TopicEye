@@ -1,0 +1,93 @@
+name: Diagnostic #39 apply post-sync test migration
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.head_ref == 'diag-39-apply-pipeline-test-migration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-39-post-sync-pipeline-test-contract
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Apply bounded test-contract migration
+        working-directory: .
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/tests/test_analysis_recovery.py")
+          text = path.read_text()
+
+          old = "scheduler_module._drain_pending_analysis("
+          new = "post_sync_pipeline_module._drain_pending_analysis("
+          count = text.count(old)
+          if count != 3:
+              raise SystemExit(f"expected exactly 3 stale drain calls, found {count}")
+          text = text.replace(old, new)
+
+          for unused in (
+              "from types import SimpleNamespace\n",
+              "from sqlalchemy.exc import OperationalError\n",
+          ):
+              if unused not in text:
+                  raise SystemExit(f"expected verified unused import not found: {unused.strip()}")
+              text = text.replace(unused, "", 1)
+
+          path.write_text(text)
+          PY
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Verify Ruff
+        run: |
+          ruff check tests/test_analysis_recovery.py
+          ruff format --check tests/test_analysis_recovery.py
+      - name: Verify three post-sync regressions on PostgreSQL
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 180s python -m pytest -vv --tb=long
+          tests/test_analysis_recovery.py::test_post_sync_drain_processes_backlog_and_stale_analyzing
+          tests/test_analysis_recovery.py::test_post_sync_drain_uses_configured_default_batch_size
+          tests/test_analysis_recovery.py::test_post_sync_drain_releases_claims_after_batch_timeout
+      - name: Commit durable Worker delta only
+        working-directory: .
+        run: |
+          git diff --check
+          git status --short
+          git diff -- backend/tests/test_analysis_recovery.py
+          git add backend/tests/test_analysis_recovery.py
+          test "$(git diff --cached --name-only)" = "backend/tests/test_analysis_recovery.py"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test: migrate post-sync drain tests to pipeline module (#39)"
+          git push origin HEAD:issue-39-post-sync-pipeline-test-contract

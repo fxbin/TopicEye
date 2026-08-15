@@ -15,17 +15,21 @@ from app.core.database import Base
 from app.core.database import get_db
 from app.models.content import ContentItem, ContentStatus
 from app.models.user import User
+from app.services import interest_vector_service
 from app.services.favorite_cache import invalidate_favorite_cache
 
 
 @pytest_asyncio.fixture
-async def contents_client() -> AsyncGenerator[httpx.AsyncClient, None]:
+async def contents_client(monkeypatch) -> AsyncGenerator[httpx.AsyncClient, None]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     invalidate_favorite_cache()
+    # This fixture owns an isolated SQLite app. Keep the favorite API test hermetic:
+    # the production trigger opens a fire-and-forget task with the global DB session.
+    monkeypatch.setattr(interest_vector_service, "trigger_vector_rebuild", lambda _user_id: None)
 
     app = FastAPI()
     app.include_router(contents_api.router)

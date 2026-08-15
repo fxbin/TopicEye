@@ -1,0 +1,48 @@
+name: Diagnostic #27 targeted pair
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  targeted-pair:
+    if: github.head_ref == 'diag-27-targeted-pair-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Verify changed test style
+        run: |
+          ruff check tests/test_content_favorite_api.py
+          ruff format --check tests/test_content_favorite_api.py
+      - name: Run reproduced order
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 120s python -m pytest -vv --tb=short -o faulthandler_timeout=20
+          tests/test_content_favorite_api.py::test_content_favorite_toggle_returns_favorite_id_and_state
+          tests/test_content_pipeline.py::test_update_source_error_uses_readable_fallback_for_blank_message

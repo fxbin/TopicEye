@@ -312,7 +312,6 @@ async def test_build_today_picks_lets_unified_scorer_decide_mid_risk_candidates(
 async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     invalidate_json_cache()
 
-
     monkeypatch.setattr(contents_api.settings, "READ_CACHE_TTL_SECONDS", 60)
     monkeypatch.setattr(contents_api, "async_session", _failing_session_factory)
 
@@ -793,10 +792,34 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
         engine,
         extra_content=[
             {"title": "中风险样本", "url": "https://example.com/mid-risk", "risk_score": 60.0},
-            {"title": "低质量1", "url": "https://example.com/low-1", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
-            {"title": "低质量2", "url": "https://example.com/low-2", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
-            {"title": "低质量3", "url": "https://example.com/low-3", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
-            {"title": "低质量4", "url": "https://example.com/low-4", "quality_score": 40.0, "curation_score": 50.0, "risk_score": 10.0},
+            {
+                "title": "低质量1",
+                "url": "https://example.com/low-1",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
+            {
+                "title": "低质量2",
+                "url": "https://example.com/low-2",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
+            {
+                "title": "低质量3",
+                "url": "https://example.com/low-3",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
+            {
+                "title": "低质量4",
+                "url": "https://example.com/low-4",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
         ],
     )
     mid_risk_id = ids[1]

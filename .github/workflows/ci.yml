@@ -17,6 +17,7 @@ jobs:
   # ── Backend tests on PostgreSQL ──
   backend-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend

@@ -1,0 +1,156 @@
+name: Diagnostic #40 apply analysis-job DB isolation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.head_ref == 'diag-40-apply-analysis-job-db-isolation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-40-isolate-analysis-job-test-db
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Apply bounded analysis-job test isolation
+        working-directory: .
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("backend/tests/test_analysis_recovery.py")
+          text = path.read_text()
+
+          def replace_in_function(source: str, name: str, old: str, new: str, *, count: int = 1) -> str:
+              tree = ast.parse(source)
+              node = next(
+                  (
+                      item
+                      for item in tree.body
+                      if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == name
+                  ),
+                  None,
+              )
+              if node is None or node.end_lineno is None:
+                  raise SystemExit(f"function not found: {name}")
+              lines = source.splitlines(keepends=True)
+              start = node.lineno - 1
+              end = node.end_lineno
+              block = "".join(lines[start:end])
+              actual = block.count(old)
+              if actual < count:
+                  raise SystemExit(f"{name}: expected at least {count} anchor(s), found {actual}: {old!r}")
+              block = block.replace(old, new, count)
+              lines[start:end] = [block]
+              return "".join(lines)
+
+          session_anchor = "    engine, session_factory = await _session_factory()\n"
+          session_with_jobs = (
+              session_anchor
+              + '    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)\n'
+          )
+
+          for name in (
+              "test_analyze_pending_defaults_to_background_queue",
+              "test_analyze_pending_deduplicates_inflight_background_jobs",
+          ):
+              text = replace_in_function(text, name, session_anchor, session_with_jobs)
+
+          name = "test_analysis_job_status_records_completion"
+          text = replace_in_function(
+              text,
+              name,
+              f"async def {name}():\n",
+              f"async def {name}(monkeypatch):\n",
+          )
+          text = replace_in_function(
+              text,
+              name,
+              "    await reset_analysis_jobs()\n",
+              "    await reset_analysis_jobs()\n"
+              "    engine, session_factory = await _session_factory()\n"
+              '    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)\n',
+          )
+          text = replace_in_function(
+              text,
+              name,
+              '    assert status["finished_at"] is not None\n    await reset_analysis_jobs()\n',
+              '    assert status["finished_at"] is not None\n    await engine.dispose()\n    await reset_analysis_jobs()\n',
+          )
+
+          name = "test_analysis_job_inflight_ttl_releases_stuck_ids"
+          text = replace_in_function(
+              text,
+              name,
+              '    monkeypatch.setattr(analysis_jobs.settings, "ANALYSIS_JOB_INFLIGHT_TTL_SECONDS", 60)\n',
+              '    monkeypatch.setattr(analysis_jobs.settings, "ANALYSIS_JOB_INFLIGHT_TTL_SECONDS", 60)\n'
+              "    engine, session_factory = await _session_factory()\n"
+              '    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)\n',
+          )
+          text = replace_in_function(
+              text,
+              name,
+              '    assert active["status"] == "QUEUED"\n    await reset_analysis_jobs()\n',
+              '    assert active["status"] == "QUEUED"\n    await engine.dispose()\n    await reset_analysis_jobs()\n',
+          )
+
+          path.write_text(text)
+          PY
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Generate deterministic Ruff formatting and verify
+        run: |
+          ruff check tests/test_analysis_recovery.py
+          ruff format tests/test_analysis_recovery.py
+          ruff check tests/test_analysis_recovery.py
+          ruff format --check tests/test_analysis_recovery.py
+      - name: Verify cross-loop sequence on PostgreSQL
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 180s python -m pytest -vv --tb=long
+          tests/test_analysis_recovery.py::test_analyze_pending_defaults_to_background_queue
+          tests/test_analysis_recovery.py::test_analyze_pending_deduplicates_inflight_background_jobs
+          tests/test_analysis_recovery.py::test_analysis_job_status_records_completion
+          tests/test_analysis_recovery.py::test_analysis_job_inflight_ttl_releases_stuck_ids
+      - name: Commit durable Worker delta only
+        working-directory: .
+        run: |
+          git diff --check
+          git status --short
+          git diff --stat -- backend/tests/test_analysis_recovery.py
+          git diff -- backend/tests/test_analysis_recovery.py
+          git add backend/tests/test_analysis_recovery.py
+          test "$(git diff --cached --name-only)" = "backend/tests/test_analysis_recovery.py"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test: isolate analysis-job persistence per event loop (#40)"
+          git push origin HEAD:issue-40-isolate-analysis-job-test-db

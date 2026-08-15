@@ -29,7 +29,9 @@ async def test_analysis_and_notifications_require_login(monkeypatch):
 
     async with session_factory() as db:
         user = await create_user(db, email="analysis-user@example.com", password="Password123", role="user")
+        admin = await create_user(db, email="analysis-admin@example.com", password="Password123", role="admin")
         token, _ = await create_session(db, user)
+        admin_token, _ = await create_session(db, admin)
         db.add(
             ContentItem(
                 id=1,
@@ -99,11 +101,17 @@ async def test_analysis_and_notifications_require_login(monkeypatch):
         anonymous_pending = await client.post("/analyses/pending?limit=1")
         assert anonymous_pending.status_code == 401
 
-        authorized_pending = await client.post(
+        user_pending = await client.post(
             "/analyses/pending?limit=1&sync=true",
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert authorized_pending.status_code == 200
+        assert user_pending.status_code == 403
+
+        admin_pending = await client.post(
+            "/analyses/pending?limit=1&sync=true",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert admin_pending.status_code == 200
 
         anonymous_notifications = await client.get("/notifications/unread-count")
         assert anonymous_notifications.status_code == 401

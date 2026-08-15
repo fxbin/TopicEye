@@ -8,11 +8,10 @@ import pytest_asyncio
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.v1.auth import get_current_user
 from app.api.v1 import contents as contents_api
 from app.api.v1 import favorites as favorites_api
-from app.core.database import Base
-from app.core.database import get_db
+from app.api.v1.auth import get_current_user
+from app.core.database import Base, get_db
 from app.models.content import ContentItem, ContentStatus
 from app.models.user import User
 from app.services import interest_vector_service

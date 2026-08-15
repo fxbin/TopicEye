@@ -1,0 +1,64 @@
+name: Diagnostic #31 apply lock timeout
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  apply-worker-patch:
+    if: github.head_ref == 'diag-31-apply-lock-timeout'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-31-test-db-lock-timeout
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Apply bounded test-only PostgreSQL lock timeout
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/conftest.py')
+          text = path.read_text()
+          old = '''    engine = create_async_engine(os.environ["DATABASE_URL"])
+    async with engine.begin() as conn:
+        from sqlalchemy import text
+
+        # TRUNCATE 所有表,PostgreSQL 支持 CASCADE 自动清理外键依赖
+        table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
+        await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
+    await engine.dispose()
+    yield
+'''
+          new = '''    engine = create_async_engine(os.environ["DATABASE_URL"])
+    try:
+        async with engine.begin() as conn:
+            from sqlalchemy import text
+
+            # 测试清理事务只等有限时间的锁；资源泄漏应快速暴露，而不是拖死整套 CI。
+            await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+            # TRUNCATE 所有表,PostgreSQL 支持 CASCADE 自动清理外键依赖
+            table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
+            await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
+    finally:
+        await engine.dispose()
+    yield
+'''
+          if old not in text:
+              raise SystemExit('expected clean_tables block not found; refuse to patch')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff -- backend/tests/conftest.py
+      - name: Commit only the harness patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/tests/conftest.py
+          git diff --cached --quiet && exit 0
+          git commit -m "test: bound PostgreSQL cleanup lock wait (#31)"
+          git push origin HEAD:issue-31-test-db-lock-timeout

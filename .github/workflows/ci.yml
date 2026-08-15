@@ -171,3 +171,37 @@ jobs:
         run: |
           npm ci
           npm audit --audit-level=high
+
+  # Process-only Worker bridge for #3. This job must never merge to main.
+  ruff-format-apply-worker:
+    if: github.event_name == 'pull_request' && github.head_ref == 'diag-3-ruff-apply-worker'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-3-restore-green-main
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Ruff
+        run: pip install ruff==0.6.9
+      - name: Format exact target and verify
+        working-directory: backend
+        run: |
+          ruff format tests/test_today_picks.py
+          ruff format --check tests/test_today_picks.py
+          ruff check tests/test_today_picks.py tests/test_classifier_contract.py
+      - name: Commit deterministic formatter result to Worker branch
+        run: |
+          if git diff --quiet -- backend/tests/test_today_picks.py; then
+            echo "No formatter delta to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/tests/test_today_picks.py
+          git commit -m "style: apply Ruff formatting to today picks test (#3)"
+          git push origin HEAD:issue-3-restore-green-main

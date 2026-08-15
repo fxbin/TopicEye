@@ -1,12 +1,10 @@
 # ruff: noqa: I001
 import asyncio
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select, update
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 
@@ -1380,7 +1378,10 @@ async def test_analyze_batch_invalidates_scoring_cache_after_commit(monkeypatch)
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     _cache_and_return(
-        24, 160, 80, None,
+        24,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1522,7 +1523,10 @@ async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     _cache_and_return(
-        24, 160, 80, None,
+        24,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1761,7 +1765,7 @@ async def test_post_sync_drain_processes_backlog_and_stale_analyzing(monkeypatch
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis(
+    stats = await post_sync_pipeline_module._drain_pending_analysis(
         batch_size=2,
         time_budget_seconds=120,
     )
@@ -1832,7 +1836,7 @@ async def test_post_sync_drain_uses_configured_default_batch_size(monkeypatch):
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis()
+    stats = await post_sync_pipeline_module._drain_pending_analysis()
 
     assert calls == [[1, 2, 3], [4]]
     assert stats == {
@@ -1882,7 +1886,7 @@ async def test_post_sync_drain_releases_claims_after_batch_timeout(monkeypatch):
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis(
+    stats = await post_sync_pipeline_module._drain_pending_analysis(
         batch_size=2,
         time_budget_seconds=120,
     )

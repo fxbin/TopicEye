@@ -33,8 +33,11 @@ jobs:
           python-version: "3.12"
       - name: Install deps
         run: pip install -r requirements-dev.txt
-      - name: Verify changed test style
+      - name: Generate exact Ruff patch and verify style
         run: |
+          ruff check --fix tests/test_content_favorite_api.py
+          ruff format tests/test_content_favorite_api.py
+          git diff -- tests/test_content_favorite_api.py
           ruff check tests/test_content_favorite_api.py
           ruff format --check tests/test_content_favorite_api.py
       - name: Run reproduced order

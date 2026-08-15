@@ -5,7 +5,7 @@
 会永久冻死 asyncio event loop,scheduler 永远不起,content 永远不进。
 
 修复:把 DuckDB init 抽到 _init_duckdb_layer,内部用 asyncio.to_thread +
-asyncio.wait_for(30s) 兜底。即使 DuckDB 真的挂了,30s 后也会放弃,
+asyncio.wait_for 兜底。即使 DuckDB 真的挂了,超时后也会放弃,
 lifespan 继续,scheduler 仍能起来。
 
 本测试不直接测 lifespan(会拉起 alembic/seeds/scheduler 太重),
@@ -37,14 +37,12 @@ class _FastAnalytics:
 
 @pytest.mark.asyncio
 async def test_init_duckdb_layer_returns_within_timeout_when_init_hangs(monkeypatch):
-    """analytics.available 卡 60s,验证 wait_for(30s) 30s 内降级返回。
-
-    关键断言:总耗时 < 35s(30s 超时 + 5s 容差),available=False(降级),
-    不应真等 60s 也不应抛异常。
-    """
+    """用缩短后的测试门限验证阻塞初始化会快速降级，而不等待生产 30s。"""
     from app.main import _init_duckdb_layer
 
-    analytics = _SlowAnalytics(delay=60.0)
+    analytics = _SlowAnalytics(delay=0.5)
+    # 生产默认仍是 30s；测试只缩短同一个 wait_for 门限，保持行为路径不变。
+    monkeypatch.setattr("app.main._DUCKDB_INIT_TIMEOUT_SECONDS", 0.05)
     # _init_duckdb_layer 内部 import get_analytics,要从 duckdb_service patch
     monkeypatch.setattr("app.services.duckdb_service.get_analytics", lambda: analytics)
 
@@ -52,7 +50,7 @@ async def test_init_duckdb_layer_returns_within_timeout_when_init_hangs(monkeypa
     available = await _init_duckdb_layer()
     elapsed = time.time() - t0
 
-    assert elapsed < 35.0, f"DuckDB init 应在 35s 内降级,实际等了 {elapsed:.1f}s"
+    assert elapsed < 0.3, f"DuckDB init 应在测试门限内降级,实际等了 {elapsed:.3f}s"
     assert available is False
 
 

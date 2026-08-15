@@ -65,8 +65,10 @@ jobs:
           PY
       - name: Install deps
         run: pip install -r requirements-dev.txt
-      - name: Verify Ruff
+      - name: Generate deterministic Ruff formatting and verify
         run: |
+          ruff check tests/test_analysis_recovery.py
+          ruff format tests/test_analysis_recovery.py
           ruff check tests/test_analysis_recovery.py
           ruff format --check tests/test_analysis_recovery.py
       - name: Verify three post-sync regressions on PostgreSQL
@@ -84,6 +86,7 @@ jobs:
         run: |
           git diff --check
           git status --short
+          git diff --stat -- backend/tests/test_analysis_recovery.py
           git diff -- backend/tests/test_analysis_recovery.py
           git add backend/tests/test_analysis_recovery.py
           test "$(git diff --cached --name-only)" = "backend/tests/test_analysis_recovery.py"

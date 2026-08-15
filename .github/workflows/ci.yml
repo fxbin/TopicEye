@@ -171,3 +171,23 @@ jobs:
         run: |
           npm ci
           npm audit --audit-level=high
+
+  # Diagnostic-only: print the exact Ruff 0.6.9 formatter patch for #3.
+  # This job exists only on the temporary diagnostic branch and must never merge.
+  ruff-format-diagnostic:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Ruff
+        run: pip install ruff==0.6.9
+      - name: Print deterministic formatter diff
+        run: |
+          ruff format tests/test_today_picks.py
+          git diff -- tests/test_today_picks.py
+          git diff --exit-code -- tests/test_today_picks.py || true

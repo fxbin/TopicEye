@@ -1,0 +1,49 @@
+name: Diagnostic #37 analysis permission
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  permission-proof:
+    if: github.head_ref == 'diag-37-analysis-permission-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: issue-37-align-analysis-permission-test
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Verify Ruff
+        run: |
+          ruff check tests/test_analysis_notification_permissions.py
+          ruff format --check tests/test_analysis_notification_permissions.py
+      - name: Verify permission regression
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 120s python -m pytest -vv --tb=long
+          tests/test_analysis_notification_permissions.py::test_analysis_and_notifications_require_login

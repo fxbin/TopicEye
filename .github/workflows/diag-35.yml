@@ -1,0 +1,52 @@
+name: Diagnostic #35 analysis recovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  analysis-recovery-trace:
+    if: github.head_ref == 'diag-35-analysis-recovery-trace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: topiceye_test
+          POSTGRES_USER: topiceye
+          POSTGRES_PASSWORD: topiceye
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U topiceye -d topiceye_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+      - name: Verify diagnostic target style is unchanged
+        run: |
+          ruff check tests/test_analysis_notification_permissions.py tests/test_analysis_recovery.py
+          ruff format --check tests/test_analysis_notification_permissions.py tests/test_analysis_recovery.py
+      - name: Capture exact analysis/recovery regressions
+        env:
+          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
+          DUCKDB_THREADS: "1"
+          DUCKDB_MEMORY_LIMIT: "128MB"
+        run: >-
+          timeout --signal=TERM --kill-after=10s 300s python -m pytest -vv --tb=long -o faulthandler_timeout=30
+          tests/test_analysis_notification_permissions.py::test_analysis_and_notifications_require_login
+          tests/test_analysis_recovery.py::test_analyze_pending_deduplicates_inflight_background_jobs
+          tests/test_analysis_recovery.py::test_analysis_job_inflight_ttl_releases_stuck_ids
+          tests/test_analysis_recovery.py::test_post_sync_drain_processes_backlog_and_stale_analyzing
+          tests/test_analysis_recovery.py::test_post_sync_drain_uses_configured_default_batch_size
+          tests/test_analysis_recovery.py::test_post_sync_drain_releases_claims_after_batch_timeout

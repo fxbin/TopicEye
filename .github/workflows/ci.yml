@@ -17,7 +17,7 @@ jobs:
   # ── Backend tests on PostgreSQL ──
   backend-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: backend
@@ -42,12 +42,12 @@ jobs:
           python-version: "3.12"
       - name: Install deps
         run: pip install -r requirements-dev.txt
-      - name: Run tests (PostgreSQL)
+      - name: Run tests (PostgreSQL) — diagnostic only
         env:
           DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
           DUCKDB_THREADS: "1"
           DUCKDB_MEMORY_LIMIT: "128MB"
-        run: python -m pytest tests/ -q --tb=short
+        run: timeout --signal=TERM --kill-after=10s 180s python -m pytest tests/ -vv --tb=short -o faulthandler_timeout=30
 
   # ── Frontend type check ──
   frontend-types:

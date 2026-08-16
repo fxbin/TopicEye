@@ -1,7 +1,7 @@
 # TopicEye 部署与运维指南
 
 > 完整的部署、监控、备份、故障排查文档。
-> 涵盖 dev / SQLite / PostgreSQL 三种部署形态 + 所有生产化能力。
+> 涵盖 dev / 生产（PostgreSQL）两种部署形态 + 所有生产化能力。
 
 ---
 
@@ -45,7 +45,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 | 变量 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `DATABASE_URL` | ✅ | `sqlite+aiosqlite:///./topiceye.db` | SQLite 或 PostgreSQL |
+| `DATABASE_URL` | ✅ | *(必填)* | PostgreSQL 连接串（如 `postgresql+asyncpg://topiceye:***@postgres:5432/topiceye`；SQLite 支持已移除） |
 | `CORS_ORIGINS` | ✅ | `http://localhost:3000` | 逗号分隔，前端域名 |
 | `APP_SECRET_KEY` | ✅ | `topiceye-local-dev-secret-change-me` | 生产必须改（lifespan 会 fail-fast 检查） |
 | `LOG_FORMAT` | ❌ | `text` | `text`（dev）/ `json`（生产聚合） |
@@ -142,18 +142,13 @@ Grafana 直接接 Prometheus data source，URL 填 `http://backend:8000/api/v1/m
 0 4 * * * cd /app && ./backend/scripts/backup_db.sh /app/data/backups >> /app/data/backup.log 2>&1
 ```
 
-脚本自动检测 `DATABASE_URL`：
-- **SQLite**：`sqlite3 .backup` 在线热备（不阻塞写入；无 sqlite3 时 fallback cp）
-- **PostgreSQL**：`pg_dump -Fc` 自定义格式压缩
+脚本使用 `pg_dump -Fc` 自定义格式压缩备份（仅支持 PostgreSQL；遇 SQLite URL 会直接拒绝）。
 
 保留策略：`BACKUP_KEEP_COUNT=7`（可调），超出按修改时间淘汰最旧。
 
 ### 4.2 手动备份
 
 ```bash
-# SQLite
-sqlite3 /app/data/topiceye.db ".backup '/app/data/backups/manual_$(date +%Y%m%d).db'"
-
 # PostgreSQL
 docker exec topiceye-postgres-1 \
     pg_dump -U topiceye -Fc topiceye > /app/data/backups/manual_$(date +%Y%m%d).dump
@@ -164,9 +159,6 @@ docker exec topiceye-postgres-1 \
 ```bash
 # 停服
 docker compose -f docker-compose.prod.yml down
-
-# SQLite 恢复（直接覆盖）
-cp /app/data/backups/topiceye_20260115_040000.db /app/data/topiceye.db
 
 # PostgreSQL 恢复
 docker compose -f docker-compose.prod.yml up -d postgres -d
@@ -358,14 +350,16 @@ docker compose -f docker-compose.prod.yml exec backend alembic current
 
 ## 8. CI/CD
 
-`.github/workflows/ci.yml` 跑 4 个 job（push/PR 到 main 触发）：
+`.github/workflows/ci.yml` 在 PR 上跑 5 个轻量门禁 job：
 
-1. `backend-sqlite`：跑全部测试（默认 SQLite）
-2. `backend-postgres`：用 postgres:16-alpine service，只跑关键写入路径
-   （content_pipeline / notification / creation / api_token / migrations / analysis）——
-   防止 SQLite 过 PG 挂的兼容性 bug
-3. `frontend-types`：npx tsc --noEmit
-4. `backend-lint`：ruff check + format check（渐进式，未做强制门禁）
+1. `frontend-types`：npx tsc --noEmit
+2. `frontend-tests`：vitest + 覆盖率门禁
+3. `backend-lint`：ruff check + format check（针对 PR 变更文件，阻断式）
+4. `backend-layering`：API 分层 AST 检查（api → service → repo 单向依赖）
+5. `security-scan`：pip-audit + npm audit（阻断式）
+
+全量 PostgreSQL 测试不在 GitHub 跑（成本高）：本地执行 `make test-backend`
+（一次性 postgres:16-alpine 容器跑在 127.0.0.1:5433，不占用开发栈，跑完即删）。
 
 ---
 
@@ -378,5 +372,5 @@ docker compose -f docker-compose.prod.yml exec backend alembic current
 | **lease** | source.claim_sync 用 last_sync_at 防止并发同 source 抓取；超 lease 过期后下次调度可重新 claim |
 | **ETag / Last-Modified** | sources 表存的 RSS 服务器响应头，下次抓取发 If-None-Match / If-Modified-Since，304 跳过 |
 | **LLM Circuit Breaker** | 连续 5 次失败 → OPEN 5 分钟；OPEN 时所有 LLM 调用走 fallback（analysis._local_analysis_result） |
-| **DuckDB ATTACH** | 后端进程内 DuckDB 实例 ATTACH PG/SQLite 为 `oltp_db` 只读，stats 查询走 DuckDB；不可用时 fallback 到 SQLAlchemy（较慢） |
+| **DuckDB ATTACH** | 后端进程内 DuckDB 实例 ATTACH PG 为 `oltp_db` 只读，stats 查询走 DuckDB；不可用时 fallback 到 SQLAlchemy（较慢） |
 | **DuckDB 扩展** | `DUCKDB_EXTENSION_DIR=./data/duckdb_extensions`，启动时自动下载；目录权限要可写 |

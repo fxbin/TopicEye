@@ -1,6 +1,6 @@
 # TopicEye Backend
 
-FastAPI + SQLAlchemy + SQLite backend for TopicEye.
+FastAPI + SQLAlchemy + PostgreSQL backend for TopicEye.
 
 ## Setup
 
@@ -17,9 +17,9 @@ API docs: http://localhost:8000/docs
 
 ## Database backend
 
-The backend runtime supports two OLTP profiles through `DATABASE_URL`:
+The backend runtime requires PostgreSQL through `DATABASE_URL` (the startup
+validator rejects anything else; SQLite support has been removed):
 
-- SQLite: `sqlite+aiosqlite:///./topiceye.db`
 - PostgreSQL: `postgresql+asyncpg://user:password@host:5432/topiceye`
 
 SQLAlchemy remains the write path. DuckDB is the analytical read layer and
@@ -29,22 +29,18 @@ normalization, DuckDB attach SQL, diagnostics, and secret redaction live in
 
 Important boundaries:
 
-- Startup table creation uses SQLAlchemy metadata for both supported backends.
-- Local upgrade helpers in `app/main.py` are SQLite-only compatibility patches
-  for existing developer databases.
-- PostgreSQL production upgrades should be handled by a migration tool such as
-  Alembic before relying on long-lived production data.
-- `DATABASE_SQLITE_DOMAIN_SPLIT_ENABLED` currently exposes deterministic SQLite
-  domain database URLs for future routing work; repositories still use the
-  primary `DATABASE_URL`.
+- Schema upgrades run through Alembic on startup (`run_startup_migrations`
+  stamps legacy databases and upgrades to head).
+- `backup_db.sh` / `rollback_migration.sh` operate on PostgreSQL only.
 
 ## Tests
 
 ```bash
-cd backend
-source venv/bin/activate
-pip install -r requirements-dev.txt
-python -m pytest
+# 从仓库根目录：自动起一次性 PG 容器（127.0.0.1:5433），跑完即删
+make test-backend
+
+# 或直接调用脚本（可透传 pytest 参数）
+bash backend/scripts/test_full_local.sh
 ```
 
 Files such as `scripts/duckdb_check.py`, `scripts/estimate_llm_cost.py`,
@@ -61,8 +57,8 @@ python scripts/duckdb_check.py
 ```
 
 Operational helper scripts live under `scripts/` as well. For example,
-`scripts/batch_analyze.sh` analyzes pending content through the HTTP API, so it
-works with either SQLite or PostgreSQL as long as the backend is running:
+`scripts/batch_analyze.sh` analyzes pending content through the HTTP API and
+works against any running backend:
 
 ```bash
 cd backend

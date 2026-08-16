@@ -20,7 +20,7 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 - **Transparent scoring engine, not a black box.** Every selected item ships with a full breakdown: base score (information density / actionability / creator value / viral potential / source authority / freshness), quality gates, time decay, diversity penalty, and feedback signal. See the [`algorithm` page](docs/screenshots/screenshot-algorithm.png) in the app.
 - **Feedback closes the loop.** Your 👍 / 👎 doesn't just get saved — it is weighted at 15% and feeds back into ranking. The engine gets sharper the more you use it.
 - **Multi-source intelligence.** 25+ crawl sources (RSS / Reddit / YouTube / podcasts / newsletters / trending boards) + WeRead reading stats + webnovel radar (Fanqie / Qimao / Zhihu Yanxuan). One platform, full-spectrum signal.
-- **Self-host friendly.** Full Docker setup, SQLite or PostgreSQL, OAuth login (Google / GitHub). Your data stays yours.
+- **Self-host friendly.** Full Docker setup, PostgreSQL, OAuth login (Google / GitHub). Your data stays yours.
 - **Agent-native (planned).** The scoring engine is being exposed as a stable API so other agents and tools can call it as their ranking layer.
 
 ## Screenshots
@@ -155,15 +155,14 @@ Full config in [backend/app/services/scoring_engine.py](backend/app/services/sco
 
 ### Database choices
 
-- **SQLite** — default for local / single-user deployments. Zero-ops, single file. Write-lock contention handled via `SQLITE_BUSY_TIMEOUT_MS` (30s default, 500ms for batch writes).
-- **PostgreSQL 16** — recommended for multi-user / production. CI runs the test suite against both to catch cross-DB regressions.
+- **PostgreSQL 16** — the only supported OLTP database (startup validator rejects anything else). Local dev uses the compose `postgres` service; tests run against a throwaway PG container (`make test-backend`).
 - **DuckDB** — read-only analytics layer over the OLTP database. Powers stats dashboards without burdening the write path. Memory and thread budgets configurable via `DUCKDB_THREADS` / `DUCKDB_MEMORY_LIMIT`.
 
 ## Tech stack
 
 - **Backend:** FastAPI (async) · SQLAlchemy 2.0 · Alembic · DuckDB (analytics) · httpx
 - **Frontend:** Next.js 16 · React 19 · TypeScript · Tailwind CSS v4
-- **Database:** SQLite (default) or PostgreSQL · DuckDB as a read-only analytics layer over OLTP
+- **Database:** PostgreSQL 16 · DuckDB as a read-only analytics layer over OLTP
 - **Auth:** Opaque bearer tokens (DB-hashed) + OAuth via Authlib
 - **Email:** Brevo API or SMTP (user-configurable per deployment)
 - **Infra:** Docker / docker-compose (dev + prod) · APScheduler
@@ -236,7 +235,7 @@ All configuration is environment-driven. See [`backend/.env.example`](backend/.e
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `sqlite+aiosqlite:///./topiceye.db` | OLTP database. Swap to `postgresql+asyncpg://...` for Postgres. |
+| `DATABASE_URL` | *(required)* | PostgreSQL connection string, e.g. `postgresql+asyncpg://user:pass@host:5432/topiceye`. SQLite support has been removed. |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed frontend origins. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | empty | Enable Google login. [Guide](backend/.env.example). |
 | `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | empty | Enable GitHub login. |
@@ -269,12 +268,14 @@ curl -X POST http://127.0.0.1:8102/api/v1/sources/1/sync
 
 The project uses Conventional Commits (`feat(auth): ...`, `fix(cache): ...`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and [AGENTS.md](AGENTS.md) for the commit discipline and layering rules enforced in this repo.
 
-CI runs three lanes on every push and PR:
+CI runs lightweight gates on every PR:
 
-- **Backend tests** on SQLite + PostgreSQL (catches cross-DB regressions early — an INSERT-vs-serial-PK bug previously passed SQLite and broke Postgres production).
 - **Frontend type check** (`tsc --noEmit`).
 - **Frontend unit tests + coverage gate** on `src/lib` pure logic modules.
 - **Lint** (`ruff`) on changed Python files (incremental, not a full-history sweep).
+- **Layering check** (AST-enforced `api → service → repo` discipline) and **dependency security scan**.
+
+The full PostgreSQL test suite runs locally instead of on GitHub: `make test-backend` spins up a throwaway `postgres:16-alpine` container on port 5433, runs pytest against it, and removes it afterwards.
 
 ## Contributing
 

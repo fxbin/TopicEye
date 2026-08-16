@@ -18,7 +18,7 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 - **透明的评分引擎，不是黑盒。** 每条精选内容都带完整评分拆解：基础分（信息密度 / 可操作性 / 创作者价值 / 爆文潜力 / 来源权威 / 时效新鲜）、质量门槛、时效衰减、多样性惩罚、反馈信号。
 - **反馈闭环校准。** 你的 👍 / 👎 不只是被收藏——它以 15% 权重回灌进排序权重，引擎越用越准。
 - **多源情报。** 25+ 抓取信源（RSS / Reddit / YouTube / 播客 / Newsletter / 热榜）+ 微信读书阅读统计 + 网文雷达（番茄 / 七猫 / 知乎盐选）。一个平台，全频段信号。
-- **支持自部署。** 完整 Docker 方案，SQLite 或 PostgreSQL，OAuth 登录（Google / GitHub）。数据归你所有。
+- **支持自部署。** 完整 Docker 方案，PostgreSQL，OAuth 登录（Google / GitHub）。数据归你所有。
 - **Agent-native（规划中）。** 评分引擎正在以稳定 API 形式开放，让别的 Agent / 工具可以把它作为排序层调用。
 
 ## 截图
@@ -153,15 +153,14 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 
 ### 数据库选型
 
-- **SQLite** — 本地 / 单用户部署默认。零运维，单文件。写锁等待通过 `SQLITE_BUSY_TIMEOUT_MS` 控制（默认 30s，批量写 500ms 快速返回 503）。
-- **PostgreSQL 16** — 多用户 / 生产推荐。CI 在 SQLite + PostgreSQL 上都跑测试套件，提前抓跨 DB 兼容性 bug。
+- **PostgreSQL 16** — 唯一支持的 OLTP 数据库（启动校验强制）。本地开发用 compose 的 postgres 服务；测试走一次性 PG 容器（`make test-backend`）。
 - **DuckDB** — OLTP 之上的只读分析层。支撑统计面板，不污染写路径。内存与线程预算通过 `DUCKDB_THREADS` / `DUCKDB_MEMORY_LIMIT` 调整。
 
 ## 技术栈
 
 - **后端：** FastAPI（异步）· SQLAlchemy 2.0 · Alembic · DuckDB（分析层）· httpx
 - **前端：** Next.js 16 · React 19 · TypeScript · Tailwind CSS v4
-- **数据库：** SQLite（默认）或 PostgreSQL · DuckDB 作为 OLTP 的只读分析层
+- **数据库：** PostgreSQL 16 · DuckDB 作为 OLTP 的只读分析层
 - **认证：** 不透明 bearer token（DB hash）+ Authlib OAuth
 - **邮件：** Brevo API 或 SMTP（按部署自行配置）
 - **基础设施：** Docker / docker-compose（dev + prod）· APScheduler
@@ -234,7 +233,7 @@ npm run dev
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `DATABASE_URL` | `sqlite+aiosqlite:///./topiceye.db` | OLTP 数据库。切 Postgres 用 `postgresql+asyncpg://...` |
+| `DATABASE_URL` | *(必填)* | PostgreSQL 连接串，如 `postgresql+asyncpg://user:pass@host:5432/topiceye`。SQLite 支持已移除。 |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | 允许的前端来源，逗号分隔 |
 | `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | 空 | 启用 Google 登录 |
 | `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | 空 | 启用 GitHub 登录 |
@@ -267,12 +266,15 @@ curl -X POST http://127.0.0.1:8102/api/v1/sources/1/sync
 
 项目使用 Conventional Commits（`feat(auth): ...`、`fix(cache): ...`）。完整工作流见 [CONTRIBUTING.md](CONTRIBUTING.md)，本仓库强制执行的提交规范与分层规则见 [AGENTS.md](AGENTS.md)。
 
-CI 在每次 push 和 PR 上跑四条 lane：
+CI 在每个 PR 上跑轻量门禁：
 
-- **后端测试**：SQLite + PostgreSQL 双 DB（提前抓跨 DB bug——之前一个 INSERT 主键 bug 在 SQLite 测试通过但 PG 生产全挂）。
 - **前端类型检查**：`tsc --noEmit`。
 - **前端单测 + 覆盖率门禁**：限定在 `src/lib` 纯逻辑模块。
 - **Lint**：`ruff` 只检查 PR 中变更的 Python 文件（渐进式，不一次性扫历史）。
+- **分层检查**：AST 强制 `api → service → repo` 单向依赖；外加依赖安全扫描。
+
+全量 PostgreSQL 测试不在 GitHub 上跑：本地执行 `make test-backend`
+（在 5433 端口起一次性 postgres:16-alpine 容器，跑完即删）。
 
 ## 贡献
 

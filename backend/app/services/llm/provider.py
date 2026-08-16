@@ -38,6 +38,7 @@ from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
     _pool_scope,
     record_llm_pool_circuit_event,
+    reset_completion_semaphore,  # noqa: F401 — re-export：测试经 provider.reset_completion_semaphore 访问
     reset_model_rate_limiters,
     reset_token_rate_limiter,
 )

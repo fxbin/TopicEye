@@ -46,11 +46,11 @@ async def weekly_report(
     result = None
     backend = "oltp"
     try:
-        from app.services.duckdb_service import get_analytics
+        from app.services.duckdb_service import get_analytics, run_query
 
         analytics = get_analytics()
-        if analytics.available:
-            result = analytics.query_webnovel_weekly(days=days)
+        if await run_query(lambda: analytics.available):
+            result = await run_query(lambda: analytics.query_webnovel_weekly(days=days))
             # 如果 DuckDB 返回的数据为空（SQL 错误被静默捕获），回退到 OLTP
             if not result or result.get("summary", {}).get("total_items", 0) == 0:
                 logger.info("Webnovel weekly DuckDB returned empty, falling back to OLTP")

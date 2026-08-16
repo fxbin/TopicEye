@@ -19,9 +19,9 @@ from app.services.duckdb_service import (
     query_stats_novel_platforms,
     query_stats_overview,
     query_stats_source_distribution,
+    run_query,
 )
 from app.services.json_cache import get_cached_json, set_cached_json
-from app.services.stats_workspace import build_default_stats_cache_payloads
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
@@ -74,9 +74,9 @@ def _raise_duckdb_unavailable(exc: Exception) -> None:
     raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc
 
 
-def _query_response(cache_key: str, query: Callable[[], dict]) -> Response:
+async def _query_response(cache_key: str, query: Callable[[], dict]) -> Response:
     try:
-        payload = query()
+        payload = await run_query(query)
     except Exception as exc:
         _raise_duckdb_unavailable(exc)
     return _cache_response(cache_key, payload)
@@ -107,7 +107,7 @@ async def get_overview(days: int = Query(7, ge=1, le=90)):
 async def build_overview_payload(db: AsyncSession, *, days: int) -> dict:
     """Build overview payload through DuckDB; db is accepted for cache warmup compatibility."""
     _ = db
-    return query_stats_overview(days=days)
+    return await run_query(lambda: query_stats_overview(days=days))
 
 
 @router.get("/source-distribution")
@@ -117,7 +117,7 @@ async def get_source_distribution(days: int = Query(7, ge=1, le=90)):
     cached = _cached_response(cache_key)
     if cached:
         return cached
-    return _query_response(cache_key, lambda: query_stats_source_distribution(days=days))
+    return await _query_response(cache_key, lambda: query_stats_source_distribution(days=days))
 
 
 @router.get("/category-distribution")
@@ -127,7 +127,7 @@ async def get_category_distribution(days: int = Query(7, ge=1, le=90)):
     cached = _cached_response(cache_key)
     if cached:
         return cached
-    return _query_response(cache_key, lambda: query_stats_category_distribution(days=days))
+    return await _query_response(cache_key, lambda: query_stats_category_distribution(days=days))
 
 
 @router.get("/daily-trend")
@@ -137,7 +137,7 @@ async def get_daily_trend(days: int = Query(7, ge=1, le=90)):
     cached = _cached_response(cache_key)
     if cached:
         return cached
-    return _query_response(cache_key, lambda: query_stats_daily_trend(days=days))
+    return await _query_response(cache_key, lambda: query_stats_daily_trend(days=days))
 
 
 @router.get("/novel-platforms")
@@ -147,7 +147,7 @@ async def get_novel_platform_stats():
     cached = _cached_response(cache_key)
     if cached:
         return cached
-    return _query_response(cache_key, query_stats_novel_platforms)
+    return await _query_response(cache_key, query_stats_novel_platforms)
 
 
 @router.get("/dashboard")
@@ -157,4 +157,4 @@ async def get_dashboard_stats(days: int = Query(30, ge=1, le=90)):
     cached = _cached_response(cache_key)
     if cached:
         return cached
-    return _query_response(cache_key, lambda: query_dashboard_stats(days=days))
+    return await _query_response(cache_key, lambda: query_dashboard_stats(days=days))

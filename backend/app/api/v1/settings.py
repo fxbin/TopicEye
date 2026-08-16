@@ -117,10 +117,10 @@ async def duckdb_status():
     No sync step is needed; analytics reads current OLTP data directly.
     """
     try:
-        from app.services.duckdb_service import get_analytics
+        from app.services.duckdb_service import get_analytics, run_query
 
         analytics = get_analytics()
-        status = analytics.status()
+        status = await run_query(analytics.status)
         available = status["available"]
         diagnostics = database_diagnostics(database_profile)
         return {
@@ -287,9 +287,7 @@ async def update_email_provider_config(
 
     # 敏感字段处理：空值保留原值，非空值加密覆盖
     api_key_stored = (
-        encrypt_secret(payload.api_key.strip())
-        if payload.api_key.strip()
-        else existing_config.get("api_key", "")
+        encrypt_secret(payload.api_key.strip()) if payload.api_key.strip() else existing_config.get("api_key", "")
     )
     smtp_password_stored = (
         encrypt_secret(payload.smtp_password.strip())
@@ -385,7 +383,7 @@ def _mask_webhook_url(plain: str) -> str:
         return ""
     parts = urlsplit(plain)
     host = parts.netloc or ""
-    preview_host = host[: _SECRET_MASK_PREFIX] if host else ""
+    preview_host = host[:_SECRET_MASK_PREFIX] if host else ""
     return f"{parts.scheme}://{preview_host}****"
 
 

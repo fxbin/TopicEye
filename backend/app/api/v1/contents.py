@@ -225,24 +225,22 @@ async def list_contents(
     if sort_by == "low_follower_viral":
         # 优先走 DuckDB（消除 500 行 Python 批处理）；不可用时 fallback 到原路径
         try:
-            import asyncio
-
-            from app.services.duckdb_service import get_analytics
+            from app.services.duckdb_service import get_analytics, run_query
 
             analytics = get_analytics()
-            if analytics.available:
+            if await run_query(lambda: analytics.available):
                 lfv_hours = hours or 48
                 offset = (page - 1) * page_size
                 # DuckDB 是同步的，推到 worker thread 避免阻塞事件循环
                 lfv_items, lfv_total = await asyncio.to_thread(
-                        analytics.query_low_follower_viral,
-                        hours=lfv_hours,
-                category=category,
-                limit=page_size,
-                offset=offset,
-                visible_user_id=current_user.id if current_user is not None else None,
-                public_only=current_user is None,
-            )
+                    analytics.query_low_follower_viral,
+                    hours=lfv_hours,
+                    category=category,
+                    limit=page_size,
+                    offset=offset,
+                    visible_user_id=current_user.id if current_user is not None else None,
+                    public_only=current_user is None,
+                )
             result_items = []
             for lfv in lfv_items:
                 raw = lfv["raw_item"]
@@ -269,30 +267,36 @@ async def list_contents(
                     "viral_score": raw.get("viral_score"),
                     "risk_score": raw.get("risk_score"),
                 }
-                result_items.append({
-                    "id": raw["id"],
-                    "title": raw["title"],
-                    "url": raw["url"],
-                    "source_id": raw["source_id"],
-                    "source_name": raw["source_name"],
-                    "source_type": raw["source_type"],
-                    "platform": raw["platform"],
-                    "author": raw["author"],
-                    "published_at": raw.get("published_at"),
-                    "crawled_at": raw.get("crawled_at"),
-                    "content_hash": raw.get("content_hash"),
-                    "summary": clean_content_summary(raw.get("summary")),
-                    "cover_url": raw.get("cover_url"),
-                    "category": raw.get("category"),
-                    "tags": raw.get("tags"),
-                    "status": raw.get("status"),
-                    "topic_id": raw.get("topic_id"),
-                    "created_at": raw.get("created_at"),
-                    "analysis": analysis_data,
-                })
+                result_items.append(
+                    {
+                        "id": raw["id"],
+                        "title": raw["title"],
+                        "url": raw["url"],
+                        "source_id": raw["source_id"],
+                        "source_name": raw["source_name"],
+                        "source_type": raw["source_type"],
+                        "platform": raw["platform"],
+                        "author": raw["author"],
+                        "published_at": raw.get("published_at"),
+                        "crawled_at": raw.get("crawled_at"),
+                        "content_hash": raw.get("content_hash"),
+                        "summary": clean_content_summary(raw.get("summary")),
+                        "cover_url": raw.get("cover_url"),
+                        "category": raw.get("category"),
+                        "tags": raw.get("tags"),
+                        "status": raw.get("status"),
+                        "topic_id": raw.get("topic_id"),
+                        "created_at": raw.get("created_at"),
+                        "analysis": analysis_data,
+                    }
+                )
 
             payload = {"items": result_items, "total": lfv_total, "page": page, "page_size": page_size}
-            content = set_cached_content_list(cache_params, payload) if cache_params.cacheable and not include_raw_content else None
+            content = (
+                set_cached_content_list(cache_params, payload)
+                if cache_params.cacheable and not include_raw_content
+                else None
+            )
             return Response(
                 content=content or json.dumps(payload, default=str),
                 media_type="application/json",
@@ -379,7 +383,12 @@ async def today_picks(
 
     try:
         async with async_session() as db:
-            build_kwargs = {"category": category, "content_type": content_type, "hours": params.hours, "limit": params.limit}
+            build_kwargs = {
+                "category": category,
+                "content_type": content_type,
+                "hours": params.hours,
+                "limit": params.limit,
+            }
             if current_user is not None:
                 build_kwargs["owner_user_id"] = current_user.id
             payload = await build_today_picks(db, **build_kwargs)
@@ -394,7 +403,6 @@ async def today_picks(
             )
     except Exception as exc:
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc
-
 
 
 @router.get("/today-count")
@@ -687,7 +695,6 @@ async def read_content_in_app(
     )
 
 
-
 @router.post("/{content_id}/reader/translate", response_model=ArticleReaderResponse)
 async def translate_reader_content(
     content_id: int,
@@ -850,6 +857,7 @@ async def toggle_favorite(
 
     favorite_id = await write_with_503_low_latency(db, _write)
     from app.services.interest_vector_service import trigger_vector_rebuild
+
     trigger_vector_rebuild(current_user.id)
     return {"is_favorited": next_value, "favorite_id": favorite_id}
 
@@ -876,6 +884,7 @@ async def ignore_content(
     ignored = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()
     from app.services.interest_vector_service import trigger_vector_rebuild
+
     trigger_vector_rebuild(current_user.id)
     return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
 
@@ -942,7 +951,9 @@ async def get_content_evidence(
 @router.post("/{content_id}/evidence-interaction")
 async def record_evidence_interaction(
     content_id: int,
-    interaction_type: str = Query(..., description="click|favorite|unfavorite|adopt|feedback_positive|feedback_negative"),
+    interaction_type: str = Query(
+        ..., description="click|favorite|unfavorite|adopt|feedback_positive|feedback_negative"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):

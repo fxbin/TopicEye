@@ -20,10 +20,13 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from app.core.config import settings
 from app.core.db_backend import (
@@ -67,6 +70,7 @@ NOT EXISTS (
 """
 
 # ── DuckDB Analytics singleton ─────────────────────────────────────────
+
 
 class DuckDBAnalytics(PicksMixin, TopicsMixin, StatsMixin, ReportsMixin):
     """
@@ -232,6 +236,26 @@ class DuckDBAnalytics(PicksMixin, TopicsMixin, StatsMixin, ReportsMixin):
 _analytics: DuckDBAnalytics | None = None
 _lock = threading.Lock()
 
+
+# DuckDB 是同步库且连接为 thread-local。固定单线程执行器保证：
+# 1) 本执行器上只创建/复用一份 in-memory 连接（命中 thread-local 缓存）；
+# 2) 查询保持串行——与旧的事件循环内直接调用语义一致，但不再阻塞事件循环。
+_DUCKDB_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="topiceye-duckdb")
+
+_T = TypeVar("_T")
+
+
+async def run_query(query: Callable[[], _T]) -> _T:
+    """在专用线程上执行同步 DuckDB 调用，供异步上下文使用。
+
+    FastAPI endpoint / scheduler job 必须经由此助手调用 DuckDB：cache MISS
+    的首次调用会触发 connect + INSTALL/LOAD + ATTACH + 查询，直接在事件
+    循环上执行可达数百 ms 到秒级，会拖垮所有并发请求。
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_DUCKDB_EXECUTOR, query)
+
+
 def get_analytics() -> DuckDBAnalytics:
     """Get the module-level DuckDBAnalytics singleton."""
     global _analytics
@@ -241,6 +265,7 @@ def get_analytics() -> DuckDBAnalytics:
                 _analytics = DuckDBAnalytics()
     return _analytics
 
+
 def close_analytics() -> None:
     """Close the DuckDBAnalytics singleton."""
     global _analytics
@@ -248,49 +273,64 @@ def close_analytics() -> None:
         _analytics.close()
         _analytics = None
 
+
 # ── Backward-compatible function API ───────────────────────────────────
 # These match the original function signatures so existing callers work
 # without any changes.
 
+
 def query_today_picks(hours: int = 48, **kwargs) -> list[dict[str, Any]]:
     return get_analytics().query_today_picks(hours=hours, **kwargs)
+
 
 def query_topics() -> list[dict[str, Any]]:
     return get_analytics().query_topics()
 
+
 def query_trend_topics(days: int = 7) -> list[dict[str, Any]]:
     return get_analytics().query_trend_topics(days=days)
+
 
 def query_keyword_cloud(days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
     return get_analytics().query_keyword_cloud(days=days, limit=limit)
 
+
 def query_stats_overview(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_overview(days=days)
+
 
 def query_stats_source_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_source_distribution(days=days)
 
+
 def query_stats_category_distribution(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_category_distribution(days=days)
+
 
 def query_stats_daily_trend(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_stats_daily_trend(days=days)
 
+
 def query_stats_novel_platforms() -> dict[str, Any]:
     return get_analytics().query_stats_novel_platforms()
+
 
 def query_daily_stats() -> dict[str, Any]:
     return get_analytics().query_daily_stats()
 
+
 def query_dashboard_stats(days: int = 7) -> dict[str, Any]:
     return get_analytics().query_dashboard_stats(days=days)
+
 
 def query_content_for_report(hours: int = 48) -> list[dict[str, Any]]:
     return get_analytics().query_content_for_report(hours=hours)
 
+
 def query_content_for_weekly(start_date: str, end_date: str) -> list[dict[str, Any]]:
     """Fetch analyzed content for a given week date range (YYYY-MM-DD strings)."""
     return get_analytics().query_content_for_weekly(start_date=start_date, end_date=end_date)
+
 
 def query_webnovel_weekly(days: int = 7) -> dict[str, Any]:
     """Build webnovel weekly report data via DuckDB."""

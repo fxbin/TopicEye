@@ -32,8 +32,8 @@ dev-db:  ## 仅启动 PostgreSQL（本地开发用）
 
 test: test-backend test-frontend  ## 跑后端 + 前端测试
 
-test-backend:  ## 后端 pytest（需要 PG 运行在 localhost:5432）
-	cd backend && python -m pytest tests/ -q
+test-backend:  ## 后端全量 pytest（自动起一次性 PG 容器，跑完即删）
+	bash backend/scripts/test_full_local.sh
 
 test-frontend:  ## 前端 vitest + 覆盖率门禁（对应 CI frontend-tests）
 	cd frontend && npm run test:coverage

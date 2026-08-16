@@ -1,9 +1,11 @@
 # =============================================================================
-# TopicEye CI — PR 轻量门禁 + 全量测试手动/定时触发
+# TopicEye CI — PR 轻量门禁（GitHub）+ 全量测试本地执行
 # =============================================================================
-# pull_request 触发轻量作业（类型检查 / 单测 / lint / 分层 / 安全扫描），
-# 保证 PR 阶段有真实门禁；高成本的 PostgreSQL 全量测试仅在手动
-# (workflow_dispatch) 与每日定时 (schedule, 04:00 CST) 运行。
+# pull_request 触发轻量作业（类型检查 / 前端单测 / lint / 分层 / 安全扫描），
+# 保证 PR 阶段有真实门禁。高成本的 PostgreSQL 全量测试不在 GitHub 跑：
+# 本地执行 `make test-backend`（backend/scripts/test_full_local.sh，
+# 一次性 PG 容器跑在 127.0.0.1:5433，不占用开发栈）。
+# workflow_dispatch 保留用于合并后在 main 上手动复验轻量作业。
 # =============================================================================
 
 name: CI
@@ -11,45 +13,8 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 20 * * *"  # 20:00 UTC = 04:00 CST
 
 jobs:
-  # ── Backend tests on PostgreSQL（仅手动/定时触发，PR 阶段跳过）──
-  backend-tests:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: backend
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: topiceye_test
-          POSTGRES_USER: topiceye
-          POSTGRES_PASSWORD: topiceye
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U topiceye"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install deps
-        run: pip install -r requirements-dev.txt
-      - name: Run tests (PostgreSQL)
-        env:
-          DATABASE_URL: "postgresql+asyncpg://topiceye:topiceye@localhost:5432/topiceye_test"
-          DUCKDB_THREADS: "1"
-          DUCKDB_MEMORY_LIMIT: "128MB"
-        run: python -m pytest tests/ -q --tb=short
 
   # ── Frontend type check ──
   frontend-types:

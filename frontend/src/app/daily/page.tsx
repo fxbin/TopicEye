@@ -222,9 +222,13 @@ export default function DailyReportPage() {
         }
       }
       // 超时
-      setError('生成超时，请稍后刷新查看');
+      if (seq === generateSeqRef.current) {
+        setError('生成超时，请稍后刷新查看');
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '生成失败');
+      if (seq === generateSeqRef.current) {
+        setError(err instanceof Error ? err.message : '生成失败');
+      }
     } finally {
       if (seq === generateSeqRef.current) {
         setGenerating(false);

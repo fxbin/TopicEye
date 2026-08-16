@@ -1,12 +1,10 @@
 # ruff: noqa: I001
 import asyncio
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select, update
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 
@@ -428,6 +426,7 @@ async def test_analyze_pending_defaults_to_background_queue(monkeypatch):
 
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fail_if_sync_analysis_runs)
     engine, session_factory = await _session_factory()
+    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)
 
     async with session_factory() as db:
         db.add(
@@ -479,6 +478,7 @@ async def test_analyze_pending_deduplicates_inflight_background_jobs(monkeypatch
 
     monkeypatch.setattr(analyses_api, "analyze_batch_concurrent", fail_if_sync_analysis_runs)
     engine, session_factory = await _session_factory()
+    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)
 
     async with session_factory() as db:
         db.add(
@@ -522,8 +522,10 @@ async def test_analyze_pending_deduplicates_inflight_background_jobs(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_analysis_job_status_records_completion():
+async def test_analysis_job_status_records_completion(monkeypatch):
     await reset_analysis_jobs()
+    engine, session_factory = await _session_factory()
+    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)
     job = await create_analysis_job([1, 2])
 
     await mark_analysis_job_running(job.job_id)
@@ -537,6 +539,7 @@ async def test_analysis_job_status_records_completion():
     assert status["pending_ids"] == []
     assert status["started_at"] is not None
     assert status["finished_at"] is not None
+    await engine.dispose()
     await reset_analysis_jobs()
 
 
@@ -604,6 +607,8 @@ async def test_background_analysis_adapter_propagates_runner_failure(monkeypatch
 async def test_analysis_job_inflight_ttl_releases_stuck_ids(monkeypatch):
     await reset_analysis_jobs()
     monkeypatch.setattr(analysis_jobs.settings, "ANALYSIS_JOB_INFLIGHT_TTL_SECONDS", 60)
+    engine, session_factory = await _session_factory()
+    monkeypatch.setattr(analysis_jobs, "async_session", session_factory)
 
     first = await create_analysis_job([1])
     first.queued_at = datetime.now(UTC) - timedelta(seconds=90)
@@ -616,6 +621,7 @@ async def test_analysis_job_inflight_ttl_releases_stuck_ids(monkeypatch):
     assert second.content_ids == [1]
     assert second.skipped_inflight_ids == []
     assert active["status"] == "QUEUED"
+    await engine.dispose()
     await reset_analysis_jobs()
 
 
@@ -1380,7 +1386,10 @@ async def test_analyze_batch_invalidates_scoring_cache_after_commit(monkeypatch)
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     _cache_and_return(
-        24, 160, 80, None,
+        24,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1522,7 +1531,10 @@ async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch
     engine, session_factory = await _session_factory()
     invalidate_scoring_flow_cache()
     _cache_and_return(
-        24, 160, 80, None,
+        24,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -1761,7 +1773,7 @@ async def test_post_sync_drain_processes_backlog_and_stale_analyzing(monkeypatch
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis(
+    stats = await post_sync_pipeline_module._drain_pending_analysis(
         batch_size=2,
         time_budget_seconds=120,
     )
@@ -1832,7 +1844,7 @@ async def test_post_sync_drain_uses_configured_default_batch_size(monkeypatch):
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis()
+    stats = await post_sync_pipeline_module._drain_pending_analysis()
 
     assert calls == [[1, 2, 3], [4]]
     assert stats == {
@@ -1882,7 +1894,7 @@ async def test_post_sync_drain_releases_claims_after_batch_timeout(monkeypatch):
         )
         await db.commit()
 
-    stats = await scheduler_module._drain_pending_analysis(
+    stats = await post_sync_pipeline_module._drain_pending_analysis(
         batch_size=2,
         time_budget_seconds=120,
     )

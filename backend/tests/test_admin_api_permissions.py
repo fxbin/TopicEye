@@ -24,6 +24,7 @@ from app.api.v1 import (
 )
 from app.core.database import Base
 from app.models.topic import TopicGroup
+from app.services import duckdb_service
 from app.services.auth_service import create_session, create_user
 from app.services.llm.model_list_cache import invalidate_model_list_cache
 from app.services.source_cache import invalidate_source_list_cache
@@ -33,6 +34,20 @@ from app.services.source_cache import invalidate_source_list_cache
 async def admin_api_client(monkeypatch) -> AsyncGenerator[tuple[httpx.AsyncClient, str, str], None]:
     invalidate_model_list_cache()
     invalidate_source_list_cache()
+
+    class FakeAnalytics:
+        def status(self):
+            return {
+                "status": "ok",
+                "available": True,
+                "backend": "postgresql",
+                "extension": "postgres",
+                "attach_alias": "oltp_db",
+                "mode": "duckdb_attach_read_only",
+                "error": None,
+            }
+
+    monkeypatch.setattr(duckdb_service, "get_analytics", lambda: FakeAnalytics())
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

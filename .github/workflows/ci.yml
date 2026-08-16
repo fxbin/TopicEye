@@ -1,22 +1,20 @@
 # =============================================================================
-# TopicEye CI — 后端测试在 PostgreSQL + 前端类型检查 + 前端单元测试
+# TopicEye CI — 手动触发模式
 # =============================================================================
-# SQLite 分支已移除，PostgreSQL 是唯一支持的 OLTP 后端。
-# 前端 tsc 类型检查单独一个 job。
+# 当前暂停 push / pull_request 自动触发，避免高成本 PostgreSQL 全量测试持续消耗 Actions。
+# 需要验证时，从 GitHub Actions 页面手动运行本 workflow。
 # =============================================================================
 
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   # ── Backend tests on PostgreSQL ──
   backend-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
@@ -67,8 +65,6 @@ jobs:
         run: npx tsc --noEmit
 
   # ── Frontend unit tests + coverage gate ──
-  # 覆盖率门禁限定在 src/lib 的纯逻辑模块（阈值见 frontend/vitest.config.ts）。
-  # 与后端 lint 同理走渐进式：先在核心逻辑立稳基线，新增测试后再逐步扩面、抬阈值。
   frontend-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -87,8 +83,6 @@ jobs:
         run: npm run test:coverage
 
   # ── Lint: ruff（针对本次改动的 Python 文件做阻断式检查）──
-  # 渐进式门禁：只检查 PR 中变更的文件，避免一次性清理 700+ 历史告警。
-  # 历史 lint 问题在单独的清理分支处理。main 的 push 用 HEAD^ 做基线。
   backend-lint:
     runs-on: ubuntu-latest
     defaults:
@@ -97,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # 需要完整历史来计算 diff 基线
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -107,12 +101,7 @@ jobs:
         id: diff
         working-directory: .
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE=$(git rev-parse HEAD^)
-          fi
-          # backend/ 下变更的 .py 文件（相对于基线，且当前仍存在）
+          BASE=$(git rev-parse HEAD^)
           FILES=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'backend/*.py' \
                   | sed 's|^backend/||' | grep '\.py$' || true)
           {
@@ -129,9 +118,7 @@ jobs:
         if: steps.diff.outputs.files != ''
         run: echo "${{ steps.diff.outputs.files }}" | xargs ruff format --check
 
-  # ── 分层纪律：api/v1 禁止直接 ORM 查询 / 禁用 import（对应 AGENTS.md）──
-  # 规则本是纯人工评审，容易漏；这一步把符号级的硬违规做成阻断门，
-  # 防止清理成果被新代码回退。检查全量 api/v1 很快，无需 diff 化。
+  # ── 分层纪律 ──
   backend-layering:
     runs-on: ubuntu-latest
     defaults:
@@ -146,9 +133,6 @@ jobs:
         run: python scripts/check_layering.py
 
   # ── 依赖安全扫描 ──
-  # pip-audit 扫描 Python 已安装包的已知漏洞（PyPI Advisory DB）。
-  # npm audit 扫描前端依赖树（--audit-level=high 只在高危/严重时失败）。
-  # 漏洞修复后已升级为阻断模式：发现高危漏洞将中断 CI。
   security-scan:
     runs-on: ubuntu-latest
     steps:
@@ -157,6 +141,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Backend pip-audit
+        id: backend_audit
+        continue-on-error: true
         working-directory: backend
         run: |
           pip install -r requirements-dev.txt
@@ -167,7 +153,20 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Frontend npm audit
+        id: frontend_audit
+        continue-on-error: true
         working-directory: frontend
         run: |
           npm ci
           npm audit --audit-level=high
+      - name: Enforce security audit results
+        if: always()
+        env:
+          BACKEND_AUDIT_OUTCOME: ${{ steps.backend_audit.outcome }}
+          FRONTEND_AUDIT_OUTCOME: ${{ steps.frontend_audit.outcome }}
+        run: |
+          echo "Backend audit: $BACKEND_AUDIT_OUTCOME"
+          echo "Frontend audit: $FRONTEND_AUDIT_OUTCOME"
+          if [ "$BACKEND_AUDIT_OUTCOME" != "success" ] || [ "$FRONTEND_AUDIT_OUTCOME" != "success" ]; then
+            exit 1
+          fi

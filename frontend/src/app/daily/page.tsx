@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -71,6 +71,13 @@ export default function DailyReportPage() {
   const [generating, setGenerating] = useState(false);
   const [generatingDate, setGeneratingDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 生成轮询代际：新一轮生成或组件卸载时自增，使旧的 5s 轮询循环
+  // 在下一次醒来后直接退出，避免卸载后持续请求 / 交错 setState
+  const generateSeqRef = useRef(0);
+
+  useEffect(() => () => {
+    generateSeqRef.current += 1;
+  }, []);
 
   const refreshReportIndexes = useCallback(async () => {
     const [datesData, calendarData] = await Promise.all([
@@ -176,6 +183,7 @@ export default function DailyReportPage() {
   }, [selectedDate, fetchReport]);
 
   const generateForDate = useCallback(async (date: string) => {
+    const seq = ++generateSeqRef.current;
     try {
       setGenerating(true);
       setGeneratingDate(date);
@@ -191,10 +199,12 @@ export default function DailyReportPage() {
       const maxAttempts = 24;
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 5000)); // 每 5 秒轮询
+        if (seq !== generateSeqRef.current) return; // 已被新一轮生成/卸载取代，放弃旧轮询
         try {
           const data = date < today
             ? await dailyReportApi.getByDate(date)
             : await dailyReportApi.getToday();
+          if (seq !== generateSeqRef.current) return;
           const reportData = data as unknown as DailyReportData;
           if (reportData.status === 'DONE' || reportData.status === 'ERROR') {
             setReport(reportData);
@@ -216,8 +226,10 @@ export default function DailyReportPage() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失败');
     } finally {
-      setGenerating(false);
-      setGeneratingDate(null);
+      if (seq === generateSeqRef.current) {
+        setGenerating(false);
+        setGeneratingDate(null);
+      }
     }
   }, [refreshReportIndexes]);
 

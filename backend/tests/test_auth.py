@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Request
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.v1 import auth as auth_api
@@ -24,6 +23,7 @@ from app.services.auth_service import (
     ensure_admin_user,
     get_user_for_token,
     revoke_token,
+    validate_admin_seed_password,
     verify_password,
 )
 
@@ -281,7 +281,7 @@ async def test_ensure_admin_user_creates_builtin_admin():
         admin = await ensure_admin_user(
             db,
             email="Admin@TopicEye.Local",
-            password="TopicEyeAdmin123!",
+            password="SecureAdminPass456!",
             display_name="TopicEye 管理员",
         )
 
@@ -293,7 +293,7 @@ async def test_ensure_admin_user_creates_builtin_admin():
             await authenticate_user(
                 db,
                 email="admin@topiceye.local",
-                password="TopicEyeAdmin123!",
+                password="SecureAdminPass456!",
             )
             is admin
         )
@@ -321,7 +321,7 @@ async def test_ensure_admin_user_promotes_existing_account_without_resetting_pas
         admin = await ensure_admin_user(
             db,
             email="admin@topiceye.local",
-            password="TopicEyeAdmin123!",
+            password="SecureAdminPass456!",
             display_name="TopicEye 管理员",
         )
 
@@ -341,9 +341,42 @@ async def test_ensure_admin_user_promotes_existing_account_without_resetting_pas
             await authenticate_user(
                 db,
                 email="admin@topiceye.local",
-                password="TopicEyeAdmin123!",
+                password="SecureAdminPass456!",
             )
             is None
         )
 
     await engine.dispose()
+
+
+# ── 管理员种子密码安全校验 ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_password",
+    [
+        "TopicEyeAdmin123!",  # 曾误提交进 git 历史的默认种子密码，永久拉黑
+        "CHANGE_THIS_TO_A_STRONG_PASSWORD",  # .env.production 模板占位符
+        "short",  # 低于最小长度
+        "",
+        None,
+    ],
+)
+async def test_ensure_admin_user_rejects_insecure_seed_password(bad_password):
+    # 校验发生在任何 DB 访问之前，无需真实会话。
+    with pytest.raises(ValueError):
+        await ensure_admin_user(
+            None,  # type: ignore[arg-type]
+            email="admin@topiceye.local",
+            password=bad_password,
+        )
+
+
+def test_validate_admin_seed_password_accepts_strong_value():
+    validate_admin_seed_password("AReasonablyLongPass42!")
+
+
+def test_validate_admin_seed_password_is_case_insensitive_blacklist():
+    with pytest.raises(ValueError):
+        validate_admin_seed_password("topiceyeADMIN123!")

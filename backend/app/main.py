@@ -166,6 +166,23 @@ def ensure_runtime_secret_safety() -> None:
         raise RuntimeError("APP_ENV=production requires INTEGRATION_SECRET_KEY or a custom APP_SECRET_KEY")
 
 
+def ensure_admin_seed_safety() -> None:
+    """Fail fast when the admin seed password is a known leaked/placeholder value.
+
+    默认种子密码曾误提交进 git 历史（b520ac7），视为已永久泄露；拒绝以该值
+    （或模板占位符/过短口令）启动，避免任何沿用示例配置的部署被直接接管。
+    注意：这里必须直接 raise 而不是走 _run_seed_step 的"降级为 warning"路径。
+    """
+    if not settings.ADMIN_SEED_ENABLED:
+        return
+    from app.services.auth_service import validate_admin_seed_password
+
+    try:
+        validate_admin_seed_password(settings.ADMIN_PASSWORD)
+    except ValueError as exc:
+        raise RuntimeError(f"Insecure ADMIN_PASSWORD refused at startup: {exc}") from exc
+
+
 async def _run_seed_step(
     name: str,
     *,
@@ -210,6 +227,7 @@ async def lifespan(app: FastAPI):
     global _cache_warmup_task
 
     ensure_runtime_secret_safety()
+    ensure_admin_seed_safety()
 
     # Startup: bring the database to the latest Alembic revision. Legacy
     # databases shaped by the old ensure_* helpers are stamped as current;

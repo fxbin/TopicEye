@@ -20,6 +20,31 @@ _HASH_ITERATIONS = 260_000
 _SALT_BYTES = 16
 _SESSION_TOKEN_BYTES = 32
 
+# 历史上误提交进 git 仓库的默认种子密码与部署模板占位符，永久拉黑：
+# 即使仓库历史已被读过，这些值也不能再作为任何环境的管理员密码生效。
+_KNOWN_INSECURE_ADMIN_PASSWORDS = frozenset(
+    {
+        "topiceyeadmin123!",  # commit b520ac7 引入、ffa0a7e 移除的默认种子密码
+        "change_this_to_a_strong_password",  # .env.production 模板占位符
+    }
+)
+_MIN_ADMIN_PASSWORD_LENGTH = 12
+
+
+def validate_admin_seed_password(password: str | None) -> None:
+    """Reject known-leaked or too-short admin seed passwords.
+
+    Raises:
+        ValueError: 当密码命中历史泄露名单、模板占位符或低于最小长度。
+    """
+    value = (password or "").strip()
+    if not value:
+        raise ValueError("ADMIN_PASSWORD is empty")
+    if value.lower() in _KNOWN_INSECURE_ADMIN_PASSWORDS:
+        raise ValueError("ADMIN_PASSWORD is a known leaked/placeholder value and must be rotated")
+    if len(value) < _MIN_ADMIN_PASSWORD_LENGTH:
+        raise ValueError(f"ADMIN_PASSWORD must be at least {_MIN_ADMIN_PASSWORD_LENGTH} characters")
+
 
 def hash_password(password: str) -> str:
     salt = os.urandom(_SALT_BYTES)
@@ -207,6 +232,7 @@ async def ensure_admin_user(
     password: str,
     display_name: str | None = None,
 ) -> User:
+    validate_admin_seed_password(password)
     user = await get_user_by_email(db, email)
     if not user:
         return await create_user(

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import ipaddress
 import logging
 import random
 import re
@@ -28,6 +27,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.models.article_reader_event import ArticleReaderEvent
 from app.models.article_snapshot import ArticleSnapshot
+from app.utils.url_safety import is_private_address
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,23 +103,6 @@ def _normalized_url(url: str) -> str:
     return urlunparse((parsed.scheme.lower(), parsed.netloc, parsed.path or "/", parsed.params, parsed.query, ""))
 
 
-def _is_private_address(value: str) -> bool:
-    try:
-        ip = ipaddress.ip_address(value)
-    except ValueError:
-        return False
-    if getattr(ip, "ipv4_mapped", None) is not None:
-        ip = ip.ipv4_mapped
-    return bool(
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
-
-
 def _allowed_hosts() -> tuple[str, ...]:
     return tuple(host.strip().lower() for host in settings.ARTICLE_READER_ALLOWED_HOSTS.split(",") if host.strip())
 
@@ -127,7 +110,7 @@ def _allowed_hosts() -> tuple[str, ...]:
 async def _validate_public_url(url: str) -> str:
     normalized = _normalized_url(url)
     host = (urlparse(normalized).hostname or "").rstrip(".").lower()
-    if host in {"localhost", "metadata.google.internal"} or _is_private_address(host):
+    if host in {"localhost", "metadata.google.internal"} or is_private_address(host):
         raise ArticleReaderError("blocked_url", "该原文地址不允许站内读取。")
 
     allowlist = _allowed_hosts()
@@ -139,7 +122,7 @@ async def _validate_public_url(url: str) -> str:
     except OSError as exc:
         raise ArticleReaderError("unresolvable_host", "原文地址暂时无法解析，请稍后打开原文。", 502) from exc
 
-    if any(_is_private_address(info[4][0]) for info in infos):
+    if any(is_private_address(info[4][0]) for info in infos):
         raise ArticleReaderError("blocked_url", "该原文地址不允许站内读取。")
     return normalized
 
@@ -243,11 +226,7 @@ def blocks_from_text(value: str) -> list[dict[str, str | int]]:
     parts = [part.strip() for part in re.split(r"\n\s*\n+", normalized) if part.strip()]
     if len(parts) <= 1 and "\n" in normalized:
         parts = [line.strip() for line in normalized.splitlines() if line.strip()]
-    return [
-        {"type": "paragraph", "text": _clean_inline_text(part)}
-        for part in parts
-        if _clean_inline_text(part)
-    ]
+    return [{"type": "paragraph", "text": _clean_inline_text(part)} for part in parts if _clean_inline_text(part)]
 
 
 def _resolve_img_src(node, base_url: str) -> str | None:
@@ -360,9 +339,7 @@ def _extract_semantic_blocks(root: BeautifulSoup, base_url: str = "") -> list[di
     return blocks_from_text(root.get_text("\n", strip=True))
 
 
-def _without_duplicate_title(
-    blocks: list[dict[str, str | int]], title: str
-) -> list[dict[str, str | int]]:
+def _without_duplicate_title(blocks: list[dict[str, str | int]], title: str) -> list[dict[str, str | int]]:
     if not blocks or blocks[0].get("type") != "heading":
         return blocks
     if _clean_inline_text(str(blocks[0]["text"])).casefold() == _clean_inline_text(title).casefold():
@@ -384,7 +361,9 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     import trafilatura
 
     soup = BeautifulSoup(payload, "html.parser")
-    for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
+    for node in soup(
+        ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]
+    ):
         node.decompose()
 
     canonical = soup.find("link", rel=lambda values: values and "canonical" in values)
@@ -532,7 +511,9 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
             blocks = _extract_semantic_blocks(soup, content.url or "")
         else:
             soup = BeautifulSoup(raw, "html.parser")
-            for node in soup(["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]):
+            for node in soup(
+                ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]
+            ):
                 node.decompose()
             blocks = _extract_semantic_blocks(soup, content.url or "")
     else:
@@ -692,11 +673,9 @@ def _resolve_ua() -> str:
                         )
         # Fallback: configured static pool
         if not _ua_pool:
-            _ua_pool = [
-                ua.strip()
-                for ua in settings.ARTICLE_READER_USER_AGENT.split(",")
-                if ua.strip()
-            ] or ["Mozilla/5.0"]
+            _ua_pool = [ua.strip() for ua in settings.ARTICLE_READER_USER_AGENT.split(",") if ua.strip()] or [
+                "Mozilla/5.0"
+            ]
         logger.info("UA pool: %d entries", len(_ua_pool))
 
     return random.choice(_ua_pool)
@@ -717,10 +696,7 @@ def _resolve_impersonate_with_ua() -> tuple[str, str]:
     if versions:
         ver_num, ver_name = random.choice(versions)
         os_str = random.choice(_OS_VARIANTS)
-        ua = (
-            f"Mozilla/5.0 ({os_str}) AppleWebKit/537.36 "
-            f"(KHTML, like Gecko) Chrome/{ver_num}.0.0.0 Safari/537.36"
-        )
+        ua = f"Mozilla/5.0 ({os_str}) AppleWebKit/537.36 " f"(KHTML, like Gecko) Chrome/{ver_num}.0.0.0 Safari/537.36"
         return ver_name, ua
 
     return "chrome", _resolve_ua()
@@ -833,9 +809,7 @@ def _is_chinese_text(text: str, sample_size: int = 500) -> bool:
 
 async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleSnapshot:
     """翻译 snapshot 正文为中文。已有缓存直接返回；原文已中文则标记跳过。"""
-    snapshot = await db.scalar(
-        select(ArticleSnapshot).where(ArticleSnapshot.content_id == content.id)
-    )
+    snapshot = await db.scalar(select(ArticleSnapshot).where(ArticleSnapshot.content_id == content.id))
     if snapshot is None:
         raise RuntimeError("正文快照不存在，请先打开原文阅读")
 
@@ -863,7 +837,7 @@ async def translate_snapshot(db: AsyncSession, content: ContentItem) -> ArticleS
     if result is None:
         raise RuntimeError("翻译失败：所有翻译引擎均不可用，请稍后重试")
 
-    snapshot.text_content_zh = result.text[:settings.ARTICLE_READER_MAX_TEXT_CHARS]
+    snapshot.text_content_zh = result.text[: settings.ARTICLE_READER_MAX_TEXT_CHARS]
     if result.blocks:
         snapshot.content_blocks_zh = result.blocks
     logger.info("Translated via %s: content_id=%d", result.provider, content.id)

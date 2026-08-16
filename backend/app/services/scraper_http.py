@@ -28,7 +28,21 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
+
 from app.core.config import settings
+from app.utils.url_safety import ensure_public_hostname
+
+
+async def _ssrf_request_guard(request: httpx.Request) -> None:
+    """httpx request 事件钩子：对每一跳请求（含重定向目标）做内网校验。
+
+    ``follow_redirects=True`` 时公网信源可被 302 到内网/元数据地址，
+    入口的单次校验拦不住；挂在 request 事件上保证 httpx 实际发出的
+    每个 URL（原始 + 每次重定向）都过 ``ensure_public_hostname``。
+    校验失败抛 ``UnsafeUrlError``，由 scraper 的常规错误路径兜底。
+    """
+    await ensure_public_hostname(str(request.url))
 
 
 def is_loopback_url(url: str) -> bool:
@@ -91,6 +105,8 @@ def build_scraper_client_kwargs(
         "timeout": timeout if timeout is not None else settings.RSS_SCRAPER_TIMEOUT_SECONDS,
         "follow_redirects": follow_redirects,
         "trust_env": False,
+        # SSRF：content 信源 URL 用户可控，重定向目标逐跳校验（见 _ssrf_request_guard）
+        "event_hooks": {"request": [_ssrf_request_guard]},
         "headers": {
             "User-Agent": user_agent or settings.HTTP_SCRAPER_USER_AGENT,
             "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8",

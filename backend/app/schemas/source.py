@@ -4,9 +4,10 @@ import json
 from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.source import SourceStatus, SourceType
+from app.utils.url_safety import hostname_is_blocked
 
 API_SOURCE_ALLOWED_METHODS = {"GET", "POST"}
 
@@ -16,6 +17,10 @@ def normalize_source_url_value(value: str) -> str:
     parts = urlsplit(url)
     scheme = parts.scheme.lower()
     if scheme in {"http", "https"} and parts.netloc:
+        # SSRF 防护：拒绝指向内网/环回/链路本地/保留地址的信源，
+        # 覆盖所有创建/导入路径（字面量检查，无 IO；DNS 层校验在抓取时做）。
+        if hostname_is_blocked(parts.hostname):
+            raise ValueError("信源 URL 不允许指向内网、环回或保留地址")
         netloc = parts.netloc.lower()
         return urlunsplit((scheme, netloc, parts.path, parts.query, parts.fragment))
     raise ValueError("信源 URL 必须以 http:// 或 https:// 开头")
@@ -77,6 +82,37 @@ def normalize_api_source_config_value(value: str | None) -> str | None:
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
+def normalize_rsshub_config_value(value: str | None) -> str | None:
+    """Validate RSSHub per-source instance overrides stored in Source.keyword.
+
+    RSSHub 信源的 ``url`` 是无主机的 route，实际抓取目标来自 keyword JSON 的
+    ``instances`` 列表（用户可控），必须逐一做内网字面量校验。非 JSON 或
+    不含 ``instances`` 的旧格式原样放行（抓取层 request 钩子仍会兜底）。
+    """
+    text = normalize_optional_text(value)
+    if text is None:
+        return None
+    try:
+        config = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(config, dict) or "instances" not in config:
+        return text
+
+    instances = config["instances"]
+    if not isinstance(instances, list) or not all(isinstance(u, str) for u in instances):
+        raise ValueError("RSSHub 信源 instances 必须是字符串数组") from None
+
+    for instance in instances:
+        parts = urlsplit(instance.strip())
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError(f"RSSHub 实例必须是 http(s) URL：{instance}") from None
+        if hostname_is_blocked(parts.hostname):
+            raise ValueError("RSSHub 实例不允许指向内网、环回或保留地址") from None
+
+    return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+
+
 class SourceCreate(BaseModel):
     name: str = Field(..., max_length=255)
     source_type: SourceType = SourceType.RSS
@@ -106,6 +142,12 @@ class SourceCreate(BaseModel):
     @classmethod
     def normalize_optional_text_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_rsshub_instances(self) -> SourceCreate:
+        if self.source_type == SourceType.RSSHub and self.keyword:
+            self.keyword = normalize_rsshub_config_value(self.keyword)
+        return self
 
 
 class SourceUpdate(BaseModel):
@@ -143,6 +185,13 @@ class SourceUpdate(BaseModel):
     @classmethod
     def normalize_optional_text_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_rsshub_instances(self) -> SourceUpdate:
+        # 仅当类型显式为 RSSHub 时校验；类型未提供时无法判定，交给抓取层钩子兜底
+        if self.source_type == SourceType.RSSHub and self.keyword:
+            self.keyword = normalize_rsshub_config_value(self.keyword)
+        return self
 
 
 class SourceResponse(BaseModel):

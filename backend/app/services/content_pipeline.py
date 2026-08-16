@@ -31,6 +31,7 @@ from app.services.dedup import build_hash
 from app.services.llm_pre_filter import apply_pre_filter
 from app.services.scraper_http import build_scraper_client_kwargs
 from app.services.scrapers import get_scraper_cls
+from app.utils.url_safety import UnsafeUrlError, ensure_public_hostname
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,12 @@ def _ensure_datetime(value: Any) -> datetime | None:
     if isinstance(value, str):
         try:
             from dateutil.parser import isoparse
+
             return isoparse(value)
         except Exception:
             logger.warning("Could not parse published_at string: %r", value)
             return None
     return None
-
 
 
 # ── 平台级硬规则：零成本 content_type 判定 ─────────────────────────
@@ -100,6 +101,25 @@ async def ingest_from_source(source: Source, db: AsyncSession) -> dict[str, int]
 
     Returns ``{"fetched": N, "new": N, "duplicates": N}``.
     """
+    # SSRF 防护（抓取时最终防线）：字面量 + DNS 解析双校验。
+    # 创建入口已在 schema validator 拒绝内网字面量；这里额外拦截
+    # "稳定解析到内网 IP" 的域名（内网域名 / rebinding 的常见形态），
+    # 且覆盖 scheduler 自动同步等全部触发路径。注意守卫解析与实际
+    # 连接是两次独立解析，严格 TOCTOU rebinding 依赖 scraper client
+    # 的 request 事件钩子逐跳校验共同缓解，不在此单独解决。
+    try:
+        await ensure_public_hostname(source.url)
+    except UnsafeUrlError as exc:
+        message = redact_source_sync_error(str(exc))
+        logger.warning("Source %s (%d) blocked by SSRF guard: %s", source.name, source.id, message)
+        source_id = source.id
+        await db.rollback()
+        fresh = await db.get(Source, source_id)
+        if fresh is not None:
+            _update_source_error(fresh, message)
+            await db.commit()
+        return {"fetched": 0, "new": 0, "duplicates": 0}
+
     try:
         return await asyncio.wait_for(
             _ingest_from_source_inner(source, db),
@@ -275,7 +295,9 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
                 summary=summary or None,
                 raw_content=entry.get("raw_content") or None,
                 cover_url=entry.get("cover_url"),
-                category=source.category.split("/", 1)[0] if source.category and "/" in source.category else source.category,
+                category=source.category.split("/", 1)[0]
+                if source.category and "/" in source.category
+                else source.category,
                 content_type=_parse_source_content_type(source),
                 status=ContentStatus.PENDING,
             )
@@ -296,9 +318,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         db_elapsed_ms = 0
         if new_items:
             db_started_at = time.perf_counter()
-            inserted_content_ids = await _persist_new_content_items(
-                db, new_items, metrics_records, category_counts={}
-            )
+            inserted_content_ids = await _persist_new_content_items(db, new_items, metrics_records, category_counts={})
             await db.commit()
             invalidate_content_read_caches()
             db_elapsed_ms = int((time.perf_counter() - db_started_at) * 1000)
@@ -310,9 +330,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
 
         # A concurrent sync can win the unique constraint race.  Only run the
         # expensive classifier for rows this invocation actually inserted.
-        eligible_entries = [
-            entry for entry in eligible_entries if entry["_content_hash"] in inserted_content_ids
-        ]
+        eligible_entries = [entry for entry in eligible_entries if entry["_content_hash"] in inserted_content_ids]
 
         classify_started_at = time.perf_counter()
         classified_entries: list[tuple[dict[str, Any], dict[str, Any]]] = []

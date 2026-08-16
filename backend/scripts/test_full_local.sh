@@ -19,7 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PORT="${TEST_PG_PORT:-5433}"
-CONTAINER="topiceye-test-pg"
+# 容器名带端口派生：允许通过不同 TEST_PG_PORT 并行跑多份套件互不干扰
+CONTAINER="topiceye-test-pg-${PORT}"
 if [ -x "$BACKEND_DIR/venv/bin/python" ]; then
   PYTHON="${PYTHON:-$BACKEND_DIR/venv/bin/python}"
 else
@@ -29,7 +30,7 @@ fi
 cleanup() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 echo "==> 启动一次性 PostgreSQL (127.0.0.1:${PORT})..."
 docker run --rm -d --name "$CONTAINER" \

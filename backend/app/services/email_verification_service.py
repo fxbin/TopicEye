@@ -15,8 +15,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.email_verification import EmailVerificationCode
 from app.core.user_identity import normalize_email
+from app.models.email_verification import EmailVerificationCode
 from app.services.email.base import EmailSendError
 from app.services.email.factory import get_email_provider
 
@@ -187,8 +187,6 @@ async def cleanup_expired_codes(db: AsyncSession) -> int:
         删除的记录条数
     """
     cutoff = datetime.now(UTC) - timedelta(hours=_EXPIRED_CODE_CLEANUP_HOURS)
-    result = await db.execute(
-        delete(EmailVerificationCode).where(EmailVerificationCode.expires_at < cutoff)
-    )
+    result = await db.execute(delete(EmailVerificationCode).where(EmailVerificationCode.expires_at < cutoff))
     await db.flush()
     return result.rowcount or 0

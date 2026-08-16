@@ -1,14 +1,12 @@
-from types import SimpleNamespace
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from litellm.exceptions import BadRequestError
 
-from app.services.llm import provider
-from app.services.llm import _call_engine
-from app.services.llm import _rate_limit
-from app.services.llm.response_cache import LLMCache
+from app.services.llm import _call_engine, _rate_limit, provider
 from app.services.llm.circuit_breaker import CircuitState, get_llm_circuit_breaker, reset_llm_circuit_breakers
+from app.services.llm.response_cache import LLMCache
 
 
 @pytest.fixture(autouse=True)
@@ -306,6 +304,7 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
     monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
     # _call_llm_single 内部延迟 import record_llm_call_in_new_session，patch 其来源模块
     import app.services.llm_usage as llm_usage_mod
+
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
@@ -371,6 +370,7 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
     monkeypatch.setattr(_rate_limit.settings, "LLM_WORKER_CONCURRENCY", 5)
     monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
     import app.services.llm_usage as llm_usage_mod
+
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
@@ -417,6 +417,7 @@ async def test_llm_completion_has_bounded_async_deadline(monkeypatch):
     monkeypatch.setattr(_call_engine.settings, "LLM_COMPLETION_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(_call_engine, "acompletion", slow_acompletion)
     import app.services.llm_usage as llm_usage_mod
+
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     with pytest.raises(TimeoutError):

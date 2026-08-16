@@ -20,8 +20,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
-
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -181,10 +181,8 @@ async def reset_llm_provider_state():
             # 等子模块（合法实现），只有 __module__ 不属于 app.services.llm 的才是
             # monkeypatch 注入的 fake_call 残留，需要删掉。
             if not (cur_mod or "").startswith("app.services.llm"):
-                try:
+                with contextlib.suppress(AttributeError):
                     delattr(provider_module, attr_name)
-                except AttributeError:
-                    pass
     except Exception:
         pass
 

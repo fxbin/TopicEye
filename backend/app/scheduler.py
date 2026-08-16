@@ -415,6 +415,7 @@ async def _sync_fanqie() -> None:
     """番茄小说榜单每日抓取（凌晨1点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
         from app.repositories.app_setting_repo import AppSettingRepository
+
         if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return  # 网文模块未启用，跳过抓取
     logger.info("Scheduler: fanqie sync started")
@@ -433,6 +434,7 @@ async def _sync_qimao() -> None:
     """七猫小说榜单每日抓取（凌晨2点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
         from app.repositories.app_setting_repo import AppSettingRepository
+
         if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return
     logger.info("Scheduler: qimao sync started")
@@ -451,6 +453,7 @@ async def _sync_zhihu() -> None:
     """知乎故事榜单每日抓取（凌晨4点）。任务永远注册，运行时由 flag 决定是否执行。"""
     async with async_session() as db:
         from app.repositories.app_setting_repo import AppSettingRepository
+
         if not await AppSettingRepository(db).get_feature_flag("webnovel_module"):
             return
     logger.info("Scheduler: zhihu sync started")
@@ -760,8 +763,7 @@ async def _refresh_weread_stats_cache() -> None:
 
         summary = await refresh_all_weread_stats_cache()
         logger.info(
-            "Scheduler: WeRead stats cache refresh done — "
-            "users=%d, success=%d, failed=%d",
+            "Scheduler: WeRead stats cache refresh done — " "users=%d, success=%d, failed=%d",
             summary.get("total_users", 0),
             summary.get("success", 0),
             summary.get("failed", 0),
@@ -774,9 +776,7 @@ async def _refresh_weread_stats_cache() -> None:
 async def _normalize_content_events() -> dict:
     """Run the public event-normalization slice; ``off`` is a true no-op."""
 
-    mode = str(
-        getattr(settings, "EVENT_NORMALIZATION_MODE", "off")
-    ).strip().lower()
+    mode = str(getattr(settings, "EVENT_NORMALIZATION_MODE", "off")).strip().lower()
     if mode == "off":
         return {"status": "off", "scanned": 0}
     if mode not in {"shadow", "write"}:
@@ -809,9 +809,7 @@ async def _normalize_content_events() -> dict:
             return result
         except ContentEventConflictError:
             await db.rollback()
-            logger.info(
-                "Scheduler: content event normalization skipped because a lease is active"
-            )
+            logger.info("Scheduler: content event normalization skipped because a lease is active")
             return {"status": "lease-active", "scanned": 0}
         except Exception:
             await db.rollback()
@@ -1058,6 +1056,7 @@ def start_scheduler() -> None:
     async def _persist_metrics_snapshot() -> None:
         try:
             from app.services.metrics_persistence import persist_metrics_snapshot
+
             await persist_metrics_snapshot()
         except Exception:
             logger.debug("Metrics snapshot persistence failed", exc_info=True)
@@ -1074,6 +1073,7 @@ def start_scheduler() -> None:
     async def _cleanup_old_metrics_snapshots() -> None:
         try:
             from app.services.metrics_persistence import cleanup_old_snapshots
+
             await cleanup_old_snapshots()
         except Exception:
             logger.debug("Metrics snapshot cleanup failed", exc_info=True)

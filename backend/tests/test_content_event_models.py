@@ -100,9 +100,6 @@ def test_content_event_foreign_key_delete_policies_are_explicit():
 
     assert next(iter(group_columns.owner_user_id.foreign_keys)).ondelete == "CASCADE"
     assert next(iter(group_columns.canonical_content_id.foreign_keys)).ondelete == "RESTRICT"
-    assert (
-        next(iter(group_columns.canonical_locked_by_user_id.foreign_keys)).ondelete
-        == "SET NULL"
-    )
+    assert next(iter(group_columns.canonical_locked_by_user_id.foreign_keys)).ondelete == "SET NULL"
     assert next(iter(member_columns.event_group_id.foreign_keys)).ondelete == "CASCADE"
     assert next(iter(member_columns.content_id.foreign_keys)).ondelete == "CASCADE"

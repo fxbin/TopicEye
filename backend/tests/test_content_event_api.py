@@ -83,9 +83,7 @@ def test_get_content_event_returns_additive_public_contract(monkeypatch):
             return _event_payload()
 
     monkeypatch.setattr(content_events, "ContentEventService", FakeService)
-    response = _client(user_id=42).get(
-        "/contents/7/event?member_limit=5&member_offset=1"
-    )
+    response = _client(user_id=42).get("/contents/7/event?member_limit=5&member_offset=1")
 
     assert response.status_code == 200
     assert calls == [
@@ -146,11 +144,7 @@ def test_content_event_openapi_exposes_explicit_nullable_event_response():
 
     operation = app.openapi()["paths"]["/contents/{content_id}/event"]["get"]
 
-    response_schema = operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
     assert response_schema["$ref"].endswith("/ContentEventLookupResponse")
-    lookup_schema = app.openapi()["components"]["schemas"][
-        "ContentEventLookupResponse"
-    ]
+    lookup_schema = app.openapi()["components"]["schemas"]["ContentEventLookupResponse"]
     assert "event" in lookup_schema["properties"]

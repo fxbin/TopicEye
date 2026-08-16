@@ -17,9 +17,7 @@ class HackerNewsTrending(BaseTrendingScraper):
     CATEGORY = "tech"
 
     async def fetch(self, client: httpx.AsyncClient) -> list[TrendingEntry]:
-        ids_data = await self._fetch_json(
-            client, "https://hacker-news.firebaseio.com/v0/topstories.json"
-        )
+        ids_data = await self._fetch_json(client, "https://hacker-news.firebaseio.com/v0/topstories.json")
         if ids_data is None:
             return []
         ids = ids_data[:30]

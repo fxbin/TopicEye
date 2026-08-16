@@ -19,8 +19,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import mother_topics as mother_topics_api
+from app.api.v1 import auth as auth_api, mother_topics as mother_topics_api
 from app.core.database import Base
 from app.models.mother_topic import MotherTopic
 from app.services.auth_service import create_session, create_user
@@ -44,24 +43,36 @@ async def test_mother_topics_per_user_isolation_and_fork():
         db.add_all(
             [
                 MotherTopic(
-                    name="AI 工具", keywords=["AI", "效率"],
-                    is_active=True, display_order=1, owner_user_id=None,
+                    name="AI 工具",
+                    keywords=["AI", "效率"],
+                    is_active=True,
+                    display_order=1,
+                    owner_user_id=None,
                 ),
                 MotherTopic(
-                    name="观察", keywords=["趋势"],
-                    is_active=True, display_order=2, owner_user_id=None,
+                    name="观察",
+                    keywords=["趋势"],
+                    is_active=True,
+                    display_order=2,
+                    owner_user_id=None,
                 ),
                 MotherTopic(
-                    name="停用模板", keywords=["旧"],
-                    is_active=False, display_order=3, owner_user_id=None,
+                    name="停用模板",
+                    keywords=["旧"],
+                    is_active=False,
+                    display_order=3,
+                    owner_user_id=None,
                 ),
             ]
         )
         # user_b 已有的私有母题（不应被 user_a 看到）
         db.add(
             MotherTopic(
-                name="B 私有", keywords=["secret"],
-                is_active=True, display_order=1, owner_user_id=user_b.id,
+                name="B 私有",
+                keywords=["secret"],
+                is_active=True,
+                display_order=1,
+                owner_user_id=user_b.id,
             )
         )
         await db.commit()
@@ -139,11 +150,13 @@ async def test_mother_topics_per_user_isolation_and_fork():
         # ── 7. user_a update 系统模板：403（系统模板不可改）──
         # 找一个系统模板 id
         sys_topic_id = next(
-            item["id"] for item in
-            (await client.get(
-                "/mother-topics?active_only=false",
-                headers={"Authorization": f"Bearer {token_a}"},
-            )).json()
+            item["id"]
+            for item in (
+                await client.get(
+                    "/mother-topics?active_only=false",
+                    headers={"Authorization": f"Bearer {token_a}"},
+                )
+            ).json()
             if item["owner_user_id"] is None
         )
         resp = await client.put(
@@ -158,9 +171,8 @@ async def test_mother_topics_per_user_isolation_and_fork():
         # 查 user_b 的私有母题 id
         async with session_factory() as db:
             from sqlalchemy import select
-            b_topic = (await db.execute(
-                select(MotherTopic).where(MotherTopic.owner_user_id == user_b.id)
-            )).scalar_one()
+
+            b_topic = (await db.execute(select(MotherTopic).where(MotherTopic.owner_user_id == user_b.id))).scalar_one()
         resp = await client.put(
             f"/mother-topics/{b_topic.id}",
             headers={"Authorization": f"Bearer {token_a}"},
@@ -216,8 +228,7 @@ async def test_mother_topics_per_user_isolation_and_fork():
         assert "我的选题" in names_after_fork  # 自己创建的
         # fork 的副本 owner_user_id 应该是 user_a.id
         forked_ai = next(
-            item for item in resp.json()
-            if item["name"] == "AI 工具" and item["owner_user_id"] == user_a.id
+            item for item in resp.json() if item["name"] == "AI 工具" and item["owner_user_id"] == user_a.id
         )
         assert forked_ai["owner_user_id"] == user_a.id
 

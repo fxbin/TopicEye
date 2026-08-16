@@ -8,15 +8,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime, timezone
 
 import pytest
-from sqlalchemy import DateTime, inspect
+from sqlalchemy import DateTime
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.models  # noqa: F401  # register all models in Base.metadata
 from app.core.database import Base
 from app.core.db_backend import ensure_aware_utc
-import app.models  # noqa: F401  # register all models in Base.metadata
 
 
 def test_all_datetime_columns_declared_tz_aware():
@@ -72,10 +72,11 @@ async def test_sqlite_aware_datetime_write_does_not_raise():
         await conn.run_sync(Base.metadata.create_all)
 
     # 用 Source 这个常见 model, 写入 last_sync_at (aware)
-    from app.models.source import Source
     from sqlalchemy import select
-    from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.source import Source
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with async_session() as session:

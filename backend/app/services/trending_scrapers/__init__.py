@@ -36,6 +36,7 @@ def truncate_title(text: str) -> str:
         return text
     return text[: TITLE_MAX - 1] + "…"
 
+
 # ── Registry ──────────────────────────────────────────────────────
 _TRENDING_REGISTRY: dict[str, type] = {}
 

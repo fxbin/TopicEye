@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

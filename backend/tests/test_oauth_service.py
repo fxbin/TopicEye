@@ -6,6 +6,7 @@
 3. 未绑定 + email_verified=False + email 命中现有账号 → 抛 OAuthAccountConflictError（防劫持）
 4. 全新邮箱 → 创建新 User（password_hash=None）+ oauth_account
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,12 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database import Base
-from app.models.user import User, UserOAuthAccount
+from app.models.user import UserOAuthAccount
 from app.services.auth_service import (
     OAuthAccountConflictError,
     create_user,
-    get_or_create_oauth_user,
     get_oauth_account,
+    get_or_create_oauth_user,
 )
 
 
@@ -57,9 +58,7 @@ async def test_oauth_returns_existing_linked_user():
         )
         assert again.id == user.id
         # 不应新建第二条 oauth_account
-        accounts = await db.execute(
-            select(UserOAuthAccount).where(UserOAuthAccount.user_id == user.id)
-        )
+        accounts = await db.execute(select(UserOAuthAccount).where(UserOAuthAccount.user_id == user.id))
         assert len(accounts.scalars().all()) == 1
 
     await engine.dispose()
@@ -73,9 +72,7 @@ async def test_oauth_auto_merges_verified_email_to_password_account():
 
     async with session_factory() as db:
         # 先建一个密码账号
-        pwd_user = await create_user(
-            db, email="merge@Example.com", password="Password123", display_name="PwdUser"
-        )
+        pwd_user = await create_user(db, email="merge@Example.com", password="Password123", display_name="PwdUser")
         await db.flush()
 
         # Google 登录同邮箱（已验证）→ 应合并到 pwd_user
@@ -188,9 +185,7 @@ async def test_oauth_different_providers_same_verified_email_merge_into_one_acco
         assert google_user.email == github_user.email == "dual@example.com"
 
         # 两条 oauth_account 都挂在该账号下（不同 provider）
-        accounts = await db.execute(
-            select(UserOAuthAccount).where(UserOAuthAccount.user_id == google_user.id)
-        )
+        accounts = await db.execute(select(UserOAuthAccount).where(UserOAuthAccount.user_id == google_user.id))
         provider_set = {a.provider for a in accounts.scalars().all()}
         assert provider_set == {"google", "github"}
 

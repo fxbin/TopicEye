@@ -113,18 +113,12 @@ async def build_today_picks(
     # cards even when the UI only needed its first screen.
     total = len(scored_rows)
     visible_rows = scored_rows[:limit] if limit else scored_rows
-    response_items = [
-        _row_to_content_payload(row, breakdown)
-        for breakdown, row in visible_rows
-    ]
+    response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
     try:
         visible_group_ids = {
             assignment.event_group_id
             for item in response_items
-            if (
-                assignment := event_assignments.get(int(item["id"]))
-            ) is not None
-            and assignment.is_canonical
+            if (assignment := event_assignments.get(int(item["id"]))) is not None and assignment.is_canonical
         }
         event_groups = await event_repo.load_display_groups(
             visible_group_ids,
@@ -145,6 +139,7 @@ async def build_today_picks(
     # Apply personalization boost (async, non-blocking for new users)
     if owner_user_id is not None:
         from app.services.interest_vector_service import apply_personalization_boost
+
         response_items = await apply_personalization_boost(db, owner_user_id, response_items)
         # Re-sort by boosted adjusted_curation_score
         response_items.sort(
@@ -330,9 +325,7 @@ def _empty_payload() -> dict:
 
 
 def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
-    input_rows: list[tuple[ScoringInput, dict]] = [
-        (_row_to_scoring_input(row), row) for row in rows
-    ]
+    input_rows: list[tuple[ScoringInput, dict]] = [(_row_to_scoring_input(row), row) for row in rows]
     row_map = {item.content_id: row for item, row in input_rows}
     scored = score_items([item for item, _row in input_rows])
     # breakdown.selected 已包含所有 gate（curation threshold / min base score /
@@ -486,11 +479,7 @@ def _apply_event_assignments(
     visible: list[dict] = []
     for row in rows:
         content_id = row.get("id")
-        assignment = (
-            assignments.get(int(content_id))
-            if content_id is not None
-            else None
-        )
+        assignment = assignments.get(int(content_id)) if content_id is not None else None
         if assignment is None or assignment.is_canonical:
             visible.append(row)
     return visible
@@ -529,12 +518,8 @@ def _attach_event_normalization(
                     "source_name": member.source_name,
                     "source_type": member.source_type,
                     "platform": member.platform,
-                    "published_at": _serialize_event_datetime(
-                        member.published_at
-                    ),
-                    "crawled_at": _serialize_event_datetime(
-                        member.crawled_at
-                    ),
+                    "published_at": _serialize_event_datetime(member.published_at),
+                    "crawled_at": _serialize_event_datetime(member.crawled_at),
                     "relation_type": member.relation_type,
                     "confidence": member.confidence,
                     "reason": member.reason,

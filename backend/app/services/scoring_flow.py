@@ -33,12 +33,10 @@ SCORING_FLOW_WARMUP_TARGETS = (
 # invalidate_scoring_flow_cache() when content changes.
 SCORING_FLOW_CACHE_PREFIX = "scoring_flow:"
 # Eviction is invalidation-based; TTL is effectively infinite.
-SCORING_FLOW_CACHE_TTL = float('inf')
+SCORING_FLOW_CACHE_TTL = float("inf")
 
 
-def _cache_key_str(
-    hours: int, limit: int, sample_limit: int, visible_user_id: int | None
-) -> str:
+def _cache_key_str(hours: int, limit: int, sample_limit: int, visible_user_id: int | None) -> str:
     """Build a string cache key for json_cache (was tuple before migration)."""
     uid = visible_user_id if visible_user_id is not None else ""
     return f"{SCORING_FLOW_CACHE_PREFIX}hours={hours}&limit={limit}&sample={sample_limit}&uid={uid}"
@@ -107,9 +105,7 @@ async def build_scoring_flow_payload(
             visible_user_id=visible_user_id,
         )
     if window_total <= 0:
-        analyzed_total = await content_repo.count_for_scoring(
-            exclude_ids=ignored_ids, visible_user_id=visible_user_id
-        )
+        analyzed_total = await content_repo.count_for_scoring(exclude_ids=ignored_ids, visible_user_id=visible_user_id)
         payload = build_empty_payload(
             hours=hours,
             analyzed_total=analyzed_total,

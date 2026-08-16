@@ -36,6 +36,4 @@ class EmailVerificationCode(Base):
         default=lambda: datetime.now(UTC),
     )
 
-    __table_args__ = (
-        Index("ix_email_verification_email_created", "email", "created_at"),
-    )
+    __table_args__ = (Index("ix_email_verification_email_created", "email", "created_at"),)

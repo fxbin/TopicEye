@@ -323,9 +323,7 @@ async def recover_interrupted_analysis_jobs() -> list[str]:
     recovered_ids: list[str] = []
     try:
         async with async_session() as db:
-            result = await db.execute(
-                select(AnalysisJobRecord).where(AnalysisJobRecord.status == "RUNNING")
-            )
+            result = await db.execute(select(AnalysisJobRecord).where(AnalysisJobRecord.status == "RUNNING"))
             records = list(result.scalars().all())
             for record in records:
                 record.status = "QUEUED"
@@ -379,7 +377,9 @@ async def run_analysis_job(job_id: str) -> dict[str, Any] | None:
             claim_tokens=claim_tokens,
         )
         analyzed_ids = [item.content_id for item in results]
-        failed_ids = [content_id for content_id in runnable_ids if content_id not in set(analyzed_ids)] + unavailable_ids
+        failed_ids = [
+            content_id for content_id in runnable_ids if content_id not in set(analyzed_ids)
+        ] + unavailable_ids
         if failed_ids:
             await _release_analysis_claims(
                 {content_id: claim_tokens[content_id] for content_id in failed_ids if content_id in claim_tokens}

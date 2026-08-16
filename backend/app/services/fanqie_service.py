@@ -43,10 +43,7 @@ HEADERS = {
 # 签名用的 User-Agent（参考 wengchengjian/fanqie-rank-mcp）
 # 与请求头中的 iPhone UA 不同：a_bogus 签名绑定的是这个 Android UA
 # 但实际请求仍用 HEADERS 里的 UA——番茄校验只关注签名本身的合法性
-SIGN_UA = (
-    "Dalvik/2.1.0 (Linux; U; Android 10; SM-G975F Build/QP1A.190711.020) "
-    "com.ss.android.article.news/831"
-)
+SIGN_UA = "Dalvik/2.1.0 (Linux; U; Android 10; SM-G975F Build/QP1A.190711.020) " "com.ss.android.article.news/831"
 
 
 def _build_query_string(params: dict) -> str:
@@ -86,6 +83,7 @@ async def fetch_json(url: str, params: dict, timeout: int = 30) -> dict | None:
     needs_sign = url == RANK_URL
 
     try:
+
         def _fetch() -> dict:
             request_params = dict(params)
             if needs_sign:
@@ -265,7 +263,9 @@ def _refresh_book_metadata(book: FanqieBook, item: dict, extra: dict) -> None:
     book.last_chapter_title = item.get("lastChapterTitle", book.last_chapter_title)
     # 番茄 API 偶尔返回字符串形式的时间戳（如 '1783420173'），强转 int 避免 asyncpg 类型校验失败
     raw_update_time = item.get("lastChapterUpdateTime")
-    book.last_chapter_update_time = _safe_int(raw_update_time) if raw_update_time is not None else book.last_chapter_update_time
+    book.last_chapter_update_time = (
+        _safe_int(raw_update_time) if raw_update_time is not None else book.last_chapter_update_time
+    )
 
 
 # ── 封面 URL 过期检测 ─────────────────────────────────────────
@@ -378,9 +378,7 @@ async def refresh_stale_covers() -> dict:
                 targets = stale_book_ids & set(thumb_map.keys())
                 if not targets:
                     continue
-                update_result = await db.execute(
-                    select(FanqieBook).where(FanqieBook.book_id.in_(list(targets)))
-                )
+                update_result = await db.execute(select(FanqieBook).where(FanqieBook.book_id.in_(list(targets))))
                 for book in update_result.scalars().all():
                     new_thumb = thumb_map.get(book.book_id)
                     if new_thumb and new_thumb != book.thumb_uri:

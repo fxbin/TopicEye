@@ -95,6 +95,7 @@ class TestApplyPersonalizationBoost:
     @pytest.mark.asyncio
     async def test_items_without_analysis_get_boost_field(self):
         from unittest.mock import AsyncMock, MagicMock
+
         from app.services.interest_vector_service import apply_personalization_boost
 
         # Mock DB session that returns empty vector (user has no data)
@@ -103,6 +104,7 @@ class TestApplyPersonalizationBoost:
         mock_repo.get_user_vector = AsyncMock(return_value={})
         # Patch the repository constructor
         import app.services.interest_vector_service as svc_mod
+
         original_repo = svc_mod.InterestVectorRepository
         svc_mod.InterestVectorRepository = lambda db: mock_repo
         try:

@@ -23,12 +23,8 @@ class EvidenceInteraction(Base):
     __tablename__ = "evidence_interactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    content_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
-    )
-    user_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     interaction_type: Mapped[str] = mapped_column(String(30), nullable=False)
     # click | favorite | unfavorite | adopt | feedback_positive | feedback_negative
     cross_source_level: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)

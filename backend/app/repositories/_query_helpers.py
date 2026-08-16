@@ -20,6 +20,7 @@ from sqlalchemy.sql import Select
 
 # ── Filter dict → WHERE clauses ─────────────────────────────────
 
+
 def apply_filters(
     stmt: Select,
     model: Any,
@@ -50,6 +51,7 @@ def apply_filters(
 
 
 # ── Visibility scope ────────────────────────────────────────────
+
 
 def apply_visibility(
     stmt: Select,
@@ -101,6 +103,7 @@ def visibility_clauses(
 
 
 # ── Content scope (exclude / time) ──────────────────────────────
+
 
 def apply_content_scope(
     stmt: Select,

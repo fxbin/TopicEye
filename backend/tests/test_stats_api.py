@@ -2,12 +2,10 @@ from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.v1 import auth as auth_api
-from app.api.v1 import stats
+from app.api.v1 import auth as auth_api, stats
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
 from app.services.json_cache import get_cached_json, invalidate_json_cache

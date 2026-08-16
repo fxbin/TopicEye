@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 # arXiv RSS 的 <description> 带 'arXiv:XXXX.NNNNN Announce Type: new\nAbstract: '
 # 固定前缀，并非真正的摘要。清理掉让 LLM 拿到干净摘要。
 # 很多 RSS 源的 description 都带类似模板前缀，这是通用清理，不只服务 arXiv。
-_ARXIV_PREFIX_RE = re.compile(
-    r"^arXiv:\S+\s+Announce Type:\s*\S+\s*\n?Abstract:\s*", re.IGNORECASE
-)
+_ARXIV_PREFIX_RE = re.compile(r"^arXiv:\S+\s+Announce Type:\s*\S+\s*\n?Abstract:\s*", re.IGNORECASE)
 
 
 def _clean_summary(text: str) -> str:
@@ -37,7 +35,9 @@ class RSSScraper(BaseScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
         resp = await fetch_feed_with_retry(
-            client, self.url, context=f"RSS {self.url}",
+            client,
+            self.url,
+            context=f"RSS {self.url}",
         )
         if resp is None:
             logger.warning("RSS feed exhausted retries, returning empty: %s", self.url)

@@ -4,6 +4,7 @@
 路由永远注册（FastAPI 要求），但每次请求查 DB flag，关闭则返回 404
 （而非 403，避免暴露功能存在给未授权探测）。
 """
+
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status

@@ -51,11 +51,7 @@ class SourceHealthRepository:
         Returns:
             元组列表，每个元组为 (Source 对象, 该 source 的内容总数)
         """
-        total_subq = (
-            select(ContentItem.source_id, func.count().label("cnt"))
-            .group_by(ContentItem.source_id)
-            .subquery()
-        )
+        total_subq = select(ContentItem.source_id, func.count().label("cnt")).group_by(ContentItem.source_id).subquery()
 
         stmt = select(
             Source,

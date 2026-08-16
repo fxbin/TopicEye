@@ -7,6 +7,7 @@
 
 事务边界：本服务只 flush，commit 由 api 层 get_db 依赖或 scheduler wrapper 控制。
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,7 +61,11 @@ async def report_session(db: AsyncSession, user_id: int, data: ReadRecordReport)
         await db.flush()
         logger.info(
             "read_record merged user=%s target=%s/%s count=%d ms=%d",
-            user_id, data.target_type, data.target_key, existing.read_count, existing.accumulated_ms,
+            user_id,
+            data.target_type,
+            data.target_key,
+            existing.read_count,
+            existing.accumulated_ms,
         )
         return existing
 
@@ -76,7 +81,9 @@ async def report_session(db: AsyncSession, user_id: int, data: ReadRecordReport)
     await db.flush()
     logger.info(
         "read_record created user=%s target=%s/%s",
-        user_id, data.target_type, data.target_key,
+        user_id,
+        data.target_type,
+        data.target_key,
     )
     return record
 

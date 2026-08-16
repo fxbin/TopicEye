@@ -89,11 +89,7 @@ class IssueFeedbackRepository(BaseRepository[IssueFeedback]):
         stmt = select(IssueFeedback).where(IssueFeedback.user_id == user_id)
         if status is not None:
             stmt = stmt.where(IssueFeedback.status == status)
-        stmt = (
-            stmt.order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc()).limit(limit).offset(offset)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -135,11 +131,7 @@ class IssueFeedbackRepository(BaseRepository[IssueFeedback]):
             stmt = stmt.where(IssueFeedback.severity == severity)
         if area:
             stmt = stmt.where(IssueFeedback.area == area)
-        stmt = (
-            stmt.order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(IssueFeedback.created_at.desc(), IssueFeedback.id.desc()).limit(limit).offset(offset)
         result = await self.db.execute(stmt)
         return result.all()
 
@@ -192,14 +184,18 @@ class ProductUpdateRepository(BaseRepository[ProductUpdate]):
         stmt = select(ProductUpdate)
         if status is not None:
             stmt = stmt.where(ProductUpdate.status == status)
-        stmt = stmt.order_by(
-            sa_case(
-                (ProductUpdate.status == ProductUpdateStatus.shipped, 1),
-                else_=0,
-            ).desc(),
-            ProductUpdate.shipped_at.desc().nullslast(),
-            ProductUpdate.updated_at.desc(),
-        ).limit(limit).offset(offset)
+        stmt = (
+            stmt.order_by(
+                sa_case(
+                    (ProductUpdate.status == ProductUpdateStatus.shipped, 1),
+                    else_=0,
+                ).desc(),
+                ProductUpdate.shipped_at.desc().nullslast(),
+                ProductUpdate.updated_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

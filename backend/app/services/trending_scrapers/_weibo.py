@@ -104,7 +104,9 @@ class WeiboTrending(BaseTrendingScraper):
             if cookie:
                 logger.debug("weibo trending: using visitor cookie")
             else:
-                logger.warning("weibo trending: visitor cookie unavailable, skipping (set WEIBO_SUB_COOKIE to override)")
+                logger.warning(
+                    "weibo trending: visitor cookie unavailable, skipping (set WEIBO_SUB_COOKIE to override)"
+                )
                 return []
 
         url = "https://s.weibo.com/top/summary?cate=realtimehot"

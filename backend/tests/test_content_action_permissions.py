@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -8,14 +9,12 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import contents as contents_api
+from app.api.v1 import auth as auth_api, contents as contents_api
 from app.core.database import Base
-from datetime import datetime, timezone, UTC
-from app.models.content import ContentItem, ContentStatus
-from app.models.source import Source, SourceType, SourceStatus
-from app.models.user import User
 from app.models.analysis import AiAnalysis
+from app.models.content import ContentItem, ContentStatus
+from app.models.source import Source, SourceStatus, SourceType
+from app.models.user import User
 from app.repositories.analysis_repo import AnalysisRepository
 from app.services import enricher
 from app.services.auth_service import create_session, create_user

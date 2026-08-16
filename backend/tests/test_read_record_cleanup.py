@@ -2,16 +2,17 @@
 
 覆盖 read_record_service.cleanup_old_records 按 last_read_at 清理过期记录。
 """
+
 from __future__ import annotations
 
-from datetime import timedelta, UTC
+from datetime import UTC, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.database import Base
 import app.models.read_record  # noqa: F401
 import app.models.user  # noqa: F401
+from app.core.database import Base
 from app.models.read_record import ReadRecord, ReadTargetType
 from app.services.read_record_service import cleanup_old_records
 
@@ -50,7 +51,7 @@ async def test_cleanup_removes_only_expired_records():
         await db.commit()
 
         assert removed == 1
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
 
         count = (await db.execute(select(func.count()).select_from(ReadRecord))).scalar()
         assert count == 1

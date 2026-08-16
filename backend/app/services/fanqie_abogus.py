@@ -27,6 +27,7 @@ import time
 
 # ─── RC4 Stream Cipher ────────────────────────────────────────────────
 
+
 def rc4_encrypt(plaintext: bytes, key: bytes) -> bytes:
     """RC4 流密码加密"""
     s = list(range(256))
@@ -49,6 +50,7 @@ def rc4_encrypt(plaintext: bytes, key: bytes) -> bytes:
 
 
 # ─── SM3 Hash ─────────────────────────────────────────────────────────
+
 
 def _left_rotate(x: int, n: int) -> int:
     """32-bit 循环左移"""
@@ -139,8 +141,14 @@ class SM3:
     """SM3 哈希算法（国密标准）"""
 
     IV = [
-        0x7380166F, 0x4914B2B9, 0x172442D7, 0xDA8A0600,
-        0xA96F30BC, 0x163138AA, 0xE38DEE4D, 0xB0FB0E4E,
+        0x7380166F,
+        0x4914B2B9,
+        0x172442D7,
+        0xDA8A0600,
+        0xA96F30BC,
+        0x163138AA,
+        0xE38DEE4D,
+        0xB0FB0E4E,
     ]
 
     def __init__(self):
@@ -162,11 +170,11 @@ class SM3:
         result = bytearray()
         safe = b" -_.~"
         hex_chars = b"0123456789ABCDEF"
-        for ch in s.encode('utf-8'):
+        for ch in s.encode("utf-8"):
             if (48 <= ch <= 57) or (65 <= ch <= 90) or (97 <= ch <= 122) or ch in safe:
                 result.append(ch)
             else:
-                result.append(ord('%'))
+                result.append(ord("%"))
                 result.append(hex_chars[ch >> 4])
                 result.append(hex_chars[ch & 0x0F])
         return bytes(result)
@@ -190,7 +198,7 @@ class SM3:
 
         offset = fill
         while offset + 64 <= len(data):
-            self.reg = _sm3_compress_block(self.reg, data[offset:offset + 64])
+            self.reg = _sm3_compress_block(self.reg, data[offset : offset + 64])
             offset += 64
 
         if offset < len(data):
@@ -217,7 +225,7 @@ class SM3:
         self.write_str(s)
         self._fill()
         for i in range(0, len(self.chunk), 64):
-            chunk = bytes(self.chunk[i:i + 64])
+            chunk = bytes(self.chunk[i : i + 64])
             if len(chunk) == 64:
                 self.reg = _sm3_compress_block(self.reg, chunk)
         result = "".join(f"{r:08x}" for r in self.reg)
@@ -230,7 +238,7 @@ class SM3:
         self.write_str(s)
         self._fill()
         for i in range(0, len(self.chunk), 64):
-            chunk = bytes(self.chunk[i:i + 64])
+            chunk = bytes(self.chunk[i : i + 64])
             if len(chunk) == 64:
                 self.reg = _sm3_compress_block(self.reg, chunk)
         result = _reg_to_bytes(self.reg)
@@ -243,7 +251,7 @@ class SM3:
         self.write_u8_array(data)
         self._fill()
         for i in range(0, len(self.chunk), 64):
-            chunk = bytes(self.chunk[i:i + 64])
+            chunk = bytes(self.chunk[i : i + 64])
             if len(chunk) == 64:
                 self.reg = _sm3_compress_block(self.reg, chunk)
         result = _reg_to_bytes(self.reg)
@@ -285,14 +293,17 @@ def result_encrypt(data: bytes, table_name: str) -> str:
 
 # ─── 随机字符串生成 ────────────────────────────────────────────────────
 
+
 def _gener_random(random_val: int, option: tuple) -> bytes:
     """生成 4 字节随机数据"""
-    return bytes([
-        ((random_val & 0xFF & 0xAA) | (option[0] & 0x55)),
-        ((random_val & 0xFF & 0x55) | (option[0] & 0xAA)),
-        (((random_val >> 8) & 0xFF & 0xAA) | (option[1] & 0x55)),
-        (((random_val >> 8) & 0xFF & 0x55) | (option[1] & 0xAA)),
-    ])
+    return bytes(
+        [
+            ((random_val & 0xFF & 0xAA) | (option[0] & 0x55)),
+            ((random_val & 0xFF & 0x55) | (option[0] & 0xAA)),
+            (((random_val >> 8) & 0xFF & 0xAA) | (option[1] & 0x55)),
+            (((random_val >> 8) & 0xFF & 0x55) | (option[1] & 0xAA)),
+        ]
+    )
 
 
 def _generate_random_str() -> bytes:
@@ -328,10 +339,10 @@ def _generate_rc4_bb_str(url_search_params: str, user_agent: str) -> bytes:
 
     # RC4 加密 UA + 编码 + 哈希
     rc4_key = bytes([0x01, 0x00, 0x0E])
-    ua_bytes = user_agent.encode('latin-1')
+    ua_bytes = user_agent.encode("latin-1")
     rc4_encrypted_ua = rc4_encrypt(ua_bytes, rc4_key)
     ua_base64 = result_encrypt(rc4_encrypted_ua, "s3")
-    ua_list = sm3.sum_bytes_from_bytes(ua_base64.encode('latin-1'))
+    ua_list = sm3.sum_bytes_from_bytes(ua_base64.encode("latin-1"))
 
     end_time_ms = int(time.time() * 1000) & 0xFFFFFFFF
 
@@ -402,7 +413,7 @@ def _generate_rc4_bb_str(url_search_params: str, user_agent: str) -> bytes:
     b[60] = (aid >> 24) & 0xFF
 
     # 窗口环境字符串长度
-    window_env_bytes = WINDOW_ENV_STR.encode('latin-1')
+    window_env_bytes = WINDOW_ENV_STR.encode("latin-1")
     env_len = len(window_env_bytes)
     b[64] = env_len
     b[65] = env_len & 0xFF
@@ -414,23 +425,97 @@ def _generate_rc4_bb_str(url_search_params: str, user_agent: str) -> bytes:
 
     # 校验和
     b[72] = (
-        b[18] ^ b[20] ^ b[26] ^ b[30] ^ b[38] ^ b[40] ^ b[42]
-        ^ b[21] ^ b[27] ^ b[31] ^ b[35] ^ b[39] ^ b[41] ^ b[43]
-        ^ b[22] ^ b[28] ^ b[32] ^ b[36]
-        ^ b[23] ^ b[29] ^ b[33] ^ b[37]
-        ^ b[44] ^ b[45] ^ b[46] ^ b[47] ^ b[48] ^ b[49] ^ b[50]
-        ^ b[24] ^ b[25]
-        ^ b[52] ^ b[53] ^ b[54] ^ b[55]
-        ^ b[57] ^ b[58] ^ b[59] ^ b[60]
-        ^ b[65] ^ b[66]
-        ^ b[70] ^ b[71]
+        b[18]
+        ^ b[20]
+        ^ b[26]
+        ^ b[30]
+        ^ b[38]
+        ^ b[40]
+        ^ b[42]
+        ^ b[21]
+        ^ b[27]
+        ^ b[31]
+        ^ b[35]
+        ^ b[39]
+        ^ b[41]
+        ^ b[43]
+        ^ b[22]
+        ^ b[28]
+        ^ b[32]
+        ^ b[36]
+        ^ b[23]
+        ^ b[29]
+        ^ b[33]
+        ^ b[37]
+        ^ b[44]
+        ^ b[45]
+        ^ b[46]
+        ^ b[47]
+        ^ b[48]
+        ^ b[49]
+        ^ b[50]
+        ^ b[24]
+        ^ b[25]
+        ^ b[52]
+        ^ b[53]
+        ^ b[54]
+        ^ b[55]
+        ^ b[57]
+        ^ b[58]
+        ^ b[59]
+        ^ b[60]
+        ^ b[65]
+        ^ b[66]
+        ^ b[70]
+        ^ b[71]
     )
 
     # 按顺序输出 blob
     bb_order = [
-        18, 20, 52, 26, 30, 34, 58, 38, 40, 53, 42, 21, 27, 54, 55, 31,
-        35, 57, 39, 41, 43, 22, 28, 32, 60, 36, 23, 29, 33, 37, 44, 45,
-        59, 46, 47, 48, 49, 50, 24, 25, 65, 66, 70, 71,
+        18,
+        20,
+        52,
+        26,
+        30,
+        34,
+        58,
+        38,
+        40,
+        53,
+        42,
+        21,
+        27,
+        54,
+        55,
+        31,
+        35,
+        57,
+        39,
+        41,
+        43,
+        22,
+        28,
+        32,
+        60,
+        36,
+        23,
+        29,
+        33,
+        37,
+        44,
+        45,
+        59,
+        46,
+        47,
+        48,
+        49,
+        50,
+        24,
+        25,
+        65,
+        66,
+        70,
+        71,
     ]
 
     bb = bytearray()
@@ -440,13 +525,14 @@ def _generate_rc4_bb_str(url_search_params: str, user_agent: str) -> bytes:
     bb.append(b[72] & 0xFF)
 
     # Rust 中 String::from_utf8_lossy → .bytes() 的等效：UTF-8 解码含替换字符再编码
-    bb_str = bytes(bb).decode('utf-8', errors='replace')
-    bb_utf8 = bb_str.encode('utf-8')
+    bb_str = bytes(bb).decode("utf-8", errors="replace")
+    bb_utf8 = bb_str.encode("utf-8")
 
     return rc4_encrypt(bb_utf8, bytes([121]))
 
 
 # ─── 主入口 ───────────────────────────────────────────────────────────
+
 
 def generate_a_bogus(url_search_params: str, user_agent: str) -> str:
     """生成 a_bogus 反爬签名

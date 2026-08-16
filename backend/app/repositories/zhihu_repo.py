@@ -60,11 +60,7 @@ class ZhihuRepository(BaseRepository[ZhihuAlbum]):
         供 list_albums 端点使用（含 fallback 查询场景）。
         """
         query = self._apply_album_filters(select(ZhihuAlbum), sort_type, category, subcategories)
-        query = (
-            query.order_by(ZhihuAlbum.position.asc(), ZhihuAlbum.updated_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        query = query.order_by(ZhihuAlbum.position.asc(), ZhihuAlbum.updated_at.desc()).limit(limit).offset(offset)
         result = await self.db.execute(query)
         return result.scalars().all()
 
@@ -95,16 +91,8 @@ class ZhihuRepository(BaseRepository[ZhihuAlbum]):
         供 list_categories 端点使用。
         """
         if parent_id:
-            query = (
-                select(ZhihuCategory)
-                .where(ZhihuCategory.parent_id == parent_id)
-                .order_by(ZhihuCategory.sort)
-            )
+            query = select(ZhihuCategory).where(ZhihuCategory.parent_id == parent_id).order_by(ZhihuCategory.sort)
         else:
-            query = (
-                select(ZhihuCategory)
-                .where(ZhihuCategory.parent_id is None)
-                .order_by(ZhihuCategory.sort)
-            )
+            query = select(ZhihuCategory).where(ZhihuCategory.parent_id is None).order_by(ZhihuCategory.sort)
         result = await self.db.execute(query)
         return result.scalars().all()

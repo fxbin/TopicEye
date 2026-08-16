@@ -46,15 +46,11 @@ class SourceEvidenceProfile(Base):
     __tablename__ = "source_evidence_profiles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    source_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
-    )
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
     publisher_identity: Mapped[str] = mapped_column(String(100), nullable=False)
     publisher_family: Mapped[str] = mapped_column(String(100), nullable=False)
     platform: Mapped[str] = mapped_column(String(50), nullable=False)
-    publisher_kind: Mapped[str] = mapped_column(
-        String(30), nullable=False, default=PublisherKind.UNKNOWN
-    )
+    publisher_kind: Mapped[str] = mapped_column(String(30), nullable=False, default=PublisherKind.UNKNOWN)
     official_domains: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     verification_proof_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

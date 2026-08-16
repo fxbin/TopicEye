@@ -44,9 +44,7 @@ class TopicTrend(Base):
     calculation_version: Mapped[str] = mapped_column(String(50), nullable=False, default="legacy-v1")
     window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    provenance_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="unavailable"
-    )
+    provenance_status: Mapped[str] = mapped_column(String(30), nullable=False, default="unavailable")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

@@ -214,6 +214,7 @@ async def _drain_pending_analysis(
             # `app.scheduler.analyze_batch_concurrent` keeps working — the function
             # is defined in scheduler.py and re-exported from there.
             import app.scheduler as _scheduler_module
+
             results = await asyncio.wait_for(
                 _scheduler_module.analyze_batch_concurrent(pending_ids, assume_claimed=True),
                 timeout=max(1, remaining_seconds - 10),

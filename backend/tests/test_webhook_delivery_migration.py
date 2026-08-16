@@ -4,10 +4,7 @@ from pathlib import Path
 from sqlalchemy.dialects import postgresql, sqlite
 
 MIGRATION_PATH = (
-    Path(__file__).parents[1]
-    / "alembic"
-    / "versions"
-    / "20260729_1000_m9a0b1c2d3e4_create_webhook_delivery_logs.py"
+    Path(__file__).parents[1] / "alembic" / "versions" / "20260729_1000_m9a0b1c2d3e4_create_webhook_delivery_logs.py"
 )
 
 
@@ -36,7 +33,4 @@ def test_created_at_default_compiles_for_sqlite_and_postgresql(monkeypatch):
     default_expression = created_at.server_default.arg
 
     assert str(default_expression.compile(dialect=sqlite.dialect())) == "CURRENT_TIMESTAMP"
-    assert (
-        str(default_expression.compile(dialect=postgresql.dialect()))
-        == "CURRENT_TIMESTAMP"
-    )
+    assert str(default_expression.compile(dialect=postgresql.dialect())) == "CURRENT_TIMESTAMP"

@@ -118,7 +118,13 @@ def _parse_list_data_from_html(html: str) -> list[dict] | None:
 async def _fetch_html(client: httpx.AsyncClient, url: str) -> str | None:
     """带 3 次重试的 GET HTML."""
     resp = await retry_http_get(
-        client, url, headers=HEADERS, timeout=20, attempts=3, base_delay=0.5, context=f"七猫 GET {url}",
+        client,
+        url,
+        headers=HEADERS,
+        timeout=20,
+        attempts=3,
+        base_delay=0.5,
+        context=f"七猫 GET {url}",
     )
     return resp.text if resp else None
 

@@ -51,19 +51,13 @@ class LlmModel(Base):
     max_tokens: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
     requests_per_minute: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cost_per_1k_input: Mapped[float | None] = mapped_column(
-        Float, nullable=True, comment="每1k input token 成本(元)"
-    )
-    cost_per_1k_output: Mapped[float | None] = mapped_column(
-        Float, nullable=True, comment="每1k output token 成本(元)"
-    )
+    cost_per_1k_input: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每1k input token 成本(元)")
+    cost_per_1k_output: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每1k output token 成本(元)")
     extra_params: Mapped[str | None] = mapped_column(JSON, nullable=True, comment="额外参数(JSON)")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC))
 
     __table_args__ = (
         Index("ix_llm_models_enabled", "enabled"),

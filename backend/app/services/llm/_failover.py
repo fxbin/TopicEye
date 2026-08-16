@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Iterable
+from typing import Any
 
 from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.secret_store import decrypt_secret
@@ -78,9 +79,7 @@ class ModelFailover:
         now = datetime.now(UTC)
         with self._lock:
             ready_times = [
-                reset_at
-                for key in keys
-                if (reset_at := self._cooldowns.get(key)) is not None and reset_at > now
+                reset_at for key in keys if (reset_at := self._cooldowns.get(key)) is not None and reset_at > now
             ]
         return min(ready_times) if ready_times else None
 

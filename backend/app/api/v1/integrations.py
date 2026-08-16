@@ -246,9 +246,7 @@ async def get_weread_shelf(
     """
     api_key = await _get_weread_api_key(current_user, db)
     try:
-        result = await get_or_fetch_weread_shelf(
-            db, api_key, user_id=current_user.id, force_refresh=force_refresh
-        )
+        result = await get_or_fetch_weread_shelf(db, api_key, user_id=current_user.id, force_refresh=force_refresh)
     except RuntimeError as exc:
         detail = redact_weread_sync_error(str(exc), api_key)
         raise HTTPException(status_code=502, detail=detail) from exc

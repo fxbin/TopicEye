@@ -18,7 +18,6 @@ from app.core.database import Base
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
 from app.models.creation import CreationPlan
-from app.models.user import User
 from app.services.auth_service import create_user
 
 

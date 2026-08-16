@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import logging
-import time
-
-import pytest
 
 from app.core.log_ringbuffer import RingBufferHandler, get_ring_buffer_handler
-
 
 # ── RingBufferHandler tests ──
 

@@ -9,9 +9,9 @@ from app.services.content_summary import clean_content_summary
 def test_clean_content_summary_removes_hacker_news_link_metadata_html():
     raw = (
         '<p>Article URL: <a href="https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting">'
-        'https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting</a></p>'
+        "https://www.raymondyxu.com/blog/labelYourAIWritingAsAIWriting</a></p>"
         '<p>Comments URL: <a href="https://news.ycombinator.com/item?id=1">'
-        'https://news.ycombinator.com/item?id=1</a></p>'
+        "https://news.ycombinator.com/item?id=1</a></p>"
     )
 
     assert clean_content_summary(raw) == ""
@@ -20,7 +20,7 @@ def test_clean_content_summary_removes_hacker_news_link_metadata_html():
 def test_clean_content_summary_preserves_prose_while_removing_metadata_block():
     raw = (
         '<p>Article URL: <a href="https://example.com/article">https://example.com/article</a></p>'
-        '<p><strong>作者</strong> 讨论了如何为 AI 生成内容添加清晰标识。</p>'
+        "<p><strong>作者</strong> 讨论了如何为 AI 生成内容添加清晰标识。</p>"
     )
 
     assert clean_content_summary(raw) == "作者 讨论了如何为 AI 生成内容添加清晰标识。"

@@ -117,9 +117,7 @@ async def test_snapshot_freezes_only_public_canonical_members_and_keyword_tags_o
         assert {member.content_id for member in members} == {1}
         assert all(member.time_basis == "published_at" for member in members)
         assert all(member.source_name_snapshot == "公开 RSS" for member in members)
-        assert await get_keyword_cloud(db, days=1) == [
-            {"keyword": "AI", "count": 1, "traceability": "complete"}
-        ]
+        assert await get_keyword_cloud(db, days=1) == [{"keyword": "AI", "count": 1, "traceability": "complete"}]
 
         # Re-running a date replaces both aggregate and member truth rather
         # than leaving orphan members behind in SQLite test databases.

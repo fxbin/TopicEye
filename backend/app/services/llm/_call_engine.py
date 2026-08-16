@@ -32,6 +32,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.core.config import settings
 from app.services.llm._rate_limit import (
     _get_model_rate_limiter,
     _get_token_rate_limiter,
@@ -41,7 +42,6 @@ from app.services.llm._rate_limit import (
     acquire_completion_slot,
     estimate_request_tokens,
 )
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +76,12 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
     """
     if isinstance(
         exc,
-        (
-            BadRequestError,
-            ContentPolicyViolationError,
-            ContextWindowExceededError,
-            JSONSchemaValidationError,
-            UnprocessableEntityError,
-            UnsupportedParamsError,
-        ),
+        BadRequestError
+        | ContentPolicyViolationError
+        | ContextWindowExceededError
+        | JSONSchemaValidationError
+        | UnprocessableEntityError
+        | UnsupportedParamsError,
     ):
         return True
     return _is_bad_request_error(exc)
@@ -204,7 +202,9 @@ async def _call_llm_single(
             from app.services.llm_usage import calculate_cost, pricing_from_model
 
             pricing = pricing_from_model(model_config)
-            costs = calculate_cost(usage, pricing, provider=model_config.provider if model_config else None, request_model=model)
+            costs = calculate_cost(
+                usage, pricing, provider=model_config.provider if model_config else None, request_model=model
+            )
             get_collector().record_llm_call(
                 scene=scene,
                 status="DONE",

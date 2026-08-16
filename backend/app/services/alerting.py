@@ -336,25 +336,29 @@ async def send_alert(
                         resp.status_code,
                         resp.text[:200],
                     )
-                delivery_records.append({
-                    "webhook_url_preview": url_preview,
-                    "status_code": resp.status_code,
-                    "success": ok,
-                    "error_message": None if ok else f"HTTP {resp.status_code}",
-                    "response_preview": resp.text[:500] if resp.text else None,
-                    "duration_ms": duration_ms,
-                })
+                delivery_records.append(
+                    {
+                        "webhook_url_preview": url_preview,
+                        "status_code": resp.status_code,
+                        "success": ok,
+                        "error_message": None if ok else f"HTTP {resp.status_code}",
+                        "response_preview": resp.text[:500] if resp.text else None,
+                        "duration_ms": duration_ms,
+                    }
+                )
             except Exception as exc:
                 duration_ms = int((time.monotonic() - send_start) * 1000)
                 logger.warning("Alert webhook failed (non-fatal): %s", exc)
-                delivery_records.append({
-                    "webhook_url_preview": url_preview,
-                    "status_code": None,
-                    "success": False,
-                    "error_message": str(exc)[:500],
-                    "response_preview": None,
-                    "duration_ms": duration_ms,
-                })
+                delivery_records.append(
+                    {
+                        "webhook_url_preview": url_preview,
+                        "status_code": None,
+                        "success": False,
+                        "error_message": str(exc)[:500],
+                        "response_preview": None,
+                        "duration_ms": duration_ms,
+                    }
+                )
 
     # 持久化推送日志（fire-and-forget，失败不影响主流程）
     if delivery_records:
@@ -465,6 +469,3 @@ async def _persist_delivery_logs(
             await db.commit()
     except Exception:
         logger.warning("Failed to persist webhook delivery logs (non-fatal)", exc_info=True)
-
-
-

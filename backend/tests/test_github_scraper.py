@@ -9,8 +9,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.services.trending_scrapers._github import GitHubTrending
 from app.services.trending_scrapers import TITLE_MAX, truncate_title
+from app.services.trending_scrapers._github import GitHubTrending
 
 
 # ── Fake client ─────────────────────────────────────────────────
@@ -93,6 +93,7 @@ async def test_no_description_falls_back_to_repo_name():
 @pytest.mark.asyncio
 async def test_fetch_network_error_returns_empty():
     """网络异常返回空列表, 不向上抛。"""
+
     class ErrClient:
         async def get(self, url, **kwargs):
             raise ConnectionError("boom")

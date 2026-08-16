@@ -43,9 +43,7 @@ def _accepted_event_member_exists():
         .where(
             ContentEventMember.content_id == ContentItem.id,
             ContentEventGroup.status == EventStatus.ACTIVE,
-            ContentEventMember.review_status.in_(
-                (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
-            ),
+            ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
         )
     )
 
@@ -163,9 +161,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
     topic_count = 0
     created_snapshots: list[TopicTrend] = []
     for topic_id, rows in topic_items.items():
-        scored_items = score_items(
-            [_trend_row_to_scoring_input(row, feedback_scores.get(row.id, 0)) for row in rows]
-        )
+        scored_items = score_items([_trend_row_to_scoring_input(row, feedback_scores.get(row.id, 0)) for row in rows])
         row_map = {row.id: row for row in rows}
         member_values = [
             _member_values(
@@ -222,18 +218,13 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
             keyword_items.setdefault(keyword, []).append(row)
 
     keyword_count = 0
-    for keyword, rows in sorted(
-        keyword_items.items(), key=lambda item: (-len(item[1]), item[0])
-    )[:50]:
+    for keyword, rows in sorted(keyword_items.items(), key=lambda item: (-len(item[1]), item[0]))[:50]:
         ordered_rows = sorted(
             rows,
             key=lambda row: (row.published_at or row.crawled_at or row.created_at, row.id),
             reverse=True,
         )
-        member_values = [
-            _member_values(row, position=position)
-            for position, row in enumerate(ordered_rows, start=1)
-        ]
+        member_values = [_member_values(row, position=position) for position, row in enumerate(ordered_rows, start=1)]
         snapshot = TopicTrend(
             snapshot_date=target_date,
             keyword=keyword,
@@ -255,8 +246,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         member_count = await repo.count_members(snapshot.id)
         if member_count != snapshot.content_count:
             raise RuntimeError(
-                f"Trend snapshot {snapshot.id} member mismatch: "
-                f"{member_count} != {snapshot.content_count}"
+                f"Trend snapshot {snapshot.id} member mismatch: " f"{member_count} != {snapshot.content_count}"
             )
         snapshot.provenance_status = "complete"
 
@@ -375,11 +365,7 @@ async def _evidence_payload(
     page: int,
     page_size: int,
 ) -> dict:
-    provenance_status = (
-        snapshots[0].provenance_status
-        if kind == "topic"
-        else _scope_provenance_status(snapshots)
-    )
+    provenance_status = snapshots[0].provenance_status if kind == "topic" else _scope_provenance_status(snapshots)
     complete_snapshots = [snapshot for snapshot in snapshots if snapshot.provenance_status == "complete"]
     repo = TrendRepository(db)
     trend_ids = [snapshot.id for snapshot in complete_snapshots]
@@ -511,8 +497,7 @@ async def get_keyword_cloud(db: AsyncSession, days: int = 7, limit: int = 50) ->
             TopicTrend.keyword,
             TopicTrend.content_count,
             TopicTrend.provenance_status,
-        )
-        .where(and_(TopicTrend.keyword.isnot(None), TopicTrend.snapshot_date >= cutoff))
+        ).where(and_(TopicTrend.keyword.isnot(None), TopicTrend.snapshot_date >= cutoff))
     )
     aggregates: dict[str, dict] = {}
     for row in rows:
@@ -525,7 +510,5 @@ async def get_keyword_cloud(db: AsyncSession, days: int = 7, limit: int = 50) ->
             "count": values["count"],
             "traceability": _provenance_from_statuses(values["statuses"]),
         }
-        for keyword, values in sorted(
-            aggregates.items(), key=lambda item: (-item[1]["count"], item[0])
-        )[:limit]
+        for keyword, values in sorted(aggregates.items(), key=lambda item: (-item[1]["count"], item[0]))[:limit]
     ]

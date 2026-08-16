@@ -50,6 +50,7 @@ def _collect_snapshot_fields() -> dict:
     slow_queries = 0
     try:
         from app.core.slow_query import get_slow_count
+
         slow_queries = get_slow_count()
     except Exception:
         pass
@@ -120,9 +121,7 @@ async def cleanup_old_snapshots() -> int:
     cutoff = datetime.now(UTC) - timedelta(days=_RETENTION_DAYS)
     try:
         async with async_session() as db:
-            result = await db.execute(
-                delete(MetricsSnapshotRecord).where(MetricsSnapshotRecord.captured_at < cutoff)
-            )
+            result = await db.execute(delete(MetricsSnapshotRecord).where(MetricsSnapshotRecord.captured_at < cutoff))
             await db.commit()
             count = result.rowcount or 0
             if count:

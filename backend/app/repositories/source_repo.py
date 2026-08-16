@@ -188,11 +188,7 @@ class SourceRepository(BaseRepository[Source]):
         """
         if not ids:
             return []
-        stmt = (
-            select(Source)
-            .where(Source.id.in_(ids), Source.scope == scope)
-            .order_by(Source.sort_order.asc())
-        )
+        stmt = select(Source).where(Source.id.in_(ids), Source.scope == scope).order_by(Source.sort_order.asc())
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

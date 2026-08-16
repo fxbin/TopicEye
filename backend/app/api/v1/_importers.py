@@ -25,6 +25,7 @@ from app.schemas.source import normalize_source_url_value
 
 # ─── Request schemas ────────────────────────────────────────────────────
 
+
 class SourceBatchImportRequest(BaseModel):
     content: str = Field(..., min_length=1)
     category: str = "批量导入"
@@ -48,6 +49,7 @@ class SourceBatchImportItem(BaseModel):
 
 
 # ─── Guess helpers ──────────────────────────────────────────────────────
+
 
 def _guess_source_type(url: str) -> SourceType:
     lower = url.lower()
@@ -86,6 +88,7 @@ def _guess_platform(url: str) -> str | None:
 
 
 # ─── Parsing ────────────────────────────────────────────────────────────
+
 
 def _as_source_item(raw: Any, default_category: str) -> dict | None:
     if not isinstance(raw, dict):

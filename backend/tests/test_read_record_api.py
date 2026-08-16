@@ -9,9 +9,8 @@
 
 认证 mock 用 dependency_overrides[get_current_user] = lambda: User(id=...)。
 """
-from __future__ import annotations
 
-from datetime import UTC, datetime
+from __future__ import annotations
 
 import pytest
 import pytest_asyncio
@@ -19,12 +18,11 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.models.read_record  # noqa: F401
+import app.models.user  # noqa: F401
 from app.api.v1.auth import get_current_user
 from app.api.v1.read_records import router as read_records_router
 from app.core.database import Base, get_db
-from app.models.read_record import ReadTargetType
-import app.models.read_record  # noqa: F401
-import app.models.user  # noqa: F401
 from app.models.user import User
 
 
@@ -48,9 +46,7 @@ async def read_records_client():
                 raise
 
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_current_user] = lambda: User(
-        id=1, email="reader@example.com", password_hash="hash"
-    )
+    app.dependency_overrides[get_current_user] = lambda: User(id=1, email="reader@example.com", password_hash="hash")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -128,15 +124,9 @@ async def test_snapshot_first_read_is_pinned(read_records_client):
 
 @pytest.mark.asyncio
 async def test_list_history_and_filter(read_records_client):
-    await read_records_client.post(
-        "/read-records", json={"target_type": "daily_report", "target_key": "2026-07-21"}
-    )
-    await read_records_client.post(
-        "/read-records", json={"target_type": "daily_report", "target_key": "2026-07-22"}
-    )
-    await read_records_client.post(
-        "/read-records", json={"target_type": "weekly_digest", "target_key": "2026-W29"}
-    )
+    await read_records_client.post("/read-records", json={"target_type": "daily_report", "target_key": "2026-07-21"})
+    await read_records_client.post("/read-records", json={"target_type": "daily_report", "target_key": "2026-07-22"})
+    await read_records_client.post("/read-records", json={"target_type": "weekly_digest", "target_key": "2026-W29"})
 
     all_resp = await read_records_client.get("/read-records")
     assert all_resp.status_code == 200

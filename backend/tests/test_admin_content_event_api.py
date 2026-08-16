@@ -288,9 +288,7 @@ def test_review_list_response_contract_strips_unknown_fields(monkeypatch):
             }
 
     monkeypatch.setattr(admin_content_events, "ContentEventService", FakeService)
-    response = _client().get(
-        "/admin/content-events/reviews?page=2&page_size=10"
-    )
+    response = _client().get("/admin/content-events/reviews?page=2&page_size=10")
 
     assert response.status_code == 200
     assert response.json()["total"] == 11

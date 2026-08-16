@@ -111,11 +111,7 @@ def _build_verification_email_text(code: str) -> str:
     返回:
         纯文本邮件正文
     """
-    return (
-        "TopicEye 邮箱验证码\n\n"
-        f"你的验证码是：{code}\n\n"
-        "验证码 10 分钟内有效。如非本人操作，请忽略此邮件。\n"
-    )
+    return "TopicEye 邮箱验证码\n\n" f"你的验证码是：{code}\n\n" "验证码 10 分钟内有效。如非本人操作，请忽略此邮件。\n"
 
 
 def _build_verification_email_html(code: str) -> str:

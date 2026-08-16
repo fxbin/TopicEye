@@ -6,6 +6,7 @@
 2. 周报追踪「连续在榜 N 天」的选题
 3. 影响后续推荐权重
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -36,7 +37,9 @@ class PickMark(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC),
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
 

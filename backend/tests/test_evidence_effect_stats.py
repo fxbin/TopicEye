@@ -76,7 +76,9 @@ async def test_upsert_mark_refreshes_computed_at_and_profile_stats_are_system_sc
     db.add_all(
         [
             SourceEvidenceProfile(source_id=1, publisher_identity="system", publisher_family="system", platform="web"),
-            SourceEvidenceProfile(source_id=2, publisher_identity="private", publisher_family="private", platform="web"),
+            SourceEvidenceProfile(
+                source_id=2, publisher_identity="private", publisher_family="private", platform="web"
+            ),
             ContentEvidenceMark(
                 content_id=1,
                 owner_user_id=None,

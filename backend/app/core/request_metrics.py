@@ -39,12 +39,30 @@ from dataclasses import dataclass, field
 # ── Prometheus histogram bucket boundaries (seconds) ──
 # 标准 Prometheus latency buckets，覆盖 5ms → 10s+
 _DURATION_BUCKETS: tuple[float, ...] = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
 )
 
 # LLM 调用延迟 bucket（LLM 调用通常 0.5s–30s）
 _LLM_DURATION_BUCKETS: tuple[float, ...] = (
-    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0,
+    0.1,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    20.0,
+    30.0,
+    60.0,
 )
 
 # ── Path 模板化正则 ──
@@ -123,6 +141,7 @@ class _HistogramData:
 
     buckets 由调用方传入，兼容 HTTP 和 LLM 两种延迟分布。
     """
+
     buckets: tuple[float, ...] = field(default_factory=lambda: _DURATION_BUCKETS)
     bucket_counts: list[int] = field(init=False)
     sum_seconds: float = 0.0
@@ -153,6 +172,7 @@ _TS_MAX_POINTS = 180
 @dataclass
 class _TimeSeriesPoint:
     """单个时间序列采样点。"""
+
     ts: float  # monotonic timestamp
     wall_ts: float  # epoch seconds (for display)
     in_progress: int = 0
@@ -294,14 +314,10 @@ class RequestMetricsCollector:
             for key, hist in sorted(durations.items()):
                 labels = ",".join(f'{k}="{v}"' for k, v in zip(label_keys, key, strict=False))
                 for i, boundary in enumerate(hist.buckets):
-                    lines.append(
-                        f'{metric_name}_bucket{{{labels},le="{boundary}"}} {hist.bucket_counts[i]}'
-                    )
-                lines.append(
-                    f'{metric_name}_bucket{{{labels},le="+Inf"}} {hist.count}'
-                )
-                lines.append(f'{metric_name}_sum{{{labels}}} {hist.sum_seconds:.6f}')
-                lines.append(f'{metric_name}_count{{{labels}}} {hist.count}')
+                    lines.append(f'{metric_name}_bucket{{{labels},le="{boundary}"}} {hist.bucket_counts[i]}')
+                lines.append(f'{metric_name}_bucket{{{labels},le="+Inf"}} {hist.count}')
+                lines.append(f"{metric_name}_sum{{{labels}}} {hist.sum_seconds:.6f}")
+                lines.append(f"{metric_name}_count{{{labels}}} {hist.count}")
 
         with self._lock:
             # ── HTTP 请求总数 ──
@@ -329,9 +345,7 @@ class RequestMetricsCollector:
             lines.append("# HELP topiceye_http_rate_limit_hits_total Requests rejected by rate limiter")
             lines.append("# TYPE topiceye_http_rate_limit_hits_total counter")
             for path, count in sorted(self._rate_limit_hits.items()):
-                lines.append(
-                    f'topiceye_http_rate_limit_hits_total{{path="{path}"}} {count}'
-                )
+                lines.append(f'topiceye_http_rate_limit_hits_total{{path="{path}"}} {count}')
 
             # ── 5xx 错误 ──
             lines.append("# HELP topiceye_http_errors_total HTTP 5xx errors by method, path, status_class")
@@ -345,9 +359,7 @@ class RequestMetricsCollector:
             lines.append("# HELP topiceye_llm_calls_total LLM API calls by scene and status")
             lines.append("# TYPE topiceye_llm_calls_total counter")
             for (scene, status), count in sorted(self._llm_call_counts.items()):
-                lines.append(
-                    f'topiceye_llm_calls_total{{scene="{scene}",status="{status}"}} {count}'
-                )
+                lines.append(f'topiceye_llm_calls_total{{scene="{scene}",status="{status}"}} {count}')
 
             # ── LLM 调用延迟 histogram ──
             _render_histogram(
@@ -361,17 +373,13 @@ class RequestMetricsCollector:
             lines.append("# HELP topiceye_llm_tokens_total LLM token usage by scene and direction")
             lines.append("# TYPE topiceye_llm_tokens_total counter")
             for (scene, direction), count in sorted(self._llm_token_counts.items()):
-                lines.append(
-                    f'topiceye_llm_tokens_total{{scene="{scene}",direction="{direction}"}} {count}'
-                )
+                lines.append(f'topiceye_llm_tokens_total{{scene="{scene}",direction="{direction}"}} {count}')
 
             # ── LLM 成本 ──
             lines.append("# HELP topiceye_llm_cost_total LLM cumulative cost in USD by scene")
             lines.append("# TYPE topiceye_llm_cost_total counter")
             for scene, cost in sorted(self._llm_cost_total.items()):
-                lines.append(
-                    f'topiceye_llm_cost_total{{scene="{scene}"}} {cost:.6f}'
-                )
+                lines.append(f'topiceye_llm_cost_total{{scene="{scene}"}} {cost:.6f}')
 
         return lines
 
@@ -452,19 +460,11 @@ class RequestMetricsCollector:
             total_err = sum(self._error_counts.values())
             total_rl = sum(self._rate_limit_hits.values())
             total_llm = sum(self._llm_call_counts.values())
-            total_llm_done = sum(
-                v for (s, st), v in self._llm_call_counts.items() if st == "DONE"
-            )
-            total_llm_failed = sum(
-                v for (s, st), v in self._llm_call_counts.items() if st == "FAILED"
-            )
+            total_llm_done = sum(v for (s, st), v in self._llm_call_counts.items() if st == "DONE")
+            total_llm_failed = sum(v for (s, st), v in self._llm_call_counts.items() if st == "FAILED")
             total_cost = sum(self._llm_cost_total.values())
-            total_tokens_in = sum(
-                v for (s, d), v in self._llm_token_counts.items() if d == "input"
-            )
-            total_tokens_out = sum(
-                v for (s, d), v in self._llm_token_counts.items() if d == "output"
-            )
+            total_tokens_in = sum(v for (s, d), v in self._llm_token_counts.items() if d == "input")
+            total_tokens_out = sum(v for (s, d), v in self._llm_token_counts.items() if d == "output")
 
             # 按 path 聚合 top 请求
             path_counts: dict[str, int] = defaultdict(int)
@@ -502,9 +502,7 @@ class RequestMetricsCollector:
                     "total_errors_5xx": total_err,
                     "total_rate_limit_hits": total_rl,
                     "error_rate": round(total_err / max(total_req, 1) * 100, 2),
-                    "top_paths": [
-                        {"path": p, "count": c} for p, c in top_paths
-                    ],
+                    "top_paths": [{"path": p, "count": c} for p, c in top_paths],
                     "latency": {
                         "p50": round(http_p50, 4),
                         "p95": round(http_p95, 4),

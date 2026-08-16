@@ -43,11 +43,7 @@ class ModelEvaluationRepository:
 
         用于 get_eval_run 端点展示单个 run 的全部结果。
         """
-        stmt = (
-            select(ModelEvaluation)
-            .where(ModelEvaluation.eval_run_id == run_id)
-            .order_by(ModelEvaluation.model_name)
-        )
+        stmt = select(ModelEvaluation).where(ModelEvaluation.eval_run_id == run_id).order_by(ModelEvaluation.model_name)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

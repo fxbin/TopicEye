@@ -94,13 +94,9 @@ def test_public_mark_migration_deduplicates_reparents_and_enforces_sqlite():
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
 
-        public_marks = connection.execute(
-            sa.select(marks.c.id).where(marks.c.owner_user_id.is_(None))
-        ).scalars().all()
+        public_marks = connection.execute(sa.select(marks.c.id).where(marks.c.owner_user_id.is_(None))).scalars().all()
         assert public_marks == [3]
-        assert connection.execute(
-            sa.select(links.c.mark_id).order_by(links.c.id)
-        ).scalars().all() == [3, 3, 3]
+        assert connection.execute(sa.select(links.c.mark_id).order_by(links.c.id)).scalars().all() == [3, 3, 3]
 
         with pytest.raises(IntegrityError):
             connection.execute(
@@ -129,11 +125,12 @@ def test_public_mark_migration_deduplicates_reparents_and_enforces_sqlite():
                 computed_at=now,
             )
         )
-        assert connection.execute(
-            sa.select(sa.func.count())
-            .select_from(marks)
-            .where(marks.c.owner_user_id.is_(None))
-        ).scalar_one() == 2
+        assert (
+            connection.execute(
+                sa.select(sa.func.count()).select_from(marks).where(marks.c.owner_user_id.is_(None))
+            ).scalar_one()
+            == 2
+        )
 
     engine.dispose()
 
@@ -170,8 +167,7 @@ def test_public_mark_partial_index_compiles_for_postgresql(monkeypatch):
     )
     ddl = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
     assert (
-        ddl
-        == "CREATE UNIQUE INDEX uq_evidence_marks_public_content "
+        ddl == "CREATE UNIQUE INDEX uq_evidence_marks_public_content "
         "ON content_evidence_marks (content_id) WHERE owner_user_id IS NULL"
     )
     assert captured["sqlite_where"].text == "owner_user_id IS NULL"
@@ -179,14 +175,8 @@ def test_public_mark_partial_index_compiles_for_postgresql(monkeypatch):
 
 def test_content_evidence_model_has_matching_public_partial_index():
     index = next(
-        value
-        for value in ContentEvidenceMark.__table__.indexes
-        if value.name == "uq_evidence_marks_public_content"
+        value for value in ContentEvidenceMark.__table__.indexes if value.name == "uq_evidence_marks_public_content"
     )
     assert index.unique is True
-    assert str(index.dialect_options["sqlite"]["where"]) == (
-        "owner_user_id IS NULL"
-    )
-    assert str(index.dialect_options["postgresql"]["where"]) == (
-        "owner_user_id IS NULL"
-    )
+    assert str(index.dialect_options["sqlite"]["where"]) == ("owner_user_id IS NULL")
+    assert str(index.dialect_options["postgresql"]["where"]) == ("owner_user_id IS NULL")

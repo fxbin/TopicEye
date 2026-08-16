@@ -38,9 +38,7 @@ class ScheduledJob(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC))
 
     __table_args__ = (Index("ix_scheduled_jobs_enabled", "enabled"),)
 

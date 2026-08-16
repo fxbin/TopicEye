@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC
 
 import httpx
 import pytest
@@ -9,11 +10,9 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import product_feedback as product_feedback_api
+from app.api.v1 import auth as auth_api, product_feedback as product_feedback_api
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
-from datetime import UTC
 
 
 @pytest_asyncio.fixture
@@ -30,8 +29,9 @@ async def product_feedback_client() -> AsyncGenerator[tuple[httpx.AsyncClient, s
         admin_token, _ = await create_session(db, admin)
         # product_updates 通过 alembic migration seed, 但测试用 create_all 不走 migration,
         # 手动插一条 (test_product_updates_are_public_read_and_admin_managed 依赖)
+        from datetime import datetime
+
         from app.models.product_feedback import ProductUpdate
-        from datetime import datetime, timezone
 
         db.add(
             ProductUpdate(

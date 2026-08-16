@@ -6,15 +6,11 @@ arXiv 平台 → 论文 prompt；非 arXiv → 常规中英文 prompt。
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.llm.prompts.analysis import (
-    PAPER_SYSTEM_PROMPT,
-    PAPER_ANALYSIS_PROMPT,
-    SYSTEM_PROMPT,
-    ANALYSIS_PROMPT,
-    SYSTEM_PROMPT_EN,
     ANALYSIS_PROMPT_EN,
+    PAPER_ANALYSIS_PROMPT,
+    PAPER_SYSTEM_PROMPT,
+    SYSTEM_PROMPT_EN,
 )
 
 
@@ -42,6 +38,7 @@ def test_paper_prompt_is_formatted_correctly():
 
 def test_arxiv_detection_logic():
     """验证 arXiv 平台检测的关键词逻辑（与 analysis.py 实现一致）。"""
+
     def is_arxiv(platform: str, source_name: str) -> bool:
         platform_lower = (platform or "").lower()
         return "arxiv" in platform_lower or "arxiv" in (source_name or "").lower()

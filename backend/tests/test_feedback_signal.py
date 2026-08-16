@@ -1,12 +1,12 @@
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from types import SimpleNamespace
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1.feedback import submit_feedback
 from app.core.database import Base
 from app.models.content import ContentItem, ContentStatus
-from app.models.feedback import UserFeedback
 from app.schemas.feedback import FeedbackCreate
 from app.services.duckdb_service import LATEST_FEEDBACK_SCORES_CTE
 from app.services.feedback_signal import get_feedback_scores

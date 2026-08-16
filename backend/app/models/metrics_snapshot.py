@@ -64,9 +64,7 @@ class MetricsSnapshotRecord(Base):
     # ── Slow queries ──
     slow_queries_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    __table_args__ = (
-        Index("ix_metrics_snapshots_captured_at", "captured_at"),
-    )
+    __table_args__ = (Index("ix_metrics_snapshots_captured_at", "captured_at"),)
 
     def __repr__(self) -> str:
         return f"<MetricsSnapshotRecord {self.captured_at} req={self.http_total_requests}>"

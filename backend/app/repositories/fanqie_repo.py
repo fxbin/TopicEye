@@ -41,10 +41,7 @@ class FanqieRepository(BaseRepository[FanqieBook]):
         供 list_rankings 端点使用。
         """
         result = await self.db.execute(
-            select(FanqieBook)
-            .where(FanqieBook.rank_type == rank_type)
-            .order_by(FanqieBook.current_pos)
-            .limit(limit)
+            select(FanqieBook).where(FanqieBook.rank_type == rank_type).order_by(FanqieBook.current_pos).limit(limit)
         )
         return result.scalars().all()
 
@@ -53,9 +50,7 @@ class FanqieRepository(BaseRepository[FanqieBook]):
 
         供 category_books 端点确定 gender 使用。
         """
-        result = await self.db.execute(
-            select(FanqieCategory).where(FanqieCategory.fanqie_id == fanqie_id)
-        )
+        result = await self.db.execute(select(FanqieCategory).where(FanqieCategory.fanqie_id == fanqie_id))
         return result.scalar_one_or_none()
 
     async def list_books_by_category_and_pos_field(

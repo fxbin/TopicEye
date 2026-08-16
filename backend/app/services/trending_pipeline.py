@@ -130,16 +130,12 @@ async def sync_all_trending(db: AsyncSession) -> dict[str, dict[str, int]]:
                 await src_db.rollback()
                 raise
 
-    raw_results = await asyncio.gather(
-        *(sync_one(name) for name in sources), return_exceptions=True
-    )
+    raw_results = await asyncio.gather(*(sync_one(name) for name in sources), return_exceptions=True)
 
     results: dict[str, dict[str, int | str]] = {}
     for name, item in zip(sources, raw_results, strict=False):
         if isinstance(item, BaseException):
-            logger.exception(
-                "Unexpected error syncing trending source '%s'", name, exc_info=item
-            )
+            logger.exception("Unexpected error syncing trending source '%s'", name, exc_info=item)
             results[name] = {"fetched": 0, "error": f"{type(item).__name__}: {item}"}
         else:
             results[name] = item

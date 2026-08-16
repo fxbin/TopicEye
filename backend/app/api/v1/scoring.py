@@ -11,6 +11,7 @@ Both accept the same request shape and return the same response shape.
 Auth uses Depends(get_current_user) which accepts both browser session
 tokens and personal API tokens (create one at /me/api-tokens).
 """
+
 from __future__ import annotations
 
 import logging

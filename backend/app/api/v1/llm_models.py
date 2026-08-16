@@ -36,7 +36,6 @@ from app.core.database import async_session, get_db  # noqa: F401 — async_sess
 from app.models.llm_model import LlmModel
 from app.models.user import User
 from app.repositories.llm_model_repo import LlmModelRepository
-from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
 from app.services.llm.model_list_cache import (
     MODEL_LIST_CACHE_HEADER,
     get_cached_model_list,
@@ -48,6 +47,7 @@ from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
 from app.services.llm.provider import invalidate_model_cache
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
+from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
 
 router = APIRouter(prefix="/models", tags=["models"])
 logger = logging.getLogger(__name__)

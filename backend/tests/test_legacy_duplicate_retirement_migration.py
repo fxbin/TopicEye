@@ -128,10 +128,7 @@ def test_upgrade_migrates_chains_then_removes_old_columns():
 
         migration.upgrade()
 
-        assert {
-            column["name"]
-            for column in sa.inspect(connection).get_columns("content_items")
-        } == {
+        assert {column["name"] for column in sa.inspect(connection).get_columns("content_items")} == {
             "id",
             "owner_user_id",
             "published_at",
@@ -141,16 +138,10 @@ def test_upgrade_migrates_chains_then_removes_old_columns():
         group_row = connection.execute(sa.select(groups)).mappings().one()
         assert group_row["canonical_content_id"] == 1
         assert group_row["classifier_version"] == "legacy-retirement:v1"
-        member_rows = connection.execute(
-            sa.select(members).order_by(members.c.content_id)
-        ).mappings().all()
+        member_rows = connection.execute(sa.select(members).order_by(members.c.content_id)).mappings().all()
         assert [row["content_id"] for row in member_rows] == [2, 3]
-        assert [row["confidence"] for row in member_rows] == pytest.approx(
-            [0.91, 0.82]
-        )
-        assert {row["reason"] for row in member_rows} == {
-            "migrated from retired duplicate projection"
-        }
+        assert [row["confidence"] for row in member_rows] == pytest.approx([0.91, 0.82])
+        assert {row["reason"] for row in member_rows} == {"migrated from retired duplicate projection"}
         assert connection.scalar(sa.select(runs.c.mode)) == "write"
 
         migration.downgrade()
@@ -218,10 +209,7 @@ def test_upgrade_blocks_invalid_old_edges_without_dropping_columns(
         with pytest.raises(RuntimeError, match=message):
             migration.upgrade()
 
-        columns = {
-            column["name"]
-            for column in sa.inspect(connection).get_columns("content_items")
-        }
+        columns = {column["name"] for column in sa.inspect(connection).get_columns("content_items")}
         assert {"duplicate_of", "similarity_score"} <= columns
 
     engine.dispose()

@@ -8,9 +8,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import trending as trending_api
-from app.api.v1 import trends as trends_api
+from app.api.v1 import auth as auth_api, trending as trending_api, trends as trends_api
 from app.core.database import Base
 from app.models.trending import TrendingCategory, TrendingItem, TrendingSource
 from app.services import trending_snapshot

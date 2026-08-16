@@ -67,10 +67,6 @@ async def test_trending_history_uses_postgresql_date_bindings():
 
     assert session.statement is not None
     compiled = session.statement.compile(dialect=postgresql.dialect())
-    date_bindings = [
-        binding
-        for key, binding in compiled.binds.items()
-        if key.startswith("snapshot_date")
-    ]
+    date_bindings = [binding for key, binding in compiled.binds.items() if key.startswith("snapshot_date")]
     assert len(date_bindings) == 2
     assert all(isinstance(binding.type, Date) for binding in date_bindings)

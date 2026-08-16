@@ -1,5 +1,6 @@
 """Quick verification script for request_metrics module."""
-from app.core.request_metrics import normalize_path, get_collector
+
+from app.core.request_metrics import get_collector, normalize_path
 
 # Test path normalization
 assert normalize_path("/api/v1/topics/123") == "/api/v1/topics/{id}"
@@ -15,7 +16,9 @@ c.request_started()
 c.request_completed(method="GET", path="/api/v1/topics/123", status=200, duration_seconds=0.05)
 c.request_completed(method="POST", path="/api/v1/analyses/batch", status=500, duration_seconds=1.2)
 c.rate_limit_hit("/api/v1/auth/login")
-c.record_llm_call(scene="analysis", status="DONE", duration_seconds=2.5, input_tokens=1000, output_tokens=500, cost_usd=0.02)
+c.record_llm_call(
+    scene="analysis", status="DONE", duration_seconds=2.5, input_tokens=1000, output_tokens=500, cost_usd=0.02
+)
 
 lines = c.render_prometheus()
 text = "\n".join(lines)

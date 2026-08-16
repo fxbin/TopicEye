@@ -30,9 +30,7 @@ async def test_rate_limit_error_not_retried(monkeypatch):
             llm_provider="openai",
         )
 
-    monkeypatch.setattr(
-        "app.services.llm._call_engine._call_llm_single", fake_single_call
-    )
+    monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
     with pytest.raises(RateLimitError):
         await _call_with_retry(
@@ -60,9 +58,7 @@ async def test_string_429_error_not_retried(monkeypatch):
         # 模拟 DeepSeek/GLM 通过 openai-compat 抛的通用错误, 消息含 429 但非 RateLimitError 类型
         raise RuntimeError("Error code: 429 - {'error': {'message': '请求过于频繁'}}")
 
-    monkeypatch.setattr(
-        "app.services.llm._call_engine._call_llm_single", fake_single_call
-    )
+    monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
     with pytest.raises(RuntimeError):
         await _call_with_retry(
@@ -109,9 +105,7 @@ async def test_bad_request_error_not_retried(monkeypatch):
             llm_provider="openai",
         )
 
-    monkeypatch.setattr(
-        "app.services.llm._call_engine._call_llm_single", fake_single_call
-    )
+    monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
     with pytest.raises(BadRequestError):
         await _call_with_retry(
@@ -139,9 +133,7 @@ async def test_transient_error_is_retried(monkeypatch):
             raise ConnectionError("transient")
         return "ok"
 
-    monkeypatch.setattr(
-        "app.services.llm._call_engine._call_llm_single", fake_single_call
-    )
+    monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
     result = await _call_with_retry(
         messages=[],

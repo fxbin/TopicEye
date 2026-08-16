@@ -1118,12 +1118,8 @@ created_at TIMESTAMP
     conn.execute("INSERT INTO oltp_db.content_items VALUES (1, 1, '测试信源', 'AI', ?, 10)", [now])
     conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?, 20)", [now])
     conn.execute("INSERT INTO oltp_db.content_items VALUES (3, 1, '测试信源', 'AI', ?, 20)", [now])
-    conn.execute(
-        "INSERT INTO oltp_db.content_event_groups VALUES (10, 1, 'active')"
-    )
-    conn.execute(
-        "INSERT INTO oltp_db.content_event_members VALUES (1, 10, 3, 'auto')"
-    )
+    conn.execute("INSERT INTO oltp_db.content_event_groups VALUES (10, 1, 'active')")
+    conn.execute("INSERT INTO oltp_db.content_event_members VALUES (1, 10, 3, 'auto')")
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, 20, 90, 90, 80, 90, 90, 90, 90, 90, 0, ?)",
         [now - timedelta(hours=2)],

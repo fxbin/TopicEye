@@ -126,9 +126,7 @@ class ContentEventNormalizationRepository:
         *,
         for_update: bool = False,
     ) -> ContentEventNormalizationRun | None:
-        stmt = select(ContentEventNormalizationRun).where(
-            ContentEventNormalizationRun.id == run_id
-        )
+        stmt = select(ContentEventNormalizationRun).where(ContentEventNormalizationRun.id == run_id)
         if for_update:
             stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
@@ -229,15 +227,9 @@ class ContentEventNormalizationRepository:
         limit: int,
     ) -> list[ContentItem]:
         canonical_exists = exists(
-            select(ContentEventGroup.id).where(
-                ContentEventGroup.canonical_content_id == ContentItem.id
-            )
+            select(ContentEventGroup.id).where(ContentEventGroup.canonical_content_id == ContentItem.id)
         )
-        member_exists = exists(
-            select(ContentEventMember.id).where(
-                ContentEventMember.content_id == ContentItem.id
-            )
-        )
+        member_exists = exists(select(ContentEventMember.id).where(ContentEventMember.content_id == ContentItem.id))
         stmt = (
             select(ContentItem)
             .where(
@@ -284,24 +276,17 @@ class ContentEventNormalizationRepository:
             .limit(max(1, limit))
         )
         result = await self.db.execute(stmt)
-        return [
-            HistoricalCanonical(event_group=row[0], content=row[1])
-            for row in result.all()
-        ]
+        return [HistoricalCanonical(event_group=row[0], content=row[1]) for row in result.all()]
 
     async def assigned_content_ids(self, content_ids: Sequence[int]) -> set[int]:
         ids = sorted({int(value) for value in content_ids})
         if not ids:
             return set()
         canonical_result = await self.db.execute(
-            select(ContentEventGroup.canonical_content_id).where(
-                ContentEventGroup.canonical_content_id.in_(ids)
-            )
+            select(ContentEventGroup.canonical_content_id).where(ContentEventGroup.canonical_content_id.in_(ids))
         )
         member_result = await self.db.execute(
-            select(ContentEventMember.content_id).where(
-                ContentEventMember.content_id.in_(ids)
-            )
+            select(ContentEventMember.content_id).where(ContentEventMember.content_id.in_(ids))
         )
         return {
             *[int(value) for value in canonical_result.scalars().all()],

@@ -70,7 +70,9 @@ class NewsletterScraper(BaseScraper):
 
     async def fetch(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
         resp = await fetch_feed_with_retry(
-            client, self.rss_url, context=f"Newsletter {self.rss_url}",
+            client,
+            self.rss_url,
+            context=f"Newsletter {self.rss_url}",
         )
         if resp is None:
             logger.warning("Newsletter feed exhausted retries, returning empty: %s", self.rss_url)

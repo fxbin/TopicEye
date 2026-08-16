@@ -104,12 +104,8 @@ async def test_shadow_uses_local_fast_path_without_event_mutation(
         assert result["matched"] == 1
         assert result["created_events"] == 0
         assert result["created_members"] == 0
-        assert (
-            await db.scalar(select(func.count()).select_from(ContentEventGroup))
-        ) == 0
-        assert (
-            await db.scalar(select(func.count()).select_from(ContentEventMember))
-        ) == 0
+        assert (await db.scalar(select(func.count()).select_from(ContentEventGroup))) == 0
+        assert (await db.scalar(select(func.count()).select_from(ContentEventMember))) == 0
 
 
 @pytest.mark.asyncio
@@ -156,11 +152,7 @@ async def test_write_recalls_historical_canonical_and_replays_idempotently(
             idempotency_key="historical-write",
         )
 
-        member = await db.scalar(
-            select(ContentEventMember).where(
-                ContentEventMember.content_id == incoming.id
-            )
-        )
+        member = await db.scalar(select(ContentEventMember).where(ContentEventMember.content_id == incoming.id))
         assert member is not None
         assert member.event_group_id == group.id
         assert first_result["created_members"] == 1
@@ -168,11 +160,7 @@ async def test_write_recalls_historical_canonical_and_replays_idempotently(
         assert replay_result["replayed"] is True
         assert replay_result["mode"] == "write"
         assert replay_result["created_members"] == 1
-        assert (
-            await db.scalar(
-                select(func.count()).select_from(ContentEventNormalizationRun)
-            )
-        ) == 1
+        assert (await db.scalar(select(func.count()).select_from(ContentEventNormalizationRun))) == 1
 
         with pytest.raises(ContentEventConflictError, match="different mode or hours"):
             await normalize_recent_events_with_lease(
@@ -246,23 +234,13 @@ async def test_llm_failure_and_cap_create_pending_members(
         assert result["created_events"] == 1
         assert result["created_members"] == 2
         pending_members = list(
-            (
-                await db.execute(
-                    select(ContentEventMember).order_by(
-                        ContentEventMember.content_id
-                    )
-                )
-            )
-            .scalars()
-            .all()
+            (await db.execute(select(ContentEventMember).order_by(ContentEventMember.content_id))).scalars().all()
         )
         assert [member.content_id for member in pending_members] == [
             second.id,
             third.id,
         ]
-        assert {member.review_status for member in pending_members} == {
-            "pending"
-        }
+        assert {member.review_status for member in pending_members} == {"pending"}
 
 
 @pytest.mark.asyncio
@@ -406,12 +384,15 @@ async def test_expired_lease_cannot_finish_without_being_reclaimed(
         await db.commit()
 
         assert fencing_token == 1
-        assert await repo.lock_current_lease(
-            scope_key="public",
-            lease_token="expired-owner",
-            fencing_token=1,
-            now=moment + timedelta(seconds=2),
-        ) is False
+        assert (
+            await repo.lock_current_lease(
+                scope_key="public",
+                lease_token="expired-owner",
+                fencing_token=1,
+                now=moment + timedelta(seconds=2),
+            )
+            is False
+        )
 
 
 @pytest.mark.asyncio
@@ -482,22 +463,22 @@ def test_prediction_audit_respects_default_json_byte_limit(monkeypatch):
         1,
     )
     assert normalization._limits().audit_max_bytes == 2
-    assert normalization._truncate_predictions(
-        predictions,
-        max_bytes=1,
-    ) == []
+    assert (
+        normalization._truncate_predictions(
+            predictions,
+            max_bytes=1,
+        )
+        == []
+    )
 
 
 def test_run_model_matches_migration_contract():
     run_table = ContentEventNormalizationRun.__table__
     lease_table = ContentEventNormalizationLease.__table__
-    assert {"scope_key", "idempotency_key", "fencing_token", "predictions"} <= set(
-        run_table.columns.keys()
-    )
-    assert {"scope_key", "fencing_token", "lease_token", "lease_expires_at"} == set(
-        lease_table.columns.keys()
-    ) - {"updated_at"}
+    assert {"scope_key", "idempotency_key", "fencing_token", "predictions"} <= set(run_table.columns.keys())
+    assert {"scope_key", "fencing_token", "lease_token", "lease_expires_at"} == set(lease_table.columns.keys()) - {
+        "updated_at"
+    }
     assert any(
-        constraint.name == "uq_content_event_normalization_runs_scope_key"
-        for constraint in run_table.constraints
+        constraint.name == "uq_content_event_normalization_runs_scope_key" for constraint in run_table.constraints
     )

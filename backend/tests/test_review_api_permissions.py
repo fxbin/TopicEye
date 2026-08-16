@@ -8,10 +8,12 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import daily_reports as daily_reports_api
-from app.api.v1 import monthly_digests as monthly_digests_api
-from app.api.v1 import weekly_digests as weekly_digests_api
+from app.api.v1 import (
+    auth as auth_api,
+    daily_reports as daily_reports_api,
+    monthly_digests as monthly_digests_api,
+    weekly_digests as weekly_digests_api,
+)
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
 

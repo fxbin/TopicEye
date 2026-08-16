@@ -21,8 +21,7 @@ _SENSITIVE_PAIR_RE = re.compile(
     r"([^&\s,;\"'<>}]+)([\"']?)"
 )
 _AUTH_HEADER_RE = re.compile(
-    r"(?i)([\"']?\bauthorization\b[\"']?\s*[:=]\s*[\"']?)(?!Bearer\s+\*\*\*)"
-    r"([^,\s;\"'<>}]+)([\"']?)"
+    r"(?i)([\"']?\bauthorization\b[\"']?\s*[:=]\s*[\"']?)(?!Bearer\s+\*\*\*)" r"([^,\s;\"'<>}]+)([\"']?)"
 )
 _BEARER_RE = re.compile(r"\bBearer\s+[^\s,;\"'<>]+", re.IGNORECASE)
 

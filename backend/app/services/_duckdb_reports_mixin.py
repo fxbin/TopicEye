@@ -174,14 +174,19 @@ class ReportsMixin:
         fanqie_movements: list[dict] = []
         read_count_delta = 0
         for row in rows:
-            fanqie_movements.append({
-                "platform": "fanqie", "platform_label": "番茄小说",
-                "title": row[0] or "", "author": "",
-                "category": row[2] or "未分类", "rank_type": row[1] or "",
-                "position": int(row[3]) if row[3] else 0,
-                "change": int(row[4]) if row[4] else 0,
-                "url": None,
-            })
+            fanqie_movements.append(
+                {
+                    "platform": "fanqie",
+                    "platform_label": "番茄小说",
+                    "title": row[0] or "",
+                    "author": "",
+                    "category": row[2] or "未分类",
+                    "rank_type": row[1] or "",
+                    "position": int(row[3]) if row[3] else 0,
+                    "change": int(row[4]) if row[4] else 0,
+                    "url": None,
+                }
+            )
             fr = int(row[5]) if row[5] else 0
             lr = int(row[6]) if row[6] else 0
             read_count_delta += max(0, lr - fr)
@@ -219,14 +224,20 @@ class ReportsMixin:
             WHERE rank_pos_diff IS NOT NULL AND rank_pos_diff != 0
             ORDER BY ABS(rank_pos_diff) DESC LIMIT 30
         """).fetchall()
-        fanqie_current = [{
-            "platform": "fanqie", "platform_label": "番茄小说",
-            "title": r[0] or "", "author": r[1] or "",
-            "category": r[2] or "未分类", "rank_type": r[3] or "",
-            "position": int(r[4]) if r[4] else 0,
-            "change": int(r[5]) if r[5] else 0,
-            "url": f"https://fanqienovel.com/page/{r[6]}" if r[6] else None,
-        } for r in cur_rows]
+        fanqie_current = [
+            {
+                "platform": "fanqie",
+                "platform_label": "番茄小说",
+                "title": r[0] or "",
+                "author": r[1] or "",
+                "category": r[2] or "未分类",
+                "rank_type": r[3] or "",
+                "position": int(r[4]) if r[4] else 0,
+                "change": int(r[5]) if r[5] else 0,
+                "url": f"https://fanqienovel.com/page/{r[6]}" if r[6] else None,
+            }
+            for r in cur_rows
+        ]
 
         # ── 七猫 ──
         count_row = conn.execute("SELECT COUNT(*) FROM oltp_db.qimao_books").fetchone()
@@ -237,14 +248,20 @@ class ReportsMixin:
             WHERE index_change IS NOT NULL AND index_change != 0
             ORDER BY ABS(index_change) DESC LIMIT 30
         """).fetchall()
-        qimao_current = [{
-            "platform": "qimao", "platform_label": "七猫小说",
-            "title": r[0] or "", "author": r[1] or "",
-            "category": r[2] or "未分类", "rank_type": f"{r[3]}_{r[4]}",
-            "position": int(r[5]) if r[5] else 0,
-            "change": int(r[6]) if r[6] else 0,
-            "url": f"https://www.qimao.com/shuku/{r[7]}/" if r[7] else None,
-        } for r in cur_rows]
+        qimao_current = [
+            {
+                "platform": "qimao",
+                "platform_label": "七猫小说",
+                "title": r[0] or "",
+                "author": r[1] or "",
+                "category": r[2] or "未分类",
+                "rank_type": f"{r[3]}_{r[4]}",
+                "position": int(r[5]) if r[5] else 0,
+                "change": int(r[6]) if r[6] else 0,
+                "url": f"https://www.qimao.com/shuku/{r[7]}/" if r[7] else None,
+            }
+            for r in cur_rows
+        ]
         cat_rows = conn.execute("""
             SELECT category1_name, COUNT(*) AS cnt FROM oltp_db.qimao_books
             WHERE category1_name IS NOT NULL
@@ -262,14 +279,20 @@ class ReportsMixin:
             WHERE rank_pos_diff IS NOT NULL AND rank_pos_diff != 0
             ORDER BY ABS(rank_pos_diff) DESC, position ASC LIMIT 30
         """).fetchall()
-        zhihu_current = [{
-            "platform": "zhihu", "platform_label": "知乎盐选",
-            "title": r[0] or "", "author": r[1] or "",
-            "category": r[2] or "未分类", "rank_type": r[3] or "",
-            "position": int(r[4]) if r[4] else 0,
-            "change": int(r[5]) if r[5] else 0,
-            "url": r[6],
-        } for r in cur_rows]
+        zhihu_current = [
+            {
+                "platform": "zhihu",
+                "platform_label": "知乎盐选",
+                "title": r[0] or "",
+                "author": r[1] or "",
+                "category": r[2] or "未分类",
+                "rank_type": r[3] or "",
+                "position": int(r[4]) if r[4] else 0,
+                "change": int(r[5]) if r[5] else 0,
+                "url": r[6],
+            }
+            for r in cur_rows
+        ]
         cat_rows = conn.execute("""
             SELECT category2_name, COUNT(*) AS cnt FROM oltp_db.zhihu_albums
             WHERE category2_name IS NOT NULL
@@ -333,14 +356,19 @@ class ReportsMixin:
                     change = first[1] - latest[1]
                     if change == 0:
                         continue
-                    movements.append({
-                        "platform": source,
-                        "platform_label": "黑岩书城" if source == "heiyan" else "点众阅读",
-                        "title": title, "author": "",
-                        "category": "未分类", "rank_type": "rank",
-                        "position": latest[1], "change": change,
-                        "url": latest[2],
-                    })
+                    movements.append(
+                        {
+                            "platform": source,
+                            "platform_label": "黑岩书城" if source == "heiyan" else "点众阅读",
+                            "title": title,
+                            "author": "",
+                            "category": "未分类",
+                            "rank_type": "rank",
+                            "position": latest[1],
+                            "change": change,
+                            "url": latest[2],
+                        }
+                    )
                 movements.sort(key=lambda m: abs(m["change"]), reverse=True)
             return movements, count, categories, snap_dates
 
@@ -355,8 +383,10 @@ class ReportsMixin:
 
         # ── 跨平台涨跌归一化 ──
         platform_movements = {
-            "fanqie": all_fanqie, "qimao": qimao_current,
-            "zhihu": zhihu_current, "heiyan": heiyan_movements,
+            "fanqie": all_fanqie,
+            "qimao": qimao_current,
+            "zhihu": zhihu_current,
+            "heiyan": heiyan_movements,
             "ishugui": ishugui_movements,
         }
         top_risers, top_fallers, rising_total, falling_total = [], [], 0, 0
@@ -375,7 +405,9 @@ class ReportsMixin:
         safe_days = max(3, min(days, 31))
         return {
             "period": {
-                "start": start_iso, "end": end_iso, "days": safe_days,
+                "start": start_iso,
+                "end": end_iso,
+                "days": safe_days,
                 "label": f"{start.month}月{start.day}日 ~ {today.month}月{today.day}日",
             },
             "generated_at": datetime.now(UTC).isoformat(),
@@ -387,33 +419,55 @@ class ReportsMixin:
                 "read_count_delta": read_count_delta,
             },
             "platforms": [
-                {"platform": "fanqie", "label": "番茄小说", "item_count": fanqie_count,
-                 "rising_count": len([m for m in all_fanqie if m["change"] > 0]),
-                 "falling_count": len([m for m in all_fanqie if m["change"] < 0]),
-                 "history_days": len(fanqie_snapshot_dates)},
-                {"platform": "qimao", "label": "七猫小说", "item_count": qimao_count,
-                 "rising_count": len([m for m in qimao_current if m["change"] > 0]),
-                 "falling_count": len([m for m in qimao_current if m["change"] < 0]),
-                 "history_days": 1 if qimao_count else 0},
-                {"platform": "zhihu", "label": "知乎盐选", "item_count": zhihu_count,
-                 "rising_count": len([m for m in zhihu_current if m["change"] > 0]),
-                 "falling_count": len([m for m in zhihu_current if m["change"] < 0]),
-                 "history_days": 1 if zhihu_count else 0},
-                {"platform": "heiyan", "label": "黑岩书城", "item_count": heiyan_count,
-                 "rising_count": len([m for m in heiyan_movements if m["change"] > 0]),
-                 "falling_count": len([m for m in heiyan_movements if m["change"] < 0]),
-                 "history_days": len(heiyan_dates)},
-                {"platform": "ishugui", "label": "点众阅读", "item_count": ishugui_count,
-                 "rising_count": len([m for m in ishugui_movements if m["change"] > 0]),
-                 "falling_count": len([m for m in ishugui_movements if m["change"] < 0]),
-                 "history_days": len(ishugui_dates)},
+                {
+                    "platform": "fanqie",
+                    "label": "番茄小说",
+                    "item_count": fanqie_count,
+                    "rising_count": len([m for m in all_fanqie if m["change"] > 0]),
+                    "falling_count": len([m for m in all_fanqie if m["change"] < 0]),
+                    "history_days": len(fanqie_snapshot_dates),
+                },
+                {
+                    "platform": "qimao",
+                    "label": "七猫小说",
+                    "item_count": qimao_count,
+                    "rising_count": len([m for m in qimao_current if m["change"] > 0]),
+                    "falling_count": len([m for m in qimao_current if m["change"] < 0]),
+                    "history_days": 1 if qimao_count else 0,
+                },
+                {
+                    "platform": "zhihu",
+                    "label": "知乎盐选",
+                    "item_count": zhihu_count,
+                    "rising_count": len([m for m in zhihu_current if m["change"] > 0]),
+                    "falling_count": len([m for m in zhihu_current if m["change"] < 0]),
+                    "history_days": 1 if zhihu_count else 0,
+                },
+                {
+                    "platform": "heiyan",
+                    "label": "黑岩书城",
+                    "item_count": heiyan_count,
+                    "rising_count": len([m for m in heiyan_movements if m["change"] > 0]),
+                    "falling_count": len([m for m in heiyan_movements if m["change"] < 0]),
+                    "history_days": len(heiyan_dates),
+                },
+                {
+                    "platform": "ishugui",
+                    "label": "点众阅读",
+                    "item_count": ishugui_count,
+                    "rising_count": len([m for m in ishugui_movements if m["change"] > 0]),
+                    "falling_count": len([m for m in ishugui_movements if m["change"] < 0]),
+                    "history_days": len(ishugui_dates),
+                },
             ],
             "daily_counts": fanqie_daily_counts,
             "top_risers": top_risers,
             "top_fallers": top_fallers,
             "category_mix": {
-                "fanqie": fanqie_category_mix, "qimao": qimao_categories,
-                "zhihu": zhihu_categories, "heiyan": heiyan_categories,
+                "fanqie": fanqie_category_mix,
+                "qimao": qimao_categories,
+                "zhihu": zhihu_categories,
+                "heiyan": heiyan_categories,
                 "ishugui": ishugui_categories,
             },
             "notes": [
@@ -424,5 +478,3 @@ class ReportsMixin:
                 "跨平台涨跌榜采用每平台配额制（各取前 5），避免不同榜单量纲差异导致的偏倚。",
             ],
         }
-
-

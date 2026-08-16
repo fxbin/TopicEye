@@ -93,8 +93,6 @@ def _normalize_api_source_config(payload: dict, current: Source | None = None) -
     return payload
 
 
-
-
 @router.post("", response_model=SourceResponse, status_code=201, dependencies=[Depends(get_current_admin_user)])
 async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
     repo = SourceRepository(db)
@@ -215,7 +213,14 @@ async def list_my_sources(
             page_size=page_size,
         )
         items = list(items)
-    payload = SourceListResponse(items=items, total=total, page=page, page_size=page_size, private_sources_used=private_sources_used, private_sources_quota=private_sources_quota(current_user.plan)).model_dump()
+    payload = SourceListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        private_sources_used=private_sources_used,
+        private_sources_quota=private_sources_quota(current_user.plan),
+    ).model_dump()
     content = set_cached_source_list(cache_params, payload)
     return Response(
         content=content,
@@ -398,6 +403,7 @@ async def sync_my_source(
 
 
 # ── Source Evidence Profiles (admin-managed credible lead config) ───────
+
 
 @router.get("/{source_id}/evidence-profile", dependencies=[Depends(get_current_admin_user)])
 async def get_evidence_profile(source_id: int, db: AsyncSession = Depends(get_db)):

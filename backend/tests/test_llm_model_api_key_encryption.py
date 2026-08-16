@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 from app.api.v1.llm_models import (
     ModelCreateRequest,
     ModelUpdateRequest,

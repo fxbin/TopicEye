@@ -26,9 +26,7 @@ class WebhookDeliveryLog(Base):
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     success: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, comment="0/1")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    response_preview: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="响应正文前 500 字符"
-    )
+    response_preview: Mapped[str | None] = mapped_column(Text, nullable=True, comment="响应正文前 500 字符")
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

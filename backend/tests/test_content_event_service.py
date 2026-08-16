@@ -121,9 +121,7 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     )
     assert group.canonical_content_id == earlier.id
     assert group.version == 1
-    assert [member.content_id for member in await _members(session, group.id)] == [
-        later.id
-    ]
+    assert [member.content_id for member in await _members(session, group.id)] == [later.id]
 
     group = await service.set_canonical(
         group.id,
@@ -135,9 +133,7 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     assert group.canonical_content_id == later.id
     assert group.canonical_locked is True
     assert group.version == 2
-    assert [member.content_id for member in await _members(session, group.id)] == [
-        earlier.id
-    ]
+    assert [member.content_id for member in await _members(session, group.id)] == [earlier.id]
 
     oldest = await _content(session, "oldest", hours=0)
     group = await service.add_member(
@@ -156,9 +152,7 @@ async def test_earliest_canonical_manual_lock_and_unlock(session):
     assert group.canonical_content_id == oldest.id
     assert group.canonical_locked is False
     assert group.version == 4
-    assert {
-        member.content_id for member in await _members(session, group.id)
-    } == {earlier.id, later.id}
+    assert {member.content_id for member in await _members(session, group.id)} == {earlier.id, later.id}
 
 
 @pytest.mark.asyncio
@@ -426,9 +420,7 @@ async def test_pending_member_cannot_be_manual_canonical_and_accept_reselects_ea
     )
     assert group.version == 3
     assert group.canonical_content_id == pending_content.id
-    assert [member.content_id for member in await _members(session, group.id)] == [
-        canonical.id
-    ]
+    assert [member.content_id for member in await _members(session, group.id)] == [canonical.id]
 
 
 @pytest.mark.asyncio
@@ -441,24 +433,15 @@ async def test_shadow_and_archived_events_are_not_served(session):
         owner_user_id=None,
         status=EventStatus.SHADOW,
     )
-    assert (
-        await service.get_event_detail(shadow_child.id, visible_user_id=None)
-        is None
-    )
+    assert await service.get_event_detail(shadow_child.id, visible_user_id=None) is None
 
     shadow.status = EventStatus.ACTIVE
     await session.flush()
-    assert (
-        await service.get_event_detail(shadow_child.id, visible_user_id=None)
-        is not None
-    )
+    assert await service.get_event_detail(shadow_child.id, visible_user_id=None) is not None
 
     shadow.status = EventStatus.ARCHIVED
     await session.flush()
-    assert (
-        await service.get_event_detail(shadow_child.id, visible_user_id=None)
-        is None
-    )
+    assert await service.get_event_detail(shadow_child.id, visible_user_id=None) is None
 
 
 @pytest.mark.asyncio

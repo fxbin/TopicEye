@@ -6,6 +6,7 @@
 upsert 事务边界：find_existing + merge_session / add_new 只 flush，
 commit 由调用方（api 层的 get_db 依赖）控制。
 """
+
 from __future__ import annotations
 
 import logging

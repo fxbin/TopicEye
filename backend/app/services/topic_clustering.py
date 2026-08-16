@@ -35,17 +35,53 @@ CLUSTER_LLM_CONCURRENCY = 3
 # ── Tag quality filter ─────────────────────────────────────────────────
 # Stopwords that carry no topic signal — verbs, fillers, generic actions.
 # These are excluded from clustering AND naming to prevent noise.
-_TAG_STOPWORDS: frozenset[str] = frozenset({
-    # Chinese filler / verbs
-    "推出", "发布", "什么是", "如何", "为什么", "怎么",
-    "解析", "分析", "解读", "盘点", "汇总", "一览",
-    "新", "最", "热", "爆", "火", "全", "大",
-    "看到", "发现", "说明", "表示", "认为", "指出",
-    "进行", "开始", "继续", "已经", "正在", "可以",
-    # English filler
-    "studying", "discovered", "new", "best", "top",
-    "how", "why", "what", "vs", "vs.",
-})
+_TAG_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Chinese filler / verbs
+        "推出",
+        "发布",
+        "什么是",
+        "如何",
+        "为什么",
+        "怎么",
+        "解析",
+        "分析",
+        "解读",
+        "盘点",
+        "汇总",
+        "一览",
+        "新",
+        "最",
+        "热",
+        "爆",
+        "火",
+        "全",
+        "大",
+        "看到",
+        "发现",
+        "说明",
+        "表示",
+        "认为",
+        "指出",
+        "进行",
+        "开始",
+        "继续",
+        "已经",
+        "正在",
+        "可以",
+        # English filler
+        "studying",
+        "discovered",
+        "new",
+        "best",
+        "top",
+        "how",
+        "why",
+        "what",
+        "vs",
+        "vs.",
+    }
+)
 
 # Single-character tags (length < 2, e.g. 新/热/火) carry no topic signal and
 # are excluded from clustering, but still kept for display in keywords list.
@@ -83,10 +119,7 @@ def _filter_clustering_tags(tags: set[str]) -> set[str]:
     from the *clustering* step to reduce false merges, but they may
     still appear in the keywords list for display.
     """
-    return {
-        t for t in tags
-        if len(t) >= _TAG_MIN_CLUSTER_LEN and t not in _TAG_STOPWORDS
-    }
+    return {t for t in tags if len(t) >= _TAG_MIN_CLUSTER_LEN and t not in _TAG_STOPWORDS}
 
 
 def _union_find_cluster(
@@ -428,17 +461,16 @@ async def cluster_topics(
             auto_groups = sorted_groups[MAX_LLM_NAMED_CLUSTERS:]
 
             if llm_groups:
-                group_items = [
-                    [item_by_id[item_id] for item_id in group]
-                    for group in llm_groups
-                ]
+                group_items = [[item_by_id[item_id] for item_id in group] for group in llm_groups]
                 cluster_meta = await _name_clusters(group_items)
 
             for group_ids in auto_groups:
                 cluster = [item_by_id[item_id] for item_id in group_ids]
                 cluster_meta.append(_auto_name_group(cluster))
             if auto_groups:
-                logger.info("Auto-named %d overflow clusters (beyond LLM cap %d)", len(auto_groups), MAX_LLM_NAMED_CLUSTERS)
+                logger.info(
+                    "Auto-named %d overflow clusters (beyond LLM cap %d)", len(auto_groups), MAX_LLM_NAMED_CLUSTERS
+                )
         else:
             # Fast path: auto-name all groups from tags (zero LLM calls)
             for group_ids in sorted_groups:
@@ -446,9 +478,7 @@ async def cluster_topics(
                 cluster_meta.append(_auto_name_group(cluster))
 
     # 5. Write to DB
-    standalone_ids = {item["id"] for item in items} - {
-        content_id for group in groups for content_id in group
-    }
+    standalone_ids = {item["id"] for item in items} - {content_id for group in groups for content_id in group}
 
     for meta in cluster_meta:
         topic = TopicGroup(

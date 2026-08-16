@@ -314,6 +314,8 @@ async def _discover_llm_relations(
         total_counts,
     )
     return total_counts
+
+
 def _accepted_event_member_exists():
     return exists(
         select(ContentEventMember.id)
@@ -324,8 +326,6 @@ def _accepted_event_member_exists():
         .where(
             ContentEventMember.content_id == ContentItem.id,
             ContentEventGroup.status == EventStatus.ACTIVE,
-            ContentEventMember.review_status.in_(
-                (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
-            ),
+            ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
         )
     )

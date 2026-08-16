@@ -36,6 +36,7 @@ def build_scoring_input(item: Any, feedback_score: float = 0) -> ScoringInput:
     if analysis is None:
         raise ValueError("Content item has no loaded analyses")
     source_weight = item.source.weight if item.source else 3
+
     def value_or_default(value: Any, default: float | int) -> float | int:
         return default if value is None else value
 

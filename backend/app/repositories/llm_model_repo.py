@@ -31,10 +31,7 @@ class LlmModelRepository(BaseRepository[LlmModel]):
 
         与 /models 端点历史行为等价，用于前端模型列表渲染。
         """
-        stmt = (
-            select(LlmModel)
-            .order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
-        )
+        stmt = select(LlmModel).order_by(LlmModel.routing_group, LlmModel.routing_priority, LlmModel.id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

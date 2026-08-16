@@ -65,6 +65,7 @@ async def retry_http_get(
     which triggers a retry.  Callers that need softer status handling
     should use ``retry_async`` directly.
     """
+
     async def _do_get() -> httpx.Response:
         resp = await client.get(url, headers=headers, params=params, timeout=timeout)
         resp.raise_for_status()

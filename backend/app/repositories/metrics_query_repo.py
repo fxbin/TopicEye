@@ -37,24 +37,18 @@ class MetricsQueryRepository:
 
     async def count_sources_by_status(self) -> Sequence[tuple]:
         """按 Source.status 分组计数，返回 (status, count) 元组列表。"""
-        result = await self.db.execute(
-            select(Source.status, func.count()).group_by(Source.status)
-        )
+        result = await self.db.execute(select(Source.status, func.count()).group_by(Source.status))
         return result.all()
 
     async def count_content_by_status(self) -> Sequence[tuple]:
         """按 ContentItem.status 分组计数，返回 (status, count) 元组列表。"""
-        result = await self.db.execute(
-            select(ContentItem.status, func.count()).group_by(ContentItem.status)
-        )
+        result = await self.db.execute(select(ContentItem.status, func.count()).group_by(ContentItem.status))
         return result.all()
 
     async def count_recent_content(self, cutoff: datetime) -> int:
         """统计 crawled_at >= cutoff 的内容数。"""
         count = await self.db.scalar(
-            select(func.count())
-            .select_from(ContentItem)
-            .where(ContentItem.crawled_at >= cutoff)
+            select(func.count()).select_from(ContentItem).where(ContentItem.crawled_at >= cutoff)
         )
         return count or 0
 
@@ -77,7 +71,5 @@ class MetricsQueryRepository:
 
     async def count_notifications(self) -> int:
         """统计 Notification 总数。"""
-        count = await self.db.scalar(
-            select(func.count()).select_from(Notification)
-        )
+        count = await self.db.scalar(select(func.count()).select_from(Notification))
         return count or 0

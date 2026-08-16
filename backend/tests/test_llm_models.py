@@ -1,6 +1,6 @@
-from types import SimpleNamespace
-from collections.abc import AsyncGenerator
 import threading
+from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
+from app.api.v1 import auth as auth_api, llm_evaluations as llm_evaluations_api, llm_models as llm_models_api
 from app.api.v1.llm_models import (
     LLM_COMPLETION_TIMEOUT_SECONDS,
     ModelCreateRequest,
@@ -20,15 +21,11 @@ from app.api.v1.llm_models import (
     _resolve_litellm_model,
     _sample_payload,
 )
-from app.api.v1 import auth as auth_api
-from app.api.v1 import llm_models as llm_models_api
-from app.api.v1 import llm_evaluations as llm_evaluations_api
 from app.core.database import Base
 from app.models.llm_model import LlmModel, ModelEvaluation
-from app.models.user import User
 from app.services.auth_service import create_session, create_user
-from app.services.llm.presets import apply_model_preset, list_model_presets
 from app.services.llm.model_resolver import resolve_litellm_model
+from app.services.llm.presets import apply_model_preset, list_model_presets
 
 
 @pytest_asyncio.fixture

@@ -49,17 +49,19 @@ class PromptRegistryRepository(BaseRepository[PromptRegistry]):
         items = []
         for p in prompts:
             s = stats_map.get(p.scene, {})
-            items.append({
-                "id": p.id,
-                "name": p.name,
-                "scene": p.scene,
-                "description": p.description,
-                "source_file": p.source_file,
-                "content_preview": p.content_preview,
-                "version_hash": p.version_hash[:8] if p.version_hash else "",
-                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-                "stats_7d": s,
-            })
+            items.append(
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "scene": p.scene,
+                    "description": p.description,
+                    "source_file": p.source_file,
+                    "content_preview": p.content_preview,
+                    "version_hash": p.version_hash[:8] if p.version_hash else "",
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                    "stats_7d": s,
+                }
+            )
         return items
 
     async def get_detail_with_stats(
@@ -68,9 +70,7 @@ class PromptRegistryRepository(BaseRepository[PromptRegistry]):
         stats_cutoff: datetime,
     ) -> dict[str, Any] | None:
         """Get a single prompt with 30-day usage stats and daily trend."""
-        result = await self.db.execute(
-            select(PromptRegistry).where(PromptRegistry.id == prompt_id)
-        )
+        result = await self.db.execute(select(PromptRegistry).where(PromptRegistry.id == prompt_id))
         prompt = result.scalar_one_or_none()
         if prompt is None:
             return None

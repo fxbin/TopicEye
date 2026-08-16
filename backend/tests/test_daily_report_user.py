@@ -10,8 +10,7 @@ Covers the owner_user_id plumbing through:
 
 from __future__ import annotations
 
-import json
-from datetime import date, datetime, timedelta, timezone, UTC
+from datetime import UTC, date, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -141,10 +140,9 @@ async def test_fetch_report_inputs_passes_visible_user_id_to_repo():
     daily_report_svc.ContentRepo = FakeContentRepo
     daily_report_svc.IgnoredRepo = FakeIgnoredRepo
     try:
-        from app.services import daily_report as dr
         from app.services.daily_report import _fetch_report_inputs
 
-        result = await _fetch_report_inputs(
+        await _fetch_report_inputs(
             __import__("app.core.database", fromlist=["async_session"]).async_session().__class__,
             window_start=datetime(2026, 5, 27, 0, 0, 0),
             window_end=datetime(2026, 5, 27, 12, 0, 0),
@@ -289,10 +287,9 @@ async def test_get_latest_today_report_filters_by_owner():
 
 def _build_test_app():
     """Build a FastAPI app with the daily_reports router + auth dependency override."""
-    from fastapi import FastAPI, Depends
+    from fastapi import FastAPI
+
     from app.api.v1 import daily_reports as daily_reports_mod
-    from app.api.v1.auth import get_current_user
-    from app.core.database import get_db
 
     app = FastAPI()
     app.include_router(daily_reports_mod.router)
@@ -327,7 +324,6 @@ async def test_me_today_requires_pro_plan(tmp_path, monkeypatch):
     from app.core.database import get_db
 
     app.dependency_overrides[get_db] = override_db
-    daily_reports_svc_mod = daily_report_svc  # alias for type checker
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

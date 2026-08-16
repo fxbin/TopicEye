@@ -17,32 +17,32 @@
 周报/月报：title 子串匹配（限制时间窗 + source 缩歧义）。
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import argparse
-import asyncio
-import os
-import sys
+import argparse  # noqa: E402
+import asyncio  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
 
 # 脚本运行时 sys.path[0] 是 scripts/ 目录，需把项目根（/app 或 backend/）加入
 # 才能 import app.*。兼容容器内（/app）和本地 venv（backend/）两种场景。
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-import json
-import logging
-import sys
-from datetime import date, timedelta
-from typing import Any
+import json  # noqa: E402
+import logging  # noqa: E402
+import sys  # noqa: E402
+from datetime import date, timedelta  # noqa: E402
+from typing import Any  # noqa: E402
 
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select  # noqa: E402
 
-from app.core.database import async_session
-from app.models.content import ContentItem
-from app.models.daily_report import DailyReport
-from app.models.weekly_digest import WeeklyDigest
-from app.models.monthly_digest import MonthlyDigest
-from app.services.zhihu_url import normalize_zhihu_url
+from app.core.database import async_session  # noqa: E402
+from app.models.content import ContentItem  # noqa: E402
+from app.models.daily_report import DailyReport  # noqa: E402
+from app.models.monthly_digest import MonthlyDigest  # noqa: E402
+from app.models.weekly_digest import WeeklyDigest  # noqa: E402
+from app.services.zhihu_url import normalize_zhihu_url  # noqa: E402
 
 logger = logging.getLogger("backfill")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -66,9 +66,7 @@ async def _find_content_id_by_title_exact(db, title: str) -> int | None:
     """source_title 精确匹配 content_items.title。"""
     if not title:
         return None
-    result = await db.execute(
-        select(ContentItem.id).where(ContentItem.title == title).limit(1)
-    )
+    result = await db.execute(select(ContentItem.id).where(ContentItem.title == title).limit(1))
     return result.scalar_one_or_none()
 
 
@@ -77,21 +75,15 @@ async def _find_content_id_by_url(db, url: str) -> int | None:
     if not url:
         return None
     norm = normalize_zhihu_url(url)
-    result = await db.execute(
-        select(ContentItem.id).where(ContentItem.url == norm).limit(1)
-    )
+    result = await db.execute(select(ContentItem.id).where(ContentItem.url == norm).limit(1))
     return result.scalar_one_or_none()
 
 
-async def _find_content_id_in_candidates(
-    db, title: str, candidate_ids: list[int]
-) -> int | None:
+async def _find_content_id_in_candidates(db, title: str, candidate_ids: list[int]) -> int | None:
     """在 source_item_ids 候选集里，找 title 互为子串的 content。缩歧义。"""
     if not title or not candidate_ids:
         return None
-    result = await db.execute(
-        select(ContentItem.id, ContentItem.title).where(ContentItem.id.in_(candidate_ids))
-    )
+    result = await db.execute(select(ContentItem.id, ContentItem.title).where(ContentItem.id.in_(candidate_ids)))
     rows = result.all()
     for cid, ct in rows:
         if ct and (title in ct or ct in title):
@@ -137,9 +129,7 @@ async def _find_content_id_by_title_fuzzy(
 
 async def backfill_daily(db, *, apply: bool) -> tuple[int, int, list[str]]:
     """回填日报 top_picks 的 content_id。返回 (待回填数, 命中数, 未命中标题)。"""
-    result = await db.execute(
-        select(DailyReport).where(DailyReport.status == "DONE").order_by(DailyReport.id)
-    )
+    result = await db.execute(select(DailyReport).where(DailyReport.status == "DONE").order_by(DailyReport.id))
     reports = result.scalars().all()
 
     total_pending = 0
@@ -203,9 +193,7 @@ async def backfill_digest(
     end_attr: str,
 ) -> tuple[int, int, list[str]]:
     """回填周报或月报 top_picks 的 content_id。"""
-    result = await db.execute(
-        select(model).where(model.status == "DONE").order_by(model.id)
-    )
+    result = await db.execute(select(model).where(model.status == "DONE").order_by(model.id))
     reports = result.scalars().all()
 
     total_pending = 0
@@ -275,23 +263,32 @@ async def main(apply: bool):
 
         logger.info("\n── 周报 ──")
         w_pending, w_hit, w_miss = await backfill_digest(
-            db, WeeklyDigest, apply=apply, label="周报",
-            start_attr="week_start", end_attr="week_end",
+            db,
+            WeeklyDigest,
+            apply=apply,
+            label="周报",
+            start_attr="week_start",
+            end_attr="week_end",
         )
         _print_stats("周报", w_pending, w_hit, w_miss)
 
         logger.info("\n── 月报 ──")
         m_pending, m_hit, m_miss = await backfill_digest(
-            db, MonthlyDigest, apply=apply, label="月报",
-            start_attr="month_start", end_attr="month_end",
+            db,
+            MonthlyDigest,
+            apply=apply,
+            label="月报",
+            start_attr="month_start",
+            end_attr="month_end",
         )
         _print_stats("月报", m_pending, m_hit, m_miss)
 
     total_p = d_pending + w_pending + m_pending
     total_h = d_hit + w_hit + m_hit
     logger.info("\n" + "=" * 60)
-    logger.info("合计：待回填 %d / 命中 %d / 命中率 %.0f%%",
-                total_p, total_h, (total_h / total_p * 100) if total_p else 0)
+    logger.info(
+        "合计：待回填 %d / 命中 %d / 命中率 %.0f%%", total_p, total_h, (total_h / total_p * 100) if total_p else 0
+    )
     if not apply and total_p > 0:
         logger.info("\n（dry-run 未写库。加 --apply 真写。）")
     elif apply:

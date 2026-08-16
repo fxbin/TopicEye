@@ -50,17 +50,13 @@ class ScoringDashboardRepository:
 
         # 3. Ignores count
         ignore_result = await self.db.execute(
-            select(func.count())
-            .select_from(IgnoredItem)
-            .where(IgnoredItem.created_at >= cutoff)
+            select(func.count()).select_from(IgnoredItem).where(IgnoredItem.created_at >= cutoff)
         )
         ignores_count = int(ignore_result.scalar() or 0)
 
         # 4. Content analyzed in the period
         content_result = await self.db.execute(
-            select(func.count())
-            .select_from(AiAnalysis)
-            .where(AiAnalysis.created_at >= cutoff)
+            select(func.count()).select_from(AiAnalysis).where(AiAnalysis.created_at >= cutoff)
         )
         analyzed_count = int(content_result.scalar() or 0)
 
@@ -70,8 +66,7 @@ class ScoringDashboardRepository:
                 UserInterestVector.user_id,
                 func.count().label("tag_count"),
                 func.sum(func.abs(UserInterestVector.weight)).label("total_weight"),
-            )
-            .group_by(UserInterestVector.user_id)
+            ).group_by(UserInterestVector.user_id)
         )
         vector_rows = vector_result.all()
         users_with_vectors = len(vector_rows)
@@ -108,10 +103,7 @@ class ScoringDashboardRepository:
             .group_by(func.date(UserFeedback.created_at))
             .order_by(func.date(UserFeedback.created_at))
         )
-        daily_feedback = [
-            {"date": str(r.date), "count": r.count}
-            for r in daily_result.all()
-        ]
+        daily_feedback = [{"date": str(r.date), "count": r.count} for r in daily_result.all()]
 
         # 7. Daily favorites trend
         daily_fav_result = await self.db.execute(
@@ -126,10 +118,7 @@ class ScoringDashboardRepository:
             .group_by(func.date(FavoriteItem.created_at))
             .order_by(func.date(FavoriteItem.created_at))
         )
-        daily_favorites = [
-            {"date": str(r.date), "count": r.count}
-            for r in daily_fav_result.all()
-        ]
+        daily_favorites = [{"date": str(r.date), "count": r.count} for r in daily_fav_result.all()]
 
         # 8. Calculate rates
         favorite_rate = round(favorites_count / analyzed_count * 100, 1) if analyzed_count > 0 else 0

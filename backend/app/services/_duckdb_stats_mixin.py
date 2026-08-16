@@ -466,4 +466,3 @@ class StatsMixin:
                 for row in trend_rows
             ],
         }
-

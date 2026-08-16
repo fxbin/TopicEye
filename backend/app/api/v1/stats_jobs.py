@@ -90,9 +90,7 @@ async def _build_job_stats_payload(*, days: int, job_key: str | None) -> dict:
 
         by_job_key: list[dict] = []
         for r_job_key, r_runs in per_key_rows:
-            success_count = await repo.count_success_for_job_key(
-                job_key=r_job_key, cutoff=cutoff
-            )
+            success_count = await repo.count_success_for_job_key(job_key=r_job_key, cutoff=cutoff)
             last = await repo.get_last_run_for_job_key(r_job_key)
             by_job_key.append(
                 {
@@ -116,9 +114,7 @@ async def _build_job_stats_payload(*, days: int, job_key: str | None) -> dict:
                 entry["avg_duration_ms"] = avg_lookup.get(entry["job_key"], 0)
 
         # ── recent failures ──
-        failure_rows = await repo.list_recent_failures_since(
-            cutoff=cutoff, job_key=job_key, limit=10
-        )
+        failure_rows = await repo.list_recent_failures_since(cutoff=cutoff, job_key=job_key, limit=10)
         recent_failures = [
             {
                 "job_key": row[0],

@@ -100,7 +100,9 @@ class YouTubeScraper(BaseScraper):
 
         self._rss_url = YOUTUBE_FEED_TEMPLATE.format(channel_id=self.channel_id)
         resp = await fetch_feed_with_retry(
-            client, self._rss_url, context=f"YouTube {self._rss_url}",
+            client,
+            self._rss_url,
+            context=f"YouTube {self._rss_url}",
         )
         if resp is None:
             logger.warning("YouTube feed exhausted retries, returning empty: %s", self._rss_url)

@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import UTC, datetime, timedelta
 
 from app.services.scoring_engine import CONFIG, ScoringInput, score_items
-
 
 _NOW = datetime(2026, 1, 1, 12, 0, 0)
 
@@ -112,7 +111,11 @@ def test_feedback_signal_is_clamped_before_scoring_adjustment():
 
 # ── P1 修复回归: falsy-zero + quality_factor 去重 ──────────────────
 
-from app.services.scoring_engine import _dim, _compute_quality_factor, _compute_base_score
+from app.services.scoring_engine import (  # noqa: E402 — 该组回归用例就近导入内部符号
+    _compute_base_score,
+    _compute_quality_factor,
+    _dim,
+)
 
 
 def test_dim_none_uses_default():
@@ -157,7 +160,7 @@ def test_quality_factor_low_quality_penalized():
 def test_time_decay_bad_timestamp_does_not_crash():
     """格式错误的 timestamp 不应让评分崩溃。"""
     from app.services.scoring_engine import _compute_time_decay
+
     item = _item(1, published_at="not-a-date")
     decay = _compute_time_decay(item)
     assert 0.0 < decay <= 1.0
-

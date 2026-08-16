@@ -139,7 +139,12 @@ async def get_pick_tracking(
     pick_repo = PickMarkRepository(db)
     marks = await pick_repo.list_by_user_date_range(user.id, monday, sunday)
     if not marks:
-        return {"marks": [], "total": 0, "week_key": week_key, "week_range": f"{monday.isoformat()} ~ {sunday.isoformat()}"}
+        return {
+            "marks": [],
+            "total": 0,
+            "week_key": week_key,
+            "week_range": f"{monday.isoformat()} ~ {sunday.isoformat()}",
+        }
 
     # 2. 查本周所有日报的 top_picks（统计每个标记选题出现在几天的榜单里）
     report_repo = DailyReportRepository(db)
@@ -170,15 +175,17 @@ async def get_pick_tracking(
                     appearances = dates
                     break
 
-        result_marks.append({
-            "pick_title": mark.pick_title,
-            "action": mark.action,
-            "mark_date": str(mark.report_date),
-            "pick_category": mark.pick_category,
-            "appearances_in_week": len(appearances),
-            "appearance_dates": appearances,
-            "pick_source_url": mark.pick_source_url,
-        })
+        result_marks.append(
+            {
+                "pick_title": mark.pick_title,
+                "action": mark.action,
+                "mark_date": str(mark.report_date),
+                "pick_category": mark.pick_category,
+                "appearances_in_week": len(appearances),
+                "appearance_dates": appearances,
+                "pick_source_url": mark.pick_source_url,
+            }
+        )
 
     # 按 appearances 降序排（最持续的排前面）
     result_marks.sort(key=lambda x: x["appearances_in_week"], reverse=True)

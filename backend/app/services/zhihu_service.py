@@ -187,7 +187,9 @@ async def _fetch_html(url: str) -> str | None:
             return resp.text
 
     return await retry_async(
-        _do_get, attempts=3, base_delay=0.5,
+        _do_get,
+        attempts=3,
+        base_delay=0.5,
         context=f"Zhihu HTML {url}",
     )
 
@@ -217,13 +219,17 @@ async def _fetch_api(sort_type: str, limit=20, offset=0, category_id: str | None
             resp = await client.get(API_BASE, params=params, headers=HEADERS)
             if resp.status_code != 200:
                 raise httpx.HTTPStatusError(
-                    f"HTTP {resp.status_code}", request=resp.request, response=resp,
+                    f"HTTP {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
                 )
             d = resp.json()
             return d.get("data", []) or []
 
     result = await retry_async(
-        _fetch, attempts=3, base_delay=0.5,
+        _fetch,
+        attempts=3,
+        base_delay=0.5,
         context=f"Zhihu API sort={sort_type} cat={category_id}",
     )
     if result is None:

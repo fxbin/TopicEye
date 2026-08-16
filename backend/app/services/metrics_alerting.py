@@ -20,9 +20,9 @@ import time
 logger = logging.getLogger(__name__)
 
 # ── 告警阈值（可通过环境变量覆盖）──
-_ALERT_ERROR_RATE_THRESHOLD = 10.0     # %
-_ALERT_LLM_SUCCESS_RATE_MIN = 50.0     # %
-_ALERT_DB_POOL_UTIL_THRESHOLD = 90.0   # %
+_ALERT_ERROR_RATE_THRESHOLD = 10.0  # %
+_ALERT_LLM_SUCCESS_RATE_MIN = 50.0  # %
+_ALERT_DB_POOL_UTIL_THRESHOLD = 90.0  # %
 _ALERT_SLOW_QUERY_THRESHOLD = 100
 
 # 去重窗口：同一条规则 1 小时内只告警一次

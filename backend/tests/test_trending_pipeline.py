@@ -17,8 +17,7 @@ import time
 import pytest
 
 from app.services import trending_pipeline as pipeline
-from app.services.trending_pipeline import sync_all_trending, _normalize_trending_concurrency
-
+from app.services.trending_pipeline import _normalize_trending_concurrency, sync_all_trending
 
 # ── 测试用假 scraper ─────────────────────────────────────────────
 
@@ -50,31 +49,28 @@ class _FakeScraper:
 
 def _patch_sources(monkeypatch, scraper_map: dict[str, _FakeScraper]):
     """patch get_syncable_trending_sources + get_trending_cls。"""
-    monkeypatch.setattr(
-        pipeline, "get_syncable_trending_sources", lambda: list(scraper_map.keys())
-    )
-    monkeypatch.setattr(
-        pipeline, "get_trending_cls", lambda name: scraper_map.get(name)
-    )
+    monkeypatch.setattr(pipeline, "get_syncable_trending_sources", lambda: list(scraper_map.keys()))
+    monkeypatch.setattr(pipeline, "get_trending_cls", lambda name: scraper_map.get(name))
 
 
 # ── Tests ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_sync_all_runs_concurrently_not_sequentially(
-    db, test_session_factory, monkeypatch
-):
+async def test_sync_all_runs_concurrently_not_sequentially(db, test_session_factory, monkeypatch):
     """两个源各 sleep 0.4s, 串行需 ~0.8s, 并发(≥2)应 < 0.7s。"""
     # pipeline 内部用 async_session() 开独立 session, patch 到测试工厂
     monkeypatch.setattr(pipeline, "async_session", test_session_factory)
     monkeypatch.setattr(pipeline, "_normalize_trending_concurrency", lambda: 8)
 
     entries = [{"title": f"item-{i}", "rank": i, "hot_value": i} for i in range(3)]
-    _patch_sources(monkeypatch, {
-        "src_a": _FakeScraper(delay=0.4, entries=entries),
-        "src_b": _FakeScraper(delay=0.4, entries=entries),
-    })
+    _patch_sources(
+        monkeypatch,
+        {
+            "src_a": _FakeScraper(delay=0.4, entries=entries),
+            "src_b": _FakeScraper(delay=0.4, entries=entries),
+        },
+    )
 
     t = time.monotonic()
     results = await sync_all_trending(db)
@@ -87,18 +83,19 @@ async def test_sync_all_runs_concurrently_not_sequentially(
 
 
 @pytest.mark.asyncio
-async def test_sync_all_isolates_per_source_failure(
-    db, test_session_factory, monkeypatch
-):
+async def test_sync_all_isolates_per_source_failure(db, test_session_factory, monkeypatch):
     """src_bad 抛异常, src_good 应仍正常入库、返回 fetched。"""
     monkeypatch.setattr(pipeline, "async_session", test_session_factory)
     monkeypatch.setattr(pipeline, "_normalize_trending_concurrency", lambda: 8)
 
     entries = [{"title": "good-item", "rank": 1, "hot_value": 100}]
-    _patch_sources(monkeypatch, {
-        "src_bad": _FakeScraper(delay=0, exc=RuntimeError("boom")),
-        "src_good": _FakeScraper(delay=0, entries=entries),
-    })
+    _patch_sources(
+        monkeypatch,
+        {
+            "src_bad": _FakeScraper(delay=0, exc=RuntimeError("boom")),
+            "src_good": _FakeScraper(delay=0, entries=entries),
+        },
+    )
 
     results = await sync_all_trending(db)
 
@@ -120,9 +117,9 @@ async def test_sync_all_handles_empty_source_list(db, monkeypatch):
 def test_syncable_sources_excludes_webnovel():
     """定时同步排除网文书库类重源 (heiyan/ishugui), 但手动单刷不受影响。"""
     from app.services.trending_scrapers import (
+        SYNC_EXCLUDED_SOURCES,
         get_all_trending_sources,
         get_syncable_trending_sources,
-        SYNC_EXCLUDED_SOURCES,
     )
 
     all_sources = set(get_all_trending_sources())
@@ -162,6 +159,7 @@ async def test_same_source_sync_is_serialized_by_lock(db, test_session_factory, 
     场景: 手动单刷 /sync/weibo 与定时全量里的 weibo 并发。
     """
     import asyncio as _asyncio
+
     from app.services import trending_pipeline as tp
 
     monkeypatch.setattr(tp, "async_session", test_session_factory)

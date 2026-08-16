@@ -35,10 +35,7 @@ def database_backend(url: str) -> DatabaseBackend:
     driver = make_url(url).drivername.split("+", 1)[0]
     if driver in {"postgresql", "postgres"}:
         return "postgresql"
-    raise ValueError(
-        f"Unsupported database backend for DATABASE_URL: {driver}. "
-        "Use postgresql+asyncpg://."
-    )
+    raise ValueError(f"Unsupported database backend for DATABASE_URL: {driver}. " "Use postgresql+asyncpg://.")
 
 
 def sync_database_url(url: str) -> str:

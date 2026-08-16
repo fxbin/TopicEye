@@ -2,6 +2,7 @@
 
 未配置 client_id 的 provider 不会注册，前端据此决定是否渲染对应按钮。
 """
+
 from __future__ import annotations
 
 from authlib.integrations.starlette_client import OAuth

@@ -6,6 +6,7 @@
   3. 解析为本地 User（自动合并同邮箱账号）+ 建 session
   4. 302 到前端回调页，token 走 URL fragment（不进 server log / Referer）
 """
+
 from __future__ import annotations
 
 import logging
@@ -96,9 +97,7 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
         return _frontend_redirect(error=f"OAuth 授权失败：{exc}")
 
     try:
-        provider_user_id, email, email_verified, display_name = await _extract_userinfo(
-            client, provider, token
-        )
+        provider_user_id, email, email_verified, display_name = await _extract_userinfo(client, provider, token)
     except _OAuthUserInfoError as exc:
         logger.warning("OAuth userinfo failed: provider=%s, exc=%s", provider, exc)
         return _frontend_redirect(error=str(exc))
@@ -124,10 +123,12 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
 
     # token 通过 HttpOnly cookie 下发（浏览器自动携带）；
     # expires_at 走 fragment 给前端做 refresh 判断（兼容旧逻辑）
-    fragment = urlencode({
-        "token": access_token,
-        "expires_at": session.expires_at.isoformat(),
-    })
+    fragment = urlencode(
+        {
+            "token": access_token,
+            "expires_at": session.expires_at.isoformat(),
+        }
+    )
     response = _frontend_redirect(fragment=fragment)
     _set_auth_cookies(response, access_token, session.expires_at)
     return response
@@ -149,9 +150,7 @@ class _OAuthUserInfoError(Exception):
     """拉取 OAuth userinfo 失败的内部异常。"""
 
 
-async def _extract_userinfo(
-    client: Any, provider: str, token: dict
-) -> tuple[str, str, bool, str | None]:
+async def _extract_userinfo(client: Any, provider: str, token: dict) -> tuple[str, str, bool, str | None]:
     """从 provider 拉取 (provider_user_id, email, email_verified, display_name)。
 
     - Google：OIDC userinfo 直接含 sub/email/email_verified/name

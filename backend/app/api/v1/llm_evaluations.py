@@ -47,6 +47,7 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 # ─── Evaluation helpers (仅此子系统使用) ──────────────────────────────
 
+
 def _normalize_evaluation_concurrency(value: int | None = None) -> int:
     raw = value if value is not None else settings.LLM_WORKER_CONCURRENCY
     try:
@@ -146,6 +147,7 @@ EVAL_PROMPTS = {
 
 # ─── Request schemas (Evaluation-specific) ────────────────────────────
 
+
 class EvalRunRequest(BaseModel):
     model_ids: list[int] = Field(..., min_length=2, description="参与测评的模型 ID 列表")
     prompt_type: str = Field(..., description="测评类型")
@@ -159,6 +161,7 @@ class ScoreRequest(BaseModel):
 
 
 # ─── Single evaluation runner ─────────────────────────────────────────
+
 
 async def _run_one_evaluation(
     *,
@@ -269,6 +272,7 @@ async def _run_one_evaluation(
 
 
 # ─── Routes ──────────────────────────────────────────────────────────
+
 
 @router.post("/evaluations/run", dependencies=[Depends(get_current_admin_user)])
 async def run_evaluation(req: EvalRunRequest, db: AsyncSession = Depends(get_db)):

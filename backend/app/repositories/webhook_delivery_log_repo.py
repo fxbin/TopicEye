@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.webhook_delivery_log import WebhookDeliveryLog
 from app.repositories.base import BaseRepository
@@ -24,9 +23,7 @@ class WebhookDeliveryLogRepository(BaseRepository[WebhookDeliveryLog]):
         offset: int = 0,
     ) -> tuple[Sequence[WebhookDeliveryLog], int]:
         """Return (logs newest-first, total_count), optionally filtered by event type."""
-        stmt = select(WebhookDeliveryLog).order_by(
-            WebhookDeliveryLog.created_at.desc()
-        )
+        stmt = select(WebhookDeliveryLog).order_by(WebhookDeliveryLog.created_at.desc())
         count_stmt = select(func.count()).select_from(WebhookDeliveryLog)
 
         if event_type:

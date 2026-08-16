@@ -31,9 +31,7 @@ class ContentItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
-    source_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
-    )
+    source_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True)
     source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     platform: Mapped[str | None] = mapped_column(String(100), nullable=True)

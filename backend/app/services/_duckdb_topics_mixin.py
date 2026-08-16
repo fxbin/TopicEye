@@ -97,8 +97,4 @@ class TopicsMixin:
             LIMIT {limit}
         """).fetchall()
 
-        return [
-            {"keyword": row[0], "count": int(row[1]), "traceability": row[2]}
-            for row in results
-        ]
-
+        return [{"keyword": row[0], "count": int(row[1]), "traceability": row[2]} for row in results]

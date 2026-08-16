@@ -188,8 +188,7 @@ class SohuTrending(BaseTrendingScraper):
         items: list = []
         # 搜狐热榜通常在特定容器中
         for match in re.finditer(
-            r'<a[^>]+href=["\'](https?://www\.sohu\.com/a/[^"\']+)["\'][^>]*>'
-            r"[^<]*<[^>]*>([^<]{4,80})</[^>]*>",
+            r'<a[^>]+href=["\'](https?://www\.sohu\.com/a/[^"\']+)["\'][^>]*>' r"[^<]*<[^>]*>([^<]{4,80})</[^>]*>",
             html,
         ):
             items.append(

@@ -75,11 +75,7 @@ class PicksMixin:
         )
         # 与 owner_user_id / source_weight 同策略：未迁移的只读快照/测试库
         # 可能还没有 content_type 列，此时 SELECT NULL 保持列位稳定，避免整端点报错。
-        content_type_expr = (
-            "c.content_type"
-            if has_content_type
-            else "CAST(NULL AS VARCHAR) AS content_type"
-        )
+        content_type_expr = "c.content_type" if has_content_type else "CAST(NULL AS VARCHAR) AS content_type"
         _ = limit
 
         results = conn.execute(
@@ -334,20 +330,48 @@ class PicksMixin:
         total = conn.execute(count_sql, params).fetchone()[0]
 
         columns = [
-            "id", "title", "url", "source_id", "source_name", "source_type",
-            "platform", "author", "published_at", "crawled_at",
-            "content_hash", "summary", "cover_url",
-            "category", "tags", "language", "status",
+            "id",
+            "title",
+            "url",
+            "source_id",
+            "source_name",
+            "source_type",
+            "platform",
+            "author",
+            "published_at",
+            "crawled_at",
+            "content_hash",
+            "summary",
+            "cover_url",
+            "category",
+            "tags",
+            "language",
+            "status",
             "topic_id",
-            "created_at", "updated_at",
-            "analysis_id", "analysis_created_at",
-            "quality_score", "hot_score", "freshness_score",
-            "creator_score", "viral_score", "risk_score",
-            "curation_score", "info_density", "actionability",
-            "source_weight", "recommended_reason", "recommendation",
-            "ai_summary", "ai_tags",
-            "source_weight_db", "feedback_score",
-            "content_score", "obscure_factor", "freshness_boost", "time_decay",
+            "created_at",
+            "updated_at",
+            "analysis_id",
+            "analysis_created_at",
+            "quality_score",
+            "hot_score",
+            "freshness_score",
+            "creator_score",
+            "viral_score",
+            "risk_score",
+            "curation_score",
+            "info_density",
+            "actionability",
+            "source_weight",
+            "recommended_reason",
+            "recommendation",
+            "ai_summary",
+            "ai_tags",
+            "source_weight_db",
+            "feedback_score",
+            "content_score",
+            "obscure_factor",
+            "freshness_boost",
+            "time_decay",
         ]
 
         items: list[dict[str, Any]] = []
@@ -368,24 +392,36 @@ class PicksMixin:
                     item[dt_field] = val.isoformat()
             # Round floats
             for score_field in (
-                "quality_score", "hot_score", "freshness_score", "creator_score",
-                "viral_score", "risk_score", "curation_score", "info_density",
-                "actionability", "obscure_factor",
-                "freshness_boost", "time_decay", "content_score",
+                "quality_score",
+                "hot_score",
+                "freshness_score",
+                "creator_score",
+                "viral_score",
+                "risk_score",
+                "curation_score",
+                "info_density",
+                "actionability",
+                "obscure_factor",
+                "freshness_boost",
+                "time_decay",
+                "content_score",
             ):
                 val = item.get(score_field)
                 if val is not None:
-                    item[score_field] = round(float(val), 4 if score_field in ("obscure_factor", "freshness_boost", "time_decay") else 2)
+                    item[score_field] = round(
+                        float(val), 4 if score_field in ("obscure_factor", "freshness_boost", "time_decay") else 2
+                    )
 
-            items.append({
-                "lfv_final": lfv_final,
-                "content_score": item["content_score"],
-                "obscure_factor": item["obscure_factor"],
-                "freshness_boost": item["freshness_boost"],
-                "time_decay": item["time_decay"],
-                "source_weight": item.get("source_weight"),
-                "raw_item": item,
-            })
+            items.append(
+                {
+                    "lfv_final": lfv_final,
+                    "content_score": item["content_score"],
+                    "obscure_factor": item["obscure_factor"],
+                    "freshness_boost": item["freshness_boost"],
+                    "time_decay": item["time_decay"],
+                    "source_weight": item.get("source_weight"),
+                    "raw_item": item,
+                }
+            )
 
         return items, total
-

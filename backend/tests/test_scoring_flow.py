@@ -6,18 +6,17 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.v1 import auth as auth_api
-from app.api.v1 import contents as contents_api
+from app.api.v1 import auth as auth_api, contents as contents_api
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
 from app.services.scoring_engine import ScoreBreakdown, ScoringInput
 from app.services.scoring_flow import (
-    build_empty_payload,
+    _cache_and_return,
     build_diagnostics,
+    build_empty_payload,
     build_sample_payload,
     build_scoring_config_summary,
     build_stage_counts,
-    _cache_and_return,
     debug_window_hours,
     get_cached_scoring_flow_json,
     invalidate_scoring_flow_cache,
@@ -257,7 +256,10 @@ def test_scoring_flow_cache_can_be_invalidated():
     invalidate_scoring_flow_cache()
 
     _cache_and_return(
-        48, 160, 80, None,
+        48,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=48,
             analyzed_total=0,
@@ -277,7 +279,10 @@ def test_scoring_flow_cache_uses_explicit_invalidation():
     invalidate_scoring_flow_cache()
 
     _cache_and_return(
-        24, 160, 80, None,
+        24,
+        160,
+        80,
+        None,
         build_empty_payload(
             hours=24,
             analyzed_total=0,
@@ -333,7 +338,10 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
     async def fake_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
         calls["count"] += 1
         return _cache_and_return(
-            hours, limit, 80, visible_user_id,
+            hours,
+            limit,
+            80,
+            visible_user_id,
             build_empty_payload(
                 hours=hours,
                 analyzed_total=0,

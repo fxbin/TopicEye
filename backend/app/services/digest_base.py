@@ -89,9 +89,7 @@ def match_picks_to_items(
     # 与 build_items_text 的 1-based index 对齐
     items_by_idx = {i + 1: item for i, item in enumerate(items)}
     items_by_title = {item["title"]: item for item in items if item.get("title")}
-    items_by_url = {
-        item.get("url", ""): item for item in items if item.get("url")
-    }
+    items_by_url = {item.get("url", ""): item for item in items if item.get("url")}
     titles = set(items_by_title)
 
     def _match_by_substring(query: str) -> dict | None:

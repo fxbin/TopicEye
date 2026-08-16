@@ -181,11 +181,7 @@ async def fetch_weread_materials(api_key: str, *, limit: int = 0) -> list[dict[s
 
         with httpx.Client(timeout=30, follow_redirects=True) as client:
             for _page in range(WEREAD_FETCH_MAX_PAGES):
-                batch_size = (
-                    WEREAD_FETCH_BATCH_SIZE
-                    if limit <= 0 or limit >= WEREAD_FETCH_BATCH_SIZE
-                    else limit
-                )
+                batch_size = WEREAD_FETCH_BATCH_SIZE if limit <= 0 or limit >= WEREAD_FETCH_BATCH_SIZE else limit
                 body: dict[str, Any] = {
                     "api_name": "/user/notebooks",
                     "count": batch_size,
@@ -499,12 +495,14 @@ async def get_weread_bestbookmarks(api_key: str, book_id: str, *, count: int = 2
             mark_text = str(item.get("markText") or item.get("text") or "").strip()
             if not mark_text:
                 continue
-            bookmarks.append({
-                "chapter_name": str(item.get("chapterName") or item.get("chapter") or "").strip(),
-                "text": mark_text,
-                "content_style": item.get("contentStyle") or item.get("style") or 0,
-                "create_time": item.get("createTime") or item.get("create_time") or 0,
-            })
+            bookmarks.append(
+                {
+                    "chapter_name": str(item.get("chapterName") or item.get("chapter") or "").strip(),
+                    "text": mark_text,
+                    "content_style": item.get("contentStyle") or item.get("style") or 0,
+                    "create_time": item.get("createTime") or item.get("create_time") or 0,
+                }
+            )
         return {
             "book_id": str(book_id),
             "bookmarks": bookmarks[:count],
@@ -586,17 +584,19 @@ async def get_weread_shelf_sync(api_key: str) -> dict[str, Any]:
             if not book_id:
                 continue
             has_notes = book_id in notebook_ids
-            books.append({
-                "book_id": book_id,
-                "title": str(entry.get("title") or ""),
-                "author": str(entry.get("author") or ""),
-                "cover": str(entry.get("cover") or ""),
-                "category": str(entry.get("category") or ""),
-                "deep_link": str(entry.get("deepLink") or ""),
-                "finish_reading": entry.get("finishReading") or 0,
-                "read_update_time": entry.get("readUpdateTime") or 0,
-                "has_notes": has_notes,
-            })
+            books.append(
+                {
+                    "book_id": book_id,
+                    "title": str(entry.get("title") or ""),
+                    "author": str(entry.get("author") or ""),
+                    "cover": str(entry.get("cover") or ""),
+                    "category": str(entry.get("category") or ""),
+                    "deep_link": str(entry.get("deepLink") or ""),
+                    "finish_reading": entry.get("finishReading") or 0,
+                    "read_update_time": entry.get("readUpdateTime") or 0,
+                    "has_notes": has_notes,
+                }
+            )
 
         # 3. 统计摘要
         total = len(books)
@@ -698,11 +698,7 @@ async def sync_weread_materials(
                 if entry_summary is not None:
                     update_values["summary"] = entry_summary
                 if update_values:
-                    await db.execute(
-                        update(ContentItem)
-                        .where(ContentItem.id == existing_id)
-                        .values(**update_values)
-                    )
+                    await db.execute(update(ContentItem).where(ContentItem.id == existing_id).values(**update_values))
                     updated += 1
                 continue
             db.add(
@@ -797,9 +793,7 @@ async def save_cached_weread_stats(
 ) -> WeReadStatsCache:
     """Upsert a WeRead stats cache row."""
     now = datetime.now(UTC)
-    existing = await get_cached_weread_stats(
-        db, user_id=user_id, cache_type=cache_type, read_type=read_type
-    )
+    existing = await get_cached_weread_stats(db, user_id=user_id, cache_type=cache_type, read_type=read_type)
     if existing:
         existing.payload = payload
         existing.error = error
@@ -852,9 +846,7 @@ async def get_or_fetch_weread_readdata(
     3. If the live fetch fails but a stale cache exists, fall back to it.
     """
     if not force_refresh:
-        cached = await get_cached_weread_stats(
-            db, user_id=user_id, cache_type="readdata", read_type=read_type
-        )
+        cached = await get_cached_weread_stats(db, user_id=user_id, cache_type="readdata", read_type=read_type)
         if _cache_is_fresh(cached):
             result = dict(cached.payload)  # type: ignore[union-attr]
             result["_cached_at"] = cached.fetched_at.isoformat()  # type: ignore[union-attr]
@@ -874,9 +866,7 @@ async def get_or_fetch_weread_readdata(
         return data
     except Exception as exc:
         # Fall back to stale cache if available
-        cached = await get_cached_weread_stats(
-            db, user_id=user_id, cache_type="readdata", read_type=read_type
-        )
+        cached = await get_cached_weread_stats(db, user_id=user_id, cache_type="readdata", read_type=read_type)
         if cached and cached.payload:
             logger.warning("WeRead readdata fetch failed, serving stale cache: %s", exc)
             result = dict(cached.payload)
@@ -895,9 +885,7 @@ async def get_or_fetch_weread_shelf(
 ) -> dict[str, Any]:
     """Cache-aside logic for WeRead shelf comparison data."""
     if not force_refresh:
-        cached = await get_cached_weread_stats(
-            db, user_id=user_id, cache_type="shelf", read_type="all"
-        )
+        cached = await get_cached_weread_stats(db, user_id=user_id, cache_type="shelf", read_type="all")
         if _cache_is_fresh(cached):
             result = dict(cached.payload)  # type: ignore[union-attr]
             result["_cached_at"] = cached.fetched_at.isoformat()  # type: ignore[union-attr]
@@ -915,9 +903,7 @@ async def get_or_fetch_weread_shelf(
         await db.commit()
         return data
     except Exception as exc:
-        cached = await get_cached_weread_stats(
-            db, user_id=user_id, cache_type="shelf", read_type="all"
-        )
+        cached = await get_cached_weread_stats(db, user_id=user_id, cache_type="shelf", read_type="all")
         if cached and cached.payload:
             logger.warning("WeRead shelf fetch failed, serving stale cache: %s", exc)
             result = dict(cached.payload)
@@ -945,9 +931,7 @@ async def refresh_weread_stats_for_user(
     for rt in ("all", "week", "month", "year"):
         try:
             data = await get_weread_readdata_detail(api_key, read_type=rt)
-            await save_cached_weread_stats(
-                db, user_id=user_id, cache_type="readdata", read_type=rt, payload=data
-            )
+            await save_cached_weread_stats(db, user_id=user_id, cache_type="readdata", read_type=rt, payload=data)
             results["readdata"][rt] = "ok"
         except Exception as exc:
             error_msg = redact_weread_sync_error(str(exc), api_key)[:500]
@@ -965,9 +949,7 @@ async def refresh_weread_stats_for_user(
     # 2. Shelf comparison
     try:
         data = await get_weread_shelf_sync(api_key)
-        await save_cached_weread_stats(
-            db, user_id=user_id, cache_type="shelf", read_type="all", payload=data
-        )
+        await save_cached_weread_stats(db, user_id=user_id, cache_type="shelf", read_type="all", payload=data)
         results["shelf"] = "ok"
     except Exception as exc:
         error_msg = redact_weread_sync_error(str(exc), api_key)[:500]
@@ -1017,15 +999,11 @@ async def refresh_all_weread_stats_cache() -> dict[str, Any]:
             continue
         async with async_session() as db:
             try:
-                result = await refresh_weread_stats_for_user(
-                    db, user_id=integration.user_id, api_key=api_key
-                )
+                result = await refresh_weread_stats_for_user(db, user_id=integration.user_id, api_key=api_key)
                 summary["details"].append(result)
                 summary["success"] += 1
             except Exception:
-                logger.exception(
-                    "WeRead cache refresh failed for user=%s", integration.user_id
-                )
+                logger.exception("WeRead cache refresh failed for user=%s", integration.user_id)
                 summary["failed"] += 1
 
     logger.info("WeRead cache refresh done: %s", {k: v for k, v in summary.items() if k != "details"})

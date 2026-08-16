@@ -31,9 +31,7 @@ class WeReadStatsCache(Base):
     __tablename__ = "weread_stats_cache"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     # readdata = reading stats (duration, days, rank, preferences …)
     # shelf     = full bookshelf + notebook comparison
     cache_type: Mapped[str] = mapped_column(String(20), nullable=False)

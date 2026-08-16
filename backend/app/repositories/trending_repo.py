@@ -107,11 +107,6 @@ class TrendingRepository(BaseRepository[TrendingItem]):
             keyword: 已转义通配符的搜索关键词（调用方负责 %/_ 转义）
             limit: 最多返回条数
         """
-        stmt = (
-            select(TrendingItem)
-            .where(TrendingItem.title.like(keyword))
-            .order_by(TrendingItem.rank)
-            .limit(limit)
-        )
+        stmt = select(TrendingItem).where(TrendingItem.title.like(keyword)).order_by(TrendingItem.rank).limit(limit)
         result = await self.db.execute(stmt)
         return result.scalars().all()

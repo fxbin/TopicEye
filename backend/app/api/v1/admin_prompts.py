@@ -43,9 +43,7 @@ async def get_prompt_detail(
     """Get full prompt content + detailed 30-day usage statistics."""
     repo = PromptRegistryRepository(db)
     cutoff_30d = datetime.now(UTC) - timedelta(days=30)
-    detail = await repo.get_detail_with_stats(
-        prompt_id=prompt_id, stats_cutoff=cutoff_30d
-    )
+    detail = await repo.get_detail_with_stats(prompt_id=prompt_id, stats_cutoff=cutoff_30d)
     if detail is None:
         raise HTTPException(status_code=404, detail="Prompt not found")
     return detail

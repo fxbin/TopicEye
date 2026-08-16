@@ -597,9 +597,7 @@ class ContentEventConsumptionRepository:
                 ranked.c.content_id,
             )
         )
-        members: dict[int, list[EvidenceContent]] = {
-            event_group_id: [] for event_group_id in group_ids
-        }
+        members: dict[int, list[EvidenceContent]] = {event_group_id: [] for event_group_id in group_ids}
         for row in member_result.mappings().all():
             event_group_id = int(row["event_group_id"])
             if event_group_id in members:
@@ -633,9 +631,5 @@ def _evidence_content_from_row(row) -> EvidenceContent:
         publisher_kind=_enum_value(row["publisher_kind"]),
         official_domains=tuple(str(value) for value in domains),
         relation_type=_enum_value(row.get("relation_type")),
-        confidence=(
-            float(row["confidence"])
-            if row.get("confidence") is not None
-            else None
-        ),
+        confidence=(float(row["confidence"]) if row.get("confidence") is not None else None),
     )

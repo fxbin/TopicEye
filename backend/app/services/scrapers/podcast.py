@@ -115,7 +115,9 @@ class PodcastScraper(BaseScraper):
             self.rss_url = await self._resolve_rss_url(client)
 
         resp = await fetch_feed_with_retry(
-            client, self.rss_url, context=f"Podcast {self.rss_url}",
+            client,
+            self.rss_url,
+            context=f"Podcast {self.rss_url}",
         )
         if resp is None:
             logger.warning("Podcast feed exhausted retries, returning empty: %s", self.rss_url)

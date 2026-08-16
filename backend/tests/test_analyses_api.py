@@ -41,15 +41,17 @@ async def api_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str], None]:
         # Seed a source + content item for tests
         db.add(Source(name="Test", url="https://example.com", source_type="RSS", status="active"))
         await db.flush()
-        db.add(ContentItem(
-            title="Test Article",
-            url="https://example.com/article",
-            source_id=1,
-            source_name="Test",
-            source_type="RSS",
-            status="crawled",
-            content_hash="abc123",
-        ))
+        db.add(
+            ContentItem(
+                title="Test Article",
+                url="https://example.com/article",
+                source_id=1,
+                source_name="Test",
+                source_type="RSS",
+                status="crawled",
+                content_hash="abc123",
+            )
+        )
         await db.commit()
 
     app = FastAPI()
@@ -183,15 +185,17 @@ async def admin_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str], None]:
         token, _ = await create_session(db, user)
         db.add(Source(name="Test", url="https://example.com", source_type="RSS", status="active"))
         await db.flush()
-        db.add(ContentItem(
-            title="Test Article",
-            url="https://example.com/article",
-            source_id=1,
-            source_name="Test",
-            source_type="RSS",
-            status="crawled",
-            content_hash="abc123",
-        ))
+        db.add(
+            ContentItem(
+                title="Test Article",
+                url="https://example.com/article",
+                source_id=1,
+                source_name="Test",
+                source_type="RSS",
+                status="crawled",
+                content_hash="abc123",
+            )
+        )
         await db.commit()
 
     app = FastAPI()

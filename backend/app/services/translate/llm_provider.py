@@ -41,7 +41,7 @@ class LLMTranslateProvider:
                     {
                         "role": "system",
                         "content": "你是专业翻译。把英文 block 数组翻译成中文，保留 type/level 结构。"
-                        "技术术语和专有名词保留英文原文。输出 JSON 数组 [{\"i\":0,\"text\":\"中文\"},...]。只输出 JSON。",
+                        '技术术语和专有名词保留英文原文。输出 JSON 数组 [{"i":0,"text":"中文"},...]。只输出 JSON。',
                     },
                     {"role": "user", "content": json.dumps(blocks_for_llm, ensure_ascii=False)[:_MAX_TEXT_CHARS]},
                 ],
@@ -52,14 +52,10 @@ class LLMTranslateProvider:
 
             translated_blocks = []
             if isinstance(result, list):
-                trans_map = {
-                    item.get("i"): item.get("text", "") for item in result if isinstance(item, dict)
-                }
+                trans_map = {item.get("i"): item.get("text", "") for item in result if isinstance(item, dict)}
             elif isinstance(result, dict) and "translations" in result:
                 trans_map = {
-                    item.get("i"): item.get("text", "")
-                    for item in result["translations"]
-                    if isinstance(item, dict)
+                    item.get("i"): item.get("text", "") for item in result["translations"] if isinstance(item, dict)
                 }
             else:
                 trans_map = {}
@@ -88,9 +84,7 @@ class LLMTranslateProvider:
         )
 
         if isinstance(result, dict):
-            translated_text = (
-                result.get("translation") or result.get("text") or result.get("raw_response") or ""
-            )
+            translated_text = result.get("translation") or result.get("text") or result.get("raw_response") or ""
             if not translated_text and "raw_response" not in result:
                 translated_text = str(result)
         else:

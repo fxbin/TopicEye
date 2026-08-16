@@ -57,9 +57,17 @@ async def create_plan(
     async with async_session() as db:
         result = await generate_creation_plan(db, req.content_id, req.platform, user_id=current_user.id)
     if "error" in result:
-        logger.warning("Creation plan failed: user_id=%d, content_id=%d, platform=%s, error=%s", current_user.id, req.content_id, req.platform, result["error"])
+        logger.warning(
+            "Creation plan failed: user_id=%d, content_id=%d, platform=%s, error=%s",
+            current_user.id,
+            req.content_id,
+            req.platform,
+            result["error"],
+        )
         raise HTTPException(status_code=400, detail=result["error"])
-    logger.info("Creation plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform)
+    logger.info(
+        "Creation plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform
+    )
     return result
 
 
@@ -79,7 +87,9 @@ async def explore_directions(
     async with async_session() as db:
         result = await generate_explore_directions(db, req.content_id)
     if "error" in result:
-        logger.warning("Explore failed: user_id=%d, content_id=%d, error=%s", current_user.id, req.content_id, result["error"])
+        logger.warning(
+            "Explore failed: user_id=%d, content_id=%d, error=%s", current_user.id, req.content_id, result["error"]
+        )
         raise HTTPException(status_code=400, detail=result["error"])
     logger.info("Explore directions generated: user_id=%d, content_id=%d", current_user.id, req.content_id)
     return result
@@ -113,9 +123,20 @@ async def focus_questions(
             user_redirect=req.user_redirect,
         )
     if "error" in result:
-        logger.warning("Focus failed: user_id=%d, content_id=%d, round=%d, error=%s", current_user.id, req.content_id, req.focus_round, result["error"])
+        logger.warning(
+            "Focus failed: user_id=%d, content_id=%d, round=%d, error=%s",
+            current_user.id,
+            req.content_id,
+            req.focus_round,
+            result["error"],
+        )
         raise HTTPException(status_code=400, detail=result["error"])
-    logger.info("Focus question generated: user_id=%d, content_id=%d, round=%d", current_user.id, req.content_id, req.focus_round)
+    logger.info(
+        "Focus question generated: user_id=%d, content_id=%d, round=%d",
+        current_user.id,
+        req.content_id,
+        req.focus_round,
+    )
     return result
 
 
@@ -147,9 +168,17 @@ async def converge_plan(
             user_id=current_user.id,
         )
     if "error" in result:
-        logger.warning("Converge failed: user_id=%d, content_id=%d, platform=%s, error=%s", current_user.id, req.content_id, req.platform, result["error"])
+        logger.warning(
+            "Converge failed: user_id=%d, content_id=%d, platform=%s, error=%s",
+            current_user.id,
+            req.content_id,
+            req.platform,
+            result["error"],
+        )
         raise HTTPException(status_code=400, detail=result["error"])
-    logger.info("Converge plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform)
+    logger.info(
+        "Converge plan generated: user_id=%d, content_id=%d, platform=%s", current_user.id, req.content_id, req.platform
+    )
     return result
 
 

@@ -9,8 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - registers every ORM table on Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import contents as contents_api
+from app.api.v1 import auth as auth_api, contents as contents_api
 from app.core.database import Base
 from app.models.article_reader_event import ArticleReaderEvent
 from app.models.article_snapshot import ArticleSnapshot

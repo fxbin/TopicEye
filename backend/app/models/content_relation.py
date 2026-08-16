@@ -37,12 +37,8 @@ class ContentRelation(Base):
     __tablename__ = "content_relations"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    source_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
-    )
-    target_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
-    )
+    source_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
     relation_type: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
     evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

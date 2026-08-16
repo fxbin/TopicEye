@@ -9,6 +9,7 @@
 - 不 import ORM 模型类（仅 ReadTargetType 枚举允许）。
 - 不写 select/db.execute/db.add，全部走 service/repo。
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
@@ -53,9 +54,7 @@ async def list_read_records(
     current_user: User = Depends(get_current_user),
 ) -> ReadRecordListResponse:
     """查询当前用户的阅读历史（按 last_read_at DESC）。"""
-    items = await read_record_service.list_history(
-        db, current_user.id, target_type=target_type, limit=limit
-    )
+    items = await read_record_service.list_history(db, current_user.id, target_type=target_type, limit=limit)
     responses = [ReadRecordResponse.model_validate(item) for item in items]
     return ReadRecordListResponse(
         items=responses,

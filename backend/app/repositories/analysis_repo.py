@@ -153,7 +153,6 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         """Claim the latest analysis for one content item before running enrichment."""
 
         async def _claim() -> AiAnalysis | None:
-
             latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
             lock_stmt = (
                 select(AiAnalysis)

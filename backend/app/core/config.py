@@ -207,10 +207,7 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_database_url(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError(
-                "DATABASE_URL 未设置。请在 .env 中配置 PostgreSQL 连接字符串，"
-                "参考 .env.example。"
-            )
+            raise ValueError("DATABASE_URL 未设置。请在 .env 中配置 PostgreSQL 连接字符串，" "参考 .env.example。")
         return v
 
     @field_validator("OAUTH_FRONTEND_REDIRECT_URL")
@@ -219,10 +216,7 @@ class Settings(BaseSettings):
         # 允许空字符串（OAuth 未启用时不强制要求）；
         # 但如果填了值，必须是合法的 http(s) URL。
         if v and not v.startswith(("http://", "https://")):
-            raise ValueError(
-                f"OAUTH_FRONTEND_REDIRECT_URL 必须是 http:// 或 https:// 开头的 URL，"
-                f"当前值: {v!r}"
-            )
+            raise ValueError(f"OAUTH_FRONTEND_REDIRECT_URL 必须是 http:// 或 https:// 开头的 URL，" f"当前值: {v!r}")
         return v
 
     @property

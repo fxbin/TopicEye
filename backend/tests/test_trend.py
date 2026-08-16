@@ -1,5 +1,4 @@
 import asyncio
-import sys
 
 
 async def main():

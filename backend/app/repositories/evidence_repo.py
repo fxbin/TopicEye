@@ -48,15 +48,15 @@ class EvidenceRepository:
         the insert in a savepoint so a collision only rolls back the savepoint,
         re-read the now-present mark, and fall through to the update path.
         """
-        fields = dict(
-            cross_source_level=cross_source_level,
-            platform_count=platform_count,
-            platforms=platforms,
-            evidence_count=evidence_count,
-            independent_publisher_count=independent_publisher_count,
-            has_primary_source=has_primary_source,
-            has_official_source=has_official_source,
-        )
+        fields = {
+            "cross_source_level": cross_source_level,
+            "platform_count": platform_count,
+            "platforms": platforms,
+            "evidence_count": evidence_count,
+            "independent_publisher_count": independent_publisher_count,
+            "has_primary_source": has_primary_source,
+            "has_official_source": has_official_source,
+        }
         mark = await self._find_mark(content_id, owner_user_id)
         if mark is None:
             mark = ContentEvidenceMark(
@@ -111,17 +111,12 @@ class EvidenceRepository:
         """Add one event's bounded evidence links with a single flush."""
         if not rows:
             return
-        self.db.add_all(
-            ContentEvidenceLink(mark_id=mark_id, **values)
-            for values in rows
-        )
+        self.db.add_all(ContentEvidenceLink(mark_id=mark_id, **values) for values in rows)
         await self.db.flush()
 
     async def delete_links_for_mark(self, mark_id: int) -> None:
         """Delete all links for a mark (before re-adding on recompute)."""
-        await self.db.execute(
-            delete(ContentEvidenceLink).where(ContentEvidenceLink.mark_id == mark_id)
-        )
+        await self.db.execute(delete(ContentEvidenceLink).where(ContentEvidenceLink.mark_id == mark_id))
 
     async def delete_marks_for_contents(
         self,
@@ -155,9 +150,7 @@ class EvidenceRepository:
         ids = sorted(set(event_group_ids))
         if not ids:
             return
-        member_ids = select(ContentEventMember.content_id).where(
-            ContentEventMember.event_group_id.in_(ids)
-        )
+        member_ids = select(ContentEventMember.content_id).where(ContentEventMember.event_group_id.in_(ids))
         owner_clause = (
             ContentEvidenceMark.owner_user_id.is_(None)
             if owner_user_id is None
@@ -197,9 +190,7 @@ class EvidenceRepository:
         mark = result.scalar_one_or_none()
         if not mark:
             return None, []
-        link_result = await self.db.execute(
-            select(ContentEvidenceLink).where(ContentEvidenceLink.mark_id == mark.id)
-        )
+        link_result = await self.db.execute(select(ContentEvidenceLink).where(ContentEvidenceLink.mark_id == mark.id))
         links = list(link_result.scalars().all())
         return mark, links
 
@@ -240,16 +231,12 @@ class EvidenceRepository:
 
         # Credible lead counts (columns are Integer 0/1, not Boolean)
         primary_result = await self.db.execute(
-            select(func.count(ContentEvidenceMark.id)).where(
-                ContentEvidenceMark.has_primary_source == 1
-            )
+            select(func.count(ContentEvidenceMark.id)).where(ContentEvidenceMark.has_primary_source == 1)
         )
         has_primary = primary_result.scalar() or 0
 
         official_result = await self.db.execute(
-            select(func.count(ContentEvidenceMark.id)).where(
-                ContentEvidenceMark.has_official_source == 1
-            )
+            select(func.count(ContentEvidenceMark.id)).where(ContentEvidenceMark.has_official_source == 1)
         )
         has_official = official_result.scalar() or 0
 
@@ -267,9 +254,7 @@ class EvidenceRepository:
         total_links = sum(by_type.values())
 
         # Profile coverage
-        total_sources_result = await self.db.execute(
-            select(func.count(Source.id)).where(Source.scope == "system")
-        )
+        total_sources_result = await self.db.execute(select(func.count(Source.id)).where(Source.scope == "system"))
         total_system_sources = total_sources_result.scalar() or 0
 
         profiled_result = await self.db.execute(

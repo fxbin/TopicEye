@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.database import Base
 import app.models.read_record  # noqa: F401  — ensure table on metadata
+from app.core.database import Base
 from app.models.read_record import ReadDepth, ReadTargetType
 from app.repositories.read_record_repo import ReadRecordRepository
 
@@ -138,7 +138,7 @@ async def test_delete_older_than_removes_only_expired():
 
         old = repo.add_new(user_id=1, target_type=ReadTargetType.DAILY_REPORT, target_key="2025-01-01")
         old.last_read_at = datetime.now(UTC) - timedelta(days=200)
-        recent = repo.add_new(user_id=1, target_type=ReadTargetType.DAILY_REPORT, target_key="2026-07-22")
+        repo.add_new(user_id=1, target_type=ReadTargetType.DAILY_REPORT, target_key="2026-07-22")
         await db.flush()
 
         cutoff = datetime.now(UTC) - timedelta(days=180)

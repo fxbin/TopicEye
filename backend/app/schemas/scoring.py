@@ -4,6 +4,7 @@ These mirror the lightweight ScoringInput / ScoreBreakdown POPO classes in
 app/services/scoring_engine.py so they show up in the OpenAPI docs and can be
 consumed by external agents / CLIs / MCP servers.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -44,9 +45,13 @@ class ScoringRequestItem(BaseModel):
     creator_score: float = Field(0, ge=0, le=100, description="Creator value (weight 0.18).")
     viral_score: float = Field(0, ge=0, le=100, description="Viral potential (weight 0.15).")
     freshness_score: float = Field(50, ge=0, le=100, description="Freshness signal (weight 0.10).")
-    quality_score: float = Field(0, ge=0, le=100, description="Overall quality. Used in quality gate, not weighted sum.")
+    quality_score: float = Field(
+        0, ge=0, le=100, description="Overall quality. Used in quality gate, not weighted sum."
+    )
     hot_score: float = Field(0, ge=0, le=100, description="Heat score. Used in fallback only.")
-    risk_score: float = Field(0, ge=0, le=100, description="Risk score. Items above risk_threshold (82) are hard-excluded.")
+    risk_score: float = Field(
+        0, ge=0, le=100, description="Risk score. Items above risk_threshold (82) are hard-excluded."
+    )
 
     # Source tier from the DB (1-5). Drives the source_bonus adjustment.
     source_weight_db: int = Field(3, ge=1, le=5, description="Source tier 1-5 from the DB. Drives source_bonus.")

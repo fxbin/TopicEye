@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database import Base
-from app.models.user import User, UserApiToken
+from app.models.user import UserApiToken
 from app.services.auth_service import (
     create_api_token,
     create_user,

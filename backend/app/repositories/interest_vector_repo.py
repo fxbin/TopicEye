@@ -19,9 +19,7 @@ class InterestVectorRepository(BaseRepository[UserInterestVector]):
     async def get_user_vector(self, user_id: int) -> dict[str, float]:
         """Return ``{tag: weight}`` for all tags belonging to *user_id*."""
         result = await self.db.execute(
-            select(UserInterestVector.tag, UserInterestVector.weight).where(
-                UserInterestVector.user_id == user_id
-            )
+            select(UserInterestVector.tag, UserInterestVector.weight).where(UserInterestVector.user_id == user_id)
         )
         return {tag: float(weight) for tag, weight in result.all()}
 
@@ -67,9 +65,7 @@ class InterestVectorRepository(BaseRepository[UserInterestVector]):
 
     async def delete_user_vector(self, user_id: int) -> int:
         """Remove all interest vector entries for *user_id*. Returns deleted count."""
-        result = await self.db.execute(
-            delete(UserInterestVector).where(UserInterestVector.user_id == user_id)
-        )
+        result = await self.db.execute(delete(UserInterestVector).where(UserInterestVector.user_id == user_id))
         await self.db.flush()
         return result.rowcount or 0
 

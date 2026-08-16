@@ -96,9 +96,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             .where(
                 ContentEventMember.content_id == ContentItem.id,
                 ContentEventGroup.status == EventStatus.ACTIVE,
-                ContentEventMember.review_status.in_(
-                    (EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)
-                ),
+                ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
             )
         )
 
@@ -430,8 +428,8 @@ class ContentRepo(BaseRepository[ContentItem]):
             return 0
         stmt = (
             update(self.model)
-                .where(self.model.id.in_(ids))
-                .where(self.model.status == ContentStatus.ANALYZING)
+            .where(self.model.id.in_(ids))
+            .where(self.model.status == ContentStatus.ANALYZING)
             .values(
                 status=ContentStatus.PENDING,
                 updated_at=naive_utc_now(),
@@ -466,11 +464,7 @@ class ContentRepo(BaseRepository[ContentItem]):
 
         供 /topics/{id} endpoint 使用，不分页（与历史行为等价）。
         """
-        stmt = (
-            select(self.model)
-            .where(self.model.topic_id == topic_id)
-            .order_by(self.model.crawled_at.desc())
-        )
+        stmt = select(self.model).where(self.model.topic_id == topic_id).order_by(self.model.crawled_at.desc())
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -582,13 +576,15 @@ class ContentRepo(BaseRepository[ContentItem]):
 
         # Exclude ignored item IDs / source types / time range
         stmt = apply_content_scope(
-            stmt, self.model,
+            stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
         )
         count_stmt = apply_content_scope(
-            count_stmt, self.model,
+            count_stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
@@ -774,13 +770,15 @@ class ContentRepo(BaseRepository[ContentItem]):
         data_stmt = apply_filters(data_stmt, self.model, filters)
 
         count_stmt = apply_content_scope(
-            count_stmt, self.model,
+            count_stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
         )
         data_stmt = apply_content_scope(
-            data_stmt, self.model,
+            data_stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
@@ -816,7 +814,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
 
         stmt = apply_content_scope(
-            stmt, self.model,
+            stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
@@ -841,7 +840,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         stmt = select(func.count(self.model.id))
 
         stmt = apply_content_scope(
-            stmt, self.model,
+            stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
@@ -902,7 +902,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
 
         stmt = apply_content_scope(
-            stmt, self.model,
+            stmt,
+            self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
@@ -998,13 +999,10 @@ class ContentRepo(BaseRepository[ContentItem]):
         - 可见性：public_only=True 时只计 owner_user_id IS NULL；
           visible_user_id 非 None 时计公共池+该用户私有。
         """
-        stmt = (
-            select(func.count(self.model.id))
-            .where(
-                self.model.status == "analyzed",
-                self.model.crawled_at >= cutoff,
-                ~self._accepted_event_member_exists(),
-            )
+        stmt = select(func.count(self.model.id)).where(
+            self.model.status == "analyzed",
+            self.model.crawled_at >= cutoff,
+            ~self._accepted_event_member_exists(),
         )
         for clause in self._visibility_clauses(visible_user_id, public_only):
             stmt = stmt.where(clause)
@@ -1024,8 +1022,6 @@ class ContentRepo(BaseRepository[ContentItem]):
         """
         if not content_ids:
             return []
-        result = await self.db.execute(
-            select(self.model).where(self.model.id.in_(content_ids))
-        )
+        result = await self.db.execute(select(self.model).where(self.model.id.in_(content_ids)))
         by_id = {item.id: item for item in result.scalars().all()}
         return [by_id[cid] for cid in content_ids if cid in by_id]

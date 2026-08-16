@@ -64,9 +64,7 @@ class TrendRepository(BaseRepository[TopicTrend]):
 
         for start in range(0, len(member_values), batch_size):
             batch = member_values[start : start + batch_size]
-            self.db.add_all(
-                [TopicTrendMember(trend_id=snapshot.id, **values) for values in batch]
-            )
+            self.db.add_all([TopicTrendMember(trend_id=snapshot.id, **values) for values in batch])
         return snapshot
 
     async def count_members(self, trend_id: int) -> int:
@@ -154,12 +152,10 @@ class TrendRepository(BaseRepository[TopicTrend]):
                         )
                     )
                 ).label("source_count"),
-                func.coalesce(
-                    func.sum(case((TopicTrendMember.selected.is_(True), 1), else_=0)), 0
-                ).label("selected_count"),
-                func.coalesce(
-                    func.sum(case((self._evidence_predicate(), 1), else_=0)), 0
-                ).label("evidenced_count"),
+                func.coalesce(func.sum(case((TopicTrendMember.selected.is_(True), 1), else_=0)), 0).label(
+                    "selected_count"
+                ),
+                func.coalesce(func.sum(case((self._evidence_predicate(), 1), else_=0)), 0).label("evidenced_count"),
             )
             .select_from(TopicTrendMember)
             .outerjoin(ContentItem, ContentItem.id == TopicTrendMember.content_id)

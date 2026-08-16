@@ -2,10 +2,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 MIGRATION_PATH = (
-    Path(__file__).parents[1]
-    / "alembic"
-    / "versions"
-    / "20260729_0900_l8a9b0c1d2e3_add_query_performance_indexes.py"
+    Path(__file__).parents[1] / "alembic" / "versions" / "20260729_0900_l8a9b0c1d2e3_add_query_performance_indexes.py"
 )
 
 
@@ -23,10 +20,7 @@ class _Inspector:
         self.indexes_by_table = indexes_by_table
 
     def get_indexes(self, table_name: str) -> list[dict[str, str]]:
-        return [
-            {"name": index_name}
-            for index_name in self.indexes_by_table.get(table_name, set())
-        ]
+        return [{"name": index_name} for index_name in self.indexes_by_table.get(table_name, set())]
 
 
 def test_upgrade_creates_only_indexes_missing_after_earlier_revision(monkeypatch):

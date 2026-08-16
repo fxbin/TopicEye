@@ -2,9 +2,6 @@
 Tests for the Podcast scraper (T1-3b).
 """
 
-import json
-from typing import Optional
-
 import pytest
 
 from app.services.scrapers import get_scraper_cls
@@ -115,7 +112,7 @@ async def test_resolve_rss_url_apple_id_extracted_from_url():
             "https://itunes.apple.com/lookup": FakeResponse(json_data=ITUNES_LOOKUP_JSON),
         }
     )
-    rss = await scraper._resolve_rss_url(client)
+    await scraper._resolve_rss_url(client)
     # lookup was called
     assert any("id=9999888877" in u for u in client.requested_urls)
 

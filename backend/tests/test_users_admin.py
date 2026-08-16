@@ -14,8 +14,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 — 确保所有模型注册到 Base.metadata
-from app.api.v1 import auth as auth_api
-from app.api.v1 import users as users_api
+from app.api.v1 import auth as auth_api, users as users_api
 from app.core.database import Base
 from app.services.auth_service import create_session, create_user
 
@@ -114,9 +113,7 @@ async def test_admin_create_user_success(users_client):
     assert body["is_active"] is True
 
     # 新用户可登录
-    login = await users_client["client"].post(
-        "/auth/login", json={"email": "newuser@x.com", "password": "Abc12345"}
-    )
+    login = await users_client["client"].post("/auth/login", json={"email": "newuser@x.com", "password": "Abc12345"})
     assert login.status_code == 200
 
 

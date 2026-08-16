@@ -1,5 +1,5 @@
-from datetime import datetime, timezone, UTC
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select

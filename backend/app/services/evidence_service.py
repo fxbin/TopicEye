@@ -89,11 +89,7 @@ def _publisher_aliases(item: EvidenceContent) -> set[tuple[str, str]]:
 def _event_evidence_members(event: EvidenceEvent) -> list[EvidenceContent]:
     """Choose one stable representative per independent publisher."""
 
-    seen = {
-        alias
-        for alias in _publisher_aliases(event.canonical)
-        if alias[0] != "unknown"
-    }
+    seen = {alias for alias in _publisher_aliases(event.canonical) if alias[0] != "unknown"}
     selected: list[EvidenceContent] = []
     for member in event.evidence_members:
         aliases = _publisher_aliases(member)
@@ -116,11 +112,7 @@ def _is_official(item: EvidenceContent) -> bool:
     if item.publisher_kind == PublisherKind.OFFICIAL:
         return True
     url = (item.url or "").casefold()
-    return any(
-        domain.strip().casefold() in url
-        for domain in item.official_domains
-        if domain.strip()
-    )
+    return any(domain.strip().casefold() in url for domain in item.official_domains if domain.strip())
 
 
 def _effective_time(item: EvidenceContent) -> datetime | None:
@@ -185,20 +177,12 @@ async def _discover_event_cross_source_evidence(
         total_items += 1 + len(event.evidence_members)
         canonical_known = _has_known_publisher(event.canonical)
         independent_publisher_count = len(selected) + int(canonical_known)
-        platform_contributors = [
-            item
-            for item in (event.canonical, *selected)
-            if _has_known_publisher(item)
-        ]
+        platform_contributors = [item for item in (event.canonical, *selected) if _has_known_publisher(item)]
         platforms = {
-            _get_platform(item.platform or item.source_type, item.source_name)
-            for item in platform_contributors
+            _get_platform(item.platform or item.source_type, item.source_name) for item in platform_contributors
         }
         platforms.discard("unknown")
-        if (
-            len(platforms) < MIN_PLATFORMS_FOR_SIGNAL
-            and independent_publisher_count < MIN_PLATFORMS_FOR_SIGNAL
-        ):
+        if len(platforms) < MIN_PLATFORMS_FOR_SIGNAL and independent_publisher_count < MIN_PLATFORMS_FOR_SIGNAL:
             await repo.delete_marks_for_contents(
                 [event.canonical.content_id],
                 owner_user_id=owner_user_id,
@@ -220,10 +204,7 @@ async def _discover_event_cross_source_evidence(
             platforms=sorted(platforms),
             evidence_count=len(selected),
             independent_publisher_count=independent_publisher_count,
-            has_primary_source=any(
-                item.publisher_kind == PublisherKind.PRIMARY
-                for item in all_evidence
-            ),
+            has_primary_source=any(item.publisher_kind == PublisherKind.PRIMARY for item in all_evidence),
             has_official_source=any(_is_official(item) for item in all_evidence),
         )
         await repo.delete_links_for_mark(mark.id)
@@ -243,11 +224,7 @@ async def _discover_event_cross_source_evidence(
                     "evidence_content_id": member.content_id,
                     "evidence_url": member.url,
                     "evidence_type": evidence_type,
-                    "publisher_family": (
-                        member.publisher_family
-                        or member.publisher_identity
-                        or member.source_name
-                    ),
+                    "publisher_family": (member.publisher_family or member.publisher_identity or member.source_name),
                     "source_id": member.source_id,
                     "similarity_score": member.confidence,
                     "time_delta_minutes": _time_delta_minutes(

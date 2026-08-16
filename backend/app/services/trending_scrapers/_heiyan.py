@@ -154,13 +154,14 @@ class HeiyanTrending(BaseTrendingScraper):
             resp.raise_for_status()
             payload = resp.json()
             if not (payload.get("success") and payload.get("code") == 1):
-                raise ValueError(
-                    f"heiyan {context}: code={payload.get('code')} msg={payload.get('message')}"
-                )
+                raise ValueError(f"heiyan {context}: code={payload.get('code')} msg={payload.get('message')}")
             return payload
 
         return await retry_async(
-            _fetch, attempts=attempts, base_delay=0.3, context=f"heiyan {context}",
+            _fetch,
+            attempts=attempts,
+            base_delay=0.3,
+            context=f"heiyan {context}",
         )
 
     # ── Entry builder ─────────────────────────────────────────────

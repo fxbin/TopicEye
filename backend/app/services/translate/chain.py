@@ -76,9 +76,7 @@ async def translate_blocks(blocks: list[dict]) -> TranslateResult | None:
         try:
             result = await provider.translate("", blocks=blocks)
             if result is not None:
-                logger.info(
-                    "Translated via %s (blocks): %d blocks", provider.name, len(result.blocks or [])
-                )
+                logger.info("Translated via %s (blocks): %d blocks", provider.name, len(result.blocks or []))
                 return result
         except Exception:
             logger.warning("Provider %s failed", provider.name, exc_info=True)

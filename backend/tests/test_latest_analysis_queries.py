@@ -2,7 +2,6 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.selectable import Select
 

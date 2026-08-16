@@ -252,24 +252,10 @@ async def test_event_truth_evidence_marks_only_canonical_and_filters_relations(
         await db.commit()
 
         marks = list(
-            (
-                await db.execute(
-                    select(ContentEvidenceMark).order_by(
-                        ContentEvidenceMark.content_id
-                    )
-                )
-            )
-            .scalars()
-            .all()
+            (await db.execute(select(ContentEvidenceMark).order_by(ContentEvidenceMark.content_id))).scalars().all()
         )
         links = list(
-            (
-                await db.execute(
-                    select(ContentEvidenceLink).order_by(
-                        ContentEvidenceLink.evidence_content_id
-                    )
-                )
-            )
+            (await db.execute(select(ContentEvidenceLink).order_by(ContentEvidenceLink.evidence_content_id)))
             .scalars()
             .all()
         )
@@ -407,10 +393,7 @@ async def test_today_picks_hides_all_event_members_and_exposes_reason(
     assert normalization["member_count"] == 2
     assert normalization["has_more"] is True
     assert normalization["members"][0]["relation_type"] == "corroboration"
-    assert (
-        normalization["members"][0]["reason"]
-        == "same release reported by another publisher"
-    )
+    assert normalization["members"][0]["reason"] == "same release reported by another publisher"
 
 
 @pytest.mark.asyncio
@@ -640,13 +623,7 @@ async def test_unknown_canonical_platform_cannot_create_cross_source_evidence(
             owner_user_id=None,
         )
         await db.commit()
-        marks = list(
-            (
-                await db.execute(select(ContentEvidenceMark))
-            )
-            .scalars()
-            .all()
-        )
+        marks = list((await db.execute(select(ContentEvidenceMark))).scalars().all())
 
         assert stats["marks"] == 0
         assert stats["links"] == 0

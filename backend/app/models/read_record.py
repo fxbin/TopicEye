@@ -12,6 +12,7 @@
 4. 预留字段：max_progress / depth 第一版不填，待偏好算法接入后启用前端滚动追踪。
 5. 保留期：180 天（见 read_record_service.RETENTION_DAYS），由 scheduler 清理。
 """
+
 from __future__ import annotations
 
 import enum
@@ -66,7 +67,9 @@ class ReadRecord(Base):
     # 行为指标
     read_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     accumulated_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    max_progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="最高阅读完成度 0-100（预留，第一版不填）")
+    max_progress: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, comment="最高阅读完成度 0-100（预留，第一版不填）"
+    )
     depth: Mapped[str] = mapped_column(value_enum(ReadDepth), nullable=False, default=ReadDepth.READ)
 
     # 偏好快照（反范式固化，落库时填充）

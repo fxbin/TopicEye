@@ -29,9 +29,7 @@ class TopicGroup(Base):
     content_count = Column(Integer, default=0, comment="话题下内容数")
     best_score = Column(Float, default=0.0, comment="话题内最高精选分")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
-    )
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     __table_args__ = (
         # list_ordered_by_best_score() — ORDER BY best_score DESC

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import app.main  # noqa: F401 - import all models for Base.metadata
 from app.core.database import Base
 from app.models.llm_model import LlmCallLog
-from app.services import llm_usage
 from app.services.llm_usage import (
     TokenUsage,
     calculate_cost,

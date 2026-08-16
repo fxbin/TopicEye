@@ -14,12 +14,11 @@ import pytest
 
 from app.core.request_metrics import (
     _DURATION_BUCKETS,
+    RequestMetricsCollector,
     _HistogramData,
     _percentile_from_histogram,
     normalize_path,
-    RequestMetricsCollector,
 )
-
 
 # ── normalize_path ──
 
@@ -29,10 +28,7 @@ class TestNormalizePath:
         assert normalize_path("/api/v1/topics/123") == "/api/v1/topics/{id}"
 
     def test_uuid(self):
-        assert (
-            normalize_path("/api/v1/sources/550e8400-e29b-41d4-a716-446655440000")
-            == "/api/v1/sources/{uuid}"
-        )
+        assert normalize_path("/api/v1/sources/550e8400-e29b-41d4-a716-446655440000") == "/api/v1/sources/{uuid}"
 
     def test_hex_hash(self):
         assert normalize_path("/api/v1/contents/0123456789abcdef0123456789abcdef") == "/api/v1/contents/{hex}"
@@ -103,8 +99,8 @@ class TestHistogramData:
     def test_observe_multiple_buckets(self):
         hist = _HistogramData(buckets=_DURATION_BUCKETS)
         hist.observe(0.003)  # <= 0.005
-        hist.observe(0.02)   # <= 0.025
-        hist.observe(0.3)    # <= 0.5
+        hist.observe(0.02)  # <= 0.025
+        hist.observe(0.3)  # <= 0.5
         assert hist.count == 3
         assert hist.bucket_counts[0] == 1
         assert hist.bucket_counts[2] == 2  # 累积：0.003 和 0.02 都 <= 0.025
@@ -228,15 +224,15 @@ class TestRequestMetricsCollector:
         assert 'le="+Inf"' in text
 
         # 验证有实际数据行
-        assert any("topiceye_http_requests_total{" in l for l in lines)
-        assert any("topiceye_llm_calls_total{" in l for l in lines)
+        assert any("topiceye_http_requests_total{" in line for line in lines)
+        assert any("topiceye_llm_calls_total{" in line for line in lines)
 
     def test_render_prometheus_empty(self):
         """空 collector 不应崩溃。"""
         c = self._fresh_collector()
         lines = c.render_prometheus()
         assert len(lines) > 0  # 仍有 HELP/TYPE 头
-        assert any("topiceye_http_requests_in_progress" in l for l in lines)
+        assert any("topiceye_http_requests_in_progress" in line for line in lines)
 
     def test_db_pool_snapshot(self):
         c = self._fresh_collector()

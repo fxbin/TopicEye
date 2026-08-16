@@ -11,11 +11,9 @@ from sqlalchemy.exc import IntegrityError
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+
 _MIGRATION_PATH = (
-    Path(__file__).parents[1]
-    / "alembic"
-    / "versions"
-    / "20260729_1100_n0b1c2d3e4f5_create_content_events.py"
+    Path(__file__).parents[1] / "alembic" / "versions" / "20260729_1100_n0b1c2d3e4f5_create_content_events.py"
 )
 
 
@@ -111,9 +109,7 @@ def test_sqlite_migration_enforces_canonical_member_disjointness():
         )
         _assert_integrity_error(
             connection,
-            groups.update()
-            .where(groups.c.id == 1)
-            .values(canonical_content_id=2),
+            groups.update().where(groups.c.id == 1).values(canonical_content_id=2),
         )
 
         connection.execute(
@@ -146,9 +142,7 @@ def test_sqlite_migration_enforces_canonical_member_disjointness():
         )
         _assert_integrity_error(
             connection,
-            members.update()
-            .where(members.c.content_id == 4)
-            .values(content_id=1),
+            members.update().where(members.c.content_id == 4).values(content_id=1),
         )
         _assert_integrity_error(
             connection,
@@ -162,9 +156,7 @@ def test_sqlite_migration_enforces_canonical_member_disjointness():
         )
         _assert_integrity_error(
             connection,
-            groups.update()
-            .where(groups.c.id == 2)
-            .values(canonical_content_id=2),
+            groups.update().where(groups.c.id == 2).values(canonical_content_id=2),
         )
         _assert_integrity_error(
             connection,

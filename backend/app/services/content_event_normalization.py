@@ -152,9 +152,7 @@ def _bounded_int(name: str, default: int, *, maximum: int) -> int:
 
 def _limits() -> _Limits:
     try:
-        confidence = float(
-            getattr(settings, "EVENT_NORMALIZATION_AUTO_ACCEPT_CONFIDENCE", 0.88)
-        )
+        confidence = float(getattr(settings, "EVENT_NORMALIZATION_AUTO_ACCEPT_CONFIDENCE", 0.88))
     except (TypeError, ValueError):
         confidence = 0.88
     return _Limits(
@@ -299,9 +297,7 @@ def _best_candidates(
             event_id=candidate.event_id,
             canonical=candidate.canonical,
             score=_similarity(content, candidate.canonical),
-            same_publisher=(
-                _publisher_key(content) == _publisher_key(candidate.canonical)
-            ),
+            same_publisher=(_publisher_key(content) == _publisher_key(candidate.canonical)),
         )
         for candidate in candidates
         if candidate.canonical.id != content.id
@@ -335,9 +331,7 @@ def _local_prediction(
         )
 
     best = candidates[0]
-    exact_title = _normalize_title(content.title) == _normalize_title(
-        best.canonical.title
-    )
+    exact_title = _normalize_title(content.title) == _normalize_title(best.canonical.title)
     if exact_title and best.same_publisher:
         return (
             _Prediction(
@@ -355,11 +349,7 @@ def _local_prediction(
         )
 
     if best.same_publisher and best.score >= 0.92:
-        relation = (
-            EventRelationType.UPDATE.value
-            if _looks_like_update(content)
-            else EventRelationType.DUPLICATE.value
-        )
+        relation = EventRelationType.UPDATE.value if _looks_like_update(content) else EventRelationType.DUPLICATE.value
         return (
             _Prediction(
                 content_id=content.id,
@@ -378,8 +368,10 @@ def _local_prediction(
     # Cross-publisher title equality is deliberately not treated as independent
     # corroboration. It is a boundary sample until facts are checked by the LLM
     # or a reviewer.
-    if exact_title or best.score >= 0.72 or (
-        best.same_publisher and _looks_like_update(content) and best.score >= 0.62
+    if (
+        exact_title
+        or best.score >= 0.72
+        or (best.same_publisher and _looks_like_update(content) and best.score >= 0.62)
     ):
         return None, best
 
@@ -421,20 +413,14 @@ async def _classify_boundary(
                         "title": content.title,
                         "summary": content.summary[:1000],
                         "source": content.source_name,
-                        "published_at": (
-                            content.published_at.isoformat()
-                            if content.published_at
-                            else None
-                        ),
+                        "published_at": (content.published_at.isoformat() if content.published_at else None),
                     },
                     "canonical": {
                         "title": candidate.canonical.title,
                         "summary": candidate.canonical.summary[:1000],
                         "source": candidate.canonical.source_name,
                         "published_at": (
-                            candidate.canonical.published_at.isoformat()
-                            if candidate.canonical.published_at
-                            else None
+                            candidate.canonical.published_at.isoformat() if candidate.canonical.published_at else None
                         ),
                     },
                     "local_similarity": round(candidate.score, 4),
@@ -480,8 +466,7 @@ async def _classify_boundary(
         relation = decision if decision in _VALID_RELATIONS else EventRelationType.DUPLICATE.value
         review_status = (
             EventReviewStatus.AUTO.value
-            if decision in _VALID_RELATIONS
-            and confidence >= limits.auto_accept_confidence
+            if decision in _VALID_RELATIONS and confidence >= limits.auto_accept_confidence
             else EventReviewStatus.PENDING.value
         )
         return _Prediction(
@@ -525,11 +510,7 @@ def _truncate_predictions(
     kept = list(predictions)
     omitted = 0
     while kept:
-        marker = (
-            [{"truncated": True, "omitted_count": omitted}]
-            if omitted
-            else []
-        )
+        marker = [{"truncated": True, "omitted_count": omitted}] if omitted else []
         encoded = json.dumps([*kept, *marker]).encode("utf-8")
         if len(encoded) <= effective_max_bytes:
             return [*kept, *marker]
@@ -572,16 +553,10 @@ async def _claim_run(
                 for_update=True,
             )
             if existing is not None:
-                existing_mode = (
-                    existing.mode.value
-                    if hasattr(existing.mode, "value")
-                    else str(existing.mode)
-                )
+                existing_mode = existing.mode.value if hasattr(existing.mode, "value") else str(existing.mode)
                 if existing_mode != mode or existing.window_hours != hours:
                     await metadata_db.rollback()
-                    raise ContentEventConflictError(
-                        "Idempotency-Key was already used with different mode or hours"
-                    )
+                    raise ContentEventConflictError("Idempotency-Key was already used with different mode or hours")
             if existing is not None and existing.status == EventNormalizationRunStatus.SUCCEEDED:
                 result = _run_result(existing)
                 run_id = int(existing.id)
@@ -605,9 +580,7 @@ async def _claim_run(
             )
             if fencing_token is None:
                 await metadata_db.rollback()
-                raise ContentEventConflictError(
-                    f"normalization lease is active for {scope_key}"
-                )
+                raise ContentEventConflictError(f"normalization lease is active for {scope_key}")
 
             if existing is None:
                 run = await repo.create_run(
@@ -641,9 +614,7 @@ async def _claim_run(
                 mode=mode,
             )
     except IntegrityError as exc:
-        raise ContentEventConflictError(
-            f"normalization lease is active for {scope_key}"
-        ) from exc
+        raise ContentEventConflictError(f"normalization lease is active for {scope_key}") from exc
 
 
 async def _renew_claim(claim: _Claim, limits: _Limits) -> None:
@@ -668,11 +639,7 @@ async def _fail_claim(claim: _Claim, error: BaseException) -> None:
     async with async_session() as metadata_db:
         repo = ContentEventNormalizationRepository(metadata_db)
         run = await repo.get_run_by_id(claim.run_id, for_update=True)
-        if (
-            run is None
-            or run.lease_token != claim.lease_token
-            or run.fencing_token != claim.fencing_token
-        ):
+        if run is None or run.lease_token != claim.lease_token or run.fencing_token != claim.fencing_token:
             await metadata_db.rollback()
             return
         current = await repo.lock_current_lease(
@@ -709,11 +676,7 @@ async def _finish_in_business_transaction(
     repo = ContentEventNormalizationRepository(db)
     now = datetime.now(UTC)
     run = await repo.get_run_by_id(claim.run_id, for_update=True)
-    if (
-        run is None
-        or run.lease_token != claim.lease_token
-        or run.fencing_token != claim.fencing_token
-    ):
+    if run is None or run.lease_token != claim.lease_token or run.fencing_token != claim.fencing_token:
         raise ContentEventConflictError("normalization fencing token is stale")
     current = await repo.lock_current_lease(
         scope_key=claim.scope_key,
@@ -861,17 +824,13 @@ async def normalize_recent_events_with_lease(
                         "scene": "event_normalization",
                         "routing_group": limits.routing_group,
                         "model": None,
-                        "status": (
-                            "failed" if prediction.llm_failed else "completed"
-                        ),
+                        "status": ("failed" if prediction.llm_failed else "completed"),
                         "error": prediction.llm_error,
                     }
                 )
                 if prediction.decision == "standalone":
                     prediction.target_content_id = content.id
-                    candidates.append(
-                        _Candidate(event_id=None, canonical=content)
-                    )
+                    candidates.append(_Candidate(event_id=None, canonical=content))
 
         for index, content in enumerate(recent):
             ranked = _best_candidates(
@@ -917,15 +876,10 @@ async def normalize_recent_events_with_lease(
             predictions_by_index[index] = prediction
 
         await flush_boundary_batch()
-        predictions = [
-            predictions_by_index[index] for index in range(len(recent))
-        ]
-        standalone = sum(
-            prediction.decision == "standalone" for prediction in predictions
-        )
+        predictions = [predictions_by_index[index] for index in range(len(recent))]
+        standalone = sum(prediction.decision == "standalone" for prediction in predictions)
         pending = sum(
-            prediction.decision != "standalone"
-            and prediction.review_status == EventReviewStatus.PENDING.value
+            prediction.decision != "standalone" and prediction.review_status == EventReviewStatus.PENDING.value
             for prediction in predictions
         )
         matched = len(predictions) - standalone - pending
@@ -950,25 +904,17 @@ async def normalize_recent_events_with_lease(
 
                 target_event_id = prediction.target_event_id
                 if target_event_id is None and prediction.target_content_id is not None:
-                    target_event_id = provisional_events.get(
-                        prediction.target_content_id
-                    )
+                    target_event_id = provisional_events.get(prediction.target_content_id)
                 if target_event_id is not None:
                     await event_service.add_member(
                         target_event_id,
                         prediction.content_id,
-                        relation_type=(
-                            prediction.relation_type
-                            or EventRelationType.DUPLICATE.value
-                        ),
+                        relation_type=(prediction.relation_type or EventRelationType.DUPLICATE.value),
                         confidence=prediction.confidence,
                         match_method=prediction.match_method,
                         detector_version=CLASSIFIER_VERSION,
                         reason=prediction.reason,
-                        review_status=(
-                            prediction.review_status
-                            or EventReviewStatus.PENDING.value
-                        ),
+                        review_status=(prediction.review_status or EventReviewStatus.PENDING.value),
                     )
                     prediction.target_event_id = target_event_id
                     created_members += 1

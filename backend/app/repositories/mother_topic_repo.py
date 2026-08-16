@@ -116,8 +116,7 @@ class MotherTopicRepository(BaseRepository[MotherTopic]):
     ) -> MotherTopic | None:
         """同 scope 内按 name 查询母题，排除指定 id。用于 update 时的重名校验。"""
         scope_filter = (
-            MotherTopic.owner_user_id.is_(None) if owner_user_id is None
-            else MotherTopic.owner_user_id == owner_user_id
+            MotherTopic.owner_user_id.is_(None) if owner_user_id is None else MotherTopic.owner_user_id == owner_user_id
         )
         stmt = select(MotherTopic).where(
             MotherTopic.name == name,
@@ -129,11 +128,7 @@ class MotherTopicRepository(BaseRepository[MotherTopic]):
 
     async def list_system_templates(self) -> Sequence[MotherTopic]:
         """返回全部系统模板（owner_user_id IS NULL），按 display_order 排序。"""
-        stmt = (
-            select(MotherTopic)
-            .where(MotherTopic.owner_user_id.is_(None))
-            .order_by(MotherTopic.display_order)
-        )
+        stmt = select(MotherTopic).where(MotherTopic.owner_user_id.is_(None)).order_by(MotherTopic.display_order)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

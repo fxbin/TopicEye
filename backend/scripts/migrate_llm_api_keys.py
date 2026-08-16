@@ -22,13 +22,13 @@ secret_store.encrypt_secret/decrypt_secret，本脚本把存量明文行加密�
 - 不打印任何 key 原值，只打印行 id 与「明文/已加密」计数。
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import argparse
-import asyncio
-import logging
-import os
-import sys
+import argparse  # noqa: E402
+import asyncio  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
 
 # 脚本运行时 sys.path[0] 是 scripts/ 目录，需把项目根（/app 或 backend/）加入
 # 才能 import app.*。兼容容器内（/app）和本地 venv（backend/）两种场景。
@@ -36,11 +36,11 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from sqlalchemy import select
+from sqlalchemy import select  # noqa: E402
 
-from app.core.database import async_session
-from app.models.llm_model import LlmModel
-from app.services.secret_store import encrypt_secret, is_encrypted_secret
+from app.core.database import async_session  # noqa: E402
+from app.models.llm_model import LlmModel  # noqa: E402
+from app.services.secret_store import encrypt_secret, is_encrypted_secret  # noqa: E402
 
 logger = logging.getLogger("migrate_llm_api_keys")
 logging.basicConfig(level=logging.INFO, format="%(message)s")

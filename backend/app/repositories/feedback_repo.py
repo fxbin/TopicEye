@@ -5,6 +5,7 @@
 业务逻辑（如 upsert 时判断 stale、retry on IntegrityError）仍留在 api/service 层，
 本 repo 只负责纯粹的 CRUD + 按 user/content 查询 + 聚合统计。
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,10 +79,7 @@ class FeedbackRepository(BaseRepository[UserFeedback]):
 
     async def count_group_by_type(self) -> dict[str, int]:
         """按 feedback_type 分组计数，返回 {type_value: count}。"""
-        stmt = (
-            select(self.model.feedback_type, func.count(self.model.id))
-            .group_by(self.model.feedback_type)
-        )
+        stmt = select(self.model.feedback_type, func.count(self.model.id)).group_by(self.model.feedback_type)
         result = await self.db.execute(stmt)
         return {str(row[0]): row[1] for row in result.all()}
 

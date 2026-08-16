@@ -88,8 +88,7 @@ async def rebuild_user_vector(
 
     # ── 1. Favorites → positive signals ──────────────────────────────
     fav_result = await db.execute(
-        select(FavoriteItem.target_id, FavoriteItem.created_at)
-        .where(
+        select(FavoriteItem.target_id, FavoriteItem.created_at).where(
             FavoriteItem.user_id == user_id,
             FavoriteItem.target_type == FavoriteTargetType.CONTENT,
             FavoriteItem.target_id.isnot(None),
@@ -106,8 +105,7 @@ async def rebuild_user_vector(
 
     # ── 2. Feedback → positive/negative signals ──────────────────────
     fb_result = await db.execute(
-        select(UserFeedback.content_id, UserFeedback.feedback_type, UserFeedback.created_at)
-        .where(
+        select(UserFeedback.content_id, UserFeedback.feedback_type, UserFeedback.created_at).where(
             UserFeedback.user_id == user_id,
             UserFeedback.created_at >= cutoff,
         )
@@ -151,11 +149,7 @@ async def rebuild_user_vector(
             tag_scores[tag] = tag_scores[tag] / math.sqrt(total_weight) * 10.0
 
     # ── 5. Prune near-zero weights ───────────────────────────────────
-    pruned = {
-        tag: round(weight, 4)
-        for tag, weight in tag_scores.items()
-        if abs(weight) > 0.1
-    }
+    pruned = {tag: round(weight, 4) for tag, weight in tag_scores.items() if abs(weight) > 0.1}
 
     # ── 6. Persist ───────────────────────────────────────────────────
     repo = InterestVectorRepository(db)
@@ -266,9 +260,7 @@ async def apply_personalization_boost(
 
         # Apply boost to the adjusted curation score
         if "adjusted_curation_score" in analysis:
-            analysis["adjusted_curation_score"] = round(
-                analysis["adjusted_curation_score"] + boost, 2
-            )
+            analysis["adjusted_curation_score"] = round(analysis["adjusted_curation_score"] + boost, 2)
 
     return items
 
@@ -307,6 +299,7 @@ async def _fetch_content_tags(
         if isinstance(raw_tags, str):
             try:
                 import json
+
                 raw_tags = json.loads(raw_tags)
             except (json.JSONDecodeError, ValueError):
                 raw_tags = [raw_tags]

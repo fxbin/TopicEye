@@ -46,6 +46,7 @@ class WeReadSyncResponse(BaseModel):
 
 class WeReadSearchBook(BaseModel):
     """搜索结果中的单本书。"""
+
     bookId: str
     title: str = ""
     author: str = ""
@@ -65,6 +66,7 @@ class WeReadSearchBook(BaseModel):
 
 class WeReadSearchResponse(BaseModel):
     """搜索响应。"""
+
     books: list[WeReadSearchBook]
     hasMore: int = 0
     total: int = 0
@@ -73,6 +75,7 @@ class WeReadSearchResponse(BaseModel):
 
 class WeReadBookInfo(BaseModel):
     """书籍详情。"""
+
     bookId: str
     title: str = ""
     author: str = ""
@@ -95,6 +98,7 @@ class WeReadBookInfo(BaseModel):
 
 class WeReadBookmarkItem(BaseModel):
     """热门划线条目。"""
+
     chapter_name: str = ""
     text: str = ""
     content_style: int = 0
@@ -103,6 +107,7 @@ class WeReadBookmarkItem(BaseModel):
 
 class WeReadBestBookmarksResponse(BaseModel):
     """热门划线响应。"""
+
     book_id: str
     bookmarks: list[WeReadBookmarkItem] = Field(default_factory=list)
     total: int = 0
@@ -110,6 +115,7 @@ class WeReadBestBookmarksResponse(BaseModel):
 
 class WeReadShelfBook(BaseModel):
     """书架中的单本书。"""
+
     book_id: str
     title: str = ""
     author: str = ""
@@ -123,6 +129,7 @@ class WeReadShelfBook(BaseModel):
 
 class WeReadShelfSyncResponse(BaseModel):
     """完整书架同步响应。"""
+
     books: list[WeReadShelfBook] = Field(default_factory=list)
     total: int = 0
     has_notes: int = 0
@@ -133,6 +140,7 @@ class WeReadShelfSyncResponse(BaseModel):
 
 class WeReadReadDataResponse(BaseModel):
     """阅读统计数据响应。"""
+
     read_type: str = "all"
     mode: str = "overall"
     total_read_time: int = 0

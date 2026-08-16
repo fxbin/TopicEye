@@ -52,14 +52,11 @@ class QimaoRepository(BaseRepository[QimaoBook]):
         channel=None 时返回全部 channel 的分类。
         供 categories 端点使用。
         """
-        query = (
-            select(
-                QimaoBook.category1_name,
-                QimaoBook.channel,
-                func.count(QimaoBook.id).label("book_count"),
-            )
-            .group_by(QimaoBook.category1_name, QimaoBook.channel)
-        )
+        query = select(
+            QimaoBook.category1_name,
+            QimaoBook.channel,
+            func.count(QimaoBook.id).label("book_count"),
+        ).group_by(QimaoBook.category1_name, QimaoBook.channel)
         if channel:
             query = query.where(QimaoBook.channel == channel)
         result = await self.db.execute(query)

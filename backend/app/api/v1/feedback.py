@@ -44,9 +44,7 @@ async def _write_feedback(
         raise HTTPException(status_code=404, detail="Content not found")
 
     feedback_repo = FeedbackRepository(db)
-    existing_feedback = list(
-        await feedback_repo.list_user_feedbacks_by_content(data.content_id, current_user.id)
-    )
+    existing_feedback = list(await feedback_repo.list_user_feedbacks_by_content(data.content_id, current_user.id))
     score_delta = FEEDBACK_SCORE_DELTAS[fb_type]
     existing = existing_feedback[0] if existing_feedback else None
     if existing is not None:
@@ -101,6 +99,7 @@ async def submit_feedback(
     feedback = await write_with_503(db, _write)
     invalidate_content_read_caches()
     from app.services.interest_vector_service import trigger_vector_rebuild
+
     trigger_vector_rebuild(current_user.id)
     return feedback
 

@@ -12,6 +12,8 @@ Notification per-user 隔离 + NotificationRead 单元测试。
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -19,7 +21,6 @@ from app.core.database import Base
 from app.models.notification import Notification
 from app.services import notification_service
 from app.services.auth_service import create_user
-from datetime import UTC
 
 
 @pytest.mark.asyncio
@@ -136,7 +137,7 @@ async def test_per_user_visibility_and_read_isolation(monkeypatch):
             assert ok is False
 
         # ── 9. cleanup_old_notifications removes old rows ──
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         async with session_factory() as db:
             old = Notification(

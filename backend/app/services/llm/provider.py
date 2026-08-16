@@ -25,19 +25,19 @@ import json
 import logging
 from typing import Any
 
+from litellm.exceptions import UnsupportedParamsError
+
 from app.services.llm._call_engine import (
     _call_with_retry,
     _is_deterministic_request_error,
     _is_rate_limit_error,
     _parse_reset_time,
 )
-from litellm.exceptions import UnsupportedParamsError
 from app.services.llm._failover import _candidate_from_db_model, _failover, _model_key
 from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
     _pool_scope,
     record_llm_pool_circuit_event,
-    reset_completion_semaphore,
     reset_model_rate_limiters,
     reset_token_rate_limiter,
 )
@@ -170,7 +170,7 @@ async def call_llm_with_metadata(
         # 429 和本地候选冷却代表局部容量耗尽，由 per-model failover 管理；
         # 把它们累计到路由熔断器会让一个配额不足的渠道阻断全部调用。
         if (
-            not isinstance(exc, (CircuitOpenError, LlmCapacityUnavailableError))
+            not isinstance(exc, CircuitOpenError | LlmCapacityUnavailableError)
             and not _is_deterministic_request_error(exc)
             and not _is_rate_limit_error(exc)
         ):
@@ -286,7 +286,9 @@ async def _call_llm_with_metadata_inner(
     raise RuntimeError("No enabled LLM route models configured")
 
 
-def _llm_call_metadata(model_config: Any, request_model: str, routing_group: str, scene: str = "general") -> dict[str, Any]:
+def _llm_call_metadata(
+    model_config: Any, request_model: str, routing_group: str, scene: str = "general"
+) -> dict[str, Any]:
     return {
         "actual_model": request_model,
         "request_model": request_model,

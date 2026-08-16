@@ -6,8 +6,8 @@
 - _build_query_string: 查询串拼接顺序
 - fetch_json: a_bogus 仅对 rank 接口附加
 """
+
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -16,13 +16,11 @@ from app.services import fanqie_service
 from app.services.fanqie_abogus import generate_a_bogus
 from app.services.fanqie_service import (
     RANK_URL,
-    SIGN_UA,
     _build_query_string,
     _cover_url_is_stale,
     _refresh_book_metadata,
     fetch_json,
 )
-
 
 # ─── _refresh_book_metadata ───────────────────────────────────────────
 
@@ -241,6 +239,7 @@ class TestCoverUrlIsStale:
         )
         # 模拟 7/8（已过期 17 天）
         import time as _time
+
         july8 = _time.mktime((2026, 7, 8, 0, 0, 0, 0, 0, 0))
         assert _cover_url_is_stale(url, now_ts=july8) is True
         # 模拟 6/14（抓后 1 天，远未过期）

@@ -50,14 +50,22 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
+from app.api.v1.auth import get_current_admin_user
 from app.core.database import async_session
-from app.repositories.llm_call_log_repo import LlmCallLogRepository
 from app.repositories.content_repo import ContentRepo
+from app.repositories.llm_call_log_repo import LlmCallLogRepository
 from app.repositories.metrics_query_repo import MetricsQueryRepository
 
-router = APIRouter(prefix="/metrics", tags=["metrics"])
+# 监控端点暴露运行日志（含用户邮箱/IP）、LLM 成本与业务规模数据，
+# 全部要求管理员鉴权（cookie 或 Bearer API token；Prometheus 抓取
+# 配置对应的 Authorization header 即可）。
+router = APIRouter(
+    prefix="/metrics",
+    tags=["metrics"],
+    dependencies=[Depends(get_current_admin_user)],
+)
 
 _START_TIME = time.monotonic()
 
@@ -208,7 +216,11 @@ async def prometheus_metrics():
     # ── LLM pre-filter low-signal counter (cumulative since startup) ──
     from app.services.llm_pre_filter import get_skip_count
 
-    gauge("topiceye_low_signal_total", get_skip_count(), "Content items skipped from LLM queue by rule-based pre-filter (cumulative)")
+    gauge(
+        "topiceye_low_signal_total",
+        get_skip_count(),
+        "Content items skipped from LLM queue by rule-based pre-filter (cumulative)",
+    )
 
     # ── HTTP 请求指标（来自 RequestMetricsCollector 内存计数器）──
     from app.core.request_metrics import get_collector
@@ -245,6 +257,7 @@ async def prometheus_metrics():
         gauge("topiceye_db_pool_error", 1, "DB pool metrics collection error", {"pool": "primary"})
         # 不阻断 /metrics 输出
         import logging
+
         logging.getLogger(__name__).debug("DB pool metrics failed: %s", exc)
 
     return Response(
@@ -301,6 +314,7 @@ async def metrics_snapshot():
     slow_queries = 0
     try:
         from app.core.slow_query import get_slow_count
+
         slow_queries = get_slow_count()
     except Exception:
         pass
@@ -309,6 +323,7 @@ async def metrics_snapshot():
     cache_status: dict = {}
     try:
         from app.services.llm.response_cache import get_llm_cache
+
         cache_status = get_llm_cache().status()
     except Exception:
         pass
@@ -317,6 +332,7 @@ async def metrics_snapshot():
     process: dict = {}
     try:
         from app.services.metrics_persistence import _get_process_metrics
+
         process = _get_process_metrics()
     except Exception:
         pass

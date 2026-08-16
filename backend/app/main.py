@@ -4,7 +4,7 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -34,6 +34,7 @@ import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
 import app.models.zhihu  # noqa: F401
+from app.api.v1.auth import get_current_admin_user
 from app.api.v1.router import router as v1_router
 from app.core.config import DEFAULT_LOCAL_SECRET_KEY, settings
 from app.core.database import async_session, database_profile, engine
@@ -449,10 +450,12 @@ app.include_router(dashboard_router)
 # ── 根路径 /metrics 别名（Prometheus 标准约定）─────────────────────────
 # prometheus.yml 默认 metrics_path: /metrics，此处提供根路径别名
 # 避免用户必须配置 metrics_path: /api/v1/metrics
-@app.get("/metrics", tags=["metrics"])
+# 与 /api/v1/metrics 保持一致：要求管理员鉴权（Bearer admin token 或 cookie）。
+@app.get("/metrics", tags=["metrics"], dependencies=[Depends(get_current_admin_user)])
 async def root_metrics_alias():
     """Root-level /metrics alias → delegates to v1 prometheus_metrics."""
     from app.api.v1.metrics import prometheus_metrics
+
     return await prometheus_metrics()
 
 
@@ -473,7 +476,10 @@ async def general_exception_handler(request: Request, exc: Exception):
     request_client_ip = client_ip(request)
     logger.exception(
         "Unhandled exception: %s %s ip=%s path=%s",
-        request.method, exc, request_client_ip, request.url.path,
+        request.method,
+        exc,
+        request_client_ip,
+        request.url.path,
     )
     return JSONResponse(
         status_code=500,

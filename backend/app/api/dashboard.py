@@ -24,8 +24,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
+
+from app.api.v1.auth import get_current_admin_user
 
 router = APIRouter(prefix="", tags=["dashboard"])
 
@@ -853,7 +855,7 @@ startAutoRefresh();
 </html>"""
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_admin_user)])
 async def dashboard():
-    """内置监控大盘（自包含 HTML，零外部依赖）。"""
+    """内置监控大盘（自包含 HTML，零外部依赖；仅管理员可见）。"""
     return HTMLResponse(content=_DASHBOARD_HTML)

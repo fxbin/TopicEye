@@ -88,7 +88,8 @@ async def test_reader_creates_text_snapshot_and_keeps_private_content_hidden(mon
         assert snapshot is not None
         assert snapshot.content_blocks == [{"type": "paragraph", "text": public_text}]
         events = (await db.scalars(select(ArticleReaderEvent).order_by(ArticleReaderEvent.id))).all()
-        assert [event.outcome for event in events] == ["ready", "cache_hit"]
+        # 事件序列：首读 miss 由服务层记 success、API 层记 ready；命中只记 cache_hit
+        assert [event.outcome for event in events] == ["success", "ready", "cache_hit"]
 
     await engine.dispose()
 
@@ -140,7 +141,7 @@ async def test_reader_records_a_failure_before_returning_the_source_fallback(mon
     async with session_factory() as db:
         event = await db.scalar(select(ArticleReaderEvent).where(ArticleReaderEvent.content_id == 3))
         assert event is not None
-        assert event.outcome == "failed"
+        assert event.outcome == "error"
         assert event.error_code == "robots_disallowed"
     await engine.dispose()
 

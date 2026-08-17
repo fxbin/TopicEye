@@ -41,6 +41,9 @@ _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/pdf"}
 _MIN_READER_TEXT_CHARS = 60
 _WORDS_PER_MINUTE = 300  # Chinese characters or space-delimited words: deliberately conservative.
+# 常见追踪/占位像素的 URL 命名特征（1x1、tracker、pixel、spacer、blank）
+_TRACKER_IMAGE_URL_RE = re.compile(r"(?:^|[/._-])(?:1x1|pixel|tracker|spacer|blank)(?:[/._-]|$)", re.IGNORECASE)
+
 _BLOCK_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre", "code")
 
 
@@ -276,6 +279,10 @@ def _image_block(node, base_url: str) -> dict[str, str | int] | None:
     src = _resolve_img_src(node, base_url)
     if not src:
         return None
+    # trafilatura 的清洗输出会剥掉 width/height 属性，1px 判定随之失效；
+    # 按 URL 特征兜底识别常见追踪/占位像素命名。
+    if _TRACKER_IMAGE_URL_RE.search(src):
+        return None
     alt_attr = node.get("alt")
     alt = _clean_inline_text(alt_attr) if isinstance(alt_attr, str) else ""
     if not alt:
@@ -287,6 +294,20 @@ def _image_block(node, base_url: str) -> dict[str, str | int] | None:
     if alt:
         block["alt"] = alt[:300]
     return block
+
+
+def _missing_heading_or_list_structure(blocks: list[dict], article_node, base_url: str) -> bool:
+    """True when *blocks* lost heading/list structure that the source article has.
+
+    trafilatura 把短标题（h2 等）与小列表当样板移除；用它判定是否需要
+    整篇回退到手工提取。只看 heading / list_item 两类（图片已通过
+    include_images 保留，无需参与判定）。
+    """
+    have = {b["type"] for b in blocks}
+    if "heading" in have and "list_item" in have:
+        return False
+    source_types = {b["type"] for b in _extract_semantic_blocks(article_node, base_url)}
+    return bool({"heading", "list_item"} & source_types - have)
 
 
 def _extract_semantic_blocks(root: BeautifulSoup, base_url: str = "") -> list[dict[str, str | int]]:
@@ -408,17 +429,23 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
             output_format="html",
             include_comments=False,
             include_tables=True,
+            include_images=True,
             favor_precision=True,
         )
     except Exception:
         clean_html = None
 
+    article_node = soup.find("article") or soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
     if clean_html:
         soup_clean = BeautifulSoup(clean_html, "html.parser")
         blocks = _without_duplicate_title(_extract_semantic_blocks(soup_clean, base_url), title)
+        # trafilatura 会把短标题/列表归类为样板丢弃（各版本一致），
+        # 站内阅读需要这些结构块做结构化渲染；缺失时整篇回退到手工提取
+        # （手工路径同样剥离 nav/aside/script 等样板，且结构完整）。
+        if _missing_heading_or_list_structure(blocks, article_node, base_url):
+            blocks = _without_duplicate_title(_extract_semantic_blocks(article_node, base_url), title)
     else:
-        article = soup.find("article") or soup.find("main") or soup.find(attrs={"role": "main"}) or soup.body or soup
-        blocks = _without_duplicate_title(_extract_semantic_blocks(article, base_url), title)
+        blocks = _without_duplicate_title(_extract_semantic_blocks(article_node, base_url), title)
 
     text_content = _blocks_to_text(blocks)
     if len(text_content) < _MIN_READER_TEXT_CHARS:
@@ -501,6 +528,7 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
                 output_format="html",
                 include_comments=False,
                 include_tables=True,
+                include_images=True,
                 favor_precision=True,
             )
         except Exception:

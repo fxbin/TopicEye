@@ -62,6 +62,8 @@ class BaseScraper(ABC):
     def __init__(self, source_url: str, source_config: dict[str, Any] | None = None):
         self.url = source_url
         self.config = source_config or {}
+        # RSS 系 scraper 重试耗尽时置 True；pipeline 据此把失败记到信源状态面
+        self.fetch_degraded: bool = False
 
     @abstractmethod
     async def fetch(self, client: httpx.AsyncClient):

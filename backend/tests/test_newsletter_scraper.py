@@ -102,6 +102,8 @@ async def test_fetch_returns_empty_on_304():
     client = FakeClient(status_code=304)
     entries = await scraper.fetch(client)
     assert entries == []
+    # 304 是正常协商缓存命中，不得误标降级
+    assert scraper.fetch_degraded is False
 
 
 @pytest.mark.asyncio

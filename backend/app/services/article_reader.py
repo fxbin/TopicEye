@@ -391,7 +391,20 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     # 属于样板（导航链接、推荐位列表），清掉可避免结构回退混入非正文。
     raw_h1_text = _clean_text(soup.find("h1").get_text(" ", strip=True)) if soup.find("h1") else None
     for node in soup(
-        ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside", "header"]
+        [
+            "script",
+            "style",
+            "noscript",
+            "template",
+            "svg",
+            "canvas",
+            "iframe",
+            "form",
+            "nav",
+            "footer",
+            "aside",
+            "header",
+        ]
     ):
         node.decompose()
 
@@ -547,7 +560,20 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
         else:
             soup = BeautifulSoup(raw, "html.parser")
             for node in soup(
-                ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside", "header"]
+                [
+                    "script",
+                    "style",
+                    "noscript",
+                    "template",
+                    "svg",
+                    "canvas",
+                    "iframe",
+                    "form",
+                    "nav",
+                    "footer",
+                    "aside",
+                    "header",
+                ]
             ):
                 node.decompose()
             blocks = _extract_semantic_blocks(soup, content.url or "")

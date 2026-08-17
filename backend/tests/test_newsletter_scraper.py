@@ -105,8 +105,9 @@ async def test_fetch_returns_empty_on_304():
 
 
 @pytest.mark.asyncio
-async def test_fetch_raises_on_error_status():
+async def test_fetch_returns_empty_after_exhausted_retries():
+    """重试耗尽后优雅降级为空列表，由 pipeline 统一记录信源错误。"""
     scraper = NewsletterScraper("https://test.substack.com")
     client = FakeClient(status_code=500)
-    with pytest.raises(RuntimeError):
-        await scraper.fetch(client)
+    entries = await scraper.fetch(client)
+    assert entries == []

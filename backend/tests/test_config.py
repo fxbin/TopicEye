@@ -24,15 +24,20 @@ def test_database_url_required():
         Settings(_env_file=None, DATABASE_URL="")
 
 
-def test_cors_origins_defaults_empty():
+def test_cors_origins_defaults_empty(monkeypatch):
     """CORS_ORIGINS 默认为空字符串，cors_origins 属性返回空列表。"""
+    # litellm 导入时会 load_dotenv() 把 backend/.env 写入 os.environ，
+    # _env_file=None 挡得住 env 文件、挡不住进程环境，需显式清理。
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
     settings = Settings(_env_file=None, DATABASE_URL=_TEST_DB_URL)
     assert settings.CORS_ORIGINS == ""
     assert settings.cors_origins == []
 
 
-def test_oauth_redirect_url_defaults_empty():
+def test_oauth_redirect_url_defaults_empty(monkeypatch):
     """OAUTH_FRONTEND_REDIRECT_URL 默认为空字符串。"""
+    # 同上：litellm 的 load_dotenv 会污染进程环境。
+    monkeypatch.delenv("OAUTH_FRONTEND_REDIRECT_URL", raising=False)
     settings = Settings(_env_file=None, DATABASE_URL=_TEST_DB_URL)
     assert settings.OAUTH_FRONTEND_REDIRECT_URL == ""
 

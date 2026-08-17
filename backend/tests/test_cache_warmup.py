@@ -143,7 +143,7 @@ async def test_warmup_read_caches_populates_hot_read_cache_keys(cache_warmup_ses
     expected_warmed = {
         "sources:list:1:20",
         "contents:list:1:40:24",
-        "contents:today-picks:v2:hours=24&limit=40",
+        "contents:today-picks:v3:hours=24&limit=40",
         "contents:favorites:list:1:20",
     }
     expected_warmed.update(STATS_WORKSPACE_CACHE_KEYS)

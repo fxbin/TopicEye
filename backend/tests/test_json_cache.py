@@ -106,9 +106,9 @@ def test_today_picks_cache_key_and_invalidation():
     invalidate_json_cache()
     params = TodayPicksCacheParams(hours=48, category="AI", limit=80)
     key = params.key
-    assert key == "contents:today-picks:v2:hours=48&category=AI&limit=80&user_id="
+    assert key == "contents:today-picks:v3:hours=48&category=AI&limit=80&user_id="
     assert TodayPicksCacheParams(hours=48, category="AI", limit=80, user_id=42).key == (
-        "contents:today-picks:v2:hours=48&category=AI&limit=80&user_id=42"
+        "contents:today-picks:v3:hours=48&category=AI&limit=80&user_id=42"
     )
 
     set_cached_json(key, {"items": [], "total": 0})
@@ -125,7 +125,7 @@ def test_today_picks_startup_cache_matches_default_screen_request():
 
     assert params.hours == 24
     assert params.limit == TODAY_PICKS_INITIAL_LIMIT == 40
-    assert params.key == "contents:today-picks:v2:hours=24&limit=40&user_id="
+    assert params.key == "contents:today-picks:v3:hours=24&limit=40&user_id="
 
 
 def test_source_list_cache_key_and_invalidation():

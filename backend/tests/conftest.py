@@ -108,6 +108,15 @@ async def clean_tables():
     async with engine.begin() as conn:
         from sqlalchemy import text
 
+        # 部分测试会经模块级全局 engine 留下跨事件循环的未提交事务
+        # （idle in transaction），TRUNCATE 会因拿不到锁无限阻塞、拖死整
+        # 个套件；清表前先终止同库的其它后端连接（套件单进程串行，安全）。
+        await conn.execute(
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            )
+        )
         # TRUNCATE 所有表,PostgreSQL 支持 CASCADE 自动清理外键依赖
         table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))

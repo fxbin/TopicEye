@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.v1 import auth as auth_api
@@ -84,7 +84,8 @@ class _ReadOnlyTokenLookupSession:
 
     async def execute(self, _statement):
         self.execute_count += 1
-        return _FakeSessionLookupResult((101, self.user.id))
+        # 服务端 SELECT 同时取 session id / expires_at / user_id 三列
+        return _FakeSessionLookupResult((101, datetime.now(UTC) + timedelta(days=30), self.user.id))
 
     async def flush(self):
         raise AssertionError("token lookup should not write last_seen_at")
@@ -172,6 +173,7 @@ async def test_auth_route_functions_register_login_me_logout():
                 verification_code=_TEST_VERIFICATION_CODE,
             ),
             _build_request("/auth/register"),
+            Response(),
             db,
         )
         assert registered.user.email == "route@example.com"
@@ -189,6 +191,7 @@ async def test_auth_route_functions_register_login_me_logout():
                     verification_code=_TEST_VERIFICATION_CODE,
                 ),
                 _build_request("/auth/register"),
+                Response(),
                 db,
             )
         except HTTPException as exc:
@@ -199,23 +202,25 @@ async def test_auth_route_functions_register_login_me_logout():
         logged_in = await login(
             AuthLoginRequest(email="route@example.com", password="Password123"),
             _build_request("/auth/login"),
+            Response(),
             db,
         )
         assert logged_in.user.role == "user"
-        current_user = await get_current_user(f"Bearer {logged_in.access_token}", db)
+        current_user = await get_current_user(_build_request("/auth/me"), f"Bearer {logged_in.access_token}", db)
         assert isinstance(current_user, User)
         assert (await me(current_user)).email == "route@example.com"
 
         assert (
             await logout(
                 _build_request("/auth/logout"),
+                Response(),
                 f"Bearer {logged_in.access_token}",
                 db,
             )
         )["logged_out"] is True
         invalid_error = None
         try:
-            await get_current_user(f"Bearer {logged_in.access_token}", db)
+            await get_current_user(_build_request("/auth/me"), f"Bearer {logged_in.access_token}", db)
         except HTTPException as exc:
             invalid_error = exc
         assert invalid_error is not None

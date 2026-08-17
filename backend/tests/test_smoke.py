@@ -19,8 +19,8 @@ def test_topic_cluster_groups_items_by_shared_tags():
     groups = _union_find_cluster(
         [
             {"id": 1, "tags": ["ai", "tools"]},
-            {"id": 2, "tags": ["ai", "agents"]},
-            {"id": 3, "tags": ["finance"]},
+            {"id": 2, "tags": ["ai", "tools", "agents"]},
+            {"id": 3, "tags": ["finance", "markets"]},
             {"id": 4, "tags": ["finance", "markets"]},
             {"id": 5, "tags": ["solo"]},
         ]

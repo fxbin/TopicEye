@@ -242,11 +242,6 @@ async def test_pending_enrichment_claim_uses_skip_locked_for_postgresql(monkeypa
     now = datetime.now(UTC)
     calls = {"skip_locked": 0}
 
-    class FakeProfile:
-        is_sqlite = False
-        is_postgresql = True
-
-    monkeypatch.setattr("app.repositories.analysis_repo.database_profile", FakeProfile())
     original_with_for_update = Select.with_for_update
 
     def with_for_update_spy(self, *args, **kwargs):
@@ -417,7 +412,7 @@ async def test_clustering_uses_one_latest_analysis_per_content(monkeypatch):
                     AiAnalysis(
                         id=content_id,
                         content_id=content_id,
-                        tags=["新标签"],
+                        tags=["新标签", "共同主题"],
                         curation_score=40 + content_id,
                         created_at=now + timedelta(minutes=1),
                     ),
@@ -471,7 +466,7 @@ async def test_clustering_topic_best_score_uses_unified_scorer(monkeypatch):
                 AiAnalysis(
                     id=1,
                     content_id=1,
-                    tags=["统一话题"],
+                    tags=["统一话题", "评分体系"],
                     curation_score=95,
                     info_density=10,
                     actionability=10,
@@ -486,7 +481,7 @@ async def test_clustering_topic_best_score_uses_unified_scorer(monkeypatch):
                 AiAnalysis(
                     id=2,
                     content_id=2,
-                    tags=["统一话题"],
+                    tags=["统一话题", "评分体系"],
                     curation_score=70,
                     info_density=90,
                     actionability=90,

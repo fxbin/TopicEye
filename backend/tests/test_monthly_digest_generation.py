@@ -89,11 +89,6 @@ async def test_generate_monthly_digest_locks_existing_row_for_postgresql(monkeyp
     calls = {"for_update": 0}
     monkeypatch.setattr(monthly_digest, "utc_now", lambda: now)
 
-    class FakeProfile:
-        is_sqlite = False
-        is_postgresql = True
-
-    monkeypatch.setattr(monthly_digest, "database_profile", FakeProfile())
     original_with_for_update = Select.with_for_update
 
     def with_for_update_spy(self, *args, **kwargs):

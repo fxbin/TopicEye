@@ -144,11 +144,6 @@ async def test_generate_daily_report_locks_existing_row_for_postgresql(monkeypat
     calls = {"for_update": 0}
     monkeypatch.setattr(daily_report, "_local_now", lambda: now)
 
-    class FakeProfile:
-        is_sqlite = False
-        is_postgresql = True
-
-    monkeypatch.setattr(daily_report, "database_profile", FakeProfile())
     original_with_for_update = Select.with_for_update
 
     def with_for_update_spy(self, *args, **kwargs):

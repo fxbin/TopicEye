@@ -139,7 +139,13 @@ async def test_reader_records_a_failure_before_returning_the_source_fallback(mon
 
     assert response.status_code == 403
     async with session_factory() as db:
-        event = await db.scalar(select(ArticleReaderEvent).where(ArticleReaderEvent.content_id == 3))
+        # 失败请求会产生服务层 error + API 层 failed 两条事件，取首条断言
+        event = await db.scalar(
+            select(ArticleReaderEvent)
+            .where(ArticleReaderEvent.content_id == 3)
+            .order_by(ArticleReaderEvent.id)
+            .limit(1)
+        )
         assert event is not None
         assert event.outcome == "error"
         assert event.error_code == "robots_disallowed"

@@ -106,6 +106,8 @@ class YouTubeScraper(BaseScraper):
         )
         if resp is None:
             logger.warning("YouTube feed exhausted retries, returning empty: %s", self._rss_url)
+            # 保留空列表降级契约，但打标记让 pipeline 把失败落到信源状态面
+            self.fetch_degraded = True
             return []
         if resp.status_code == 304:
             logger.info("YouTube feed not modified: %s", self._rss_url)

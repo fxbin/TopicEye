@@ -219,6 +219,14 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         fetch_elapsed_ms = int((time.perf_counter() - fetch_started_at) * 1000)
 
         if not entries:
+            # RSS 系 scraper 重试耗尽时打 fetch_degraded 标记（不抛错、不阻断
+            # 其它信源）；这里把失败落到信源状态面，避免"持续故障"与"正常
+            # 0 条"在 DB 上不可区分。ERROR 状态不影响调度（claim 只看 enabled），
+            # 且会被 alerting 的失败信源巡检读到。
+            if getattr(scraper, "fetch_degraded", False):
+                _update_source_error(source, "抓取重试耗尽（已降级为空结果）")
+                await db.flush()
+                return {"fetched": 0, "new": 0, "duplicates": 0}
             logger.info(
                 "Source %s (%d): no entries fetched in %dms",
                 source.name,

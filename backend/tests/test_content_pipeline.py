@@ -532,3 +532,50 @@ async def test_ingest_persists_content_before_classifier_failure(monkeypatch):
         assert row.category is None
     finally:
         await engine.dispose()
+
+
+# ── RSS 系 scraper 重试耗尽的 DB 可观测性 ────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("degraded,expected_status", [(True, SourceStatus.ERROR), (False, SourceStatus.ACTIVE)])
+async def test_ingest_empty_with_degraded_flag_marks_source_error(monkeypatch, degraded, expected_status):
+    """重试耗尽（fetch_degraded）应记 ERROR+sync_error；正常 0 条仍是 ACTIVE。"""
+
+    class ExhaustedScraper:
+        def __init__(self, source_url, source_config):
+            if degraded:
+                self.fetch_degraded = True
+
+        async def fetch(self, client):
+            return []
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: ExhaustedScraper)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as db:
+        source = Source(
+            name="Exhausted",
+            url="https://example.com/feed",
+            source_type=SourceType.RSS,
+            enabled=True,
+        )
+        db.add(source)
+        await db.commit()
+
+        stats = await content_pipeline.ingest_from_source(source, db)
+        await db.commit()
+
+        assert stats == {"fetched": 0, "new": 0, "duplicates": 0}
+        await db.refresh(source)
+        assert source.status == expected_status
+        if degraded:
+            assert "重试耗尽" in source.sync_error
+        else:
+            assert source.sync_error in (None, "")
+
+    await engine.dispose()

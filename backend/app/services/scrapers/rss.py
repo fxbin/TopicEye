@@ -41,6 +41,8 @@ class RSSScraper(BaseScraper):
         )
         if resp is None:
             logger.warning("RSS feed exhausted retries, returning empty: %s", self.url)
+            # 保留空列表降级契约，但打标记让 pipeline 把失败落到信源状态面
+            self.fetch_degraded = True
             return []
         # Capture conditional request state so the pipeline can persist it on
         # the Source row and send If-None-Match / If-Modified-Since next time.

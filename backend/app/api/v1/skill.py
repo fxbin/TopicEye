@@ -102,8 +102,8 @@ async def skill_trends(
     current_user: User = Depends(get_current_user),
 ) -> SkillTrendsResponse:
     try:
-        topics = duckdb_service.query_trend_topics(days=days)
-        keywords = duckdb_service.query_keyword_cloud(days=days, limit=limit)
+        topics = await duckdb_service.run_query(lambda: duckdb_service.query_trend_topics(days=days))
+        keywords = await duckdb_service.run_query(lambda: duckdb_service.query_keyword_cloud(days=days, limit=limit))
     except Exception as exc:
         logger.exception("skill trends DuckDB query failed")
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc

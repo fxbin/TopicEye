@@ -183,9 +183,11 @@ async def warmup_today_picks(db) -> None:
 
 
 async def warmup_stats_workspace() -> list[str]:
+    from app.services.duckdb_service import run_query
     from app.services.stats_workspace import build_default_stats_cache_payloads
 
-    payloads = build_default_stats_cache_payloads()
+    # builder 内是 6 个同步 DuckDB 聚合查询，整体推到专用线程执行
+    payloads = await run_query(build_default_stats_cache_payloads)
     for key, payload in payloads.items():
         set_cached_json(key, payload)
     return list(payloads)

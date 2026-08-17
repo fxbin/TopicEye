@@ -18,7 +18,7 @@ from app.repositories.content_event_consumption_repo import (
 )
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_summary import clean_content_summary
-from app.services.duckdb_service import query_today_picks, query_topics
+from app.services.duckdb_service import query_today_picks, query_topics, run_query
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
 
@@ -62,7 +62,7 @@ async def build_today_picks(
         if owner_user_id is not None:
             query_kwargs["visible_user_id"] = owner_user_id
             query_kwargs["public_only"] = False
-        rows = query_today_picks(**query_kwargs)
+        rows = await run_query(lambda: query_today_picks(**query_kwargs))
     except Exception as exc:
         duckdb_exc = exc
         logger.warning(
@@ -150,7 +150,7 @@ async def build_today_picks(
         for item in response_items:
             item["personalization_boost"] = 0.0
     try:
-        topic_map = {topic["id"]: topic for topic in query_topics()}
+        topic_map = {topic["id"]: topic for topic in await run_query(query_topics)}
     except Exception as exc:
         # topics 拉取失败：不阻塞主结果，只是不带话题关联
         logger.warning("today_picks query_topics failed, continuing without topics: %s", exc, exc_info=True)

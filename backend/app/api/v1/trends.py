@@ -52,7 +52,7 @@ async def topic_trends(
 ):
     """Get topic trend data for charts through DuckDB."""
     try:
-        trends = duckdb_service.query_trend_topics(days=days)
+        trends = await duckdb_service.run_query(lambda: duckdb_service.query_trend_topics(days=days))
     except Exception as exc:
         logger.exception("DuckDB topic trend query failed")
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc
@@ -68,7 +68,7 @@ async def keyword_cloud(
 ):
     """Get keyword frequency for word cloud visualization through DuckDB."""
     try:
-        keywords = duckdb_service.query_keyword_cloud(days=days, limit=limit)
+        keywords = await duckdb_service.run_query(lambda: duckdb_service.query_keyword_cloud(days=days, limit=limit))
     except Exception as exc:
         logger.exception("DuckDB keyword cloud query failed")
         raise HTTPException(status_code=503, detail="DuckDB analytical layer unavailable") from exc

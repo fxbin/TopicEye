@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.duckdb_service import query_content_for_weekly
+from app.services.duckdb_service import query_content_for_weekly, run_query
 from app.services.scoring_engine import ScoringInput, score_items
 
 
@@ -19,7 +19,8 @@ async def fetch_analyzed_content(
 ) -> list[dict]:
     """Fetch analyzed content and apply the unified scoring gate for digests."""
     _ = db
-    return _score_digest_rows(query_content_for_weekly(start_date=start_date, end_date=end_date))
+    rows = await run_query(lambda: query_content_for_weekly(start_date=start_date, end_date=end_date))
+    return _score_digest_rows(rows)
 
 
 async def fetch_analyzed_content_with_expanded_window(

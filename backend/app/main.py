@@ -528,9 +528,9 @@ async def health_ready():
     """
     diagnostics = database_diagnostics(database_profile)
     try:
-        from app.services.duckdb_service import get_analytics
+        from app.services.duckdb_service import get_analytics, run_query
 
-        duckdb_status = get_analytics().status()
+        duckdb_status = await run_query(get_analytics().status)
     except Exception as exc:
         duckdb_status = {
             "status": "error",

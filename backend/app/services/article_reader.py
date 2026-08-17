@@ -41,8 +41,13 @@ _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/pdf"}
 _MIN_READER_TEXT_CHARS = 60
 _WORDS_PER_MINUTE = 300  # Chinese characters or space-delimited words: deliberately conservative.
-# 常见追踪/占位像素的 URL 命名特征（1x1、tracker、pixel、spacer、blank）
-_TRACKER_IMAGE_URL_RE = re.compile(r"(?:^|[/._-])(?:1x1|pixel|tracker|spacer|blank)(?:[/._-]|$)", re.IGNORECASE)
+# 常见追踪/占位像素的 URL 命名特征：文件名词干恰为 1x1/pixel/tracker/
+# spacer/blank（可带数字后缀）+ 图片扩展名。只匹配完整词干，避免误杀
+# pixel-art-guide.jpg、blank-template-cover.png 这类正常配图。
+_TRACKER_IMAGE_URL_RE = re.compile(
+    r"(?:^|/)(?:1x1|pixel|tracker|spacer|blank)[-_]?[0-9]*\.(?:gif|png|jpe?g|webp)(?:[?#]|$)",
+    re.IGNORECASE,
+)
 
 _BLOCK_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre", "code")
 
@@ -382,8 +387,11 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
     import trafilatura
 
     soup = BeautifulSoup(payload, "html.parser")
+    # 标题候选需在 decompose 前取：<header> 内的 h1 很常见，而 header 整体
+    # 属于样板（导航链接、推荐位列表），清掉可避免结构回退混入非正文。
+    raw_h1_text = _clean_text(soup.find("h1").get_text(" ", strip=True)) if soup.find("h1") else None
     for node in soup(
-        ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]
+        ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside", "header"]
     ):
         node.decompose()
 
@@ -399,8 +407,7 @@ def _extract_from_html(payload: bytes, final_url: str) -> ExtractedArticle:
             canonical_url = final_url
     title = _first_meta(soup, ("property", "og:title"), ("name", "twitter:title"))
     if not title:
-        heading = soup.find("h1")
-        title = _clean_text(heading.get_text(" ", strip=True)) if heading else None
+        title = raw_h1_text
     if not title and soup.title:
         title = _clean_text(soup.title.get_text(" ", strip=True))
     title = title or "未命名原文"
@@ -540,7 +547,7 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
         else:
             soup = BeautifulSoup(raw, "html.parser")
             for node in soup(
-                ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside"]
+                ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside", "header"]
             ):
                 node.decompose()
             blocks = _extract_semantic_blocks(soup, content.url or "")

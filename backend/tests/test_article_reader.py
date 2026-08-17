@@ -177,6 +177,27 @@ def test_extract_html_strips_unsafe_markup_and_ignores_invalid_canonical_url():
     assert extracted.content_blocks == [{"type": "paragraph", "text": article_body}]
 
 
+def test_extract_html_excludes_header_boilerplate_on_structure_fallback():
+    """结构回退（手工提取）时，header 内的导航列表不得混入正文块。"""
+    extracted = article_reader._extract_from_html(
+        """
+        <article>
+          <header><h1>结构化阅读</h1><nav><ul><li>导航甲</li><li>导航乙</li></ul></nav></header>
+          <p>这是足够长的开场正文。{opening}</p>
+          <h2>关键要点</h2>
+          <ul><li>第一项</li><li>第二项</li></ul>
+        </article>
+        """.format(opening="内容。" * 70).encode(),
+        "https://example.com/header-demo",
+    )
+
+    # h2+ul 被 trafilatura 丢弃 → 触发手工提取回退；header 已 decompose
+    assert extracted.title == "结构化阅读"
+    texts = [b.get("text") for b in extracted.content_blocks]
+    assert "第一项" in texts and "第二项" in texts
+    assert "导航甲" not in texts and "导航乙" not in texts
+
+
 def test_extract_html_preserves_headings_quotes_and_lists():
     extracted = article_reader._extract_from_html(
         """
@@ -205,6 +226,8 @@ def test_extract_html_captures_inline_images_with_absolute_urls():
           <p>{body}</p>
           <figure><img src="/media/pic.png" alt="示意图"><figcaption>图注</figcaption></figure>
           <p><img src="https://cdn.example.com/a.jpg"></p>
+          <img src="/pixel-art-guide.jpg" alt="像素艺术教程配图">
+          <img src="/blank-template-cover.png">
           <img src="data:image/gif;base64,AAAA">
           <img src="/tracker.gif" width="1" height="1">
         </article></body></html>
@@ -219,6 +242,10 @@ def test_extract_html_captures_inline_images_with_absolute_urls():
     # data: URI 与 1px 追踪像素被丢弃
     assert all(not str(b["src"]).startswith("data:") for b in image_blocks)
     assert all("tracker.gif" not in str(b["src"]) for b in image_blocks)
+    # 词干恰为追踪词的正常命名图片不得误杀（pixel-art-guide 等）
+    image_srcs = {b["src"] for b in image_blocks}
+    assert "https://news.example.com/pixel-art-guide.jpg" in image_srcs
+    assert "https://news.example.com/blank-template-cover.png" in image_srcs
     # 图片不计入正文文本
     assert "pic.png" not in extracted.text_content
 

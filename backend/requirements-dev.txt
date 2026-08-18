@@ -1,6 +1,6 @@
 -r requirements.txt
-pytest==8.3.4
-pytest-asyncio==0.24.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
 # 测试用 SQLite 内存引擎（生产环境只用 PostgreSQL，但 49+ 个测试文件依赖它）
 aiosqlite==0.20.0
 # 与 CI backend-lint 作业保持同一版本，让本地 `make lint` 复现 CI 结果。

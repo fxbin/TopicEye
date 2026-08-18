@@ -117,6 +117,10 @@ async def clean_tables():
                 "WHERE datname = current_database() AND pid <> pg_backend_pid()"
             )
         )
+        # 兜底：pg_terminate_backend 可能因权限/竞态未完全释放锁，
+        # 设 5s lock_timeout 让 TRUNCATE 快速失败而非无限阻塞，
+        # 失败时测试会报错而非拖死整个套件直到 6h 超时。
+        await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
         # TRUNCATE 所有表,PostgreSQL 支持 CASCADE 自动清理外键依赖
         table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))

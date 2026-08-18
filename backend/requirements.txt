@@ -27,4 +27,4 @@ mini-racer==0.14.1
 trafilatura>=2.1.0
 curl_cffi>=0.15.0
 # reader: 抽取 PDF 原文为可阅读文本（文字型 PDF；扫描件优雅回退到外链）
-pypdf>=4.0,<6.0
+pypdf>=6.0,<7.0

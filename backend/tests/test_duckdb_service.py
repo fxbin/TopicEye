@@ -363,6 +363,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
             raw_content VARCHAR,
             cover_url VARCHAR,
             category VARCHAR,
+            content_type VARCHAR,
             tags VARCHAR,
             language VARCHAR,
             status VARCHAR,
@@ -428,7 +429,7 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
         """
         INSERT INTO oltp_db.content_items VALUES (
             1, '最新分析精选', 'https://example.com/pick', 1, '测试信源', 'RSS',
-            'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
+            'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', NULL, '["AI"]',
             'zh', 'analyzed', false, NULL, ?, ?
         )
         """,
@@ -488,6 +489,7 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             raw_content VARCHAR,
             cover_url VARCHAR,
             category VARCHAR,
+            content_type VARCHAR,
             tags VARCHAR,
             language VARCHAR,
             status VARCHAR,
@@ -553,7 +555,7 @@ def test_today_picks_query_applies_aggregated_feedback(monkeypatch):
             """
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
-                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
+                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', NULL, '["AI"]',
                 'zh', 'analyzed', false, NULL, ?, ?
             )
             """,
@@ -606,6 +608,7 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             raw_content VARCHAR,
             cover_url VARCHAR,
             category VARCHAR,
+            content_type VARCHAR,
             tags VARCHAR,
             language VARCHAR,
             status VARCHAR,
@@ -671,7 +674,7 @@ def test_today_picks_query_uses_unified_risk_threshold_for_candidates(monkeypatc
             """
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
-                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
+                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', NULL, '["AI"]',
                 'zh', 'analyzed', false, NULL, ?, ?
             )
             """,
@@ -718,6 +721,7 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             raw_content VARCHAR,
             cover_url VARCHAR,
             category VARCHAR,
+            content_type VARCHAR,
             tags VARCHAR,
             language VARCHAR,
             status VARCHAR,
@@ -783,7 +787,7 @@ def test_today_picks_query_excludes_ignored_content(monkeypatch):
             """
             INSERT INTO oltp_db.content_items VALUES (
                 ?, ?, ?, 1, '测试信源', 'RSS',
-                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', '["AI"]',
+                'rss', NULL, NULL, ?, NULL, '摘要', NULL, NULL, 'AI', NULL, '["AI"]',
                 'zh', 'analyzed', false, NULL, ?, ?
             )
             """,

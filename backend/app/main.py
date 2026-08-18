@@ -389,6 +389,14 @@ async def lifespan(app: FastAPI):
             await _cache_warmup_task
     shutdown_scheduler()
 
+    # Drain interest-vector background rebuild tasks
+    try:
+        from app.services.interest_vector_service import drain_rebuild_tasks
+
+        await drain_rebuild_tasks(timeout=10.0)
+    except Exception:
+        logger.warning("Interest vector task drain failed", exc_info=True)
+
     # Close DuckDB analytics connection
     try:
         from app.services.duckdb_service import close_analytics

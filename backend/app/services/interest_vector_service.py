@@ -23,6 +23,7 @@ overriding the scoring engine's base ranking.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from collections import defaultdict
@@ -313,14 +314,46 @@ async def _fetch_content_tags(
     return tag_map
 
 
+# ── Background task registry for interest-vector rebuilds ────────────
+# Tracks all in-flight rebuild tasks so shutdown can drain them
+# and repeated signals for the same user can coalesce.
+
+_rebuild_tasks: set[asyncio.Task] = set()
+_rebuild_user_dedup: dict[int, asyncio.Task] = {}
+
+
+async def drain_rebuild_tasks(timeout: float = 10.0) -> None:
+    """Cancel and await all in-flight rebuild tasks during shutdown.
+
+    Called from application lifespan on shutdown.  Each task is
+    cancelled first (so it stops new DB work) and then awaited so
+    that any in-flight session is rolled back and closed.
+    """
+    tasks = list(_rebuild_tasks)
+    for task in tasks:
+        task.cancel()
+    if not tasks:
+        return
+    await asyncio.wait(tasks, timeout=timeout)
+    # Clear registries after drain
+    _rebuild_tasks.clear()
+    _rebuild_user_dedup.clear()
+
+
 def trigger_vector_rebuild(user_id: int) -> None:
     """Fire-and-forget interest vector rebuild for *user_id*.
 
     Creates a background asyncio task with its own DB session. Safe to
     call from request handlers — never blocks, never raises.
-    """
-    import asyncio
 
+    Lifecycle guarantees:
+    - **Deduplication**: if a rebuild for the same user is already
+      in flight, the old task is cancelled and replaced by the new one.
+    - **Tracking**: every task is registered in ``_rebuild_tasks`` so
+      ``drain_rebuild_tasks`` can cancel/await them on shutdown.
+    - **Cleanup**: the DB session always closes on success, error, or
+      cancellation (``async with`` guarantees rollback on exit).
+    """
     from app.core.database import async_session
 
     async def _rebuild():
@@ -328,6 +361,9 @@ def trigger_vector_rebuild(user_id: int) -> None:
             async with async_session() as db:
                 await rebuild_user_vector(db, user_id)
                 await db.commit()
+        except asyncio.CancelledError:
+            logger.debug("Interest vector rebuild cancelled for user %s", user_id)
+            raise
         except Exception:
             logger.warning(
                 "Interest vector rebuild failed for user %s",
@@ -337,7 +373,22 @@ def trigger_vector_rebuild(user_id: int) -> None:
 
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(_rebuild())
     except RuntimeError:
         # No running loop — skip silently (e.g. during testing)
-        pass
+        return
+
+    # Cancel any existing rebuild for this user (coalescing)
+    existing = _rebuild_user_dedup.pop(user_id, None)
+    if existing is not None and not existing.done():
+        existing.cancel()
+        _rebuild_tasks.discard(existing)
+
+    task = loop.create_task(_rebuild())
+
+    # Track for shutdown drain; auto-remove on completion
+    _rebuild_tasks.add(task)
+    _rebuild_user_dedup[user_id] = task
+    task.add_done_callback(_rebuild_tasks.discard)
+    task.add_done_callback(
+        lambda t: _rebuild_user_dedup.pop(user_id, None) if _rebuild_user_dedup.get(user_id) is t else None
+    )

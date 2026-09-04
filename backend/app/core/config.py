@@ -201,7 +201,23 @@ class Settings(BaseSettings):
     EVENT_NORMALIZATION_AUTO_ACCEPT_CONFIDENCE: float = 0.88
     EVENT_NORMALIZATION_PREDICTION_AUDIT_MAX_BYTES: int = 65_536
 
+    # ── Model catalog (models.dev 开放目录) ──
+    # 目录是参考数据：仅用于管理端表单预填与展示，不影响运行时路由与计费。
+    MODEL_CATALOG_URL: str = "https://models.dev/api.json"
+    # 启动时目录表为空则从内置快照导入（幂等，失败降级 warning 不阻塞启动）。
+    MODEL_CATALOG_SEED_ENABLED: bool = True
+    # 每日定时刷新 job 开关；关闭后目录停留在快照/上次成功刷新的数据。
+    MODEL_CATALOG_REFRESH_ENABLED: bool = True
+    MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS: float = 120.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    @field_validator("MODEL_CATALOG_URL")
+    @classmethod
+    def _validate_model_catalog_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError(f"MODEL_CATALOG_URL 必须是 http:// 或 https:// 开头的 URL，当前值: {v!r}")
+        return v
 
     @field_validator("DATABASE_URL")
     @classmethod

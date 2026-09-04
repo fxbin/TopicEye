@@ -18,6 +18,7 @@ from app.api.v1.integrations import router as integrations_router
 from app.api.v1.llm_evaluations import router as llm_evaluations_router
 from app.api.v1.llm_models import router as llm_models_router
 from app.api.v1.metrics import router as metrics_router
+from app.api.v1.model_catalog import router as model_catalog_router
 from app.api.v1.monthly_digests import router as monthly_digests_router
 from app.api.v1.mother_topics import router as mother_topics_router
 from app.api.v1.notifications import router as notifications_router
@@ -82,6 +83,7 @@ router.include_router(webnovel_reports_router, dependencies=[Depends(require_fea
 router.include_router(notifications_router)
 router.include_router(scheduler_router)
 router.include_router(llm_models_router)
+router.include_router(model_catalog_router)
 router.include_router(llm_evaluations_router)
 router.include_router(favorites_router)
 router.include_router(read_records_router)

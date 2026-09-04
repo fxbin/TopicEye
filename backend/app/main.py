@@ -328,6 +328,18 @@ async def lifespan(app: FastAPI):
 
     await _run_seed_step("Default source", enabled=seed_enabled, run=_seed_default_sources)
 
+    # Bootstrap model catalog from bundled models.dev snapshot (no-op if table non-empty)
+    async def _seed_model_catalog() -> None:
+        from app.services.model_catalog_service import seed_catalog_from_snapshot
+
+        async with async_session() as seed_db:
+            seeded = await seed_catalog_from_snapshot(seed_db)
+            await seed_db.commit()
+            if seeded:
+                logger.info("Model catalog seeded from bundled snapshot (%d models)", seeded)
+
+    await _run_seed_step("Model catalog", enabled=settings.MODEL_CATALOG_SEED_ENABLED, run=_seed_model_catalog)
+
     # Sync prompt registry (Sprint 3: read-only prompt catalog for admin)
     try:
         from app.services.prompt_registry_service import sync_prompt_registry

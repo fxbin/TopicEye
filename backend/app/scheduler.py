@@ -773,6 +773,35 @@ async def _refresh_weread_stats_cache() -> None:
         logger.exception("Scheduler: WeRead stats cache refresh failed")
 
 
+@track_job(
+    "refresh_model_catalog",
+    name="模型目录每日刷新",
+    timeout=600,
+    description="每日05:30从 models.dev 拉取最新模型目录（失败保留旧数据）",
+)
+async def _refresh_model_catalog() -> None:
+    """每日 05:30 刷新 models.dev 模型目录缓存。
+
+    任务永远注册，运行时由 MODEL_CATALOG_REFRESH_ENABLED 决定是否执行
+    （与 _sync_fanqie / _sync_qimao 同模式）。刷新失败时事务不提交，
+    目录停留在上次成功的数据；异常向上抛出由 @track_job 记录 FAILED。
+    """
+    if not settings.MODEL_CATALOG_REFRESH_ENABLED:
+        return
+    from app.services.model_catalog_service import refresh_catalog
+
+    async with async_session() as db:
+        summary = await refresh_catalog(db)
+        await db.commit()
+    logger.info(
+        "Scheduler: model catalog refreshed — providers=%s models=%s stale_removed=%s",
+        summary.get("providers"),
+        summary.get("models"),
+        summary.get("deleted_stale"),
+    )
+    return str(summary)
+
+
 async def _normalize_content_events() -> dict:
     """Run the public event-normalization slice; ``off`` is a true no-op."""
 
@@ -1092,6 +1121,15 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=5, minute=0),
         id="refresh_weread_stats_cache",
         name="微信读书统计缓存每日刷新",
+        replace_existing=True,
+    )
+
+    # 模型目录刷新：每日 05:30（错开 05:00 WeRead 缓存；失败保留旧数据）
+    scheduler.add_job(
+        _refresh_model_catalog,
+        trigger=CronTrigger(hour=5, minute=30),
+        id="refresh_model_catalog",
+        name="模型目录每日刷新",
         replace_existing=True,
     )
 

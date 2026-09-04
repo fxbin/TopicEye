@@ -139,3 +139,63 @@ export interface ModelUsageSummary {
   by_model: ModelUsageByModel[];
   by_prompt: ModelUsageByPrompt[];
 }
+
+// ── 模型目录（models.dev 缓存，仅用于表单预填与参考展示） ──
+
+export interface ModelCatalogProviderItem {
+  /** models.dev provider id（精选下拉的 value），如 zhipuai */
+  id: string;
+  /** resolve_litellm_model 拼路由用的 provider 值，如 zhipu / openai */
+  litellm_provider: string;
+  display_name: string;
+  group: string;
+  group_label: string;
+  model_count: number;
+  default_api_base: string | null;
+}
+
+export interface ModelCatalogProvidersResponse {
+  groups: { key: string; label: string; providers: ModelCatalogProviderItem[] }[];
+  others: ModelCatalogProviderItem[];
+  featured_count: number;
+  total_providers: number;
+  fetched_at: string | null;
+}
+
+export interface ModelCatalogModelItem {
+  provider: string;
+  model_id: string;
+  name: string | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  cost_per_1m_input: number | null;
+  cost_per_1m_output: number | null;
+  cost_per_1m_cache_read: number | null;
+  supports_tool_call: boolean | null;
+  supports_structured_output: boolean | null;
+  supports_reasoning: boolean | null;
+  input_modalities: string[] | null;
+  output_modalities: string[] | null;
+  open_weights: boolean | null;
+  status: string | null;
+  release_date: string | null;
+  last_updated: string | null;
+}
+
+export interface ModelCatalogModelsResponse {
+  provider: string;
+  requested_provider: string;
+  items: ModelCatalogModelItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  fetched_at: string | null;
+}
+
+export interface ModelCatalogRefreshResponse {
+  ok: boolean;
+  providers: number;
+  models: number;
+  deleted_stale: number;
+  fetched_at: string;
+}

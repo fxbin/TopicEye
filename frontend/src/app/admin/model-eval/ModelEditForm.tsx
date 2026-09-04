@@ -6,6 +6,8 @@
  * 从 app/model-eval/page.tsx 抽出的组件，v2 交互改版：
  * - 承载形态：内联 Panel 改为 AdminModal 弹窗，内容区独立滚动，底部操作栏常驻
  * - 预设选择（4 个供应商 + 高级 LiteLLM 路由）
+ * - 模型目录接入：provider 分组下拉（models.dev 精选）+ Model ID datalist
+ *   自动补全 + 价格/上下文预填；目录不可用时回落内置 PROVIDER_PRESETS
  * - API Key / Base URL / Model ID / 显示名称
  * - 路由参数（priority / cooldown / routing group / family / channel）
  * - 性能参数（temperature / max_tokens / rpm）
@@ -37,10 +39,17 @@ import { Button, cx } from '@/components/ui';
 import { AdminModal, AdminModalFooter } from '@/components/admin-ui';
 import { FieldLabel, InfoCell, SelectInput, TextInput } from './_components';
 import { modelsApi } from '@/lib/api';
-import type { LlmModelItem, LlmModelPresetCatalog } from '@/lib/api';
+import type {
+  LlmModelItem,
+  LlmModelPresetCatalog,
+  ModelCatalogModelItem,
+  ModelCatalogProviderItem,
+  ModelCatalogProvidersResponse,
+} from '@/lib/api';
 import {
   PROVIDER_PRESETS,
   formatPresetValue,
+  formatTokens,
   parameterChangeHint,
   parameterMeta,
   parseOptionalNumber,
@@ -90,6 +99,11 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // ── 模型目录（models.dev 缓存）：provider 分组下拉 + Model ID datalist + 价格预填 ──
+  const [catalogProviders, setCatalogProviders] = useState<ModelCatalogProvidersResponse | null>(null);
+  const [catalogModels, setCatalogModels] = useState<ModelCatalogModelItem[]>([]);
+  // 下拉 value 用 models.dev id（唯一）；表单保存的 provider 是 litellm provider
+  const [providerSelectKey, setProviderSelectKey] = useState('');
   const selectedPreset = useMemo(
     () => catalog?.presets.find((item) => item.key === presetKey),
     [catalog, presetKey],
@@ -97,6 +111,83 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   const currentPreset = PROVIDER_PRESETS[form.provider] || PROVIDER_PRESETS.custom;
   const needsModelId = isEdit || presetRequires(selectedPreset, 'model_id') || presetKey === 'custom';
   const needsApiBase = presetRequires(selectedPreset, 'api_base') || presetKey === 'openai_compatible';
+
+  /**
+   * Provider 下拉统一选项：目录精选分组优先；目录不可用或未覆盖时回落
+   * 内置 PROVIDER_PRESETS（离线兜底）。value 是 models.dev id（唯一键），
+   * litellm provider 从 featured 项取，保存时再映射。
+   */
+  const providerOptions = useMemo(() => {
+    const options: { value: string; label: string; group: string; featured?: ModelCatalogProviderItem }[] = [];
+    for (const group of catalogProviders?.groups ?? []) {
+      for (const item of group.providers) {
+        options.push({ value: item.id, label: `${item.display_name}（${item.model_count}）`, group: group.label, featured: item });
+      }
+    }
+    const coveredLitellm = new Set(options.map((o) => o.featured!.litellm_provider));
+    for (const [value, preset] of Object.entries(PROVIDER_PRESETS)) {
+      if (value !== 'custom' && !coveredLitellm.has(value)) {
+        options.push({ value, label: preset.label, group: '内置预设' });
+      }
+    }
+    options.push({ value: 'custom', label: PROVIDER_PRESETS.custom.label, group: '内置预设' });
+    return options;
+  }, [catalogProviders]);
+  const providerOptionsByKey = useMemo(() => new Map(providerOptions.map((o) => [o.value, o])), [providerOptions]);
+
+  // 下拉高亮与 form.provider（litellm 值）映射失配时反查同步；编辑模式初始也走这里
+  useEffect(() => {
+    setProviderSelectKey((prev) => {
+      const option = providerOptionsByKey.get(prev);
+      const optionProvider = option?.featured?.litellm_provider ?? (prev === 'custom' ? '' : prev);
+      if (optionProvider === (form.provider || '')) return prev;
+      const next = providerOptions.find(
+        (o) => (o.featured?.litellm_provider ?? (o.value === 'custom' ? '' : o.value)) === (form.provider || ''),
+      );
+      return next?.value ?? 'custom';
+    });
+  }, [form.provider, providerOptions, providerOptionsByKey]);
+
+  // 选中精选 provider 后拉取目录模型（datalist 数据源）；失败静默，仍可手填
+  useEffect(() => {
+    const option = providerOptionsByKey.get(providerSelectKey);
+    if (!option?.featured) {
+      setCatalogModels([]);
+      return;
+    }
+    let cancelled = false;
+    modelsApi
+      .catalogModels(option.featured.id, undefined, 200)
+      .then((res) => {
+        if (!cancelled) setCatalogModels(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerSelectKey, providerOptionsByKey]);
+
+  // 目录 provider 清单（添加/编辑两种模式都要；失败回落内置预设）
+  useEffect(() => {
+    let cancelled = false;
+    modelsApi
+      .catalogProviders()
+      .then((res) => {
+        if (!cancelled) setCatalogProviders(res);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** 当前 Model ID 在目录中的命中项（价格/上下文参考提示用） */
+  const matchedCatalogModel = useMemo(
+    () => catalogModels.find((m) => m.model_id === form.model_id) ?? null,
+    [catalogModels, form.model_id],
+  );
 
   /**
    * 用户输入统一入口：任何字段编辑都会标记表单为脏，并清除上一次的保存错误，
@@ -236,31 +327,44 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     onClose();
   };
 
-  const handleProviderChange = (provider: string) => {
-    const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom;
-    const pricing = pricingForProviderModel(provider, form.model_id);
+  const handleProviderSelect = (key: string) => {
+    const option = providerOptionsByKey.get(key);
+    if (!option) return;
+    const featured = option.featured;
+    const nextProvider = featured?.litellm_provider ?? (key === 'custom' ? '' : key);
+    setProviderSelectKey(key);
     setDirty(true);
+    setSaveError('');
     setForm((f) => ({
       ...f,
-      provider,
-      api_base: preset.baseUrl,
-      cost_per_1m_input: pricing?.input?.toString() ?? f.cost_per_1m_input,
-      cost_per_1m_input_cache_hit: pricing?.cacheHit?.toString() ?? f.cost_per_1m_input_cache_hit,
-      cost_per_1m_output: pricing?.output?.toString() ?? f.cost_per_1m_output,
+      provider: nextProvider,
+      // 目录厂商带默认网关则预填（OpenAI 兼容网关统一 provider=openai+api_base）；
+      // custom 清空；无默认值的托管厂商（azure/bedrock 等）保留已填地址
+      api_base: featured?.default_api_base ?? (key === 'custom' ? '' : PROVIDER_PRESETS[key]?.baseUrl ?? f.api_base),
     }));
   };
 
   const handleModelIdChange = (modelId: string) => {
-    const pricing = pricingForProviderModel(form.provider, modelId);
+    // 目录命中优先（models.dev per-1M 原值，USD）；未命中回落内置硬编码定价（离线兜底）
+    const catalogMatch = catalogModels.find((m) => m.model_id === modelId);
+    const pricing = catalogMatch
+      ? {
+          input: catalogMatch.cost_per_1m_input,
+          cacheHit: catalogMatch.cost_per_1m_cache_read,
+          output: catalogMatch.cost_per_1m_output,
+        }
+      : pricingForProviderModel(form.provider, modelId);
     setDirty(true);
     setForm((f) => ({
       ...f,
       model_id: modelId,
-      ...(pricing ? {
-        cost_per_1m_input: pricing.input?.toString() ?? f.cost_per_1m_input,
-        cost_per_1m_input_cache_hit: pricing.cacheHit?.toString() ?? f.cost_per_1m_input_cache_hit,
-        cost_per_1m_output: pricing.output?.toString() ?? f.cost_per_1m_output,
-      } : {}),
+      ...(pricing
+        ? {
+            cost_per_1m_input: pricing.input?.toString() ?? f.cost_per_1m_input,
+            cost_per_1m_input_cache_hit: pricing.cacheHit?.toString() ?? f.cost_per_1m_input_cache_hit,
+            cost_per_1m_output: pricing.output?.toString() ?? f.cost_per_1m_output,
+          }
+        : {}),
     }));
   };
 
@@ -341,9 +445,27 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
           {(needsModelId || showAdvanced || (submitAttempted && !!fieldErrors.model_id)) && (
             <div>
               <FieldLabel htmlFor="model-id" required>Model ID</FieldLabel>
-              <TextInput id="model-id" required aria-invalid={submitAttempted && !!fieldErrors.model_id} aria-describedby={submitAttempted && fieldErrors.model_id ? 'model-id-error' : undefined} value={form.model_id} onChange={(e) => handleModelIdChange(e.target.value)} placeholder={selectedPreset?.model_id || selectedPreset?.model_id_placeholder || `如 ${currentPreset.modelPlaceholder}`} />
+              <TextInput id="model-id" required list="model-catalog-models" aria-invalid={submitAttempted && !!fieldErrors.model_id} aria-describedby={submitAttempted && fieldErrors.model_id ? 'model-id-error' : undefined} value={form.model_id} onChange={(e) => handleModelIdChange(e.target.value)} placeholder={selectedPreset?.model_id || selectedPreset?.model_id_placeholder || `如 ${currentPreset.modelPlaceholder}`} />
+              <datalist id="model-catalog-models">
+                {catalogModels.map((m) => (
+                  <option key={`${m.provider}/${m.model_id}`} value={m.model_id}>
+                    {`${m.name ?? m.model_id}${m.context_window ? ` · ${formatTokens(m.context_window)} ctx` : ''}${m.status && m.status !== 'ga' ? ` · ${m.status}` : ''}`}
+                  </option>
+                ))}
+              </datalist>
               {submitAttempted && fieldErrors.model_id ? (
                 <div id="model-id-error" role="alert" className="mt-1 text-[10px] font-bold leading-4 text-red">{fieldErrors.model_id}</div>
+              ) : matchedCatalogModel ? (
+                <div className="mt-1 text-[10px] font-bold leading-4 text-teal">
+                  目录参考：上下文 {formatTokens(matchedCatalogModel.context_window || 0)}
+                  {matchedCatalogModel.max_output_tokens ? ` · 输出上限 ${formatTokens(matchedCatalogModel.max_output_tokens)}` : ''}
+                  {matchedCatalogModel.cost_per_1m_input != null
+                    ? ` · $${matchedCatalogModel.cost_per_1m_input}/${matchedCatalogModel.cost_per_1m_output ?? '-'} 每百万 tokens`
+                    : ''}
+                  （models.dev，费用已按 USD 原值预填）
+                </div>
+              ) : catalogModels.length > 0 ? (
+                <div className="mt-1 text-[10px] leading-4 text-gray-400">可从下拉选择目录模型，或手填裸模型名 / 完整 LiteLLM 路由。</div>
               ) : (
                 <div className="mt-1 text-[10px] leading-4 text-gray-400">可填裸模型名，也可直接填完整 LiteLLM 路由。</div>
               )}
@@ -413,11 +535,19 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             </div>
             <div>
               <FieldLabel required>Provider</FieldLabel>
-              <SelectInput value={form.provider || 'openai'} onChange={(e) => handleProviderChange(e.target.value)}>
-                {Object.entries(PROVIDER_PRESETS).map(([value, preset]) => (
-                  <option key={value} value={value}>{preset.label}</option>
+              <SelectInput value={providerSelectKey || 'custom'} onChange={(e) => handleProviderSelect(e.target.value)}>
+                {Array.from(new Set(providerOptions.map((o) => o.group))).map((group) => (
+                  <optgroup key={group} label={group}>
+                    {providerOptions.filter((o) => o.group === group).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </SelectInput>
+              <div className="mt-1 text-[10px] leading-4 text-gray-400">
+                当前 LiteLLM 路由前缀：<span className="font-bold text-gray-500">{form.provider || '未设置'}</span>
+                ；OpenAI 兼容网关目录项会自动带出 API Base。
+              </div>
             </div>
             <div>
               <FieldLabel>路由组</FieldLabel>

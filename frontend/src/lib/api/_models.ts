@@ -4,7 +4,18 @@
  */
 
 import { request } from './_core';
-import type { EvalResult, EvalRun, LlmModelCreatePayload, LlmModelItem, LlmModelPresetCatalog, LlmModelPresetItem, ModelUsageSummary } from '@/types/models';
+import type {
+  EvalResult,
+  EvalRun,
+  LlmModelCreatePayload,
+  LlmModelItem,
+  LlmModelPresetCatalog,
+  LlmModelPresetItem,
+  ModelCatalogModelsResponse,
+  ModelCatalogProvidersResponse,
+  ModelCatalogRefreshResponse,
+  ModelUsageSummary,
+} from '@/types/models';
 
 // ─── LLM Models API ───
 
@@ -42,5 +53,17 @@ export const modelsApi = {
   },
   scoreEvaluation(evalId: number, quality_score: number, notes?: string): Promise<{ message: string }> {
     return request(`/models/evaluations/${evalId}/score`, { method: 'PUT', body: JSON.stringify({ quality_score, notes }) });
+  },
+  // ─── 模型目录（models.dev 缓存）───
+  catalogProviders(includeAll = false): Promise<ModelCatalogProvidersResponse> {
+    return request(`/models/catalog/providers${includeAll ? '?include_all=true' : ''}`);
+  },
+  catalogModels(provider: string, search?: string, limit = 200): Promise<ModelCatalogModelsResponse> {
+    const params = new URLSearchParams({ provider, limit: String(limit) });
+    if (search) params.set('search', search);
+    return request(`/models/catalog/models?${params.toString()}`);
+  },
+  refreshCatalog(): Promise<ModelCatalogRefreshResponse> {
+    return request('/models/catalog/refresh', { method: 'POST' });
   },
 };

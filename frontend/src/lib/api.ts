@@ -114,6 +114,11 @@ import type {
   ModelUsageByModel,
   ModelUsageByPrompt,
   ModelUsageSummary,
+  ModelCatalogProviderItem,
+  ModelCatalogProvidersResponse,
+  ModelCatalogModelItem,
+  ModelCatalogModelsResponse,
+  ModelCatalogRefreshResponse,
 } from '@/types/models';
 
 export type { ContentItem, CreateSourceRequest, UpdateSourceRequest };
@@ -185,6 +190,11 @@ export type {
   ModelUsageByModel,
   ModelUsageByPrompt,
   ModelUsageSummary,
+  ModelCatalogProviderItem,
+  ModelCatalogProvidersResponse,
+  ModelCatalogModelItem,
+  ModelCatalogModelsResponse,
+  ModelCatalogRefreshResponse,
 };
 
 // Core API infrastructure (request / token / error helpers) extracted to _core.ts

@@ -43,8 +43,6 @@ import {
   PROVIDER_PRESETS,
   promptTypeLabel,
   toneClasses,
-  deepSeekPricingForModel,
-  pricingForProviderModel,
   formatNumber,
   formatTokens,
   formatCurrency,

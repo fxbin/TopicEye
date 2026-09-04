@@ -55,7 +55,6 @@ import {
   parseOptionalNumber,
   presetNumberDefault,
   presetRequires,
-  pricingForProviderModel,
 } from './_model-eval-utils';
 
 /**
@@ -69,7 +68,6 @@ const MODAL_MAX_WIDTH = 720;
 
 export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null; onClose: (saved?: boolean, createdId?: number) => void }) {
   const isEdit = !!model;
-  const initialPreset = PROVIDER_PRESETS[model?.provider || 'openai'] || PROVIDER_PRESETS.openai;
   const [catalog, setCatalog] = useState<LlmModelPresetCatalog | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(!isEdit);
   const [presetKey, setPresetKey] = useState('deepseek_balanced');
@@ -87,12 +85,15 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     cooldown_seconds: model?.cooldown_seconds ?? 300,
     temperature: model?.temperature ?? 0.3,
     max_tokens: model?.max_tokens ?? 2000,
+    context_window: model?.context_window ?? null,
     requests_per_minute: model?.requests_per_minute ?? 30,
     description: model?.description || '',
     enabled: model?.enabled ?? true,
-    cost_per_1m_input: model?.cost_per_1m_input?.toString() ?? initialPreset.costPer1MInput?.toString() ?? '',
-    cost_per_1m_input_cache_hit: model?.cost_per_1m_input_cache_hit?.toString() ?? initialPreset.costPer1MInputCacheHit?.toString() ?? '',
-    cost_per_1m_output: model?.cost_per_1m_output?.toString() ?? initialPreset.costPer1MOutput?.toString() ?? '',
+    // 定价默认来自后端预设 defaults（applyPreset）或模型目录预填，
+    // 前端不再硬编码厂商价格
+    cost_per_1m_input: model?.cost_per_1m_input?.toString() ?? '',
+    cost_per_1m_input_cache_hit: model?.cost_per_1m_input_cache_hit?.toString() ?? '',
+    cost_per_1m_output: model?.cost_per_1m_output?.toString() ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -345,24 +346,19 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   };
 
   const handleModelIdChange = (modelId: string) => {
-    // 目录命中优先（models.dev per-1M 原值，USD）；未命中回落内置硬编码定价（离线兜底）
+    // 命中目录时预填价格与上下文窗口（models.dev，价格 USD/百万 tokens 原值）；
+    // 未命中不猜价，留空由用户填写或走后端目录价估算兜底
     const catalogMatch = catalogModels.find((m) => m.model_id === modelId);
-    const pricing = catalogMatch
-      ? {
-          input: catalogMatch.cost_per_1m_input,
-          cacheHit: catalogMatch.cost_per_1m_cache_read,
-          output: catalogMatch.cost_per_1m_output,
-        }
-      : pricingForProviderModel(form.provider, modelId);
     setDirty(true);
     setForm((f) => ({
       ...f,
       model_id: modelId,
-      ...(pricing
+      ...(catalogMatch
         ? {
-            cost_per_1m_input: pricing.input?.toString() ?? f.cost_per_1m_input,
-            cost_per_1m_input_cache_hit: pricing.cacheHit?.toString() ?? f.cost_per_1m_input_cache_hit,
-            cost_per_1m_output: pricing.output?.toString() ?? f.cost_per_1m_output,
+            context_window: catalogMatch.context_window,
+            cost_per_1m_input: catalogMatch.cost_per_1m_input?.toString() ?? f.cost_per_1m_input,
+            cost_per_1m_input_cache_hit: catalogMatch.cost_per_1m_cache_read?.toString() ?? f.cost_per_1m_input_cache_hit,
+            cost_per_1m_output: catalogMatch.cost_per_1m_output?.toString() ?? f.cost_per_1m_output,
           }
         : {}),
     }));
@@ -462,7 +458,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                   {matchedCatalogModel.cost_per_1m_input != null
                     ? ` · $${matchedCatalogModel.cost_per_1m_input}/${matchedCatalogModel.cost_per_1m_output ?? '-'} 每百万 tokens`
                     : ''}
-                  （models.dev，费用已按 USD 原值预填）
+                  （models.dev，费用与上下文窗口已预填，超出窗口的调用会自动跳过该路由）
                 </div>
               ) : catalogModels.length > 0 ? (
                 <div className="mt-1 text-[10px] leading-4 text-gray-400">可从下拉选择目录模型，或手填裸模型名 / 完整 LiteLLM 路由。</div>
@@ -611,6 +607,18 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
+              <FieldLabel>上下文窗口</FieldLabel>
+              <TextInput
+                type="number"
+                value={form.context_window?.toString() ?? ''}
+                onChange={(e) => patchForm({ context_window: parseOptionalNumber(e.target.value) })}
+                placeholder="目录预填；留空不做调用前预检"
+              />
+              <div className="mt-1 text-[10px] leading-4 text-gray-400">
+                配置后超出窗口的请求会自动跳过该路由并尝试下一候选；留空表示不预检。
+              </div>
+            </div>
+            <div>
               <FieldLabel>每分钟请求数</FieldLabel>
               <TextInput type="number" value={form.requests_per_minute} onChange={(e) => patchForm({ requests_per_minute: parseInt(e.target.value, 10) || 30 })} />
               <div className="mt-1 text-[10px] leading-4 text-gray-400">
@@ -638,8 +646,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               <TextInput type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
             </div>
             <div className="flex items-end">
-              <div className={cx('w-full rounded-xs border px-2.5 py-2 text-[11px] leading-4', currentPreset.pricingNote ? 'border-teal-border bg-teal-light text-teal' : 'border-gray-200 bg-gray-50 text-gray-400')}>
-                {currentPreset.pricingNote || '费用估算按输入未命中价和输出价计算。'}
+              <div className="w-full rounded-xs border border-gray-200 bg-gray-50 px-2.5 py-2 text-[11px] leading-4 text-gray-400">
+                费用估算按输入未命中价和输出价计算；留空时后端用模型目录价（USD）估算。
               </div>
             </div>
           </div>

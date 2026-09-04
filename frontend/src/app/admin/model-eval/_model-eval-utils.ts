@@ -3,10 +3,10 @@
  *
  * 从 app/model-eval/page.tsx 抽出：
  * - Tab / Tone 类型
- * - ProviderPreset 类型 + PROVIDER_PRESETS（5 个厂商预置）
+ * - ProviderPreset 类型 + PROVIDER_PRESETS（厂商网关地址与占位提示；
+ *   定价已迁移到后端模型目录 models.dev，不再前端硬编码）
  * - promptTypeLabel 提示词类型中文标签
  * - toneClasses 5 种色调的样式映射
- * - 定价工具（deepSeekPricingForModel / pricingForProviderModel）
  * - 格式化工具（formatNumber / formatTokens / formatCurrency / formatPerMillion /
  *   formatPresetValue）
  * - Preset 工具（presetRequires / presetNumberDefault / parameterMeta /
@@ -27,10 +27,6 @@ export type ProviderPreset = {
   label: string;
   baseUrl: string;
   modelPlaceholder: string;
-  costPer1MInput?: number;
-  costPer1MInputCacheHit?: number;
-  costPer1MOutput?: number;
-  pricingNote?: string;
 };
 
 export const PROVIDER_PRESETS: Record<string, ProviderPreset> = {
@@ -43,10 +39,6 @@ export const PROVIDER_PRESETS: Record<string, ProviderPreset> = {
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
     modelPlaceholder: 'deepseek-chat',
-    costPer1MInput: 1,
-    costPer1MInputCacheHit: 0.02,
-    costPer1MOutput: 2,
-    pricingNote: 'DeepSeek 按百万 tokens 计费；V4 Flash 默认 ¥1/¥0.02/¥2，V4 Pro 当前优惠价 ¥3/¥0.025/¥6',
   },
   minimax: {
     label: 'MiniMax',
@@ -81,29 +73,6 @@ export const toneClasses: Record<Tone, { text: string; border: string; bg: strin
   red: { text: 'text-red', border: 'border-red-light', bg: 'bg-red-light', metric: 'text-red' },
   neutral: { text: 'text-gray-600', border: 'border-gray-200', bg: 'bg-gray-50', metric: 'text-gray-900' },
 };
-
-export function deepSeekPricingForModel(modelId: string) {
-  const normalized = modelId.toLowerCase();
-  if (normalized.includes('deepseek-v4-flash-free')) {
-    return { input: 0, cacheHit: 0, output: 0 };
-  }
-  if (normalized.includes('v4-pro')) {
-    return { input: 3, cacheHit: 0.025, output: 6 };
-  }
-  return { input: 1, cacheHit: 0.02, output: 2 };
-}
-
-export function pricingForProviderModel(provider: string, modelId: string) {
-  if (modelId.toLowerCase().includes('deepseek-v4-flash-free')) return deepSeekPricingForModel(modelId);
-  if (provider === 'deepseek') return deepSeekPricingForModel(modelId);
-  const preset = PROVIDER_PRESETS[provider];
-  if (!preset?.costPer1MInput && !preset?.costPer1MOutput && !preset?.costPer1MInputCacheHit) return null;
-  return {
-    input: preset.costPer1MInput,
-    cacheHit: preset.costPer1MInputCacheHit,
-    output: preset.costPer1MOutput,
-  };
-}
 
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat('zh-CN').format(value || 0);

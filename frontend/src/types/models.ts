@@ -22,6 +22,8 @@ export interface LlmModelItem {
   cooldown_seconds: number;
   temperature: number;
   max_tokens: number;
+  /** 上下文窗口 tokens（目录预填或手填；null=不做调用前预检） */
+  context_window: number | null;
   requests_per_minute: number;
   description: string | null;
   cost_per_1k_input: number | null;

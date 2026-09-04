@@ -132,5 +132,17 @@ class ModelCatalogRepository(BaseRepository[ModelCatalogModel]):
     async def count_all(self) -> int:
         return (await self.db.execute(select(func.count()).select_from(ModelCatalogModel))).scalar() or 0
 
+    async def list_pricing_rows(self) -> Sequence[tuple]:
+        """全部 (provider, model_id, in, out, cache_read) 价格行，供计费估算 fallback 缓存加载。"""
+        stmt = select(
+            ModelCatalogModel.provider,
+            ModelCatalogModel.model_id,
+            ModelCatalogModel.cost_per_1m_input,
+            ModelCatalogModel.cost_per_1m_output,
+            ModelCatalogModel.cost_per_1m_cache_read,
+        )
+        result = await self.db.execute(stmt)
+        return result.all()
+
     async def latest_fetched_at(self) -> datetime | None:
         return (await self.db.execute(select(func.max(ModelCatalogModel.fetched_at)))).scalar()

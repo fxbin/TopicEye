@@ -228,11 +228,23 @@ async def seed_catalog_from_snapshot(db: AsyncSession) -> int:
     if not entries:
         raise ValueError("bundled model catalog snapshot is empty")
     imported = await repo.upsert_entries(entries, fetched_at=datetime.now(UTC))
+    _reset_pricing_cache()
     logger.info("Model catalog seeded from bundled snapshot: %d models", imported)
     return imported
 
 
 # ── 每日刷新 ─────────────────────────────────────────────────────────
+
+
+def _reset_pricing_cache() -> None:
+    """目录数据变化后清空计费估算的价格缓存。
+
+    延迟导入：model_catalog_pricing 依赖本模块的 resolve_provider_for_lookup，
+    顶层互 import 会成环；两模块加载完成后运行时调用无碍。
+    """
+    from app.services.llm.model_catalog_pricing import reset_catalog_pricing_cache
+
+    reset_catalog_pricing_cache()
 
 
 async def fetch_models_dev_catalog(url: str) -> dict:
@@ -262,6 +274,7 @@ async def refresh_catalog(db: AsyncSession) -> dict:
     repo = ModelCatalogRepository(db)
     upserted = await repo.upsert_entries(entries, fetched_at=fetched_at)
     deleted = await repo.delete_stale(fetched_before=fetched_at)
+    _reset_pricing_cache()
     providers = len({entry["provider"] for entry in entries})
     logger.info("Model catalog refreshed: %d providers / %d models / %d stale removed", providers, upserted, deleted)
     return {

@@ -213,6 +213,28 @@ async def record_llm_call(
     usage = usage or TokenUsage()
     resolved_request_id = request_id or f"llm_{uuid.uuid4().hex}"
     pricing = pricing_from_model(model)
+    # 目录价估算 fallback：仅当用户 input 与 output 价格均未配置且非免费模型
+    # 时，用 models.dev 目录价（USD/1M）兜底成本估算。已配置任何价格都不覆盖。
+    from app.services.llm.model_pricing import is_free_model
+
+    if (
+        model is not None
+        and pricing.get("input") is None
+        and pricing.get("output") is None
+        and not is_free_model(model.model_id)
+    ):
+        try:
+            from app.services.llm.model_catalog_pricing import catalog_pricing_for_model
+
+            catalog_pricing = await catalog_pricing_for_model(db, provider=model.provider, model_id=model.model_id)
+        except Exception:
+            catalog_pricing = None
+        if catalog_pricing:
+            # 只补当前为 None 的键：用户单独配置过的缓存命中价等不被目录值覆盖
+            pricing = {
+                **pricing,
+                **{k: v for k, v in catalog_pricing.items() if v is not None and pricing.get(k) is None},
+            }
     costs = calculate_cost(
         usage,
         pricing,

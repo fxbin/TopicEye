@@ -82,6 +82,7 @@ def _model_snapshot(model: LlmModel) -> SimpleNamespace:
         cooldown_seconds=model.cooldown_seconds,
         temperature=model.temperature,
         max_tokens=model.max_tokens,
+        context_window=model.context_window,
         cost_per_1k_input=model.cost_per_1k_input,
         cost_per_1k_output=model.cost_per_1k_output,
         extra_params=model.extra_params,
@@ -210,6 +211,7 @@ class ModelCreateRequest(BaseModel):
     cooldown_seconds: int = Field(300, ge=0, le=3600)
     temperature: float = Field(0.3, ge=0, le=2)
     max_tokens: int = Field(2000, ge=256, le=16000)
+    context_window: int | None = Field(None, ge=1000, le=10_000_000, description="上下文窗口 tokens，空=不做调用前预检")
     requests_per_minute: int = Field(30, ge=1, le=120)
     description: str | None = None
     cost_per_1k_input: float | None = None
@@ -244,6 +246,7 @@ class ModelUpdateRequest(BaseModel):
     cooldown_seconds: int | None = Field(None, ge=0, le=3600)
     temperature: float | None = Field(None, ge=0, le=2)
     max_tokens: int | None = Field(None, ge=256, le=16000)
+    context_window: int | None = Field(None, ge=1000, le=10_000_000, description="上下文窗口 tokens，null=清除")
     requests_per_minute: int | None = Field(None, ge=1, le=120)
     description: str | None = None
     cost_per_1k_input: float | None = None
@@ -323,6 +326,7 @@ def _model_payload(m: LlmModel) -> dict:
         "cooldown_seconds": m.cooldown_seconds,
         "temperature": m.temperature,
         "max_tokens": m.max_tokens,
+        "context_window": m.context_window,
         "requests_per_minute": m.requests_per_minute,
         "description": m.description,
         "cost_per_1k_input": pricing["cost_per_1k_input"],
@@ -398,6 +402,7 @@ def _new_model_from_request(req: ModelCreateRequest) -> LlmModel:
         cooldown_seconds=req.cooldown_seconds,
         temperature=req.temperature,
         max_tokens=req.max_tokens,
+        context_window=req.context_window,
         requests_per_minute=req.requests_per_minute,
         description=req.description,
         cost_per_1k_input=cost_per_1k_input,

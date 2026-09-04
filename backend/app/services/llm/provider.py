@@ -33,6 +33,7 @@ from app.services.llm._call_engine import (
     _is_rate_limit_error,
     _parse_reset_time,
 )
+from app.services.llm._context_guard import LlmContextWindowExceededError, context_guard_verdict
 from app.services.llm._failover import _candidate_from_db_model, _failover, _model_key
 from app.services.llm._model_cache import _model_cache
 from app.services.llm._rate_limit import (
@@ -192,6 +193,7 @@ async def _call_llm_with_metadata_inner(
     candidates = [_candidate_from_db_model(m, temperature, max_tokens) for m in db_models]
 
     skipped: list[dict[str, Any]] = []
+    unfit_candidates: list[dict[str, Any]] = []
     last_exc: Exception | None = None
 
     for candidate in candidates:
@@ -203,6 +205,20 @@ async def _call_llm_with_metadata_inner(
             record_llm_pool_circuit_event(model_config, scene, "candidate_cooling_down")
             candidate["_failover_key"] = key  # 重探时重新检查冷却用
             skipped.append(candidate)
+            continue
+
+        # 调用前上下文预检（fail-open）：估算严格大于窗口才跳过。跳过不算
+        # 模型失败——窗口大小是配置事实，不是健康度，不应触发冷却/熔断。
+        unfit, estimated_tokens, context_window = context_guard_verdict(model_config, messages, candidate["max_tokens"])
+        if unfit:
+            logger.warning(
+                "LLM candidate skipped: estimated %d tokens > context window %d: %s",
+                estimated_tokens,
+                context_window,
+                request_model,
+            )
+            record_llm_pool_circuit_event(model_config, scene, "candidate_context_unfit")
+            unfit_candidates.append(candidate)
             continue
 
         try:
@@ -273,6 +289,13 @@ async def _call_llm_with_metadata_inner(
     if last_exc:
         logger.error("All LLM candidates failed: %s", last_exc)
         raise last_exc
+    if unfit_candidates:
+        # 全部候选都放不进上下文窗口：换模型无解（除非换小请求），与
+        # ContextWindowExceededError 同类的确定性配置问题，冷却/熔断都无意义。
+        raise LlmContextWindowExceededError(
+            f"All LLM candidates' context windows exceeded (estimated {estimated_tokens} tokens, "
+            f"routing_group={routing_group})"
+        )
     if skipped:
         next_available_at = _failover.next_available_at(candidate["_failover_key"] for candidate in skipped)
         logger.info(

@@ -74,6 +74,8 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
     过滤，也不能缩短超出上下文窗口的输入。将它们计入模型失败会错误地
     冷却健康路由，并在所有模型都拒绝同一请求时打开全局熔断器。
     """
+    from app.services.llm._context_guard import LlmContextWindowExceededError
+
     if isinstance(
         exc,
         BadRequestError
@@ -81,7 +83,8 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
         | ContextWindowExceededError
         | JSONSchemaValidationError
         | UnprocessableEntityError
-        | UnsupportedParamsError,
+        | UnsupportedParamsError
+        | LlmContextWindowExceededError,
     ):
         return True
     return _is_bad_request_error(exc)

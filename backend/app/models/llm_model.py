@@ -49,6 +49,9 @@ class LlmModel(Base):
     cooldown_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False, comment="失败后冷却秒数")
     temperature: Mapped[float] = mapped_column(Float, default=0.3, nullable=False)
     max_tokens: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
+    context_window: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="上下文窗口 tokens（来自模型目录预填或手填；空=不做调用前预检）"
+    )
     requests_per_minute: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_per_1k_input: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每1k input token 成本(元)")

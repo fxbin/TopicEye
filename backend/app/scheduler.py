@@ -746,6 +746,47 @@ async def _generate_weekly_digest() -> None:
 
 
 @track_job(
+    "monthly_digest",
+    name="AI月刊生成",
+    timeout=300,
+    description="每月1日凌晨生成上月 AI 月刊（此前只有 API 触发，无人调用则永不生成）",
+)
+async def _generate_monthly_digest() -> None:
+    """Generate AI monthly digest for the previous month on the 1st, 04:45."""
+    logger.info("Scheduler: monthly digest generation started")
+    try:
+        from app.services.monthly_digest import generate_monthly_digest
+
+        async with async_session() as db:
+            digest = await generate_monthly_digest(db)
+        logger.info("Scheduler: monthly digest generated — %s (%s)", digest.month_key, digest.status)
+        return f"month={digest.month_key}, status={digest.status}"
+    except Exception:
+        logger.exception("Scheduler: monthly digest generation failed")
+
+
+@track_job(
+    "cleanup_email_verification_codes",
+    name="过期邮箱验证码清理",
+    timeout=60,
+    description="每日03:50清理过期邮箱验证码（此前无任何调用方，表无限增长）",
+)
+async def _cleanup_email_verification_codes() -> None:
+    """Remove expired email verification codes (daily)."""
+    logger.info("Scheduler: cleanup_email_verification_codes started")
+    try:
+        from app.services.email_verification_service import cleanup_expired_codes
+
+        async with async_session() as db:
+            removed = await cleanup_expired_codes(db)
+            await db.commit()
+        logger.info("Scheduler: cleanup_email_verification_codes removed %d records", removed)
+        return f"removed={removed}"
+    except Exception:
+        logger.exception("Scheduler: cleanup_email_verification_codes failed")
+
+
+@track_job(
     "refresh_weread_stats_cache",
     name="微信读书统计缓存刷新",
     timeout=600,
@@ -891,6 +932,15 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # Expired email verification codes cleanup at 03:50
+    scheduler.add_job(
+        _cleanup_email_verification_codes,
+        trigger=CronTrigger(hour=3, minute=50),
+        id="cleanup_email_verification_codes",
+        name="Cleanup expired email verification codes",
+        replace_existing=True,
+    )
+
     # Trending radar: sync all trending sources every 30 minutes
     scheduler.add_job(
         _sync_all_trending,
@@ -1027,6 +1077,15 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # AI 月刊：每月 1 日 04:45 生成上月月刊（此前无调度注册，仅 API 触发）
+    scheduler.add_job(
+        _generate_monthly_digest,
+        trigger=CronTrigger(day=1, hour=4, minute=45),
+        id="monthly_digest",
+        name="AI月刊生成",
+        replace_existing=True,
+    )
+
     # 七猫小说榜单：每日凌晨2点抓取（任务永远注册，运行时由 _sync_qimao 内 flag 检查决定是否执行）
     scheduler.add_job(
         _sync_qimao,
@@ -1152,7 +1211,7 @@ def start_scheduler() -> None:
         "Scheduler started: per-source sync + 10min rescan + "
         "5min analysis + 15min clustering + 15min evidence + 30min trends + "
         "cleanup + daily_report(12:00/20:00 + final 00:30) + "
-        "weekly_digest(Mon 03:00) + weread_stats_cache(05:00)"
+        "weekly_digest(Mon 03:00) + monthly_digest(day 1 04:45) + weread_stats_cache(05:00)"
     )
 
 

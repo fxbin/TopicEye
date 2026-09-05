@@ -67,10 +67,13 @@ async def weekly_report(
         result = await build_weekly_webnovel_report(db, days=days)
         backend = "oltp"
 
-    payload = json.dumps(result, default=str, ensure_ascii=False)
+    # set_cached_json 自行序列化；传入已 dumps 的字符串会让 HIT 路径
+    # 返回双编码的 JSON 字符串（而非对象），前端无法解析周报数据。
     # 只缓存有实际数据的结果
     if result.get("summary", {}).get("total_items", 0) > 0:
-        set_cached_json(cache_key, payload)
+        payload = set_cached_json(cache_key, result)
+    else:
+        payload = json.dumps(result, default=str, ensure_ascii=False).encode("utf-8")
     return Response(
         content=payload,
         media_type="application/json",

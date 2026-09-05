@@ -138,7 +138,19 @@ async def warmup_sources_list(db) -> None:
 
 
 async def warmup_content_favorites(db) -> None:
-    items, total = await ContentRepo(db).list_favorites(page=1, page_size=20)
+    # 必须与 GET /contents/favorites/list 端点同源：FavoriteRepo 按用户分页 +
+    # list_by_ids_ordered 回表。此前误用 ContentRepo.list_favorites（全局
+    # is_favorited 列表），会把错误数据灌进 user 1 的缓存键。
+    from app.models.favorite import FavoriteTargetType
+    from app.repositories.favorite_repo import FavoriteRepo
+
+    favorites, total = await FavoriteRepo(db, 1).list_paginated(
+        page=1,
+        page_size=20,
+        target_type=FavoriteTargetType.CONTENT,
+    )
+    content_ids = [item.target_id for item in favorites if item.target_id is not None]
+    items = await ContentRepo(db).list_by_ids_ordered(content_ids) if content_ids else []
     payload = {
         "items": [content_with_latest_analysis(item) for item in items],
         "total": total,

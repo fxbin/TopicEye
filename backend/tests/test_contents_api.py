@@ -117,6 +117,34 @@ async def test_today_count_structure(contents_client: tuple[httpx.AsyncClient, s
 
 
 @pytest.mark.asyncio
+async def test_today_count_cache_hit_returns_object(contents_client: tuple[httpx.AsyncClient, str]):
+    """Second call (cache HIT) must return a JSON object, not a double-encoded string.
+
+    回归：MISS 路径曾把已 json.dumps 的字符串再交给 set_cached_json 二次编码，
+    HIT 响应体变成 "\"{...}\""，前端徽章解析失败。
+    """
+    from app.services.json_cache import invalidate_json_cache
+
+    client, token = contents_client
+    headers = {"Authorization": f"Bearer {token}"}
+    invalidate_json_cache("today_count:")
+    try:
+        first = await client.get("/contents/today-count", headers=headers)
+        assert first.status_code == 200
+        assert first.headers.get("X-Today-Count-Cache", "").startswith("MISS")
+
+        second = await client.get("/contents/today-count", headers=headers)
+        assert second.status_code == 200
+        assert second.headers.get("X-Today-Count-Cache", "").startswith("HIT")
+        data = second.json()
+        assert isinstance(data, dict)
+        assert isinstance(data["today_content"], int)
+        assert isinstance(data["today_picks"], int)
+    finally:
+        invalidate_json_cache("today_count:")
+
+
+@pytest.mark.asyncio
 async def test_translate_404_for_nonexistent_content(
     contents_client: tuple[httpx.AsyncClient, str],
 ):

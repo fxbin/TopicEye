@@ -473,10 +473,11 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
         except Exception:
             logger.warning("today_count picks query failed", exc_info=True)
 
-    payload = json.dumps(result, default=str)
-    set_cached_json(cache_key, payload)
+    # set_cached_json 自行序列化；传入已 dumps 的字符串会让 HIT 路径
+    # 返回双编码的 JSON 字符串（而非对象），前端无法解析徽章数据。
+    content = set_cached_json(cache_key, result)
     return Response(
-        content=payload,
+        content=content,
         media_type="application/json",
         headers={"X-Today-Count-Cache": "MISS"},
     )

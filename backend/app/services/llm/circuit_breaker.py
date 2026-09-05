@@ -155,3 +155,12 @@ def reset_llm_circuit_breakers() -> None:
     OPEN state would make operators wait out an unrelated cooldown.
     """
     _breakers.clear()
+
+
+def iter_llm_circuit_breakers() -> dict[str, CircuitBreaker]:
+    """All live route breakers keyed by routing group.
+
+    供监控告警遍历：此前 metrics_alerting 只检查 default 组，analysis 等
+    非默认组 OPEN（如回填烧穿配额）不会触发任何告警。
+    """
+    return dict(_breakers)

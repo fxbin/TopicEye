@@ -60,6 +60,15 @@ class ModelConfigCache:
         models = [m for m in self._route_models if (m.routing_group or "default") == group]
         if models:
             return models
+        # 静默回落到全部启用模型会让错误/缺失的 routing_group 悄悄改写
+        # 流量走向（成本与行为漂移），必须留痕。
+        if self._route_models:
+            logger.warning(
+                "LLM routing group '%s' has no enabled models; falling back to all %d enabled models "
+                "(check llm_models.routing_group configuration)",
+                group,
+                len(self._route_models),
+            )
         return self._route_models
 
 

@@ -73,22 +73,27 @@ async def check_metrics_thresholds() -> list[str]:
             )
             triggered.append(key)
 
-    # ── 规则 2: LLM 熔断器状态 ──
+    # ── 规则 2: LLM 熔断器状态（覆盖全部路由组）──
+    # 只盯 default 组会漏掉 analysis 等非默认组 OPEN（例如回填烧穿配额）。
     try:
-        from app.services.llm.circuit_breaker import get_llm_circuit_breaker
+        from app.services.llm.circuit_breaker import iter_llm_circuit_breakers
 
-        breaker = get_llm_circuit_breaker()
-        cb_status = breaker.status()
-        if cb_status.get("state") == "OPEN":
+        open_groups = []
+        for group, breaker in iter_llm_circuit_breakers().items():
+            cb_status = breaker.status()
+            if cb_status.get("state") == "OPEN":
+                open_groups.append(
+                    f"{group}: 连续失败 {cb_status.get('failure_count', 0)}/"
+                    f"{cb_status.get('failure_threshold', 5)} 次"
+                )
+        if open_groups:
             key = "circuit_breaker_open"
             if _should_alert(key):
                 from app.services.alerting import send_alert
 
                 await send_alert(
                     title="LLM 熔断器已开启",
-                    message=f"连续失败 {cb_status.get('failure_count', 0)}/"
-                    f"{cb_status.get('failure_threshold', 5)} 次\n"
-                    f"所有 LLM 调用已被熔断，等待冷却期后恢复",
+                    message="\n".join(open_groups) + "\n对应路由组的 LLM 调用已被熔断，等待冷却期后恢复",
                     alert_key=key,
                     severity="error",
                 )

@@ -14,7 +14,9 @@ webhook URL 来源（两条独立通道，任一启用即发）：
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -26,6 +28,29 @@ logger = logging.getLogger(__name__)
 # 防止告警风暴：同一 alert_key 在 _DEDUP_WINDOW 内只发一次
 _LAST_SENT: dict[str, float] = {}
 _DEDUP_WINDOW_SECONDS = 3600  # 1 小时内同 key 不重复发
+
+# webhook 单次投递失败后做有界重试：瞬时故障（网络异常 / 429 / 5xx）最多 3 次，
+# 4xx 等确定性失败立即放弃。告警在调度任务内运行，退避保持秒级。
+_WEBHOOK_MAX_ATTEMPTS = 3
+_WEBHOOK_RETRY_BACKOFF_SECONDS = 1.0
+
+
+def _mask_webhook_url(url: str) -> str:
+    """URL 预览只保留 scheme + host，路径与 token 一律遮蔽。
+
+    飞书/钉钉等 webhook 的 token 就在路径里，截前 80 字符等于把凭证
+    完整写进日志与 webhook_delivery_logs 表。
+    """
+    parts = url.split("/")
+    return "/".join(parts[:3]) + "/****" if len(parts) > 3 else "****"
+
+
+def _is_transient_webhook_failure(status_code: int | None) -> bool:
+    """网络异常（None）与 429/5xx 值得重试；其余 4xx 是确定性失败。"""
+    if status_code is None:
+        return True
+    return status_code == 429 or status_code >= 500
+
 
 # ── 事件类型枚举 ──
 # source_failure: 信源连续抓取失败告警（默认场景）
@@ -287,8 +312,6 @@ async def send_alert(
 
     Returns: True 如果发送成功或跳过（去重/未配置），False 如果所有 webhook 发送失败。
     """
-    import time
-
     webhook_urls = await _resolve_webhook_urls(event_type=event_type)
     if not webhook_urls:
         return False  # 未配置 webhook，静默跳过
@@ -321,44 +344,64 @@ async def send_alert(
                 )
             else:
                 payload = _build_payload(webhook_url, text)
-            url_preview = webhook_url[:80] + ("..." if len(webhook_url) > 80 else "")
+            url_preview = _mask_webhook_url(webhook_url)
             send_start = time.monotonic()
-            try:
-                resp = await client.post(webhook_url, json=payload)
-                duration_ms = int((time.monotonic() - send_start) * 1000)
-                ok = resp.status_code < 300
-                if ok:
-                    any_sent = True
-                    logger.info("Alert sent: %s (key=%s)", title, alert_key)
-                else:
+            ok = False
+            resp: httpx.Response | None = None
+            last_error: str | None = None
+            attempts_made = 0
+            for attempt in range(1, _WEBHOOK_MAX_ATTEMPTS + 1):
+                attempts_made = attempt
+                try:
+                    resp = await client.post(webhook_url, json=payload)
+                    ok = resp.status_code < 300
+                    if ok:
+                        any_sent = True
+                        logger.info("Alert sent: %s (key=%s)", title, alert_key)
+                        break
+                    last_error = f"HTTP {resp.status_code}"
+                    if not _is_transient_webhook_failure(resp.status_code):
+                        logger.warning(
+                            "Alert webhook returned %d (no retry, deterministic): %s",
+                            resp.status_code,
+                            resp.text[:200],
+                        )
+                        break
                     logger.warning(
-                        "Alert webhook returned %d: %s",
+                        "Alert webhook returned %d (attempt %d/%d)",
                         resp.status_code,
-                        resp.text[:200],
+                        attempt,
+                        _WEBHOOK_MAX_ATTEMPTS,
                     )
-                delivery_records.append(
-                    {
-                        "webhook_url_preview": url_preview,
-                        "status_code": resp.status_code,
-                        "success": ok,
-                        "error_message": None if ok else f"HTTP {resp.status_code}",
-                        "response_preview": resp.text[:500] if resp.text else None,
-                        "duration_ms": duration_ms,
-                    }
-                )
-            except Exception as exc:
-                duration_ms = int((time.monotonic() - send_start) * 1000)
-                logger.warning("Alert webhook failed (non-fatal): %s", exc)
-                delivery_records.append(
-                    {
-                        "webhook_url_preview": url_preview,
-                        "status_code": None,
-                        "success": False,
-                        "error_message": str(exc)[:500],
-                        "response_preview": None,
-                        "duration_ms": duration_ms,
-                    }
-                )
+                except Exception as exc:
+                    resp = None
+                    ok = False
+                    last_error = str(exc)[:500]
+                    logger.warning(
+                        "Alert webhook failed (attempt %d/%d, non-fatal): %s",
+                        attempt,
+                        _WEBHOOK_MAX_ATTEMPTS,
+                        exc,
+                    )
+                if attempt < _WEBHOOK_MAX_ATTEMPTS:
+                    await asyncio.sleep(_WEBHOOK_RETRY_BACKOFF_SECONDS * attempt)
+            duration_ms = int((time.monotonic() - send_start) * 1000)
+            delivery_records.append(
+                {
+                    "webhook_url_preview": url_preview,
+                    "status_code": resp.status_code if resp is not None else None,
+                    "success": ok,
+                    "error_message": (
+                        None
+                        if ok
+                        else f"{last_error} (attempt {attempts_made}/{_WEBHOOK_MAX_ATTEMPTS})"
+                        if last_error
+                        else "unknown"
+                    ),
+                    "response_preview": (resp.text[:500] if resp is not None and resp.text else None),
+                    "duration_ms": duration_ms,
+                }
+            )
 
     # 持久化推送日志（fire-and-forget，失败不影响主流程）
     if delivery_records:
@@ -396,9 +439,7 @@ async def send_test_message() -> dict:
     failed = 0
     async with httpx.AsyncClient(timeout=10) as client:
         for webhook_url in webhook_urls:
-            # URL 预览：scheme + host 前缀，token 遮蔽
-            parts = webhook_url.split("/")
-            preview = "/".join(parts[:3]) + "/****" if len(parts) > 3 else "****"
+            preview = _mask_webhook_url(webhook_url)
             payload = _build_payload(webhook_url, text)
             try:
                 resp = await client.post(webhook_url, json=payload)

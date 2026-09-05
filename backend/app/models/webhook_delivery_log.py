@@ -21,7 +21,7 @@ class WebhookDeliveryLog(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="warning")
     webhook_url_preview: Mapped[str] = mapped_column(
-        String(120), nullable=False, comment="URL 前 80 字符 + ...（脱敏）"
+        String(120), nullable=False, comment="scheme+host，路径与 token 遮蔽（脱敏）"
     )
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     success: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, comment="0/1")

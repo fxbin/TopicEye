@@ -355,12 +355,17 @@ async def cluster_topics(
     *,
     days: int = 7,
     use_llm_naming: bool = True,
+    max_items: int = 2000,
 ) -> dict:
     """Run clustering on recent unassigned content. Returns stats.
 
     Incremental mode: only processes ANALYZED items created within ``days``
     that have no ``topic_id`` yet. Already-assigned items and existing
     TopicGroups are left untouched.
+
+    ``max_items`` caps the per-run load（按 id 升序取最老的一批）：此前无
+    LIMIT，积压窗口内的全量行会一次性载入内存；超出的部分留给下一次
+    15 分钟的增量运行，最终仍会被处理完。
 
     LLM naming is ON by default (with auto-name fallback when LLM is
     unavailable). Event membership is deliberately not inferred here.
@@ -384,6 +389,7 @@ async def cluster_topics(
             )
         )
         .order_by(ContentItem.id)
+        .limit(max_items)
     )
     rows = result.all()
 
@@ -395,6 +401,12 @@ async def cluster_topics(
             "window_days": days,
             "incremental": True,
         }
+    truncated = len(rows) >= max_items
+    if truncated:
+        logger.warning(
+            "cluster_topics hit max_items=%d; remaining backlog is deferred to the next run",
+            max_items,
+        )
 
     content_ids = [content.id for content, _analysis, _source_weight in rows]
     feedback_scores = await get_feedback_scores(db, content_ids)
@@ -505,6 +517,7 @@ async def cluster_topics(
         "total": len(items),
         "window_days": days,
         "incremental": True,
+        "truncated": truncated,
     }
     logger.info("Clustering done: %s", stats)
     return stats

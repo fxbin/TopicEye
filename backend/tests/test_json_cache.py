@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 
+import app.services.json_cache as json_cache
 from app.services.content_list_cache import (
     HOME_CONTENT_LIST_INITIAL_PAGE_SIZE,
     ContentListCacheParams,
@@ -8,7 +9,7 @@ from app.services.content_list_cache import (
     invalidate_content_list_cache,
 )
 from app.services.content_read_cache import invalidate_content_read_caches
-from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
+from app.services.json_cache import cache_stats, get_cached_json, invalidate_json_cache, set_cached_json
 from app.services.llm.model_list_cache import MODEL_LIST_CACHE_KEY, invalidate_model_list_cache
 from app.services.scoring_flow import (
     _cache_and_return,
@@ -68,6 +69,55 @@ def test_json_cache_respects_short_ttl():
     set_cached_json("ttl:test", {"value": 1})
     time.sleep(0.002)
     assert get_cached_json("ttl:test", ttl_seconds=0.001) is None
+
+
+def test_json_cache_entry_budget_evicts_oldest_first(monkeypatch):
+    """条目数超预算时按插入序淘汰最老条目（回归：曾是无限增长的裸 dict）。"""
+    invalidate_json_cache()
+    monkeypatch.setattr(json_cache, "_MAX_ENTRIES", 5)
+
+    for i in range(5):
+        set_cached_json(f"budget:{i}", {"i": i})
+    set_cached_json("budget:new", {"i": "new"})  # 触发淘汰
+
+    assert get_cached_json("budget:0", ttl_seconds=10) is None, "最老的条目应被淘汰"
+    assert get_cached_json("budget:1", ttl_seconds=10) is not None
+    assert get_cached_json("budget:2", ttl_seconds=10) is not None
+    assert get_cached_json("budget:new", ttl_seconds=10) is not None
+    invalidate_json_cache()
+
+
+def test_json_cache_byte_budget_evicts_until_fits(monkeypatch):
+    """字节总量超预算时按插入序淘汰，且统计口径保持一致。"""
+    invalidate_json_cache()
+    monkeypatch.setattr(json_cache, "_MAX_ENTRIES", 1000)
+    monkeypatch.setattr(json_cache, "_MAX_TOTAL_BYTES", 500)
+
+    set_cached_json("bytes:a", {"blob": "x" * 200})
+    set_cached_json("bytes:b", {"blob": "y" * 200})
+    stats = cache_stats()
+    assert 0 < stats["total_bytes"] <= json_cache._MAX_TOTAL_BYTES
+
+    set_cached_json("bytes:c", {"blob": "z" * 200})  # 触发字节预算淘汰
+    assert get_cached_json("bytes:a", ttl_seconds=10) is None, "最老的大条目应被淘汰"
+    assert get_cached_json("bytes:b", ttl_seconds=10) is not None
+
+    stats = cache_stats()
+    assert stats["total_bytes"] <= json_cache._MAX_TOTAL_BYTES
+    # 字节账本随失效/淘汰保持一致
+    invalidate_json_cache("bytes:")
+    assert cache_stats()["total_bytes"] == 0
+
+
+def test_json_cache_overwrite_does_not_double_count():
+    invalidate_json_cache()
+    set_cached_json("dup:key", {"v": "x" * 50})
+    before = cache_stats()["total_bytes"]
+    set_cached_json("dup:key", {"v": "x" * 50})  # 覆盖同键
+    after = cache_stats()["total_bytes"]
+    assert before == after, "覆盖同键不应重复计入字节"
+    assert cache_stats()["entries"] == 1
+    invalidate_json_cache()
 
 
 def test_content_list_cache_key_and_invalidation():

@@ -656,7 +656,7 @@ async def _fetch_remote_article(
                         content_blocks=blocks_from_text(text),
                         extraction_method="http",
                     )
-                return _extract_from_html(payload, current_url)
+                return await asyncio.to_thread(_extract_from_html, payload, current_url)
 
     raise ArticleReaderError("too_many_redirects", "原文跳转次数过多，请打开原文。", 502)
 
@@ -813,7 +813,7 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
                 content_blocks=blocks_from_text(text),
                 extraction_method="curl_cffi",
             )
-        return _extract_from_html(payload, final_url)
+        return await asyncio.to_thread(_extract_from_html, payload, final_url)
 
 
 async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]:

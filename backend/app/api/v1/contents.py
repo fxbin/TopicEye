@@ -231,15 +231,18 @@ async def list_contents(
             if await run_query(lambda: analytics.available):
                 lfv_hours = hours or 48
                 offset = (page - 1) * page_size
-                # DuckDB 是同步的，推到 worker thread 避免阻塞事件循环
-                lfv_items, lfv_total = await asyncio.to_thread(
-                    analytics.query_low_follower_viral,
-                    hours=lfv_hours,
-                    category=category,
-                    limit=page_size,
-                    offset=offset,
-                    visible_user_id=current_user.id if current_user is not None else None,
-                    public_only=current_user is None,
+                # 走 duckdb_service 的单线程执行器：to_thread 会另建一条
+                # thread-local DuckDB 连接（重复 INSTALL/ATTACH 开销且不受
+                # 执行器串行保护），与其它 analytics 查询共享同一执行器。
+                lfv_items, lfv_total = await run_query(
+                    lambda: analytics.query_low_follower_viral(
+                        hours=lfv_hours,
+                        category=category,
+                        limit=page_size,
+                        offset=offset,
+                        visible_user_id=current_user.id if current_user is not None else None,
+                        public_only=current_user is None,
+                    )
                 )
             result_items = []
             for lfv in lfv_items:

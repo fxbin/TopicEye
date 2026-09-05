@@ -9,10 +9,9 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-import feedparser
 import httpx
 
-from . import BaseScraper, fetch_feed_with_retry, register_scraper
+from . import BaseScraper, fetch_feed_with_retry, parse_feed_async, register_scraper
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class RSSScraper(BaseScraper):
             logger.info("RSS feed not modified: %s", self.url)
             return []
 
-        feed = feedparser.parse(resp.text)
+        feed = await parse_feed_async(resp.text)
         entries: list[dict[str, Any]] = []
 
         for entry in feed.entries:

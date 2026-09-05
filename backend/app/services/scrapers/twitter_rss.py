@@ -23,10 +23,9 @@ from datetime import UTC, datetime
 from html import unescape
 from typing import Any
 
-import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper
+from . import BaseScraper, parse_feed_async, register_scraper
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +116,7 @@ class TwitterRSSScraper(BaseScraper):
             logger.warning("TwitterRSSScraper: non-RSS response from %s (type=%s)", self.url, content_type)
             return []
 
-        feed = feedparser.parse(body)
+        feed = await parse_feed_async(body)
         if not feed.entries:
             logger.info("TwitterRSSScraper: no entries from %s", self.url)
             return []

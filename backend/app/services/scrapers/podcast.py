@@ -25,10 +25,9 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
-import feedparser
 import httpx
 
-from . import BaseScraper, fetch_feed_with_retry, register_scraper
+from . import BaseScraper, fetch_feed_with_retry, parse_feed_async, register_scraper
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +127,7 @@ class PodcastScraper(BaseScraper):
             logger.info("Podcast feed not modified: %s", self.rss_url)
             return []
 
-        feed = feedparser.parse(resp.text)
+        feed = await parse_feed_async(resp.text)
         entries: list[dict[str, Any]] = []
 
         for entry in feed.entries:

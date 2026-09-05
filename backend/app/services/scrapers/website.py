@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-from app.services.extractor import extract_cover_url, extract_main_content
+from app.services.extractor import extract_cover_url_async, extract_main_content_async
 
 from . import BaseScraper, register_scraper
 
@@ -27,8 +27,8 @@ class WebsiteScraper(BaseScraper):
         resp.raise_for_status()
         html = resp.text
 
-        main_text = extract_main_content(html)
-        cover_url = extract_cover_url(html, self.url)
+        main_text = await extract_main_content_async(html)
+        cover_url = await extract_cover_url_async(html, self.url)
 
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.find("title")

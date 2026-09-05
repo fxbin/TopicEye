@@ -7,10 +7,12 @@ themselves so the pipeline can dispatch by SourceType automatically.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import feedparser
 import httpx
 
 from app.core.http_retry import retry_async
@@ -96,6 +98,12 @@ class BaseScraper(ABC):
 
 # Transient HTTP status codes that warrant a retry.
 _RETRY_STATUS = {502, 503, 504, 429, 500}
+
+
+async def parse_feed_async(text: str) -> feedparser.FeedParserDict:
+    """feedparser.parse 是同步 CPU 解析；大 feed（几 MB）直接在事件循环上
+    跑会卡住全部并发请求——推到 worker thread 执行。"""
+    return await asyncio.to_thread(feedparser.parse, text)
 
 
 async def fetch_feed_with_retry(

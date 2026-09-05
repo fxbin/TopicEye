@@ -7,6 +7,7 @@ extraction, with a BeautifulSoup fallback for edge cases.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from bs4 import BeautifulSoup
@@ -61,3 +62,13 @@ def extract_cover_url(html: str, base_url: str = "") -> str | None:
         return twitter["content"]
 
     return None
+
+
+async def extract_main_content_async(html: str) -> str:
+    """trafilatura/BS4 是同步 CPU 解析，供 async 调用方推线程使用。"""
+    return await asyncio.to_thread(extract_main_content, html)
+
+
+async def extract_cover_url_async(html: str, base_url: str = "") -> str | None:
+    """BeautifulSoup 同步解析的异步包装。"""
+    return await asyncio.to_thread(extract_cover_url, html, base_url)

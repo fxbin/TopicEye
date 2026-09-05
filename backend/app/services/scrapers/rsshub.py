@@ -17,10 +17,9 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-import feedparser
 import httpx
 
-from . import BaseScraper, register_scraper
+from . import BaseScraper, parse_feed_async, register_scraper
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +114,7 @@ class RSSHubScraper(BaseScraper):
                             break
 
                         logger.info("RSSHub fetched from %s (attempt %d)", full_url, attempt + 1)
-                        return self._parse_entries(content, base_url)
+                        return await self._parse_entries(content, base_url)
 
                     elif resp.status_code in (503, 504, 429, 403):
                         logger.warning("Instance %s HTTP %d, trying next", base_url, resp.status_code)
@@ -138,9 +137,9 @@ class RSSHubScraper(BaseScraper):
         last_err = all_errors[-1] if all_errors else "unknown"
         raise httpx.HTTPError(f"All RSSHub instances failed. Last: {last_err}")
 
-    def _parse_entries(self, xml_content: str, instance_url: str) -> list[dict[str, Any]]:
+    async def _parse_entries(self, xml_content: str, instance_url: str) -> list[dict[str, Any]]:
         """Parse RSSHub XML and return list of entry dicts."""
-        feed = feedparser.parse(xml_content)
+        feed = await parse_feed_async(xml_content)
         entries: list[dict[str, Any]] = []
 
         for entry in feed.entries:

@@ -227,9 +227,25 @@ async def _run_seed_step(
 # head for new DBs) inside ``lifespan`` below.
 
 
+def _prewarm_jieba() -> None:
+    """后台预热 jieba 词典。
+
+    trending_cross 的跨平台聚类首次调用 jieba.analyse 时会在当前协程里
+    同步加载词典（数百 ms~秒级），撞上读请求就卡事件循环。启动时推到
+    worker thread 预先加载，失败静默（首次调用会再自适应）。
+    """
+    try:
+        import jieba.analyse  # noqa: F401 — import 触发词典加载
+
+        jieba.analyse.extract_tags("预热", topK=1)
+    except Exception:  # noqa: BLE001 — 预热失败不影响功能
+        logger.debug("jieba prewarm skipped", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cache_warmup_task
+    _jieba_prewarm_task = asyncio.create_task(asyncio.to_thread(_prewarm_jieba))
 
     ensure_runtime_secret_safety()
     ensure_admin_seed_safety()
@@ -403,6 +419,8 @@ async def lifespan(app: FastAPI):
         _cache_warmup_task.cancel()
         with suppress(asyncio.CancelledError):
             await _cache_warmup_task
+    with suppress(Exception):
+        await _jieba_prewarm_task
     shutdown_scheduler()
 
     # Drain interest-vector background rebuild tasks

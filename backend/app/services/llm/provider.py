@@ -118,6 +118,7 @@ async def call_llm_with_metadata(
     scene: str = "general",
     routing_group: str = "default",
     response_format: dict | None = None,
+    bypass_response_cache: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     """Call LLM with automatic ordered failover and return the selected route metadata.
 
@@ -125,6 +126,9 @@ async def call_llm_with_metadata(
     When a provider does not support it (``UnsupportedParamsError``),
     the failover loop retries that candidate without ``response_format``
     so JSON-mode callers still get a usable text response.
+
+    ``bypass_response_cache=True`` 跳过缓存读（成功结果仍会写缓存），
+    供 JSON 层在解析失败后重试时真正再次打到模型。
     """
     # Circuit breaker: skip LLM call entirely when in OPEN state
     from app.services.llm.circuit_breaker import get_llm_circuit_breaker
@@ -143,9 +147,10 @@ async def call_llm_with_metadata(
 
     cache = get_llm_cache()
     cache_scope = _cache_scope(routing_group, scene)
-    cached = cache.get(messages, temperature, max_tokens, model=cache_scope)
-    if cached is not None:
-        return cached, {"cache_hit": True}
+    if not bypass_response_cache:
+        cached = cache.get(messages, temperature, max_tokens, model=cache_scope)
+        if cached is not None:
+            return cached, {"cache_hit": True}
 
     try:
         result = await _call_llm_with_metadata_inner(
@@ -361,6 +366,13 @@ async def call_llm_json_with_metadata(
     raw = ""
     metadata: dict[str, Any] = {}
     max_attempts = 1 if scene == "content_analysis" else 2
+
+    def _evict_cached_bad_response() -> None:
+        """驱逐本次写入缓存的坏响应，避免 TTL 内持续命中不可解析文本。"""
+        from app.services.llm.response_cache import get_llm_cache
+
+        get_llm_cache().evict(messages, temperature, max_tokens, model=_cache_scope(routing_group, scene))
+
     for attempt in range(max_attempts):
         raw, metadata = await call_llm_with_metadata(
             messages,
@@ -369,6 +381,9 @@ async def call_llm_json_with_metadata(
             scene=scene,
             routing_group=routing_group,
             response_format=_JSON_RESPONSE_FORMAT,
+            # 同参数的第二次调用若仍读缓存，会原样拿回第一次解析失败的
+            # 文本——重试必须真正打到模型才有意义。
+            bypass_response_cache=attempt > 0,
         )
 
         text = raw.strip()
@@ -376,16 +391,25 @@ async def call_llm_json_with_metadata(
             logger.warning("LLM returned empty response (attempt %d)", attempt + 1)
             if attempt < max_attempts - 1:
                 continue
+            _evict_cached_bad_response()
             return {"raw_response": raw}, metadata
 
-        if "```json" in text:
-            start = text.index("```json") + 7
-            end = text.index("```", start)
-            text = text[start:end].strip()
-        elif "```" in text:
-            start = text.index("```") + 3
-            end = text.index("```", start)
-            text = text[start:end].strip()
+        try:
+            if "```json" in text:
+                start = text.index("```json") + 7
+                end = text.index("```", start)
+                text = text[start:end].strip()
+            elif "```" in text:
+                start = text.index("```") + 3
+                end = text.index("```", start)
+                text = text[start:end].strip()
+        except ValueError:
+            # 未闭合的代码围栏：按解析失败处理，而不是让 ValueError 逃逸。
+            logger.warning("Unclosed code fence in LLM response (attempt %d)", attempt + 1)
+            if attempt < max_attempts - 1:
+                continue
+            _evict_cached_bad_response()
+            return {"raw_response": raw}, metadata
 
         try:
             result = json.loads(text)
@@ -393,6 +417,7 @@ async def call_llm_json_with_metadata(
                 logger.warning("LLM JSON is empty or not a dict/list (attempt %d): %s", attempt + 1, str(result)[:200])
                 if attempt < max_attempts - 1:
                     continue
+                _evict_cached_bad_response()
                 return {"raw_response": raw}, metadata
             return result, metadata
         except json.JSONDecodeError:
@@ -400,6 +425,7 @@ async def call_llm_json_with_metadata(
             if attempt < max_attempts - 1:
                 continue
 
+    _evict_cached_bad_response()
     return {"raw_response": raw}, metadata
 
 

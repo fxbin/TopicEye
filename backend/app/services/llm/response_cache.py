@@ -69,6 +69,20 @@ class LLMCache:
         logger.debug("LLM cache hit: key=%s…", key[:8])
         return raw
 
+    def evict(
+        self,
+        messages: list,
+        temperature: float,
+        max_tokens: int,
+        model: str | None,
+    ) -> bool:
+        """Drop the cached entry for this exact key.
+
+        用于响应缓存写入了 HTTP 成功但 JSON 解析失败的文本：不驱逐的话，
+        同参数的后续调用（包括 JSON 层的即时重试）会在 TTL 内持续拿回坏文本。
+        """
+        return self._cache.pop(self._key(messages, temperature, max_tokens, model), None) is not None
+
     def set(
         self,
         messages: list,

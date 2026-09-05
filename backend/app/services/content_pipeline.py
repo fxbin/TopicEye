@@ -340,46 +340,71 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         # expensive classifier for rows this invocation actually inserted.
         eligible_entries = [entry for entry in eligible_entries if entry["_content_hash"] in inserted_content_ids]
 
+        # ── Step 5 (cont): Classification write-back ─────────────────
+        # 分类是增强步骤：此刻抓取结果已持久化并提交（PENDING 行可被后续
+        # 分析管道正常处理）。分类或写回失败只降级为 warning，不能把整个
+        # 源标成 ERROR——那会让一次成功的抓取在健康面板上显示为失败。
         classify_started_at = time.perf_counter()
         classified_entries: list[tuple[dict[str, Any], dict[str, Any]]] = []
         category_counts: dict[str, int] = {}
-        if eligible_entries:
-            category_names = await _get_active_category_names(db)
-            classified_entries = await _classify_entries_concurrently(
-                eligible_entries,
-                category_names=category_names,
-            )
-            await _register_new_categories(db, [class_result for _, class_result in classified_entries])
+        classification_degraded = False
+        try:
+            if eligible_entries:
+                category_names = await _get_active_category_names(db)
+                classified_entries = await _classify_entries_concurrently(
+                    eligible_entries,
+                    category_names=category_names,
+                )
+                await _register_new_categories(db, [class_result for _, class_result in classified_entries])
 
-        for entry, class_result in classified_entries:
-            category = class_result["category"]
-            tags = class_result["tags"]
-            # LLM 返回的 content_type 覆盖源级默认值；
-            # keyword fast-path 返回 None 时保留入库时解析的 source.category 值
-            llm_content_type = class_result.get("content_type")
-            update_values: dict[str, Any] = {
-                "category": category,
-                "tags": tags if tags else None,
-            }
-            if llm_content_type:
-                update_values["content_type"] = llm_content_type
-            await db.execute(
-                update(ContentItem)
-                .where(ContentItem.id == inserted_content_ids[entry["_content_hash"]])
-                .values(**update_values)
-            )
-            if category:
-                category_counts[category] = category_counts.get(category, 0) + 1
+            for entry, class_result in classified_entries:
+                category = class_result["category"]
+                tags = class_result["tags"]
+                # LLM 返回的 content_type 覆盖源级默认值；
+                # keyword fast-path 返回 None 时保留入库时解析的 source.category 值
+                llm_content_type = class_result.get("content_type")
+                update_values: dict[str, Any] = {
+                    "category": category,
+                    "tags": tags if tags else None,
+                }
+                if llm_content_type:
+                    update_values["content_type"] = llm_content_type
+                await db.execute(
+                    update(ContentItem)
+                    .where(ContentItem.id == inserted_content_ids[entry["_content_hash"]])
+                    .values(**update_values)
+                )
+                if category:
+                    category_counts[category] = category_counts.get(category, 0) + 1
 
-        classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
-        await _increment_category_counts(db, category_counts)
+            classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
+            await _increment_category_counts(db, category_counts)
+        except Exception:
+            classification_degraded = True
+            classify_elapsed_ms = int((time.perf_counter() - classify_started_at) * 1000)
+            # 只回滚未提交的分类写回；行数据在 Step 5 开头已独立提交，
+            # 保留入库时默认值并保持 PENDING，仍可被分析管道认领。
+            # rollback 会 expire ORM 对象，按超时路径的既有模式先取 id 再重取。
+            degraded_source_id = source.id
+            await db.rollback()
+            fresh_source = await db.get(Source, degraded_source_id)
+            if fresh_source is not None:
+                source = fresh_source
+            logger.warning(
+                "Classification failed after successful ingest: source %s (%d), %d items keep "
+                "ingestion-time defaults and remain analyzable",
+                source.name,
+                source.id,
+                new_count,
+                exc_info=True,
+            )
 
         # ── Step 6: Update source ────────────────────────────────────
         _update_source_status(source, SourceStatus.ACTIVE)
         await db.flush()
 
         logger.info(
-            "Source %s (%d): fetched=%d, new=%d, dupes=%d, fetch=%dms, classify=%dms, db=%dms, total=%dms",
+            "Source %s (%d): fetched=%d, new=%d, dupes=%d, fetch=%dms, classify=%dms%s, db=%dms, total=%dms",
             source.name,
             source.id,
             fetched_count,
@@ -387,6 +412,7 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
             duplicate_count,
             fetch_elapsed_ms,
             classify_elapsed_ms,
+            " (degraded)" if classification_degraded else "",
             db_elapsed_ms,
             int((time.perf_counter() - started_at) * 1000),
         )

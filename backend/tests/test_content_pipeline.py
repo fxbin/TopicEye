@@ -579,3 +579,65 @@ async def test_ingest_empty_with_degraded_flag_marks_source_error(monkeypatch, d
             assert source.sync_error in (None, "")
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_classification_failure_after_persist_keeps_source_active(monkeypatch):
+    """分类失败发生在条目已提交之后：源应保持 ACTIVE，条目保留 PENDING 可分析。
+
+    回归：此前整个入库体在一个大 try/except 里，分类写回失败会把成功抓取的
+    源标成 ERROR，且分类部分写入被整体丢弃，健康面板与真实状态相反。
+    """
+
+    class FakeScraper:
+        def __init__(self, source_url=None, source_config=None):
+            pass
+
+        async def fetch(self, client):
+            return [
+                {
+                    "title": "AI 领域今日重要进展综述：模型、算力与开源生态的多维度观察与展望",
+                    "url": "https://example.com/classify-fail-article",
+                    "summary": "这是一段足够长的摘要，用于避免命中低信号预过滤规则。" * 2,
+                }
+            ]
+
+    async def no_srrf_check(url):
+        return None
+
+    async def failing_classify(entries, *, category_names):
+        raise RuntimeError("LLM classification unavailable")
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: FakeScraper)
+    monkeypatch.setattr(content_pipeline, "ensure_public_hostname", no_srrf_check)
+    monkeypatch.setattr(content_pipeline, "_classify_entries_concurrently", failing_classify)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as db:
+        source = Source(
+            name="ClassifyFail",
+            url="https://example.com/feed",
+            source_type=SourceType.RSS,
+            enabled=True,
+        )
+        db.add(source)
+        await db.commit()
+
+        stats = await content_pipeline.ingest_from_source(source, db)
+        await db.commit()
+
+        assert stats == {"fetched": 1, "new": 1, "duplicates": 0}
+
+        await db.refresh(source)
+        assert source.status == SourceStatus.ACTIVE, "抓取与入库已成功，不应因分类失败标 ERROR"
+        assert source.sync_error in (None, "")
+
+        item = (await db.execute(select(ContentItem))).scalar_one()
+        assert item.status == ContentStatus.PENDING
+        assert item.title.startswith("AI 领域")
+
+    await engine.dispose()

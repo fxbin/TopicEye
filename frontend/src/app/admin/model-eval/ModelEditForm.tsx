@@ -432,6 +432,9 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
           <div>
             <FieldLabel htmlFor="model-api-key">API Key {isEdit ? '(留空不修改)' : ''}</FieldLabel>
             <TextInput id="model-api-key" type="password" value={form.api_key} onChange={(e) => patchForm({ api_key: e.target.value })} placeholder="粘贴供应商 API Key" autoComplete="off" />
+            {(needsApiBase || presetKey === 'openai_compatible') && (
+              <div className="mt-1 text-[10px] leading-4 text-gray-400">本地推理服务不校验 Key 时，可填 ollama 等任意占位值。</div>
+            )}
           </div>
           <div>
             <FieldLabel htmlFor="model-name" required={isEdit}>显示名称</FieldLabel>
@@ -481,9 +484,14 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                   </button>
                 )}
               </div>
-              <TextInput id="model-api-base" value={form.api_base} onChange={(e) => patchForm({ api_base: e.target.value })} placeholder={selectedPreset?.api_base_placeholder || 'https://api.example.com/v1'} />
+              <TextInput id="model-api-base" value={form.api_base} onChange={(e) => patchForm({ api_base: e.target.value })} placeholder={selectedPreset?.api_base_placeholder || 'https://api.example.com/v1 或 http://host.docker.internal:11434/v1'} />
+              {/\/\/(localhost|127\.0\.0\.1)([:/]|\s|$)/.test(form.api_base) && (
+                <div className="mt-1 rounded-xs border border-amber-border bg-amber-light px-2 py-1 text-[10px] font-bold leading-4 text-amber">
+                  检测到 localhost：后端跑在 Docker 内时 localhost 指向容器自身，调用时会自动转换为 host.docker.internal；若仍连不上，请直接填写 http://host.docker.internal:端口。
+                </div>
+              )}
               {currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-gray-400">内置默认：{currentPreset.baseUrl}</div>}
-              {!currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-gray-400">OpenAI 兼容网关通常填写 /v1 结尾的地址。</div>}
+              {!currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-gray-400">OpenAI 兼容网关通常填写 /v1 结尾的地址；本地推理服务（Ollama / LM Studio 等）用 http://host.docker.internal:端口/v1。</div>}
             </div>
           )}
           <div>

@@ -36,7 +36,7 @@ import { ModelEditForm } from './ModelEditForm';
 export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRefresh: () => void }) {
   const [editing, setEditing] = useState<LlmModelItem | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
-  const [testResult, setTestResult] = useState<Record<number, { status: string; response?: string; error?: string; duration_ms: number }>>({});
+  const [testResult, setTestResult] = useState<Record<number, { status: string; response?: string; note?: string; error?: string; duration_ms: number }>>({});
   const [showAdd, setShowAdd] = useState(false);
 
   const handleTest = async (id: number) => {
@@ -159,15 +159,16 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
             {testResult[m.id] && (
               <div
                 className={cx(
-                  'truncate rounded-xs border px-2.5 py-2 text-[11px]',
+                  'whitespace-pre-line break-all rounded-xs border px-2.5 py-2 text-[11px] leading-4',
                   testResult[m.id].status === 'success'
                     ? 'border-teal-border bg-teal-light text-teal'
                     : 'border-red-light bg-red-light text-red',
                 )}
               >
                 {testResult[m.id].status === 'success'
-                  ? `${testResult[m.id].duration_ms}ms: ${(testResult[m.id].response || '').slice(0, 40)}...`
-                  : `失败: ${(testResult[m.id].error || '').slice(0, 30)}`}
+                  ? `${testResult[m.id].duration_ms}ms: ${(testResult[m.id].response || '').slice(0, 60)}`
+                  : `失败: ${(testResult[m.id].error || '').slice(0, 300)}`}
+                {testResult[m.id].note ? `\n${testResult[m.id].note}` : ''}
               </div>
             )}
 

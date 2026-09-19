@@ -38,7 +38,7 @@ export const modelsApi = {
   delete(id: number): Promise<{ message: string }> {
     return request(`/models/${id}`, { method: 'DELETE' });
   },
-  test(id: number): Promise<{ status: string; model_name: string; response?: string; error?: string; duration_ms: number; tokens_input?: number; tokens_output?: number; cache_read_tokens?: number; cache_creation_tokens?: number }> {
+  test(id: number): Promise<{ status: string; model_name: string; response?: string; note?: string; error?: string; duration_ms: number; tokens_input?: number; tokens_output?: number; cache_read_tokens?: number; cache_creation_tokens?: number }> {
     return request(`/models/${id}/test`, { method: 'POST' });
   },
   runEvaluation(data: { model_ids: number[]; prompt_type: string; custom_prompt?: string; sample_content?: string }): Promise<{ eval_run_id: string; model_count: number; message: string }> {

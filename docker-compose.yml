@@ -21,6 +21,10 @@ services:
       - DUCKDB_THREADS=${DUCKDB_THREADS:-2}
       - DUCKDB_MEMORY_LIMIT=${DUCKDB_MEMORY_LIMIT:-256MB}
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
+      # 本地推理服务（host.docker.internal 上的 mlx_lm）单次生成可达 60s+，
+      # 默认 45s 会先于网关超时；并发 4→6 适配本地模型无配额限制的场景
+      - LLM_COMPLETION_TIMEOUT_SECONDS=${LLM_COMPLETION_TIMEOUT_SECONDS:-120}
+      - LLM_WORKER_CONCURRENCY=${LLM_WORKER_CONCURRENCY:-6}
       # macOS bind mount 下 inotify 不穿透，强制 watchfiles 轮询以启用热重载
       - WATCHFILES_FORCE_POLLING=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app

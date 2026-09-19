@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.main  # noqa: F401 - import all models for Base.metadata
+import app.services.llm.model_resolver as model_resolver_module
 from app.api.v1 import auth as auth_api, llm_evaluations as llm_evaluations_api, llm_models as llm_models_api
 from app.api.v1.llm_models import (
     LLM_COMPLETION_TIMEOUT_SECONDS,
@@ -20,11 +21,12 @@ from app.api.v1.llm_models import (
     _missing_explicit_api_key,
     _resolve_litellm_model,
     _sample_payload,
+    _summarize_llm_error,
 )
 from app.core.database import Base
 from app.models.llm_model import LlmModel, ModelEvaluation
 from app.services.auth_service import create_session, create_user
-from app.services.llm.model_resolver import resolve_litellm_model
+from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
 
 
@@ -118,6 +120,78 @@ def test_shared_model_resolver_prefers_explicit_litellm_model():
     )
 
     assert resolve_litellm_model(model) == "openai/deepseek-v4-flash-free"
+
+
+def test_shared_model_resolver_routes_bare_custom_provider_as_openai_compatible():
+    # "完全自定义"预设落库的 provider=custom + 裸模型名：litellm 没有 custom
+    # provider，唯一可行路由是 OpenAI 兼容网关。
+    model = SimpleNamespace(
+        provider="custom",
+        model_id="minicpm5-2b",
+        api_base="http://localhost:40114/olla/openai/v1",
+        extra_params=None,
+    )
+
+    assert resolve_litellm_model(model) == "openai/minicpm5-2b"
+
+
+def test_normalize_api_base_rewrites_loopback_hosts_inside_container(monkeypatch):
+    monkeypatch.setattr(model_resolver_module, "_container_env", True)
+    monkeypatch.setattr(model_resolver_module, "_rewrite_logged", set())
+
+    assert (
+        normalize_api_base("http://localhost:40114/olla/openai/v1")
+        == "http://host.docker.internal:40114/olla/openai/v1"
+    )
+    assert normalize_api_base("http://127.0.0.1:11434/v1") == "http://host.docker.internal:11434/v1"
+    # 远程主机与非容器场景原样返回
+    assert normalize_api_base("https://api.example.com/v1") == "https://api.example.com/v1"
+    assert normalize_api_base(None) is None
+
+
+def test_normalize_api_base_passthrough_outside_container(monkeypatch):
+    monkeypatch.setattr(model_resolver_module, "_container_env", False)
+
+    assert normalize_api_base("http://localhost:40114/v1") == "http://localhost:40114/v1"
+
+
+def test_completion_kwargs_normalizes_loopback_api_base(monkeypatch):
+    monkeypatch.setattr(model_resolver_module, "_container_env", True)
+    monkeypatch.setattr(model_resolver_module, "_rewrite_logged", set())
+    model = SimpleNamespace(
+        api_key="test-key",
+        api_base="http://localhost:40114/olla/openai/v1",
+        extra_params=None,
+    )
+
+    kwargs = _completion_kwargs(
+        model,
+        "openai/minicpm5-2b",
+        [{"role": "user", "content": "hello"}],
+        temperature=0.3,
+        max_tokens=200,
+    )
+
+    assert kwargs["api_base"] == "http://host.docker.internal:40114/olla/openai/v1"
+
+
+def test_summarize_llm_error_strips_traceback_and_adds_connection_hint():
+    raw = (
+        "litellm.APIConnectionError: CustomException - [Errno 111] Connection refused\n"
+        "Traceback (most recent call last):\n  ...many lines..."
+    )
+
+    summarized = _summarize_llm_error(RuntimeError(raw))
+
+    assert "Traceback" not in summarized
+    assert "Connection refused" in summarized
+    assert "host.docker.internal" in summarized
+
+
+def test_summarize_llm_error_adds_hint_for_not_found():
+    summarized = _summarize_llm_error(RuntimeError("404 Not Found: no route"))
+
+    assert "/v1" in summarized
 
 
 def test_completion_kwargs_passes_openai_compatible_timeout_and_endpoint():

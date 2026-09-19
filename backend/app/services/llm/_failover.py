@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.services.llm.model_resolver import resolve_litellm_model
+from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
 from app.services.secret_store import decrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,8 @@ def _candidate_from_db_model(model_config: Any, temperature: float, max_tokens: 
     return {
         "request_model": resolve_litellm_model(model_config),
         "api_key": decrypt_secret(model_config.api_key),
-        "api_base": model_config.api_base,
+        # 容器内 localhost 指向容器自身，这里统一重写为宿主机网关
+        "api_base": normalize_api_base(model_config.api_base),
         "temperature": temperature if temperature is not None else model_config.temperature,
         "max_tokens": max_tokens if max_tokens is not None else model_config.max_tokens,
         "model_config": model_config,

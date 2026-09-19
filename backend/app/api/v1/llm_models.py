@@ -43,7 +43,7 @@ from app.services.llm.model_list_cache import (
     set_cached_model_list,
 )
 from app.services.llm.model_pricing import is_free_model, normalized_model_pricing
-from app.services.llm.model_resolver import resolve_litellm_model
+from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
 from app.services.llm.provider import invalidate_model_cache
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
@@ -141,8 +141,35 @@ def _completion_kwargs(
     if model.api_key:
         kwargs["api_key"] = decrypt_secret(model.api_key)
     if model.api_base:
-        kwargs["api_base"] = model.api_base
+        kwargs["api_base"] = normalize_api_base(model.api_base)
     return kwargs
+
+
+def _summarize_llm_error(exc: Exception) -> str:
+    """把 litellm 异常压成一行可读信息：去 traceback、限长、附排查提示。"""
+    message = str(exc).strip() or type(exc).__name__
+    traceback_idx = message.find("Traceback (most recent call last)")
+    if traceback_idx > 0:
+        message = message[:traceback_idx].strip()
+    if len(message) > 300:
+        message = message[:300].rstrip() + "…"
+
+    lowered = message.lower()
+    hints: list[str] = []
+    if "connection refused" in lowered or "connection error" in lowered or "timed out" in lowered:
+        hints.append(
+            "无法连接到 API Base。若模型服务运行在本机：后端跑在 Docker 内，localhost 指向容器自身"
+            "（配置为 localhost 时系统会自动转换为 host.docker.internal），请确认服务已启动、端口正确。"
+        )
+    if "404" in lowered or "not found" in lowered:
+        hints.append("端点返回 404：请检查 API Base 是否应以 /v1 结尾，以及模型名是否为服务端实际部署的名称。")
+    if "provider not provided" in lowered or "unsupported model" in lowered:
+        hints.append(
+            "Provider 路由不识别：OpenAI 兼容网关请保持 Provider 为 openai，或模型名直接填完整 LiteLLM 路由（如 openai/模型名）。"
+        )
+    if hints:
+        message = f"{message}\n提示：{' '.join(hints)}"
+    return message
 
 
 def _sample_payload(sample_content: str | None) -> dict:
@@ -665,6 +692,13 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
         response = await asyncio.to_thread(completion, **kwargs)
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content or ""
+        # reasoning 模型（如 MiniCPM-Qwen / DeepSeek-R1）可能把 max_tokens 全部
+        # 花在思考上，正文为空：返回提示而不是让用户面对空响应。
+        note = ""
+        if not content.strip():
+            reasoning = getattr(response.choices[0].message, "reasoning_content", None) or ""
+            if reasoning.strip():
+                note = "模型本次只返回了思考内容（reasoning）没有正文，可尝试调大输出长度（max_tokens）后重试。"
         usage = extract_usage(response)
         await record_llm_call_in_new_session(
             model=model,
@@ -678,6 +712,7 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
             "status": "success",
             "model_name": model.name,
             "response": content,
+            "note": note,
             "duration_ms": duration_ms,
             "tokens_input": usage.input_tokens,
             "tokens_output": usage.output_tokens,
@@ -697,6 +732,6 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
         return {
             "status": "failed",
             "model_name": model.name,
-            "error": str(e),
+            "error": _summarize_llm_error(e),
             "duration_ms": duration_ms,
         }

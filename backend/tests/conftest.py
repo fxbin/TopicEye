@@ -100,6 +100,24 @@ def _ensure_test_db_schema():
     # session 结束不删 schema(下个 session 复用,启动时 create_all 是 no-op)
 
 
+# ── SSRF DNS 解析兜底：测试不依赖真实 DNS ──
+@pytest.fixture(autouse=True)
+def stub_public_dns_resolution(monkeypatch):
+    """把 url_safety._resolve_host 钉到固定公网地址。
+
+    ingest 链路测试用 example.com 等真实域名过 SSRF 防护的 DNS 校验；
+    开发机代理（fake-ip 模式）会把任意域名解析进 198.18.0.0/15 保留段，
+    触发拦截导致整批用例失败；离线/CI 环境真实 DNS 同样不可靠。
+    需要 DNS 行为的测试（test_source_url_safety）自行 monkeypatch 覆盖。
+    """
+    from app.utils import url_safety
+
+    async def _public_resolve(host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(url_safety, "_resolve_host", _public_resolve)
+
+
 # ── Function-scoped cleanup: 每个测试后清表(防止脏数据跨测试)──
 # autouse=True 让所有测试在执行前先清表,避免 test 间的 state pollution。
 @pytest_asyncio.fixture(autouse=True)

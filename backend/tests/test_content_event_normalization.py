@@ -49,7 +49,10 @@ async def _content(
     source_name: str,
     owner_user_id: int | None = None,
 ) -> ContentItem:
-    moment = datetime(2026, 7, 29, 8, tzinfo=UTC) + timedelta(hours=hour)
+    # 相对 now 生成时间戳：固定日期会在滑出扫描窗口（如 720h）后让全部
+    # 用例必然失败（2026-08-28 起踩过）。基线回退 2 小时，保证 hour=0..2
+    # 的条目落在任意窗口 ≥2h 的扫描范围内且不早于 now。
+    moment = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=2) + timedelta(hours=hour)
     content = ContentItem(
         title=title,
         url=f"https://example.com/{source_name}/{hour}",

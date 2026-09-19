@@ -48,8 +48,8 @@ git diff --cached --summary
 
 Run the smallest relevant verification:
 
-- Backend Python syntax: `python -m py_compile <changed-python-files>`
-- Backend tests: `python -m pytest <relevant-tests> -q`
+- Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
+- Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q`（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
 - Shell scripts: `bash -n <script>`
 - Frontend type check: `cd frontend && npx tsc --noEmit`
 - Full quality gate (manual): `make lint`（ruff + 分层检查 + 前端类型检查）

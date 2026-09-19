@@ -6,11 +6,9 @@ FastAPI + SQLAlchemy + PostgreSQL backend for TopicEye.
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
+uv sync                   # deps managed by uv (pyproject.toml + uv.lock)
 cp .env.example .env
-./venv/bin/python -m uvicorn app.main:app --reload
+uv run python -m uvicorn app.main:app --reload
 ```
 
 API docs: http://localhost:8000/docs

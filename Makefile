@@ -21,7 +21,7 @@ help:  ## 列出所有可用目标
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## 安装后端(dev)与前端依赖
-	cd backend && pip install -r requirements-dev.txt
+	cd backend && uv sync
 	cd frontend && npm ci
 
 dev:  ## docker compose 起全栈（backend + frontend + postgres）
@@ -41,10 +41,10 @@ test-frontend:  ## 前端 vitest + 覆盖率门禁（对应 CI frontend-tests）
 lint: lint-backend layering lint-frontend  ## 完整质量门（ruff + 分层 + tsc）
 
 lint-backend:  ## 后端 ruff 全量检查 + 格式检查（手动质量门）
-	cd backend && ruff check . && ruff format --check .
+	cd backend && uv run ruff check . && uv run ruff format --check .
 
 layering:  ## 分层纪律检查：api/v1 禁止直接 ORM 查询 / 禁用 import
-	cd backend && python scripts/check_layering.py
+	cd backend && uv run python scripts/check_layering.py
 
 lint-frontend:  ## 前端类型检查（AGENTS.md 首选，比 npm run lint 稳）
 	cd frontend && npx tsc --noEmit

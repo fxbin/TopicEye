@@ -7,12 +7,11 @@ Thanks for your interest in contributing! TopicEye is built for content creators
 ```bash
 git clone https://github.com/fxbin/TopicEye.git
 cd TopicEye/backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+uv sync                              # deps managed by uv (pyproject.toml + uv.lock)
 cp .env.example .env
 
 # SQLite is the default database — no extra setup needed.
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8102 --reload
+uv run python -m uvicorn app.main:app --host 127.0.0.1 --port 8102 --reload
 ```
 
 In another terminal:

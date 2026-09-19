@@ -209,10 +209,9 @@ docker compose --profile postgres up -d
 
 ```bash
 cd TopicEye/backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements-dev.txt   # includes pytest + pytest-asyncio
+uv sync                              # deps via uv, dev group includes pytest + pytest-asyncio
 cp .env.example .env                  # edit as needed
-uvicorn app.main:app --host 127.0.0.1 --port 8102 --reload
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8102 --reload
 ```
 
 **2. Frontend** (port 3000, in a new terminal)

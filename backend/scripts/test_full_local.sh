@@ -11,7 +11,7 @@
 #   make test-backend
 # 可用环境变量：
 #   TEST_PG_PORT   临时 PG 端口（默认 5433，被占用时换一个）
-#   PYTHON         Python 解释器（默认 backend/venv/bin/python，缺省回退 python3）
+#   PYTHON         Python 解释器（默认 backend/.venv/bin/python（uv sync 生成），缺省回退 python3）
 # =============================================================================
 set -euo pipefail
 
@@ -21,8 +21,8 @@ BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PORT="${TEST_PG_PORT:-5433}"
 # 容器名带端口派生：允许通过不同 TEST_PG_PORT 并行跑多份套件互不干扰
 CONTAINER="topiceye-test-pg-${PORT}"
-if [ -x "$BACKEND_DIR/venv/bin/python" ]; then
-  PYTHON="${PYTHON:-$BACKEND_DIR/venv/bin/python}"
+if [ -x "$BACKEND_DIR/.venv/bin/python" ]; then
+  PYTHON="${PYTHON:-$BACKEND_DIR/.venv/bin/python}"
 else
   PYTHON="${PYTHON:-python3}"
 fi

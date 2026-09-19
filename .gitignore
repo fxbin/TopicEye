@@ -9,6 +9,7 @@ backend/*.db-wal
 backend/.env
 .env
 backend/venv/
+backend/.venv/
 
 # DuckDB files
 *.duckdb

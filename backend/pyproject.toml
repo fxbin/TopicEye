@@ -1,14 +1,78 @@
 # =============================================================================
-# TopicEye backend 工具配置
+# TopicEye backend — 依赖由 uv 管理 + 工具配置
 #
-# 项目结构（pip install -r requirements.txt 直接用，无 setup.py）：
-#   - requirements.txt      生产依赖
-#   - requirements-dev.txt  开发依赖（ruff/pytest 等）
-#   - pytest.ini            pytest 配置
-#   - alembic.ini           数据库迁移
+# 依赖事实源：本文件 [project].dependencies + uv.lock（锁定完整解析图，
+# 含全部传递依赖与哈希；uv.lock 必须随代码提交）。
 #
-# 本文件只放工具配置（ruff），不定义 package 本身。
+# 常用命令：
+#   - uv sync            安装全部依赖（含 dev group）到 backend/.venv
+#   - uv sync --no-dev   仅生产依赖（Docker 构建用）
+#   - uv run <cmd>       在锁定环境中执行命令（如 uv run pytest）
+#   - uv lock            依赖声明变更后重新锁定
+#
+# 项目代码不安装为包（app/ 直接从源码目录运行），故 [tool.uv] package=false。
+# 历史：requirements.txt / requirements-dev.txt 已由 pyproject + uv.lock 取代。
 # =============================================================================
+
+[project]
+name = "topiceye-backend"
+version = "0.1.0"
+description = "TopicEye backend (FastAPI + SQLAlchemy + litellm)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.115.14",
+    "python-multipart==0.0.31",
+    "uvicorn[standard]==0.34.0",
+    "sqlalchemy[asyncio]==2.0.36",
+    "asyncpg==0.30.0",
+    "psycopg[binary]==3.2.13",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.15.0",
+    "apscheduler==3.10.4",
+    "httpx==0.28.1",
+    "aiosmtplib==5.1.2",
+    "feedparser==6.0.11",
+    "beautifulsoup4==4.12.3",
+    "python-dotenv==1.2.2",
+    "litellm==1.99.0",
+    "tenacity==9.0.0",
+    "duckdb==1.2.2",
+    "jieba==0.42.1",
+    "cryptography==45.0.7",
+    "alembic==1.14.0",
+    # OAuth (Google/GitHub 登录); itsdangerous 是 authlib starlette 集成的依赖
+    "authlib==1.6.12",
+    "itsdangerous==2.2.0",
+    # 七猫 scraper: 执行 window.__NUXT__ IIFE 拿 listData (替代 Playwright, 镜像 -500MB)
+    # 注: 包名 mini-racer (新版), import 仍走 py_mini_racer.MiniRacer
+    "mini-racer==0.14.1",
+    "trafilatura>=2.1.0",
+    "curl_cffi>=0.15.0",
+    # reader: 抽取 PDF 原文为可阅读文本（文字型 PDF；扫描件优雅回退到外链）
+    "pypdf>=6.0,<7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    # 测试用 SQLite 内存引擎（生产环境只用 PostgreSQL，但 49+ 个测试文件依赖它）
+    "aiosqlite==0.20.0",
+    # 与 CI backend-lint 作业保持同一版本，让本地 `make lint` 复现 CI 结果。
+    "ruff==0.6.9",
+    # 依赖安全扫描（CI security-scan 作业使用）
+    "pip-audit==2.7.3",
+]
+
+[tool.uv]
+# app/ 直接从源码目录运行，不需要把项目本身构建安装进环境
+package = false
+
+# 默认走清华 TUNA 镜像（国内下载加速；镜像全球可达，CI/海外构建同样能用）。
+# 注意：下载源记录在 uv.lock 里，改镜像后必须重新 `uv lock` 才会生效。
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
 
 [tool.ruff]
 line-length = 120

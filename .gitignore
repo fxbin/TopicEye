@@ -17,6 +17,7 @@ backend/venv/
 *.db-wal
 backend/data/duckdb_extensions/
 data/duckdb_extensions/
+data/backups/
 
 # Local DB backups (never commit)
 *.db.*

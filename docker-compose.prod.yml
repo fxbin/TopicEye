@@ -82,6 +82,10 @@ services:
     # 不映射端口到宿主机：仅 Docker 内网，由 nginx 容器反代
     expose:
       - "8000"
+    # Linux 引擎没有内置 host.docker.internal；host-gateway 让模型配置里
+    # 指向宿主机本地推理服务的地址在容器内可达（macOS Docker Desktop 无此也行）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - backend-data:/app/data
     env_file:

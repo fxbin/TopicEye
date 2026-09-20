@@ -10,6 +10,8 @@ import asyncio
 import ipaddress
 from urllib.parse import urlparse
 
+from app.core.config import settings
+
 
 class UnsafeUrlError(ValueError):
     """URL 主机指向内网/保留地址（或解析结果如此），禁止服务端代为请求。"""
@@ -17,6 +19,37 @@ class UnsafeUrlError(ValueError):
 
 # 明确禁止的主机名（不含点、无法用 IP 语义判定的内网别名）
 _BLOCKED_HOSTNAMES = {"localhost", "metadata.google.internal"}
+
+# 解析结果中 fake-ip 段的缓存（键为配置的 CIDR 字符串，避免每请求重复解析）
+_fake_ip_network_cache: tuple[str, ipaddress.IPv4Network | ipaddress.IPv6Network | None] = ("", None)
+
+
+def _fake_ip_proxy_network() -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """Return the configured local-proxy fake-ip CIDR, or None when unset/invalid.
+
+    非法配置 fail-safe 返回 None（维持拦截），不会因配置错误放开防护。
+    """
+    global _fake_ip_network_cache
+    cidr = (getattr(settings, "SSRF_FAKE_IP_PROXY_CIDR", "") or "").strip()
+    cached_cidr, cached_network = _fake_ip_network_cache
+    if cidr == cached_cidr:
+        return cached_network if cidr else None
+    try:
+        network = ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        network = None
+    _fake_ip_network_cache = (cidr, network)
+    return network
+
+
+def _in_proxy_fake_ip_range(address: str) -> bool:
+    network = _fake_ip_proxy_network()
+    if network is None:
+        return False
+    try:
+        return ipaddress.ip_address(address) in network
+    except ValueError:
+        return False
 
 
 def is_private_address(value: str) -> bool:
@@ -74,4 +107,10 @@ async def ensure_public_hostname(url: str, *, resolve: bool = True) -> None:
         return
     for address in addresses:
         if is_private_address(address):
+            # 本地代理 fake-ip 段：地址实际指向本机代理（Clash/Surge 等），
+            # 由代理按原始域名出网，不是真实的内网目标，放行。仅放行
+            # "域名解析结果"这一形态；IP 字面量在上面的 hostname_is_blocked
+            # 已拦截，不受影响。
+            if _in_proxy_fake_ip_range(address):
+                continue
             raise UnsafeUrlError(f"URL 主机 {host} 解析到内网或保留地址 {address}")

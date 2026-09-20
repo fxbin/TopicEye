@@ -165,6 +165,12 @@ class Settings(BaseSettings):
     # 留空则 OAuth 回调会返回 400；部署时必须通过 .env 设置。
     OAUTH_FRONTEND_REDIRECT_URL: str = ""
 
+    # 本地代理 fake-ip 段放行（如 198.18.0.0/15，Clash/Surge fake-ip 模式）。
+    # 仅放行"域名解析结果落在该段"的 SSRF 拦截：这类地址实际指向本机代理，
+    # 由代理按原始域名出网，不构成内网直达。IP 字面量不受影响仍被拦截。
+    # 留空（默认）= 不放行，维持最严格判定。
+    SSRF_FAKE_IP_PROXY_CIDR: str = ""
+
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
     LLM_WORKER_CONCURRENCY: int = 4

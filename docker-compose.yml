@@ -25,6 +25,9 @@ services:
       # 默认 45s 会先于网关超时；并发 4→6 适配本地模型无配额限制的场景
       - LLM_COMPLETION_TIMEOUT_SECONDS=${LLM_COMPLETION_TIMEOUT_SECONDS:-120}
       - LLM_WORKER_CONCURRENCY=${LLM_WORKER_CONCURRENCY:-6}
+      # 本机代理 fake-ip 模式把外网域名解析进 198.18.0.0/15，SSRF 防护会
+      # 误拦真实信源；放行该解析段（IP 字面量不受影响）。不用代理可移除
+      - SSRF_FAKE_IP_PROXY_CIDR=${SSRF_FAKE_IP_PROXY_CIDR:-198.18.0.0/15}
       # macOS bind mount 下 inotify 不穿透，强制 watchfiles 轮询以启用热重载
       - WATCHFILES_FORCE_POLLING=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app

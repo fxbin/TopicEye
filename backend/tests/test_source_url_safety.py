@@ -98,6 +98,64 @@ async def test_ensure_public_hostname_literal_check_needs_no_dns(monkeypatch):
         await ensure_public_hostname("http://169.254.169.254/latest/meta-data/")
 
 
+# ── 本地代理 fake-ip 段放行（SSRF_FAKE_IP_PROXY_CIDR）──
+
+
+@pytest.mark.asyncio
+async def test_fake_ip_proxy_cidr_allows_resolved_proxy_range(monkeypatch):
+    """域名解析到配置的 fake-ip 段时放行：地址实际指向本机代理，按原始域名出网。"""
+
+    async def fake_resolve(host):
+        return ["198.18.9.187"]
+
+    monkeypatch.setattr(url_safety, "_resolve_host", fake_resolve)
+    monkeypatch.setattr(url_safety.settings, "SSRF_FAKE_IP_PROXY_CIDR", "198.18.0.0/15")
+    await ensure_public_hostname("https://example.com/feed")
+
+
+@pytest.mark.asyncio
+async def test_fake_ip_proxy_cidr_still_blocks_literal_and_other_private(monkeypatch):
+    """放行只作用于解析结果：IP 字面量与其他私网段的解析结果仍被拦截。"""
+    monkeypatch.setattr(url_safety.settings, "SSRF_FAKE_IP_PROXY_CIDR", "198.18.0.0/15")
+    # 字面量假 IP：不受放行影响
+    with pytest.raises(UnsafeUrlError):
+        await ensure_public_hostname("http://198.18.0.5/admin")
+
+    # 其他私网段的解析结果：仍拦截
+    async def fake_resolve(host):
+        return ["10.0.0.5"]
+
+    monkeypatch.setattr(url_safety, "_resolve_host", fake_resolve)
+    with pytest.raises(UnsafeUrlError):
+        await ensure_public_hostname("https://internal.example.com/feed")
+
+
+@pytest.mark.asyncio
+async def test_fake_ip_proxy_cidr_disabled_by_default(monkeypatch):
+    """未配置（默认）时 fake-ip 段解析结果维持拦截，防护不因升级而放松。"""
+
+    async def fake_resolve(host):
+        return ["198.18.9.187"]
+
+    monkeypatch.setattr(url_safety, "_resolve_host", fake_resolve)
+    monkeypatch.setattr(url_safety.settings, "SSRF_FAKE_IP_PROXY_CIDR", "")
+    with pytest.raises(UnsafeUrlError):
+        await ensure_public_hostname("https://example.com/feed")
+
+
+@pytest.mark.asyncio
+async def test_fake_ip_proxy_cidr_invalid_config_fails_safe(monkeypatch):
+    """非法 CIDR 配置 fail-safe：视同未配置，维持拦截。"""
+
+    async def fake_resolve(host):
+        return ["198.18.9.187"]
+
+    monkeypatch.setattr(url_safety, "_resolve_host", fake_resolve)
+    monkeypatch.setattr(url_safety.settings, "SSRF_FAKE_IP_PROXY_CIDR", "not-a-cidr")
+    with pytest.raises(UnsafeUrlError):
+        await ensure_public_hostname("https://example.com/feed")
+
+
 # ── 创建入口（schema validator，覆盖 create/update/OPML/批量导入）──
 
 

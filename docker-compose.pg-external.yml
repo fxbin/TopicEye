@@ -1,0 +1,29 @@
+# =============================================================================
+# 外部 PostgreSQL 覆盖层 — 复用服务器上已有的 PG 实例（如 PG 18），
+# 不启动 compose 内置的 postgres:16 容器。
+#
+# 用法：
+#   docker compose -f docker-compose.prod.yml -f docker-compose.pg-external.yml up -d
+# 或一键脚本：
+#   sudo ./deploy/deploy.sh --external-pg [--domain your-domain --email you@x.com]
+#
+# 使用前提：
+#   1. 外部 PG 已建库建角色：
+#      CREATE ROLE topiceye LOGIN PASSWORD '...';
+#      CREATE DATABASE topiceye OWNER topiceye;
+#   2. PG 可达：listen_addresses 含 docker 网段来源，pg_hba.conf 允许
+#      172.16.0.0/12（docker bridge）scram 认证
+#   3. backend/.env 的 DATABASE_URL 指向外部实例，宿主机同机部署用
+#      host.docker.internal（prod compose 已配 host-gateway 映射）
+#   4. 备份脚本用宿主机 pg_dump 客户端，版本需 ≥ 服务端大版本
+#      （PG 18 服务器 → apt install postgresql-client-18）
+# =============================================================================
+
+services:
+  # 打上 profile 使其默认不启动；注意不要在 up 时显式点名 postgres
+  postgres:
+    profiles: ["external-db"]
+
+  backend:
+    # 外部数据库没有容器健康依赖，移除 depends_on（Compose >= 2.24 的 !reset）
+    depends_on: !reset []

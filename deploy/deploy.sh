@@ -12,6 +12,7 @@
 #   --no-ssl             强制不启用 SSL
 #   --email <邮箱>       Let's Encrypt 注册邮箱（SSL 必填）
 #   --env-file <路径>    指定 .env 文件（默认 ./backend/.env）
+#   --external-pg        复用服务器上已有的外部 PostgreSQL，不启动容器 PG
 #
 # 架构：
 #   公网 80/443 ─► nginx 容器 ─► backend:8000 / frontend:3000
@@ -35,11 +36,17 @@ DOMAIN=""
 ENABLE_SSL=true
 EMAIL=""
 ENV_FILE=""
+EXTERNAL_PG=false
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+COMPOSE_ARGS=(-f "${PROJECT_ROOT}/docker-compose.prod.yml")
 NGINX_CONF_DIR="${PROJECT_ROOT}/deploy/nginx/conf.d"
 TEMPLATE="${PROJECT_ROOT}/deploy/nginx/topiceye.conf.template"
 SSL_TEMPLATE="${PROJECT_ROOT}/deploy/nginx/ssl-server-block.conf"
+
+# ── external-pg：附加覆盖层，禁用容器 PG ───────────────────────
+if [[ "$EXTERNAL_PG" = true ]]; then
+    COMPOSE_ARGS+=(-f "${PROJECT_ROOT}/docker-compose.pg-external.yml")
+fi
 
 # ── 解析参数 ──────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -48,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --no-ssl)    ENABLE_SSL=false; shift ;;
         --email)     EMAIL="$2"; shift 2 ;;
         --env-file)  ENV_FILE="$2"; shift 2 ;;
+        --external-pg) EXTERNAL_PG=true; shift ;;
         *)           error "未知参数: $1" ;;
     esac
 done
@@ -77,6 +85,7 @@ echo "║  域名/IP:   ${DOMAIN}"
 echo "║  SSL:       $([ "$ENABLE_SSL" = true ] && echo "启用 (${EMAIL})" || echo "禁用")"
 echo "║  Env 文件:  ${ENV_FILE}"
 echo "║  架构:      全 Docker（Nginx + Certbot 容器）"
+echo "║  数据库:    $([ "$EXTERNAL_PG" = true ] && echo "外部 PostgreSQL（不启动容器 PG）" || echo "容器 PostgreSQL 16")"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 
@@ -144,6 +153,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
     sed -i "s|CHANGE_THIS_TO_A_STRONG_PASSWORD|$(openssl rand -base64 16 | tr -d '/+=' | head -c 20)|g" "$ENV_FILE"
     sed -i "s|REPLACE_WITH_RANDOM_SECRET|$(openssl rand -hex 32)|g" "$ENV_FILE"
 
+    if [[ "$EXTERNAL_PG" = true ]]; then
+        # 外部 PG：默认连接串从容器服务名改为宿主机网关，凭据需人工填写
+        sed -i "s|@postgres:5432|@host.docker.internal:5432|g" "$ENV_FILE"
+        warn "外部 PostgreSQL 模式：请编辑 ${ENV_FILE} 填写真实数据库地址与凭据"
+    fi
+
     warn "已生成 ${ENV_FILE}，请检查并修改："
     warn "  nano ${ENV_FILE}"
     echo ""
@@ -177,10 +192,14 @@ info "拉取最新代码..."
 git pull --ff-only 2>/dev/null || warn "git pull 失败（可能已在最新版本）"
 
 info "构建镜像（首次约 5-10 分钟）..."
-docker compose -f "$COMPOSE_FILE" build --pull
+docker compose "${COMPOSE_ARGS[@]}" build --pull
 
 info "启动服务（不含 certbot）..."
-docker compose -f "$COMPOSE_FILE" up -d nginx backend frontend postgres
+UP_SERVICES=(nginx backend frontend postgres)
+if [[ "$EXTERNAL_PG" = true ]]; then
+    UP_SERVICES=(nginx backend frontend)   # 外部 PG 模式：显式点名会绕过 profile 启动容器 PG，必须去掉
+fi
+docker compose "${COMPOSE_ARGS[@]}" up -d "${UP_SERVICES[@]}"
 
 info "等待服务就绪..."
 sleep 8
@@ -188,7 +207,7 @@ sleep 8
 # 健康检查
 MAX_RETRIES=30; RETRY=0
 while [[ $RETRY -lt $MAX_RETRIES ]]; do
-    if docker compose -f "$COMPOSE_FILE" exec -T backend python -c \
+    if docker compose "${COMPOSE_ARGS[@]}" exec -T backend python -c \
         "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live').read()" 2>/dev/null; then
         info "后端健康检查通过 ✓"
         break
@@ -196,7 +215,7 @@ while [[ $RETRY -lt $MAX_RETRIES ]]; do
     RETRY=$((RETRY + 1)); echo -n "."; sleep 3
 done
 echo ""
-[[ $RETRY -ge $MAX_RETRIES ]] && warn "后端健康检查超时，查看日志: docker compose -f docker-compose.prod.yml logs backend"
+[[ $RETRY -ge $MAX_RETRIES ]] && warn "后端健康检查超时，查看日志: docker compose ${COMPOSE_ARGS[*]} logs backend"
 
 # ═══════════════════════════════════════════════════════════════
 # Step 5: SSL 证书签发（可选）
@@ -207,7 +226,7 @@ if [[ "$ENABLE_SSL" = true ]]; then
     info "通过 certbot 容器签发证书..."
     info "域名: ${DOMAIN}, 邮箱: ${EMAIL}"
 
-    docker compose -f "$COMPOSE_FILE" run --rm certbot \
+    docker compose "${COMPOSE_ARGS[@]}" run --rm certbot \
         certonly --webroot -w /var/www/certbot \
         -d "$DOMAIN" \
         --non-interactive \
@@ -220,7 +239,7 @@ if [[ "$ENABLE_SSL" = true ]]; then
             warn "  3. Nginx 未正确响应 ACME challenge"
             warn ""
             warn "服务已以 HTTP 模式运行，可稍后手动签发："
-            warn "  docker compose -f docker-compose.prod.yml run --rm certbot \\"
+            warn "  docker compose ${COMPOSE_ARGS[*]} run --rm certbot \\"
             warn "    certonly --webroot -w /var/www/certbot -d ${DOMAIN} --agree-tos --email ${EMAIL}"
             ENABLE_SSL=false
         }
@@ -254,13 +273,13 @@ if [[ "$ENABLE_SSL" = true ]]; then
 
         # 重载 Nginx
         info "重载 Nginx 以启用 SSL..."
-        docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t 2>&1
-        docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>&1
+        docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -t 2>&1
+        docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -s reload 2>&1
         info "SSL 已启用 ✓"
 
         # 设置自动续期 cron
         info "配置证书自动续期..."
-        CRON_CMD="docker compose -f ${COMPOSE_FILE} run --rm certbot renew --quiet && docker compose -f ${COMPOSE_FILE} exec -T nginx nginx -s reload"
+        CRON_CMD="docker compose ${COMPOSE_ARGS[*]} run --rm certbot renew --quiet && docker compose ${COMPOSE_ARGS[*]} exec -T nginx nginx -s reload"
         (crontab -l 2>/dev/null | grep -v "certbot renew"; echo "0 3 * * * ${CRON_CMD}") | crontab -
         info "Cron 已设置：每日 03:00 自动续期"
     fi
@@ -289,12 +308,12 @@ echo "║  监控大盘:  ${CYAN}${URL}/dashboard${NC}"
 echo "║  管理后台:  ${CYAN}${URL}/admin${NC}"
 echo "╠══════════════════════════════════════════════════╣"
 echo "║  常用命令:                                        ║"
-echo "║  查看日志:  docker compose -f docker-compose.prod.yml logs -f"
-echo "║  重启服务:  docker compose -f docker-compose.prod.yml restart"
-echo "║  停止服务:  docker compose -f docker-compose.prod.yml down"
+echo "║  查看日志:  docker compose ${COMPOSE_ARGS[*]} logs -f"
+echo "║  重启服务:  docker compose ${COMPOSE_ARGS[*]} restart"
+echo "║  停止服务:  docker compose ${COMPOSE_ARGS[*]} down"
 echo "║  更新部署:  git pull && sudo ./deploy/deploy.sh --domain ${DOMAIN}"
 if [[ "$ENABLE_SSL" = true ]]; then
-echo "║  续期证书:  docker compose -f docker-compose.prod.yml run --rm certbot renew"
+echo "║  续期证书:  docker compose ${COMPOSE_ARGS[*]} run --rm certbot renew"
 fi
 echo "╚══════════════════════════════════════════════════╝"
 echo ""

@@ -35,6 +35,33 @@ docker compose -f docker-compose.prod.yml up -d
 - `stop_grace_period: 45s`（> uvicorn 30s，确保优雅停机）
 - 内存限制：backend 1g + frontend 512m + postgres 512m ≈ 2g
 
+### 1.3 复用服务器上已有的 PostgreSQL（外部 PG 模式）
+
+服务器上已有 PostgreSQL（如 PG 18）时，可跳过容器 PG 直接复用：
+
+```bash
+sudo ./deploy/deploy.sh --external-pg --domain 你的域名 --email 你@邮箱.com
+```
+
+前提（缺一不可）：
+
+1. **建库建角色**（在外部 PG 上执行）：
+   ```sql
+   CREATE ROLE topiceye LOGIN PASSWORD '强密码';
+   CREATE DATABASE topiceye OWNER topiceye;
+   ```
+2. **网络可达**：`postgresql.conf` 的 `listen_addresses` 覆盖 docker 网段来源；
+   `pg_hba.conf` 放行 `172.16.0.0/12`（docker bridge）scram 认证
+3. **`backend/.env` 的 `DATABASE_URL` 指向外部实例**：同机部署用
+   `host.docker.internal:5432`（prod compose 已配 host-gateway 映射），
+   异机用 PG 所在机器的内网 IP
+4. **备份**：`backup_db.sh` 用宿主机 `pg_dump` 客户端，版本必须 ≥ 服务端
+   大版本（PG 18 服务器装 `postgresql-client-18`），否则报 server version mismatch
+
+原理：`docker-compose.pg-external.yml` 覆盖层给容器 PG 打上 profile（默认
+不启动）并移除 backend 对它的健康依赖；注意 `up` 时不要显式点名 `postgres`
+（显式点名会绕过 profile 把容器 PG 拉起来，deploy.sh 已自动处理）。
+
 默认以 `APP_ENV=development` 保留既有本地密钥和加密数据，但仍使用无热重载的
 生产运行进程。对外部署时请在项目根目录 `.env` 中显式设置
 `APP_ENV=production`、`APP_SECRET_KEY` 和 `CORS_ORIGINS`；生产模式会拒绝默认密钥。

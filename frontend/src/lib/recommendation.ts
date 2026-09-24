@@ -39,6 +39,15 @@ function isDefaultScoreProfile(analysis: ContentAnalysis): boolean {
   return defaultLikeCount >= 5 && !hasCuration && !hasTextSignal;
 }
 
+// 与后端评分引擎对齐的门槛（backend/app/services/scoring_engine.py CONFIG）：
+// risk_threshold=82 硬排除；quality_gate_min=45 内容过薄下限。
+// 规则顺序：先过统一的风险/质量/创作价值门槛，再判断推荐类型，
+// 避免「质量 10 + 创作价值 90」被判为强烈建议写、「风险 95 + 热度 90」
+// 被判为适合蹭热点这类后端根本不会收录的推荐口径。
+const RISK_HARD_EXCLUDE = 82;
+const RISK_HIGH = 75;
+const QUALITY_GATE_MIN = 45;
+
 export function explainRecommendation(analysis: ContentAnalysis | null | undefined): RecommendationDecision {
   if (!analysis) {
     return {
@@ -63,6 +72,35 @@ export function explainRecommendation(analysis: ContentAnalysis | null | undefin
       signalQuality: 'weak',
       reason: '多维评分仍停留在默认 50，缺少热度、创作价值和风险的有效判断，暂不归入“值得观察”。',
       signals: ['默认分过多', '缺少解释文本'],
+    };
+  }
+
+  if (riskScore >= RISK_HARD_EXCLUDE) {
+    return {
+      level: '不建议追',
+      signalQuality: 'ready',
+      reason: `风险 ${Math.round(riskScore)} 超过硬性排除线 ${RISK_HARD_EXCLUDE}，后端精选流不会收录此类内容，不建议投入。`,
+      signals: [`风险 ${Math.round(riskScore)}`, `超过排除线 ${RISK_HARD_EXCLUDE}`],
+    };
+  }
+
+  if (creatorScore < 50 || riskScore >= RISK_HIGH) {
+    return {
+      level: '不建议追',
+      signalQuality: 'ready',
+      reason: creatorScore < 50
+        ? `创作价值 ${Math.round(creatorScore)} 低于 50，投入产出不明确。`
+        : `风险 ${Math.round(riskScore)} 偏高，暂不建议直接追。`,
+      signals: [`创作价值 ${Math.round(creatorScore)}`, `风险 ${Math.round(riskScore)}`],
+    };
+  }
+
+  if (qualityScore < QUALITY_GATE_MIN) {
+    return {
+      level: '不建议追',
+      signalQuality: 'ready',
+      reason: `质量 ${Math.round(qualityScore)} 低于内容门槛 ${QUALITY_GATE_MIN}，信息量不足以支撑成稿判断。`,
+      signals: [`质量 ${Math.round(qualityScore)}`, `低于门槛 ${QUALITY_GATE_MIN}`],
     };
   }
 
@@ -99,17 +137,6 @@ export function explainRecommendation(analysis: ContentAnalysis | null | undefin
       signalQuality: 'ready',
       reason: `创作价值 ${Math.round(creatorScore)}、热度 ${Math.round(hotScore)} 均达到观察线，风险 ${Math.round(riskScore)} 可控。`,
       signals: [`创作价值 ${Math.round(creatorScore)}`, `热度 ${Math.round(hotScore)}`, `风险 ${Math.round(riskScore)}`],
-    };
-  }
-
-  if (creatorScore < 50 || riskScore >= 75) {
-    return {
-      level: '不建议追',
-      signalQuality: 'ready',
-      reason: creatorScore < 50
-        ? `创作价值 ${Math.round(creatorScore)} 低于 50，投入产出不明确。`
-        : `风险 ${Math.round(riskScore)} 偏高，暂不建议直接追。`,
-      signals: [`创作价值 ${Math.round(creatorScore)}`, `风险 ${Math.round(riskScore)}`],
     };
   }
 

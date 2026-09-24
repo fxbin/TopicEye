@@ -73,6 +73,29 @@ describe('explainRecommendation', () => {
     expect(d.reason).toContain('风险');
   });
 
+  it('质量极低时不得给正面推荐：创作 90 + 质量 10 → 「不建议追」（先过质量门槛）', () => {
+    const d = explainRecommendation(
+      analysis({ quality_score: 10, hot_score: 60, freshness_score: 60, creator_score: 90, viral_score: 60, risk_score: 20 }),
+    );
+    expect(d.level).toBe('不建议追');
+    expect(d.reason).toContain('质量');
+  });
+
+  it('风险超过后端硬排除线时不得判为蹭热点：热度 90 + 风险 95 → 「不建议追」', () => {
+    const d = explainRecommendation(
+      analysis({ quality_score: 60, hot_score: 90, freshness_score: 60, creator_score: 60, viral_score: 60, risk_score: 95 }),
+    );
+    expect(d.level).toBe('不建议追');
+    expect(d.reason).toContain('排除线');
+  });
+
+  it('热度 90 + 风险 70（低于观察线 75）仍可判为「适合蹭热点」', () => {
+    const d = explainRecommendation(
+      analysis({ quality_score: 60, hot_score: 90, freshness_score: 60, creator_score: 60, viral_score: 60, risk_score: 70 }),
+    );
+    expect(d.level).toBe('适合蹭热点');
+  });
+
   it('未触发任何规则且有传播信号 → 「信号不足 / weak」', () => {
     const d = explainRecommendation(
       analysis({ quality_score: 55, hot_score: 55, freshness_score: 55, creator_score: 55, viral_score: 60, risk_score: 55 }),

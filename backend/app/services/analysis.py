@@ -319,7 +319,14 @@ def _build_analysis_record(
     prescreen_confidence: float | None,
     fallback_used: bool,
 ) -> AiAnalysis:
-    """根据归一化后的 LLM 结果构造 AiAnalysis 实例（不含 db 操作）。"""
+    """根据归一化后的 LLM 结果构造 AiAnalysis 实例（不含 db 操作）。
+
+    标签与推荐等级在此收口（幂等）：lite 级联与本地回退路径不经过
+    _normalize_analysis_result，统一在构造处保证存储口径一致。
+    """
+    from app.services.recommendation_level import classify_recommendation_level
+    from app.services.tag_normalization import normalize_tag_list
+
     scores = result.get("scores", {})
     curation = result.get("curation", {})
     # arXiv 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
@@ -341,8 +348,23 @@ def _build_analysis_record(
         title_suggestions=result.get("title_suggestions"),
         risk_notes={"notes": result.get("risk_notes", "") if scores.get("risk_score", 0) > 50 else ""},
         curation_score=curation_score,
-        tags=result.get("tags"),
-        recommend_level=result.get("recommend_level"),
+        tags=normalize_tag_list(result.get("tags")),
+        recommend_level=result.get("recommend_level")
+        or classify_recommendation_level(
+            quality_score=scores.get("quality_score"),
+            hot_score=scores.get("hot_score"),
+            freshness_score=scores.get("freshness_score"),
+            creator_score=scores.get("creator_score"),
+            viral_score=scores.get("viral_score"),
+            risk_score=scores.get("risk_score"),
+            curation_score=curation_score,
+            has_text_signal=bool(
+                result.get("summary")
+                or result.get("recommendation")
+                or result.get("key_points")
+                or result.get("creator_angles")
+            ),
+        ),
         recommendation=result.get("recommendation"),
         info_density=curation.get("info_density", 50),
         actionability=curation.get("actionability", 50),

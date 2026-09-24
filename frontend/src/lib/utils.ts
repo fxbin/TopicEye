@@ -146,3 +146,21 @@ export function formatPlanText(plan: Record<string, unknown>): string {
   if (tone) lines.push(`风格：${tone}`);
   return lines.join('\n');
 }
+
+/**
+ * 分页追加时按 id 合并去重。
+ *
+ * 翻页窗口内可能有新内容入库导致 offset 位移，后一页会重复出现前一页
+ * 已加载的条目；按 id 去重后再追加，保证列表不出现重复卡片。
+ */
+export function mergeItemsById<T extends { id: number }>(existing: T[], incoming: T[]): T[] {
+  const seen = new Set(existing.map((item) => item.id));
+  const merged = [...existing];
+  for (const item of incoming) {
+    if (!seen.has(item.id)) {
+      merged.push(item);
+      seen.add(item.id);
+    }
+  }
+  return merged;
+}

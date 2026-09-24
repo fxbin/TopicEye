@@ -39,6 +39,7 @@ import {
   normalizeTags,
 } from './_app-utils';
 import { explainRecommendation, getRecommendationReason } from '@/lib/recommendation';
+import { mergeItemsById } from '@/lib/utils';
 import ContentAnalysisPanel from '@/components/ContentAnalysisPanel';
 import { startContentWorkflow } from '@/lib/workflow';
 import {
@@ -57,8 +58,9 @@ export default function HomePage() {
   const { currentUser, toggleFavorite, refreshCounts, reportContentTotal } = useAppContext();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [totalAvailable, setTotalAvailable] = useState(0);
-  const [contentLimit, setContentLimit] = useState(INITIAL_CONTENT_LIMIT);
+  const [nextPage, setNextPage] = useState(2);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +106,8 @@ export default function HomePage() {
     (async () => {
       try {
         setLoading(true);
-        setContentLimit(INITIAL_CONTENT_LIMIT);
+        setNextPage(2);
+        setLoadMoreError(null);
         setError(null);
         const res = await contentsApi.list({
           page_size: INITIAL_CONTENT_LIMIT,
@@ -141,31 +144,35 @@ export default function HomePage() {
     };
   }, [activeTimeRange, activeSourceType, activeCategory, searchQuery]);
 
-  const resetContentLimit = useCallback(() => {
-    setContentLimit(INITIAL_CONTENT_LIMIT);
+  const resetPagination = useCallback(() => {
+    setNextPage(2);
+    setLoadMoreError(null);
   }, []);
 
   const handleLoadMore = useCallback(async () => {
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
-      const nextLimit = contentLimit + CONTENT_LOAD_STEP;
+      // 固定大小分页追加：接口 page_size 上限 200，旧实现不断放大
+      // page_size（40→80→…→240）会在 200 之后触发 422，列表无法继续加载。
       const res = await contentsApi.list({
-        page_size: nextLimit,
+        page: nextPage,
+        page_size: CONTENT_LOAD_STEP,
         hours: TIME_RANGE_HOURS[activeTimeRange],
         source_type: activeSourceType === '全部' ? undefined : activeSourceType,
         category: activeCategory === '全部' ? undefined : activeCategory,
         q: searchQuery.trim() || undefined,
         include_trend_sources: false,
       });
-      setItems(res.items || []);
-      setTotalAvailable(res.total ?? (res.items || []).length);
-      setContentLimit(nextLimit);
+      setItems((prev) => mergeItemsById(prev, res.items || []));
+      setTotalAvailable((prev) => res.total ?? prev);
+      setNextPage((prev) => prev + 1);
     } catch (err) {
-      console.error('Load more failed:', err);
+      setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
     } finally {
       setLoadingMore(false);
     }
-  }, [contentLimit, activeTimeRange, activeSourceType, activeCategory, searchQuery]);
+  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery]);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -304,7 +311,7 @@ export default function HomePage() {
           placeholder="搜索标题、摘要、标签、AI分析..."
           value={searchQuery}
           onChange={(e) => {
-            resetContentLimit();
+            resetPagination();
             setSearchQuery(e.target.value);
           }}
           className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-primary"
@@ -322,7 +329,7 @@ export default function HomePage() {
                 key={range}
                 type="button"
                 onClick={() => {
-                  resetContentLimit();
+                  resetPagination();
                   setActiveTimeRange(range);
                 }}
                 className={cx(
@@ -346,7 +353,7 @@ export default function HomePage() {
                 key={type}
                 type="button"
                 onClick={() => {
-                  resetContentLimit();
+                  resetPagination();
                   setActiveSourceType(type);
                 }}
                 className={cx(
@@ -376,7 +383,7 @@ export default function HomePage() {
               name={c}
               active={activeCategory === c}
               onClick={() => {
-                resetContentLimit();
+                resetPagination();
                 setActiveCategory(c);
                 setActiveTag('全部');
               }}
@@ -484,6 +491,14 @@ export default function HomePage() {
                 >
                   {loadingMore ? '加载中…' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
                 </Button>
+                {loadMoreError && !loadingMore && (
+                  <div className="mt-2 text-[12px] text-red-500">
+                    加载失败：{loadMoreError}
+                    <button type="button" className="ml-2 underline underline-offset-2" onClick={handleLoadMore}>
+                      重试
+                    </button>
+                  </div>
+                )}
                 <div className="mt-2 text-[11px] text-gray-400">首屏优先展示最新内容，按需继续展开。</div>
               </div>
             )}

@@ -115,3 +115,24 @@ describe('formatPlanText', () => {
     expect(formatPlanText({})).toBe('');
   });
 });
+
+describe('mergeItemsById', () => {
+  it('追加新条目并按 id 去重（翻页位移导致的重复不进入列表）', async () => {
+    const { mergeItemsById } = await import('@/lib/utils');
+    const page1 = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    // 第 2 页因 offset 位移重复了 id 3
+    const page2 = [{ id: 3 }, { id: 4 }, { id: 5 }];
+    expect(mergeItemsById(page1, page2)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
+  });
+
+  it('incoming 内部重复同样只保留首次出现', async () => {
+    const { mergeItemsById } = await import('@/lib/utils');
+    expect(mergeItemsById([{ id: 1 }], [{ id: 2 }, { id: 2 }, { id: 1 }])).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('空数组输入安全', async () => {
+    const { mergeItemsById } = await import('@/lib/utils');
+    expect(mergeItemsById([], [])).toEqual([]);
+    expect(mergeItemsById([], [{ id: 7 }])).toEqual([{ id: 7 }]);
+  });
+});

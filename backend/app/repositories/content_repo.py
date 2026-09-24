@@ -594,7 +594,13 @@ class ContentRepo(BaseRepository[ContentItem]):
         total = total_result.scalar() or 0
 
         sort_col = getattr(self.model, sort_by, self.model.created_at)
-        stmt = stmt.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
+        # id 作决胜键：created_at/crawled_at 大量并列时，仅按时间排序在
+        # LIMIT/OFFSET 边界不稳定，翻页会出现重叠或跳条；前端按页追加
+        # 依赖稳定的全局顺序。
+        if sort_order == "desc":
+            stmt = stmt.order_by(sort_col.desc(), self.model.id.desc())
+        else:
+            stmt = stmt.order_by(sort_col.asc(), self.model.id.asc())
 
         offset = (page - 1) * page_size
         stmt = stmt.offset(offset).limit(page_size)

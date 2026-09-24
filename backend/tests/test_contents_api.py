@@ -39,17 +39,23 @@ async def contents_client() -> AsyncGenerator[tuple[httpx.AsyncClient, str], Non
         token, _ = await create_session(db, user)
         db.add(Source(name="Test", url="https://example.com", source_type="RSS", status="active"))
         await db.flush()
-        db.add(
-            ContentItem(
-                title="Test Article",
-                url="https://example.com/article",
-                source_id=1,
-                source_name="Test",
-                source_type="RSS",
-                status="crawled",
-                content_hash="abc123",
+        # 4 条 created_at 完全并列的内容，用于翻页稳定性回归
+        from datetime import datetime as _dt
+
+        _tied = _dt(2026, 1, 1, 12, 0, 0)
+        for i in range(1, 5):
+            db.add(
+                ContentItem(
+                    title=f"Test Article {i}",
+                    url=f"https://example.com/article-{i}",
+                    source_id=1,
+                    source_name="Test",
+                    source_type="RSS",
+                    status="crawled",
+                    content_hash=f"abc123-{i}",
+                    created_at=_tied,
+                )
             )
-        )
         await db.commit()
 
     app = FastAPI()
@@ -97,7 +103,7 @@ async def test_get_content_existing(contents_client: tuple[httpx.AsyncClient, st
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == 1
-    assert data["title"] == "Test Article"
+    assert data["title"] == "Test Article 1"
 
 
 @pytest.mark.asyncio
@@ -285,3 +291,31 @@ async def test_unignore_content_404(
     data = resp.json()
     assert data["ignored"] is False
     assert data["removed"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_contents_pagination_stable_with_tied_timestamps(
+    contents_client: tuple[httpx.AsyncClient, str],
+):
+    """created_at 并列时翻页不得重叠或跳条（id 决胜键）。
+
+    回归：仅按 created_at 排序在 LIMIT/OFFSET 边界不稳定，前端按页
+    追加会出现同一条内容重复出现在两页、或部分内容永远跳过。
+    """
+    client, token = contents_client
+
+    page1 = await client.get(
+        "/contents?page=1&page_size=2",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    page2 = await client.get(
+        "/contents?page=2&page_size=2",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert page1.status_code == 200
+    assert page2.status_code == 200
+
+    ids1 = {item["id"] for item in page1.json()["items"]}
+    ids2 = {item["id"] for item in page2.json()["items"]}
+    assert ids1 & ids2 == set(), "相邻两页不应出现重复条目"
+    assert len(ids2) == 2, "总数足够时应返回完整的第二页"

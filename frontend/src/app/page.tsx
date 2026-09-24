@@ -35,8 +35,7 @@ import {
   TIME_RANGE_HOURS,
   formatShanghaiToday,
   getContentTime,
-  getItemTags,
-  normalizeTags,
+  prettyTag,
 } from './_app-utils';
 import { explainRecommendation, getRecommendationReason } from '@/lib/recommendation';
 import { mergeItemsById } from '@/lib/utils';
@@ -68,6 +67,7 @@ export default function HomePage() {
   const [categoryExpanded, setCategoryExpanded] = useState(false);
   const [activeRecommendLevel, setActiveRecommendLevel] = useState<RecommendLevel | '全部'>('全部');
   const [activeTag, setActiveTag] = useState('全部');
+  const [tagFacets, setTagFacets] = useState<Array<{ tag: string; count: number }>>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTimeRange, setActiveTimeRange] = useState('24h');
   const [activeSourceType, setActiveSourceType] = useState('全部');
@@ -116,6 +116,8 @@ export default function HomePage() {
           category: activeCategory === '全部' ? undefined : activeCategory,
           q: searchQuery.trim() || undefined,
           include_trend_sources: false,
+          recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
+          tag: activeTag === '全部' ? undefined : activeTag,
         });
         if (!cancelled) {
           setItems(res.items || []);
@@ -142,6 +144,29 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
+  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
+
+  // 标签统计与基础口径联动（时间/来源/分类/搜索），覆盖口径内全部内容；
+  // 等级/标签筛选不改变 chips 本身，只改变列表结果。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await contentsApi.tagFacets({
+          hours: TIME_RANGE_HOURS[activeTimeRange],
+          source_type: activeSourceType === '全部' ? undefined : activeSourceType,
+          category: activeCategory === '全部' ? undefined : activeCategory,
+          q: searchQuery.trim() || undefined,
+          limit: 16,
+        });
+        if (!cancelled) setTagFacets(res.tags || []);
+      } catch {
+        // 标签统计失败不阻塞列表；保留上一次结果
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activeTimeRange, activeSourceType, activeCategory, searchQuery]);
 
   const resetPagination = useCallback(() => {
@@ -163,6 +188,8 @@ export default function HomePage() {
         category: activeCategory === '全部' ? undefined : activeCategory,
         q: searchQuery.trim() || undefined,
         include_trend_sources: false,
+        recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
+        tag: activeTag === '全部' ? undefined : activeTag,
       });
       setItems((prev) => mergeItemsById(prev, res.items || []));
       setTotalAvailable((prev) => res.total ?? prev);
@@ -172,7 +199,7 @@ export default function HomePage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery]);
+  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -189,38 +216,27 @@ export default function HomePage() {
   }, [currentUser, refreshCounts, router]);
 
   const tagOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    items.forEach((item) => {
-      getItemTags(item).forEach((tag) => {
-        counts.set(tag, (counts.get(tag) || 0) + 1);
-      });
-    });
-    return [
-      '全部',
-      ...Array.from(counts.entries())
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
-        .slice(0, 16)
-        .map(([tag]) => tag),
-    ];
-  }, [items]);
+    const keys = tagFacets.map((facet) => facet.tag);
+    // 当前选中项不在 facets 里时仍保留入口（例如口径切换瞬间的旧选择）
+    if (activeTag !== '全部' && !keys.includes(activeTag)) keys.unshift(activeTag);
+    return ['全部', ...keys];
+  }, [tagFacets, activeTag]);
+  const tagCounts = useMemo(
+    () => new Map(tagFacets.map((facet) => [facet.tag, facet.count])),
+    [tagFacets],
+  );
 
-  // Filtered + sorted list
+  // 分类 / 推荐等级 / 标签 / 搜索均已下沉服务端（list 接口参数），
+  // 客户端只负责按发布时间排序展示。
   const filtered = useMemo(() => {
-    const result = items.filter((item) => {
-      if (activeCategory !== '全部' && item.category !== activeCategory) return false;
-      if (activeRecommendLevel !== '全部' && explainRecommendation(item.analysis).level !== activeRecommendLevel) return false;
-      if (activeTag !== '全部' && !getItemTags(item).includes(activeTag)) return false;
-      // Search is now server-side (q parameter); no client-side title filtering
-      return true;
-    });
-    // Sort by published_at descending
+    const result = [...items];
     result.sort((a, b) => {
       const ta = parseUTC(getContentTime(a)).getTime() || 0;
       const tb = parseUTC(getContentTime(b)).getTime() || 0;
       return tb - ta;
     });
     return result;
-  }, [items, activeCategory, activeRecommendLevel, activeTag, searchQuery]);
+  }, [items]);
 
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, Array<{ item: ContentItem; level: RecommendLevel }>>();
@@ -277,8 +293,7 @@ export default function HomePage() {
   // Stats
   const totalCount = totalAvailable || items.length;
   const todayCount = useMemo(() => items.filter((i) => isToday(getContentTime(i))).length, [items]);
-  const clientOnlyFilterActive = activeRecommendLevel !== '全部' || activeTag !== '全部';
-  const displayedTotalCount = clientOnlyFilterActive ? filtered.length : totalCount;
+  const displayedTotalCount = totalCount;
 
   // Today's date
   const dateStr = formatShanghaiToday();
@@ -410,7 +425,10 @@ export default function HomePage() {
               <button
                 key={level}
                 type="button"
-                onClick={() => setActiveRecommendLevel(level)}
+                onClick={() => {
+                  resetPagination();
+                  setActiveRecommendLevel(level);
+                }}
                 className={cx(
                   'rounded-xs px-2.5 py-1 text-xs transition',
                   activeRecommendLevel === level
@@ -429,21 +447,27 @@ export default function HomePage() {
         <Toolbar className="gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-gray-500">标签</span>
-            {tagOptions.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setActiveTag(tag)}
-                className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
-                  activeTag === tag
-                    ? 'bg-teal-light font-semibold text-teal-text'
-                    : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
-                )}
-              >
-                {tag === '全部' ? '全部' : `#${tag}`}
-              </button>
-            ))}
+            {tagOptions.map((tag) => {
+              const count = tagCounts.get(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    resetPagination();
+                    setActiveTag(tag);
+                  }}
+                  className={cx(
+                    'rounded-xs px-2.5 py-1 text-xs transition',
+                    activeTag === tag
+                      ? 'bg-teal-light font-semibold text-teal-text'
+                      : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
+                  )}
+                >
+                  {tag === '全部' ? '全部' : `#${prettyTag(tag)}${count !== undefined ? ` ${count}` : ''}`}
+                </button>
+              );
+            })}
           </div>
         </Toolbar>
       </div>
@@ -511,7 +535,7 @@ export default function HomePage() {
           <TimelineSummary
             groups={levelSummary}
             total={filtered.length}
-            availableTotal={clientOnlyFilterActive ? undefined : totalCount}
+            availableTotal={totalCount}
           />
         </div>
       )}

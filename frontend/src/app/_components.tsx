@@ -47,7 +47,7 @@ import type {
   ContentItem,
   RecommendLevel,
 } from '@/types';
-import { getContentTime, getItemTags } from './_app-utils';
+import { getContentTime, getItemTags, prettyTag } from './_app-utils';
 
 /* ── Color mapping for recommend levels (timeline dots + summary) ── */
 
@@ -273,7 +273,7 @@ export function EditorialItem({
           {itemTags.length > 0
             ? itemTags.slice(0, 5).map((tag) => (
                 <span key={tag} className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                  #{tag}
+                  #{prettyTag(tag)}
                 </span>
               ))
             : null}

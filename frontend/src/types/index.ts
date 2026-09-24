@@ -558,6 +558,8 @@ export interface ContentFilterParams {
   source_type?: string;
   keyword?: string;
   q?: string; // enhanced full-text search (title + summary + raw_content + tags + AI analysis fields)
+  recommend_level?: string; // 服务端推荐等级筛选（最新分析的持久化等级）
+  tag?: string; // 服务端标签筛选（规范化键，大小写不敏感）
   [key: string]: unknown; // allow any extra params for URLSearchParams
 }
 

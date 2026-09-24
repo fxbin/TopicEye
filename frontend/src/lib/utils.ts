@@ -164,3 +164,57 @@ export function mergeItemsById<T extends { id: number }>(existing: T[], incoming
   }
   return merged;
 }
+
+// ── 标签展示（规范化键 → 展示形态） ─────────────────────────────
+
+/**
+ * 标签存储的是规范化小写键（后端 tag_normalization），展示层统一经
+ * prettyTag 还原观感：已知缩写全大写、已知品牌保留官方大小写，其余
+ * 按词首字母大写；中文等无大小写文字原样返回。
+ */
+const TAG_ACRONYMS = new Set([
+  'ai', 'llm', 'gpt', 'agi', 'gpu', 'ar', 'vr', 'mr', 'xr', 'api', 'sdk',
+  'ios', 'mac', 'pc', 'saas', 'rag', 'mcp', 'nba', 'sql', 'cdn', 'cec',
+]);
+
+const TAG_BRANDS: Record<string, string> = {
+  openai: 'OpenAI',
+  chatgpt: 'ChatGPT',
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  wechat: 'WeChat',
+  whatsapp: 'WhatsApp',
+  deepseek: 'DeepSeek',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  midjourney: 'Midjourney',
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  react: 'React',
+  vue: 'Vue',
+  nodejs: 'Node.js',
+  mysql: 'MySQL',
+  postgresql: 'PostgreSQL',
+  sqlite: 'SQLite',
+  macos: 'macOS',
+  iphone: 'iPhone',
+  ipad: 'iPad',
+};
+
+function capitalizeWord(word: string): string {
+  if (TAG_ACRONYMS.has(word)) return word.toUpperCase();
+  if (TAG_BRANDS[word]) return TAG_BRANDS[word];
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+export function prettyTag(key: string): string {
+  const trimmed = key.trim();
+  if (!trimmed) return '';
+  if (TAG_BRANDS[trimmed]) return TAG_BRANDS[trimmed];
+  if (TAG_ACRONYMS.has(trimmed)) return trimmed.toUpperCase();
+  // 含 CJK 的标签整体原样（避免按空格/连字符拆词破坏中文短语）
+  if (/[\u4e00-\u9fff]/.test(trimmed)) return trimmed;
+  return trimmed.split(/[\s-]+/).map(capitalizeWord).join(' ');
+}

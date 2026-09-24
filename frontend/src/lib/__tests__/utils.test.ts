@@ -136,3 +136,15 @@ describe('mergeItemsById', () => {
     expect(mergeItemsById([], [{ id: 7 }])).toEqual([{ id: 7 }]);
   });
 });
+
+describe('prettyTag', () => {
+  it('规范化小写键 → 展示形态', async () => {
+    const { prettyTag } = await import('@/lib/utils');
+    expect(prettyTag('ai')).toBe('AI');
+    expect(prettyTag('openai')).toBe('OpenAI');
+    expect(prettyTag('machine learning')).toBe('Machine Learning');
+    expect(prettyTag('大模型')).toBe('大模型'); // 中文原样
+    expect(prettyTag('deep-research')).toBe('Deep Research');
+    expect(prettyTag('')).toBe('');
+  });
+});

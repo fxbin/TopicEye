@@ -91,6 +91,28 @@ export const contentsApi = {
     return request('/contents/today-count');
   },
 
+  /** 标签统计（与列表同口径的时间窗/来源/分类/搜索范围） */
+  tagFacets(params?: {
+    hours?: number;
+    source_type?: string;
+    category?: string;
+    q?: string;
+    limit?: number;
+  }): Promise<{
+    tags: Array<{ tag: string; count: number }>;
+    total_contents: number;
+    truncated: boolean;
+  }> {
+    const query = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== '')
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : '';
+    return request(`/contents/tag-facets${query}`);
+  },
+
   scoringFlow(params?: { hours?: number; limit?: number }): Promise<ScoringFlowResponse> {
     const query = params
       ? '?' + new URLSearchParams(

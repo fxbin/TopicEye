@@ -818,7 +818,7 @@ async def test_analysis_cascade_uses_lite_result_without_pro_when_confident(monk
     assert stored_analysis.prescreen_score == 62
     assert stored_analysis.prescreen_confidence == 0.92
     assert stored_analysis.curation_score == 62
-    assert stored_analysis.tags == ["AI", "工具"]
+    assert stored_analysis.tags == ["ai", "工具"]
     await engine.dispose()
 
 
@@ -1195,7 +1195,8 @@ async def test_analyze_batch_normalizes_malformed_llm_contract(monkeypatch):
     assert stored_analysis.title_suggestions == ["标题一", "标题二"]
     assert stored_analysis.recommendation == ""
     assert stored_analysis.risk_notes == {"notes": ""}
-    assert stored_analysis.tags == ["AI", "x" * 40, "工具"]
+    # 标签写入侧统一规范化为小写键（拆复合/去重/截断），展示由前端 prettyTag 负责
+    assert stored_analysis.tags == ["ai", "x" * 40, "工具"]
     await engine.dispose()
 
 

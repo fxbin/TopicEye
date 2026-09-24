@@ -27,6 +27,8 @@ class ContentListCacheParams:
     hours: int | None = None
     sort_by: str = "created_at"
     sort_order: str = "desc"
+    recommend_level: str | None = None
+    tag: str | None = None
     user_id: int | None = None  # None = anonymous (public-only), int = user-scoped
 
     @property
@@ -52,6 +54,8 @@ class ContentListCacheParams:
             "q": (self.q or "").strip(),
             "source_id": self.source_id,
             "hours": self.hours,
+            "recommend_level": self.recommend_level,
+            "tag": (self.tag or "").strip(),
         }
         params.update({key: value for key, value in optional.items() if value not in (None, "")})
         return CONTENT_LIST_CACHE_PREFIX + urlencode(params)

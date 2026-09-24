@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import Text, cast, exists, func, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -527,6 +528,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         visible_user_id: int | None = None,
         public_only: bool = False,
         search_query: str | None = None,
+        recommend_level: str | None = None,
+        tag: str | None = None,
     ) -> tuple[Sequence[ContentItem], int]:
         """Like list_paginated but eager-loads analyses relation.
 
@@ -590,6 +593,49 @@ class ContentRepo(BaseRepository[ContentItem]):
             time_cutoff=time_cutoff,
         )
 
+        # ── 服务端推荐等级 / 标签筛选 ────────────────────────────────
+        from app.models.analysis import AiAnalysis
+        from app.services.tag_normalization import normalize_tag_key
+
+        # 两者口径与前端展示保持一致：等级取最新一条分析；标签命中
+        # content.tags 或任一分析的 tags（对应前端 getItemTags 的合并）。
+        if recommend_level:
+            stmt = stmt.where(
+                exists(
+                    select(1)
+                    .where(
+                        AiAnalysis.content_id == self.model.id,
+                        AiAnalysis.recommend_level == recommend_level,
+                    )
+                    .order_by(AiAnalysis.created_at.desc(), AiAnalysis.id.desc())
+                    .limit(1)
+                )
+            )
+            count_stmt = count_stmt.where(
+                exists(
+                    select(1)
+                    .where(
+                        AiAnalysis.content_id == self.model.id,
+                        AiAnalysis.recommend_level == recommend_level,
+                    )
+                    .order_by(AiAnalysis.created_at.desc(), AiAnalysis.id.desc())
+                    .limit(1)
+                )
+            )
+        if tag:
+            tag_key = normalize_tag_key(tag)
+            tag_match = or_(
+                cast(self.model.tags, JSONB).contains([tag_key]),
+                exists(
+                    select(1).where(
+                        AiAnalysis.content_id == self.model.id,
+                        cast(AiAnalysis.tags, JSONB).contains([tag_key]),
+                    )
+                ),
+            )
+            stmt = stmt.where(tag_match)
+            count_stmt = count_stmt.where(tag_match)
+
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
 
@@ -608,6 +654,92 @@ class ContentRepo(BaseRepository[ContentItem]):
         result = await self.db.execute(stmt)
         items = result.scalars().unique().all()
         return items, total
+
+    async def list_tag_sources_for_facets(
+        self,
+        *,
+        filters: dict | None = None,
+        exclude_ids: set | None = None,
+        exclude_source_types: set[str] | None = None,
+        time_cutoff: datetime | None = None,
+        visible_user_id: int | None = None,
+        public_only: bool = False,
+        search_query: str | None = None,
+        max_rows: int = 20000,
+    ) -> tuple[list, list, int]:
+        """标签统计用轻量查询：只取 (content_id, tags) 两列，口径与
+        list_paginated_with_analyses 完全一致（可见性 / 筛选 / 搜索 /
+        忽略排除 / 时间窗），避免标签 chips 与列表筛选的计数口径漂移。
+
+        返回 (content_rows, analysis_rows, total)：
+        - content_rows: [(id, content_items.tags)]
+        - analysis_rows: [(content_id, ai_analyses.tags)]（该批内容的全部分析版本）
+        - total: 口径内内容总数（> len(content_rows) 时统计为截断近似）
+        """
+        from app.models.analysis import AiAnalysis
+
+        base = select(self.model.id, self.model.tags)
+        count_stmt = select(func.count()).select_from(self.model)
+        base = apply_visibility(base, self.model, visible_user_id=visible_user_id, public_only=public_only)
+        count_stmt = apply_visibility(count_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
+        base = apply_filters(base, self.model, filters)
+        count_stmt = apply_filters(count_stmt, self.model, filters)
+
+        if search_query:
+            pattern = f"%{search_query}%"
+            content_search = or_(
+                self.model.title.ilike(pattern),
+                self.model.summary.ilike(pattern),
+                self.model.raw_content.ilike(pattern),
+                cast(self.model.tags, Text).ilike(pattern),
+                self.model.source_name.ilike(pattern),
+                self.model.author.ilike(pattern),
+            )
+            analysis_search = exists(
+                select(1)
+                .select_from(AiAnalysis)
+                .where(AiAnalysis.content_id == self.model.id)
+                .where(
+                    or_(
+                        AiAnalysis.summary.ilike(pattern),
+                        cast(AiAnalysis.tags, Text).ilike(pattern),
+                        AiAnalysis.recommendation.ilike(pattern),
+                    )
+                )
+            )
+            search_clause = or_(content_search, analysis_search)
+            base = base.where(search_clause)
+            count_stmt = count_stmt.where(search_clause)
+
+        base = apply_content_scope(
+            base,
+            self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+        count_stmt = apply_content_scope(
+            count_stmt,
+            self.model,
+            exclude_ids=exclude_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+        )
+
+        total_result = await self.db.execute(count_stmt)
+        total = total_result.scalar() or 0
+
+        base = base.order_by(self.model.id.desc()).limit(max_rows)
+        content_rows = (await self.db.execute(base)).all()
+        analysis_rows: list = []
+        if content_rows:
+            ids = [row[0] for row in content_rows]
+            analysis_rows = (
+                await self.db.execute(
+                    select(AiAnalysis.content_id, AiAnalysis.tags).where(AiAnalysis.content_id.in_(ids))
+                )
+            ).all()
+        return content_rows, analysis_rows, total
 
     # ── Detail with metrics + analyses ────────────────────────────
 

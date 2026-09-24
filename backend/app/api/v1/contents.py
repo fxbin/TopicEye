@@ -140,6 +140,12 @@ async def list_contents(
     keyword: str | None = None,
     source_id: int | None = None,
     q: str | None = Query(None, description="全文搜索（跨 title + summary + raw_content 的 OR 匹配）"),
+    recommend_level: str | None = Query(
+        None,
+        pattern=r"^(强烈建议写|值得观察|适合深挖|适合蹭热点|不建议追|信号不足)$",
+        description="按推荐等级筛选（最新一条分析的持久化等级）",
+    ),
+    tag: str | None = Query(None, description="按标签筛选（规范化键，大小写不敏感；命中 content 或任一分析的标签）"),
     include_trend_sources: bool = Query(False, description="Include榜单/趋势源 such as DouyinHot"),
     hours: int | None = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
     sort_by: str = Query(
@@ -171,6 +177,8 @@ async def list_contents(
         hours=hours,
         sort_by=sort_by,
         sort_order=sort_order,
+        recommend_level=recommend_level,
+        tag=tag,
         user_id=current_user.id if current_user is not None else None,
     )
     if cache_params.cacheable and not include_raw_content:
@@ -202,6 +210,11 @@ async def list_contents(
 
     ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
+
+    # 等级/标签筛选只支持标准 SQL 排序路径；评分排序与低粉爆文路径在
+    # Python 侧分页，语义不同，明确拒绝而不是静默忽略。
+    if (recommend_level or tag) and sort_by in ("curation_score", "low_follower_viral"):
+        raise HTTPException(400, "recommend_level / tag 筛选暂不支持 curation_score / low_follower_viral 排序")
 
     # ── Curation-score ranking path ────────────────────────────────────
     if sort_by == "curation_score":
@@ -337,6 +350,8 @@ async def list_contents(
         visible_user_id=current_user.id if current_user is not None else None,
         public_only=current_user is None,
         search_query=q,
+        recommend_level=recommend_level,
+        tag=tag,
     )
     payload = {
         "items": [content_with_latest_analysis(i, include_raw_content=include_raw_content) for i in items],
@@ -483,6 +498,94 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
         content=content,
         media_type="application/json",
         headers={"X-Today-Count-Cache": "MISS"},
+    )
+
+
+@router.get("/tag-facets")
+async def content_tag_facets(
+    hours: int | None = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
+    source_type: str | None = None,
+    category: str | None = None,
+    q: str | None = Query(None, description="全文搜索（与列表口径一致）"),
+    limit: int = Query(30, ge=1, le=100),
+    current_user: User | None = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """标签统计（与内容列表同口径的时间窗/来源/分类/搜索范围）。
+
+    供首页标签筛选 chips：统计覆盖口径内的全部内容（不再只统计已加载
+    的前 40 条），计数与 ?tag= 筛选的 total 一致。命中 content.tags 或
+    任一分析 tags 都计入（与服务端标签筛选语义相同）。
+    """
+    from collections import Counter
+    from datetime import timedelta
+
+    from app.repositories.ignored_repo import IgnoredRepo
+    from app.services.json_cache import get_cached_json, set_cached_json
+    from app.services.tag_normalization import normalize_tag_list
+
+    scope_q = (q or "").strip()
+    cache_key = (
+        f"contents:tag-facets:v1:user={current_user.id if current_user is not None else 'public'}"
+        f":hours={hours}:st={source_type}:cat={category}:q={scope_q}:limit={limit}"
+    )
+    cached = get_cached_json(cache_key, ttl_seconds=60)
+    if cached:
+        return Response(
+            content=cached[0],
+            media_type="application/json",
+            headers={"X-Tag-Facets-Cache": f"HIT; age={cached[1]:.3f}s"},
+        )
+
+    filters = {
+        k: v
+        for k, v in {
+            "source_type": source_type,
+            "category": category,
+        }.items()
+        if v is not None
+    }
+    time_cutoff = None
+    if hours:
+        time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
+
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
+
+    content_rows, analysis_rows, total = await ContentRepo(db).list_tag_sources_for_facets(
+        filters=filters or None,
+        exclude_ids=ignored_ids,
+        exclude_source_types=_TREND_SOURCE_TYPES,
+        time_cutoff=time_cutoff,
+        visible_user_id=current_user.id if current_user is not None else None,
+        public_only=current_user is None,
+        search_query=scope_q or None,
+    )
+
+    # 按 (content, tag) 去重：content 与分析命中同一标签时只计一次
+    per_pair: set[tuple[int, str]] = set()
+    for content_id, raw_tags in content_rows:
+        if raw_tags:
+            for key in normalize_tag_list(raw_tags):
+                per_pair.add((content_id, key))
+    for content_id, raw_tags in analysis_rows:
+        if raw_tags:
+            for key in normalize_tag_list(raw_tags):
+                per_pair.add((content_id, key))
+    counter: Counter[str] = Counter()
+    for _content_id, key in per_pair:
+        counter[key] += 1
+
+    top = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+    payload = {
+        "tags": [{"tag": key, "count": count} for key, count in top],
+        "total_contents": total,
+        "truncated": total > len(content_rows),
+    }
+    content = set_cached_json(cache_key, payload)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"X-Tag-Facets-Cache": "MISS"},
     )
 
 

@@ -41,13 +41,13 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 BATCH_SIZE = 500
 
 
-async def _normalize_table(model, label: str, *, apply: bool) -> None:
+async def _normalize_table(session, model, label: str, *, apply: bool) -> None:
     """逐批读取 tags 列，规范化后写回有变化的行。"""
     changed = 0
     scanned = 0
     last_id = 0
     while True:
-        result = await async_session().execute(
+        result = await session.execute(
             select(model.id, model.tags).where(model.id > last_id).order_by(model.id).limit(BATCH_SIZE)
         )
         rows = result.all()
@@ -69,8 +69,8 @@ async def _normalize_table(model, label: str, *, apply: bool) -> None:
 
         if apply and updates:
             for row_id, normalized in updates:
-                await async_session().execute(update(model).where(model.id == row_id).values(tags=normalized))
-            await async_session().commit()
+                await session.execute(update(model).where(model.id == row_id).values(tags=normalized))
+            await session.commit()
         changed += len(updates)
 
     action = "已重写" if apply else "将重写（dry-run，加 --apply 真写库）"
@@ -82,8 +82,9 @@ async def main(*, apply: bool) -> None:
         logger.info("== 开始回填（--apply）==")
     else:
         logger.info("== dry-run 模式，不写库 ==")
-    await _normalize_table(ContentItem, "content_items", apply=apply)
-    await _normalize_table(AiAnalysis, "ai_analyses", apply=apply)
+    async with async_session() as session:
+        await _normalize_table(session, ContentItem, "content_items", apply=apply)
+        await _normalize_table(session, AiAnalysis, "ai_analyses", apply=apply)
     logger.info("== 完成 ==")
 
 

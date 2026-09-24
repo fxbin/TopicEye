@@ -31,6 +31,7 @@ from app.services.dedup import build_hash
 from app.services.llm_pre_filter import apply_pre_filter
 from app.services.scraper_http import build_scraper_client_kwargs
 from app.services.scrapers import get_scraper_cls
+from app.services.tag_normalization import normalize_tag_list
 from app.utils.url_safety import UnsafeUrlError, ensure_public_hostname
 
 logger = logging.getLogger(__name__)
@@ -359,7 +360,8 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
 
             for entry, class_result in classified_entries:
                 category = class_result["category"]
-                tags = class_result["tags"]
+                # 分类器输出与 LLM 分析输出共用同一标签键口径（拆复合、小写键）
+                tags = normalize_tag_list(class_result["tags"])
                 # LLM 返回的 content_type 覆盖源级默认值；
                 # keyword fast-path 返回 None 时保留入库时解析的 source.category 值
                 llm_content_type = class_result.get("content_type")

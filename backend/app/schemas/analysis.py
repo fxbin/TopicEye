@@ -27,6 +27,8 @@ class AiAnalysisResponse(BaseModel):
     # Curation fields
     curation_score: float | None = 0.0
     tags: Any | None = None
+    # 推荐等级（后端写入时判定；None=旧数据未回填，前端用本地规则兜底）
+    recommend_level: str | None = None
     recommendation: str | None = None
     info_density: float | None = 0.0
     actionability: float | None = 0.0

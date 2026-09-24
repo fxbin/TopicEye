@@ -37,6 +37,8 @@ class AiAnalysis(Base):
     # ── Curation fields ──
     curation_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.0)
     tags: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # multi-tag: ["模型","产品"]
+    # 推荐等级（写入时按统一门槛判定；阈值见 services/recommendation_level.py）
+    recommend_level: Mapped[str | None] = mapped_column(String(30), nullable=True)
     recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)  # AI 生成口语化推荐理由
     source_weight: Mapped[float | None] = mapped_column(Float, nullable=True, default=50.0)
     info_density: Mapped[float | None] = mapped_column(Float, nullable=True, default=50.0)

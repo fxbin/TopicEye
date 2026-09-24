@@ -342,6 +342,7 @@ def _build_analysis_record(
         risk_notes={"notes": result.get("risk_notes", "") if scores.get("risk_score", 0) > 50 else ""},
         curation_score=curation_score,
         tags=result.get("tags"),
+        recommend_level=result.get("recommend_level"),
         recommendation=result.get("recommendation"),
         info_density=curation.get("info_density", 50),
         actionability=curation.get("actionability", 50),

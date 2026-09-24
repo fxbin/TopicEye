@@ -20,6 +20,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.services.recommendation_level import classify_recommendation_level
+from app.services.tag_normalization import normalize_tag_list
+
 
 def _detect_lang(title: str, content: str) -> str:
     """Detect whether content is primarily Chinese or English.
@@ -159,15 +162,31 @@ def _normalize_analysis_result(result: dict[str, Any]) -> dict[str, Any]:
         "source_weight": _clamp_score(curation.get("source_weight"), 50),
     }
 
+    normalized_tags = normalize_tag_list(result.get("tags"), max_items=8, max_length=40)
+    normalized_summary = _normalize_text(result.get("summary"), max_length=600)
+    normalized_recommendation = _normalize_text(result.get("recommendation"), max_length=800)
+    normalized_key_points = _normalize_string_list(result.get("key_points"), max_items=8, max_length=240)
+    normalized_creator_angles = _normalize_string_list(result.get("creator_angles"), max_items=8, max_length=240)
+
+    # 推荐等级在写入时判定并持久化，服务端筛选与前端展示共用同一结论
+    recommend_level = classify_recommendation_level(
+        **normalized_scores,
+        curation_score=normalized_curation["curation_score"],
+        has_text_signal=bool(
+            normalized_recommendation or normalized_summary or normalized_key_points or normalized_creator_angles
+        ),
+    )
+
     return {
         **result,
-        "summary": _normalize_text(result.get("summary"), max_length=600),
-        "key_points": _normalize_string_list(result.get("key_points"), max_items=8, max_length=240),
-        "recommendation": _normalize_text(result.get("recommendation"), max_length=800),
-        "creator_angles": _normalize_string_list(result.get("creator_angles"), max_items=8, max_length=240),
+        "summary": normalized_summary,
+        "key_points": normalized_key_points,
+        "recommendation": normalized_recommendation,
+        "creator_angles": normalized_creator_angles,
         "title_suggestions": _normalize_string_list(result.get("title_suggestions"), max_items=6, max_length=80),
         "risk_notes": _normalize_text(result.get("risk_notes"), max_length=500),
-        "tags": _normalize_string_list(result.get("tags"), max_items=8, max_length=40),
+        "tags": normalized_tags,
+        "recommend_level": recommend_level,
         "scores": normalized_scores,
         "curation": normalized_curation,
     }

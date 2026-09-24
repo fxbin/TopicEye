@@ -16,7 +16,7 @@ backend/.venv/
 *.duckdb.wal
 *.db-shm
 *.db-wal
-backend/data/duckdb_extensions/
+backend/data/
 data/duckdb_extensions/
 data/backups/
 

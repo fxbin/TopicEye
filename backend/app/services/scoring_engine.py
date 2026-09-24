@@ -354,16 +354,22 @@ def _compute_diversity_order(
             f *= base_cat ** (cat_cnt - grace_cat + 1)
         return f
 
+    # 决策粒度与对外的 final_score 一致（round 2 位）：微秒级时间差等
+    # 噪声不再翻转顺序，平票时按 (有效分, 输入位置) 保持上游顺序——
+    # 与旧实现「按舍入后的 final_score 稳定排序」的可观测行为对齐。
+    def effective(idx: int) -> float:
+        return round(prelim_scores[idx] * current_factor(idx), 2)
+
     # 惰性堆：有效分只会随计数增长而下降。弹出时若当前有效分已低于
     # 入堆时声称的值（陈旧的乐观优先级），按当前值重新入堆再比较。
-    heap = [(-prelim_scores[i], i) for i in range(len(items))]
+    heap = [(-effective(i), i) for i in range(len(items))]
     heapq.heapify(heap)
 
     order: list[int] = []
     while heap and len(order) < len(items):
         neg_eff, idx = heapq.heappop(heap)
         factor = current_factor(idx)
-        true_neg_eff = -(prelim_scores[idx] * factor)
+        true_neg_eff = -effective(idx)
         if true_neg_eff > neg_eff + 1e-12:  # 陈旧条目：当前有效分比声称的低
             heapq.heappush(heap, (true_neg_eff, idx))
             continue

@@ -153,7 +153,12 @@ async def test_content_read_strips_raw_content_and_management_requires_admin(mon
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert user_ignore.status_code == 200
-        assert user_ignore.json() == {"content_id": 1, "ignored": True, "reason": "seen"}
+        assert user_ignore.json() == {
+            "content_id": 1,
+            "ignored": True,
+            "reason": "seen",
+            "scope": "personal",
+        }
 
         user_unignore = await client.delete(
             "/contents/1/ignore",

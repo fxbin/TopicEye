@@ -75,7 +75,6 @@ export interface ScoringFlowConfig {
   risk_soft_floor: number;
   time_decay_lambda: number;
   time_decay_floor: number;
-  diversity_top_n: number;
   same_source_grace: number;
   same_category_grace: number;
 }

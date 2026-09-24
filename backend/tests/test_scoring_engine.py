@@ -164,3 +164,52 @@ def test_time_decay_bad_timestamp_does_not_crash():
     item = _item(1, published_at="not-a-date")
     decay = _compute_time_decay(item)
     assert 0.0 < decay <= 1.0
+
+
+def test_diversity_no_boundary_cliff_beyond_former_top_n():
+    """回归：多样性惩罚不得只在初排前 N 条生效。
+
+    旧实现对初排 51 名之后的同源内容不再计惩罚（系数恒为 1），重排后
+    原 51–60 名会集体越过前面被惩罚的内容冲进最终第 2–11 名。
+    贪心重排后，同源内容的惩罚随入选次序单调加深，最终顺序应与初排
+    顺序一致，第 51 名不能再跳到第 2 名。
+    """
+    total = 60
+    items = [
+        _item(
+            i,
+            source_id=7,
+            category="AI",
+            # curation_score 递减 → 初排顺序 = id 顺序
+            curation_score=90 - i,
+            creator_score=90 - i,
+            quality_score=80,
+        )
+        for i in range(1, total + 1)
+    ]
+
+    scored = score_items(items)
+    final_ids = [item.content_id for _bd, item in scored]
+
+    assert final_ids == list(range(1, total + 1)), "同源内容最终顺序应保持初排顺序，无断层跳位"
+    by_id = {item.content_id: bd for bd, item in scored}
+    assert by_id[1].diversity_factor == 1.0, "同源第一条免惩罚"
+    assert by_id[51].diversity_factor < 1.0, "第 51 条也必须被同源惩罚覆盖（旧实现在此断档）"
+    # 4 位小数舍入后深名次的系数都会到 0.0，用第 10 名对比保证单调性可观测
+    assert by_id[10].diversity_factor > by_id[51].diversity_factor, "越靠后惩罚越深"
+
+
+def test_diversity_promotes_other_source_over_same_source_run():
+    """多样性行为保持：同源连发时，另一来源的相近内容应排到同源第二条之前。"""
+    same_source = [
+        _item(i, source_id=7, category="AI", curation_score=80, creator_score=80)
+        for i in range(1, 4)
+    ]
+    other_source = _item(99, source_id=8, category="AI", curation_score=78, creator_score=78)
+
+    scored = score_items(same_source + [other_source])
+    final_ids = [item.content_id for _bd, item in scored]
+
+    # 第一名仍是分数最高的同源第一条；同源第二条因惩罚被其它来源反超
+    assert final_ids[0] == 1
+    assert final_ids.index(99) < final_ids.index(2)

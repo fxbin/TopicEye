@@ -13,6 +13,7 @@ All tuning constants live in the CONFIG dict at the top for easy adjustment.
 
 from __future__ import annotations
 
+import heapq
 import math
 from datetime import UTC, datetime
 
@@ -37,9 +38,8 @@ CONFIG = {
     "quality_gate_floor": 0.55,  # lowest multiplier for weak-but-not-risky content
     "min_selected_base_score": 58,  # do not select weak items just because a batch is weak
     # Source diversity
-    "diversity_penalty_base": 0.85,  # multiplier per same-source duplicate in top-N
+    "diversity_penalty_base": 0.85,  # multiplier per same-source duplicate
     "category_diversity_penalty_base": 0.92,
-    "diversity_top_n": 50,  # count diversity within top-N candidates
     "same_source_grace": 1,  # first item per source is free
     "same_category_grace": 3,  # first few items per category are free
     # Risk
@@ -316,38 +316,66 @@ def _compute_time_decay(item: ScoringInput, now: datetime | None = None) -> floa
     return max(cfg["time_decay_floor"], min(1.0, decay))
 
 
-def _compute_diversity_penalty(
+def _compute_diversity_order(
     items: list[ScoringInput],
     prelim_scores: list[float],
-) -> list[float]:
-    """Down-rank items from sources/categories that appear too often in top-N."""
-    cfg = CONFIG
-    top_n = cfg["diversity_top_n"]
+) -> tuple[list[int], list[float]]:
+    """Greedy diversity re-ranking over the **full** candidate set.
 
-    # Sort by prelim score to determine top-N
-    indexed = sorted(enumerate(prelim_scores), key=lambda x: x[1], reverse=True)
+    逐条决定最终顺序：每一步取出「当前有效分 = prelim × 当前多样性
+    系数」最高的候选，固定其系数并计入同源/同分类计数，再选下一条。
+    惩罚随已入选的同源/同分类数量累积，且对整个候选集一致生效。
+
+    取代旧的「只惩罚初排前 top-N、之后系数恒为 1」的两段式做法——后者
+    在重排后会出现断层：初排 51 名之后的同源内容系数保持 1.0，反而
+    集体越过前面被惩罚的内容（60 条同源内容时原 51–60 名可冲进最终
+    第 2–11 名）。
+
+    Returns (最终顺序的索引列表, 每个候选固定后的多样性系数)。
+    """
+    cfg = CONFIG
+    grace_src = cfg["same_source_grace"]
+    base_src = cfg["diversity_penalty_base"]
+    grace_cat = cfg["same_category_grace"]
+    base_cat = cfg["category_diversity_penalty_base"]
 
     source_counts: dict[int | None, int] = {}
     category_counts: dict[str, int] = {}
     factors = [1.0] * len(items)
 
-    for rank, (idx, _score) in enumerate(indexed):
-        if rank >= top_n:
-            break
-        src_id = items[idx].source_id
-        count = source_counts.get(src_id, 0)
-        if count >= cfg["same_source_grace"]:
-            # Each additional item from the same source gets progressively penalized
-            factors[idx] *= cfg["diversity_penalty_base"] ** (count - cfg["same_source_grace"] + 1)
-        source_counts[src_id] = count + 1
-
+    def current_factor(idx: int) -> float:
+        f = 1.0
+        cnt = source_counts.get(items[idx].source_id, 0)
+        if cnt >= grace_src:
+            f *= base_src ** (cnt - grace_src + 1)
         category = (items[idx].category or "").strip() or "uncategorized"
-        cat_count = category_counts.get(category, 0)
-        if cat_count >= cfg["same_category_grace"]:
-            factors[idx] *= cfg["category_diversity_penalty_base"] ** (cat_count - cfg["same_category_grace"] + 1)
-        category_counts[category] = cat_count + 1
+        cat_cnt = category_counts.get(category, 0)
+        if cat_cnt >= grace_cat:
+            f *= base_cat ** (cat_cnt - grace_cat + 1)
+        return f
 
-    return factors
+    # 惰性堆：有效分只会随计数增长而下降。弹出时若当前有效分已低于
+    # 入堆时声称的值（陈旧的乐观优先级），按当前值重新入堆再比较。
+    heap = [(-prelim_scores[i], i) for i in range(len(items))]
+    heapq.heapify(heap)
+
+    order: list[int] = []
+    while heap and len(order) < len(items):
+        neg_eff, idx = heapq.heappop(heap)
+        factor = current_factor(idx)
+        true_neg_eff = -(prelim_scores[idx] * factor)
+        if true_neg_eff > neg_eff + 1e-12:  # 陈旧条目：当前有效分比声称的低
+            heapq.heappush(heap, (true_neg_eff, idx))
+            continue
+
+        factors[idx] = factor
+        order.append(idx)
+
+        source_counts[items[idx].source_id] = source_counts.get(items[idx].source_id, 0) + 1
+        category = (items[idx].category or "").strip() or "uncategorized"
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    return order, factors
 
 
 def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, ScoringInput]]:
@@ -392,18 +420,17 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
         )
         breakdowns.append(bd)
 
-    # Phase 3: Source diversity penalty
-    diversity_factors = _compute_diversity_penalty(safe_items, prelim_scores)
-
-    # Phase 4: Compute final score
+    # Phase 3+4: Diversity-aware greedy ranking, then final score in that order.
+    # 最终顺序由贪心重排直接给出（每条入选时固定 diversity 系数），
+    # 这里按最终顺序组装结果，无需二次 sort。
+    order, diversity_factors = _compute_diversity_order(safe_items, prelim_scores)
     results: list[tuple[ScoreBreakdown, ScoringInput]] = []
-    for i, (bd, item) in enumerate(zip(breakdowns, safe_items, strict=False)):
+    for i in order:
+        bd = breakdowns[i]
+        item = safe_items[i]
         bd.diversity_factor = round(diversity_factors[i], 4)
         bd.final_score = round(prelim_scores[i] * diversity_factors[i], 2)
         results.append((bd, item))
-
-    # Sort by final_score descending
-    results.sort(key=lambda x: x[0].final_score, reverse=True)
 
     # Phase 5: Determine threshold and mark selected
     if cfg["curation_mode"] == "percentile":

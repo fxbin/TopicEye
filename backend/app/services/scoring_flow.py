@@ -392,7 +392,6 @@ def build_scoring_config_summary() -> dict[str, Any]:
         "risk_soft_floor",
         "time_decay_lambda",
         "time_decay_floor",
-        "diversity_top_n",
         "same_source_grace",
         "same_category_grace",
     )

@@ -18,9 +18,7 @@ class IgnoredItem(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     # NULL = 管理员全局屏蔽（对所有用户生效）；非 NULL = 用户个人「不感兴趣」
-    user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
-    )
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     content_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False)
     reason: Mapped[str | None] = mapped_column(
         String(50), nullable=True, default="not_interested"

@@ -50,10 +50,7 @@ async def _make_setup(url_or_engine) -> AsyncGenerator[Setup, None]:
     """内存库 + 三个账号（管理员 / 用户A / 用户B）+ 两条带分析标签的内容。"""
     _clear_process_caches()
 
-    if isinstance(url_or_engine, str):
-        engine = create_async_engine(url_or_engine)
-    else:
-        engine = url_or_engine
+    engine = create_async_engine(url_or_engine) if isinstance(url_or_engine, str) else url_or_engine
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -230,10 +227,7 @@ async def test_personal_ignore_does_not_pollute_other_users_interest_vector(
     assert resp.status_code == 200
 
     async with session_factory() as db:
-        user_ids = {
-            email: uid
-            for email, uid in await db.execute(select(User.email, User.id))
-        }
+        user_ids = dict((await db.execute(select(User.email, User.id))).all())
         alice_vector = await rebuild_user_vector(db, user_ids["alice@example.com"])
         bob_vector = await rebuild_user_vector(db, user_ids["bob@example.com"])
 

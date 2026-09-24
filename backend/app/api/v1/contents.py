@@ -200,9 +200,7 @@ async def list_contents(
     if hours:
         time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
-    ignored_ids = await IgnoredRepo(db).list_ignored_ids(
-        user_id=current_user.id if current_user is not None else None
-    )
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
 
     # ── Curation-score ranking path ────────────────────────────────────
@@ -872,7 +870,9 @@ async def toggle_favorite(
 async def ignore_content(
     content_id: int,
     reason: str = Query("not_interested", description="Ignore reason: not_interested, seen, irrelevant"),
-    scope: str = Query("personal", pattern=r"^(personal|global)$", description="personal=个人不感兴趣；global=管理员全局屏蔽"),
+    scope: str = Query(
+        "personal", pattern=r"^(personal|global)$", description="personal=个人不感兴趣；global=管理员全局屏蔽"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -915,7 +915,9 @@ async def ignore_content(
 @router.delete("/{content_id}/ignore")
 async def unignore_content(
     content_id: int,
-    scope: str = Query("personal", pattern=r"^(personal|global)$", description="personal=撤销个人不感兴趣；global=撤销管理员全局屏蔽"),
+    scope: str = Query(
+        "personal", pattern=r"^(personal|global)$", description="personal=撤销个人不感兴趣；global=撤销管理员全局屏蔽"
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

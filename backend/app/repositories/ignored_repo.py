@@ -44,9 +44,7 @@ class IgnoredRepo:
         await self.db.flush()
         return result.rowcount > 0
 
-    async def get_by_content_id(
-        self, content_id: int, *, user_id: int | None = None
-    ) -> IgnoredItem | None:
+    async def get_by_content_id(self, content_id: int, *, user_id: int | None = None) -> IgnoredItem | None:
         stmt = select(IgnoredItem).where(
             IgnoredItem.content_id == content_id,
             IgnoredItem.user_id.is_(None) if user_id is None else IgnoredItem.user_id == user_id,

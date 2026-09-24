@@ -201,10 +201,7 @@ def test_diversity_no_boundary_cliff_beyond_former_top_n():
 
 def test_diversity_promotes_other_source_over_same_source_run():
     """多样性行为保持：同源连发时，另一来源的相近内容应排到同源第二条之前。"""
-    same_source = [
-        _item(i, source_id=7, category="AI", curation_score=80, creator_score=80)
-        for i in range(1, 4)
-    ]
+    same_source = [_item(i, source_id=7, category="AI", curation_score=80, creator_score=80) for i in range(1, 4)]
     other_source = _item(99, source_id=8, category="AI", curation_score=78, creator_score=78)
 
     scored = score_items(same_source + [other_source])

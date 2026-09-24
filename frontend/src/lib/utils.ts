@@ -175,6 +175,8 @@ export function mergeItemsById<T extends { id: number }>(existing: T[], incoming
 const TAG_ACRONYMS = new Set([
   'ai', 'llm', 'gpt', 'agi', 'gpu', 'ar', 'vr', 'mr', 'xr', 'api', 'sdk',
   'ios', 'mac', 'pc', 'saas', 'rag', 'mcp', 'nba', 'sql', 'cdn', 'cec',
+  'ui', 'ux', 'nlp', 'ml', 'dl', 'cpu', 'tpu', 'aws', 'gcp', 'seo', 'iot',
+  'ip', 'pm', 'cto', 'ceo', 'cfo', 'coo', 'hr', 'kpi', 'oc', 'app',
 ]);
 
 const TAG_BRANDS: Record<string, string> = {

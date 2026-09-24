@@ -47,12 +47,16 @@ async def main(*, apply: bool) -> None:
         logger.info("== 开始回填（--apply）==")
     else:
         logger.info("== dry-run 模式，不写库 ==")
+    async with async_session() as session:
+        await _backfill(session, apply=apply)
 
+
+async def _backfill(session, *, apply: bool) -> None:
     changed = 0
     scanned = 0
     last_id = 0
     while True:
-        result = await async_session().execute(
+        result = await session.execute(
             select(AiAnalysis).where(AiAnalysis.id > last_id).order_by(AiAnalysis.id).limit(BATCH_SIZE)
         )
         rows = result.scalars().all()
@@ -78,10 +82,8 @@ async def main(*, apply: bool) -> None:
 
         if apply and updates:
             for row_id, level in updates:
-                await async_session().execute(
-                    update(AiAnalysis).where(AiAnalysis.id == row_id).values(recommend_level=level)
-                )
-            await async_session().commit()
+                await session.execute(update(AiAnalysis).where(AiAnalysis.id == row_id).values(recommend_level=level))
+            await session.commit()
         changed += len(updates)
 
     action = "已重写" if apply else "将重写（dry-run，加 --apply 真写库）"

@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services._duckdb_sql import (
-    IGNORED_CONTENT_CTE,
     LATEST_ANALYSIS_CTE,
 )
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG
@@ -48,7 +47,9 @@ class PicksMixin:
         """
         conn = self._get_conn()
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
-        params: list[Any] = [cutoff]
+        # 忽略口径按用户隔离：全局屏蔽 + 当前用户个人忽略（匿名只见全局）
+        ignored_cte, ignored_params = self._ignored_content_cte_for_user(conn, visible_user_id)
+        params: list[Any] = ignored_params + [cutoff]
         feedback_min = float(SCORING_CONFIG["feedback_score_min"])
         feedback_max = float(SCORING_CONFIG["feedback_score_max"])
         feedback_weight = float(SCORING_CONFIG["w_feedback"])
@@ -82,7 +83,7 @@ class PicksMixin:
             f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
-            {IGNORED_CONTENT_CTE}
+            {ignored_cte}
             SELECT
                 c.id, c.title, c.url, c.source_id, c.source_name, c.source_type,
                 c.platform, c.author,
@@ -242,7 +243,9 @@ class PicksMixin:
         now_ts = datetime.now(UTC).timestamp()
 
         category_clause = ""
-        params: list[Any] = [cutoff]
+        # 忽略口径按用户隔离：全局屏蔽 + 当前用户个人忽略（匿名只见全局）
+        ignored_cte, ignored_params = self._ignored_content_cte_for_user(conn, visible_user_id)
+        params: list[Any] = ignored_params + [cutoff]
         if category:
             category_clause = " AND c.category = ?"
             params.append(category)
@@ -262,7 +265,7 @@ class PicksMixin:
         lfv_sql = f"""
             WITH {LATEST_ANALYSIS_CTE},
                  {self._feedback_scores_cte(conn)},
-                 {IGNORED_CONTENT_CTE},
+                 {ignored_cte},
                  scored AS (
                     SELECT
                         c.id, c.title, c.url, c.source_id, c.source_name, c.source_type,
@@ -311,7 +314,7 @@ class PicksMixin:
         # Total count (separate query without LIMIT/OFFSET)
         count_sql = f"""
             WITH {LATEST_ANALYSIS_CTE},
-                 {IGNORED_CONTENT_CTE},
+                 {ignored_cte},
                  scored AS (
                     SELECT c.id
                     FROM oltp_db.content_items c

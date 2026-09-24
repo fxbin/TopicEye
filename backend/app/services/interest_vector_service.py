@@ -129,8 +129,11 @@ async def rebuild_user_vector(
                 tag_sources[tag] = signal_key
 
     # ── 3. Ignores → negative signals ────────────────────────────────
+    # 只统计该用户自己的「不感兴趣」；管理员全局屏蔽是运营口径，
+    # 不代表该用户的兴趣偏好，不应拉低其兴趣向量。
     ignore_result = await db.execute(
         select(IgnoredItem.content_id).where(
+            IgnoredItem.user_id == user_id,
             IgnoredItem.created_at >= cutoff,
         )
     )

@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services._duckdb_sql import (
-    IGNORED_CONTENT_CTE,
     LATEST_ANALYSIS_CTE,
 )
 from app.services._duckdb_stats_helpers import (
@@ -54,7 +53,7 @@ class StatsMixin:
             f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 c.id,
                 c.source_id,
@@ -148,7 +147,7 @@ class StatsMixin:
 
         row = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 COUNT(c.id) AS total,
                 COUNT(CASE WHEN a.curation_score IS NOT NULL THEN c.id END) AS analyzed
@@ -160,7 +159,7 @@ class StatsMixin:
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
         """).fetchone()
         today_row = conn.execute(f"""
-            WITH {IGNORED_CONTENT_CTE}
+            WITH {self._ignored_content_cte(conn)}
             SELECT COUNT(c.id)
             FROM oltp_db.content_items c
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
@@ -190,7 +189,7 @@ class StatsMixin:
         selected_counts = self._stats_selected_counts_by_source(scored_items)
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 COALESCE(s.name, '未知') AS source_name,
                 LOWER(COALESCE(CAST(s.source_type AS VARCHAR), 'unknown')) AS source_type,
@@ -228,7 +227,7 @@ class StatsMixin:
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 COALESCE(c.category, '未分类') AS category,
                 COUNT(c.id) AS content_count,
@@ -266,7 +265,7 @@ class StatsMixin:
         selected_counts = self._stats_selected_counts_by_date(scored_items)
         rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 CAST(c.crawled_at AS DATE) AS crawl_date,
                 COUNT(c.id) AS content_count,
@@ -333,7 +332,7 @@ class StatsMixin:
 
         row = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 COUNT(*) AS total_items,
                 AVG(a.curation_score) AS avg_curation,
@@ -378,7 +377,7 @@ class StatsMixin:
         # ── KPI row ────────────────────────────────────────────────────────
         kpi_row = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 COUNT(DISTINCT c.id) AS total_crawled,
                 ROUND(AVG(a.curation_score), 1) AS avg_curation,
@@ -393,7 +392,7 @@ class StatsMixin:
         # ── Source breakdown (curated count per source) ───────────────────
         source_rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 s.name,
                 s.source_type,
@@ -414,7 +413,7 @@ class StatsMixin:
         # ── Daily volume trend ─────────────────────────────────────────────
         trend_rows = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT
                 CAST(c.crawled_at AS DATE) AS crawl_date,
                 COUNT(DISTINCT c.id) AS content_count,

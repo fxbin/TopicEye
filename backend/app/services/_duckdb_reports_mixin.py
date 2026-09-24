@@ -9,7 +9,6 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from app.services._duckdb_sql import (
-    IGNORED_CONTENT_CTE,
     LATEST_ANALYSIS_CTE,
 )
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG
@@ -23,7 +22,7 @@ class ReportsMixin:
 
         results = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT c.id, c.title, c.url, c.category, c.source_name, a.summary,
                    a.creator_score, a.viral_score, a.quality_score, a.risk_score,
                    a.recommended_reason
@@ -68,7 +67,7 @@ class ReportsMixin:
         results = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
-            {IGNORED_CONTENT_CTE}
+            {self._ignored_content_cte(conn)}
             SELECT c.id, c.title, c.url, c.category, c.source_name, c.platform,
                    c.crawled_at,
                    a.summary, a.creator_score, a.viral_score, a.quality_score,

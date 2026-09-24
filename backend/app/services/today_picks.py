@@ -89,6 +89,13 @@ async def build_today_picks(
             )
             return _empty_payload()
 
+    # 个人「不感兴趣」按用户隔离：DuckDB SQL 只过滤全局屏蔽行，
+    # 这里在候选进入评分/截断前剔除当前用户自己的忽略，避免结果缺页。
+    if owner_user_id is not None:
+        personal_ignored = await IgnoredRepo(db).list_personal_ignored_ids(owner_user_id)
+        if personal_ignored:
+            rows = [row for row in rows if row.get("id") not in personal_ignored]
+
     event_repo = ContentEventConsumptionRepository(db)
     try:
         event_assignments = await event_repo.resolve_today_pick_assignments(
@@ -177,7 +184,8 @@ async def _build_today_picks_via_oltp(
     输出与 ``query_today_picks`` 一致的 row dict，便于 scoring 复用。
 
     口径与 DuckDB 主路径对齐（避免 DuckDB 不可用时结果漂移）:
-    - ignored 过滤：复用 IgnoredRepo.list_ignored_ids() 做 NOT IN
+    - ignored 过滤：复用 IgnoredRepo.list_ignored_ids(user_id=...) 做 NOT IN
+      （全局屏蔽 + 该用户个人忽略，与 DuckDB SQL + 上层个人忽略过滤等价）
     - 风险门：取 SCORING_CONFIG["risk_threshold"]（与 DuckDB SQL 及 scorer 一致）
     - 事件成员：由统一事件真源批量过滤，不读取旧去重字段
     - feedback_score：复用 get_feedback_scores（latest-per-user → SUM，同 DuckDB CTE）
@@ -187,7 +195,7 @@ async def _build_today_picks_via_oltp(
     """
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
     risk_threshold = float(SCORING_CONFIG["risk_threshold"])
-    ignored_ids = await IgnoredRepo(db).list_ignored_ids()
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=owner_user_id)
 
     stmt = (
         select(ContentItem)

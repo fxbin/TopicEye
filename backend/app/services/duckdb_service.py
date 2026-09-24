@@ -40,6 +40,8 @@ from app.services._duckdb_reports_mixin import ReportsMixin
 from app.services._duckdb_sql import (  # noqa: F401 — re-export for backward compat
     EMPTY_FEEDBACK_SCORES_CTE,
     IGNORED_CONTENT_CTE,
+    IGNORED_CONTENT_CTE_LEGACY,
+    IGNORED_CONTENT_CTE_USER_SCOPED,
     LATEST_ANALYSIS_CTE,
     LATEST_FEEDBACK_SCORES_CTE,
     STATS_CURATION_FALLBACK_THRESHOLD,
@@ -200,6 +202,34 @@ class DuckDBAnalytics(PicksMixin, TopicsMixin, StatsMixin, ReportsMixin):
         if public_only:
             return " AND c.owner_user_id IS NULL", []
         return " AND (c.owner_user_id IS NULL OR c.owner_user_id = ?)", [visible_user_id]
+
+    def _ignored_content_cte(self, conn) -> str:
+        """全局口径的 ignored_content CTE：只排除管理员全局屏蔽行。
+
+        个人「不感兴趣」(user_id 非空) 不参与全局排除，避免一个用户的
+        忽略影响所有人可见的统计/报表。未迁移 user_id 列的只读快照回退
+        到旧行为（全部忽略行视为全局）。
+        """
+        if self._oltp_column_exists(conn, "ignored_items", "user_id"):
+            return IGNORED_CONTENT_CTE
+        return IGNORED_CONTENT_CTE_LEGACY
+
+    def _ignored_content_cte_for_user(
+        self,
+        conn,
+        visible_user_id: int | None,
+    ) -> tuple[str, list[Any]]:
+        """按用户口径的 ignored_content CTE：全局屏蔽 + 该用户个人忽略。
+
+        返回 (cte_sql, params)。params 非空时必须放在查询参数列表**最前**
+        （CTE 内的 ? 在 SQL 文本中先于主查询的 ? 出现）。
+        未迁移 user_id 列的快照退回旧行为（无个人忽略概念）。
+        """
+        if not self._oltp_column_exists(conn, "ignored_items", "user_id"):
+            return IGNORED_CONTENT_CTE_LEGACY, []
+        if visible_user_id is None:
+            return IGNORED_CONTENT_CTE, []
+        return IGNORED_CONTENT_CTE_USER_SCOPED, [visible_user_id]
 
     def _oltp_column_exists(self, conn, table_name: str, column_name: str) -> bool:
         """Return whether an attached OLTP table exposes a column.

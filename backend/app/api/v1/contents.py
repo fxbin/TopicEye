@@ -200,7 +200,9 @@ async def list_contents(
     if hours:
         time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
-    ignored_ids = await IgnoredRepo(db).list_ignored_ids()
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids(
+        user_id=current_user.id if current_user is not None else None
+    )
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
 
     # ── Curation-score ranking path ────────────────────────────────────
@@ -870,18 +872,30 @@ async def toggle_favorite(
 async def ignore_content(
     content_id: int,
     reason: str = Query("not_interested", description="Ignore reason: not_interested, seen, irrelevant"),
+    scope: str = Query("personal", pattern=r"^(personal|global)$", description="personal=个人不感兴趣；global=管理员全局屏蔽"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Mark a content item as ignored (won't appear in feeds)."""
+    """Mark a content item as ignored (won't appear in feeds).
+
+    - ``scope=personal``（默认）：只影响当前用户自己的信息流；
+    - ``scope=global``：管理员全局屏蔽，对所有用户生效，非管理员返回 403。
+    """
     from app.repositories.ignored_repo import IgnoredRepo
+
+    if scope == "global" and not is_admin(current_user):
+        raise HTTPException(403, "Global ignore requires admin role")
 
     content = await ContentRepo(db).get_by_id(content_id)
     if not content:
         raise HTTPException(404, "Content not found")
 
     async def _write():
-        ignored_item = await IgnoredRepo(db).ignore(content_id, reason=reason)
+        ignored_item = await IgnoredRepo(db).ignore(
+            content_id,
+            reason=reason,
+            user_id=None if scope == "global" else current_user.id,
+        )
         await db.flush()
         return ignored_item
 
@@ -890,20 +904,36 @@ async def ignore_content(
     from app.services.interest_vector_service import trigger_vector_rebuild
 
     trigger_vector_rebuild(current_user.id)
-    return {"content_id": content_id, "ignored": True, "reason": ignored.reason}
+    return {
+        "content_id": content_id,
+        "ignored": True,
+        "reason": ignored.reason,
+        "scope": scope,
+    }
 
 
 @router.delete("/{content_id}/ignore")
 async def unignore_content(
     content_id: int,
+    scope: str = Query("personal", pattern=r"^(personal|global)$", description="personal=撤销个人不感兴趣；global=撤销管理员全局屏蔽"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Remove ignore flag from a content item."""
+    """Remove ignore flag from a content item.
+
+    - ``scope=personal``（默认）：只撤销当前用户自己的忽略记录；
+    - ``scope=global``：撤销全局屏蔽行，仅管理员可用。
+    """
     from app.repositories.ignored_repo import IgnoredRepo
 
+    if scope == "global" and not is_admin(current_user):
+        raise HTTPException(403, "Global unignore requires admin role")
+
     async def _write():
-        return await IgnoredRepo(db).unignore(content_id)
+        return await IgnoredRepo(db).unignore(
+            content_id,
+            user_id=None if scope == "global" else current_user.id,
+        )
 
     removed = await write_with_503_low_latency(db, _write)
     invalidate_content_read_caches()

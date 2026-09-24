@@ -9,7 +9,9 @@
 - LATEST_ANALYSIS_CTE         — 每条 content 取最新分析
 - LATEST_FEEDBACK_SCORES_CTE  — 每条 content 取最新用户反馈聚合
 - EMPTY_FEEDBACK_SCORES_CTE   — 无反馈时的占位 CTE
-- IGNORED_CONTENT_CTE         — 已忽略内容 ID 列表
+- IGNORED_CONTENT_CTE         — 管理员全局屏蔽内容 ID 列表（user_id IS NULL）
+- IGNORED_CONTENT_CTE_USER_SCOPED — 全局屏蔽 + 指定用户个人忽略（含一个 ? 参数）
+- IGNORED_CONTENT_CTE_LEGACY  — 未迁移快照兜底：全部忽略行视为全局
 - STATS_CURATION_FALLBACK_THRESHOLD — curation 分数 fallback 阈值（>=此值视为精选）
 """
 
@@ -66,6 +68,22 @@ feedback_scores AS (
 """
 
 IGNORED_CONTENT_CTE = """
+ignored_content AS (
+    SELECT DISTINCT content_id
+    FROM oltp_db.ignored_items
+    WHERE user_id IS NULL
+)
+"""
+
+IGNORED_CONTENT_CTE_USER_SCOPED = """
+ignored_content AS (
+    SELECT DISTINCT content_id
+    FROM oltp_db.ignored_items
+    WHERE user_id IS NULL OR user_id = ?
+)
+"""
+
+IGNORED_CONTENT_CTE_LEGACY = """
 ignored_content AS (
     SELECT DISTINCT content_id
     FROM oltp_db.ignored_items

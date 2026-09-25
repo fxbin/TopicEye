@@ -19,6 +19,7 @@ from app.models.content_event_run import (
     EventNormalizationRunStatus,
 )
 from app.models.content_evidence import ContentEvidenceLink, ContentEvidenceMark, CrossSourceLevel, EvidenceType
+from app.models.content_label import ContentLabel, ContentLabelSource, ContentLabelValue
 from app.models.content_relation import ContentRelation, RelationType
 from app.models.creation import CreationPlan
 from app.models.email_verification import EmailVerificationCode
@@ -31,6 +32,7 @@ from app.models.pick_mark import PickMark
 from app.models.product_feedback import IssueFeedback, ProductUpdate
 from app.models.prompt_registry import PromptRegistry
 from app.models.qimao import QimaoBook
+from app.models.ranking_eval import EvalSurface, RankingEvalSnapshot
 from app.models.read_record import ReadRecord
 from app.models.scheduled_job import JobExecutionLog, ScheduledJob
 from app.models.source import Source
@@ -92,6 +94,11 @@ __all__ = [
     "EvidenceInteraction",
     "UserInterestVector",
     "PickMark",
+    "ContentLabel",
+    "ContentLabelValue",
+    "ContentLabelSource",
+    "RankingEvalSnapshot",
+    "EvalSurface",
     "PromptRegistry",
     "TopicTrend",
     "TopicTrendMember",

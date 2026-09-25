@@ -7,7 +7,6 @@ import {
   CalendarDays,
   ClipboardList,
   Crosshair,
-  Flame,
   Gem,
   GitBranch,
   Lightbulb,
@@ -45,7 +44,6 @@ export const NAV_SPACES: NavSpace[] = [
     id: 'discover',
     label: '发现',
     items: [
-      { id: 'lfv', label: '低粉爆文', href: '/low-follower-viral', icon: Flame, access: 'public' },
       { id: 'trending', label: '趋势雷达', href: '/trending', icon: Search, access: 'public' },
       { id: 'trends', label: '趋势追踪', href: '/trends', icon: TrendingUp, access: 'public' },
     ],

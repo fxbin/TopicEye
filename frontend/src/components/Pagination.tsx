@@ -3,13 +3,10 @@
 /**
  * 通用分页组件。
  *
- * 收敛此前散落在 3 处的分页实现：
- * - `app/low-follower-viral/page.tsx` 最完整版（页码窗口 + 上下页 + PageButton）
- * - `app/weread/page.tsx`             简版（上下页 + 当前/总数文本）
- * - `app/contents/page.tsx`           简版（上下页 + 页码文本）
+ * 供内容列表和阅读页面复用页码窗口、上下页与统计文本。
  *
- * 规范签名以 low-follower-viral 版为基准，额外提供 `summary?: React.ReactNode`
- * 用于在左侧渲染自定义统计文本（如「第 1 / 5 页，共 234 条」）。
+ * `summary?: React.ReactNode` 用于在左侧渲染自定义统计文本
+ * （如「第 1 / 5 页，共 234 条」）。
  * `onPage` 支持 updater 函数形式，兼容 `setPage(prev => ...)` 调用模式。
  */
 

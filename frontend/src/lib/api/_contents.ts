@@ -1,5 +1,5 @@
 /**
- * Contents API — 内容管理、分类、低粉爆文。
+ * Contents API — 内容管理与分类。
  *
  * 从 _domains.ts 拆出。
  */
@@ -147,31 +147,5 @@ export const contentsApi = {
 export const contentCategoriesApi = {
   list(): Promise<{ categories: ContentCategoryItem[] }> {
     return request('/categories');
-  },
-};
-
-// ─── Viral (低粉爆文) API ───
-
-export const viralApi = {
-  /** 获取低粉爆文列表 */
-  async list(params?: {
-    category?: string;
-    hours?: number;
-    sort_by?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<PaginatedResponse<ContentItem> & { total?: number }> {
-    const page = params?.page || 1;
-    const pageSize = params?.page_size || 20;
-    const query = '?' + new URLSearchParams(
-      Object.entries({
-        page: String(page),
-        page_size: String(pageSize),
-        sort_by: 'low_follower_viral',
-        hours: params?.hours !== undefined ? String(params.hours) : '',
-        category: params?.category || '',
-      }).filter(([, v]) => v !== '') as [string, string][]
-    ).toString();
-    return request(`/contents${query}`);
   },
 };

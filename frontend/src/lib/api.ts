@@ -359,7 +359,7 @@ export const integrationsApi = {
 
 // Domain API objects extracted to lib/api/ submodules for module size.
 // Re-export for backward compat — `import { sourcesApi } from '@/lib/api'` still works.
-export { sourcesApi, contentsApi, contentCategoriesApi, favoritesApi, topicsApi, analysesApi, dailyReportApi, creationApi, viralApi, apiTokensApi, evidenceApi, contentEventsAdminApi } from './api/_domains';
+export { sourcesApi, contentsApi, contentCategoriesApi, favoritesApi, topicsApi, analysesApi, dailyReportApi, creationApi, apiTokensApi, evidenceApi, contentEventsAdminApi } from './api/_domains';
 export type {
   SourceBatchImportItem,
   ApiTokenItem,

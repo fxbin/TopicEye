@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.models.analysis_job  # noqa: F401
 import app.models.app_setting  # noqa: F401
 import app.models.category  # noqa: F401
+import app.models.content_label  # noqa: F401
 import app.models.creation  # noqa: F401
 import app.models.daily_report  # noqa: F401
 import app.models.fanqie  # noqa: F401
@@ -42,6 +43,7 @@ import app.models.monthly_digest  # noqa: F401
 import app.models.mother_topic  # noqa: F401
 import app.models.notification  # noqa: F401
 import app.models.prompt_registry  # noqa: F401
+import app.models.ranking_eval  # noqa: F401
 import app.models.read_record  # noqa: F401
 import app.models.source  # noqa: F401
 import app.models.user  # noqa: F401

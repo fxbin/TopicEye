@@ -27,7 +27,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.models.article_reader_event import ArticleReaderEvent
 from app.models.article_snapshot import ArticleSnapshot
-from app.utils.url_safety import is_private_address
+from app.utils.url_safety import hostname_is_blocked, resolved_address_is_blocked
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,7 +118,7 @@ def _allowed_hosts() -> tuple[str, ...]:
 async def _validate_public_url(url: str) -> str:
     normalized = _normalized_url(url)
     host = (urlparse(normalized).hostname or "").rstrip(".").lower()
-    if host in {"localhost", "metadata.google.internal"} or is_private_address(host):
+    if hostname_is_blocked(host):
         raise ArticleReaderError("blocked_url", "该原文地址不允许站内读取。")
 
     allowlist = _allowed_hosts()
@@ -130,7 +130,7 @@ async def _validate_public_url(url: str) -> str:
     except OSError as exc:
         raise ArticleReaderError("unresolvable_host", "原文地址暂时无法解析，请稍后打开原文。", 502) from exc
 
-    if any(is_private_address(info[4][0]) for info in infos):
+    if any(resolved_address_is_blocked(info[4][0]) for info in infos):
         raise ArticleReaderError("blocked_url", "该原文地址不允许站内读取。")
     return normalized
 
@@ -768,7 +768,7 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
 
     Uses curl_cffi to impersonate a real browser's TLS ClientHello (JA3/JA4),
     which bypasses WAF/bot-detection systems that block httpx's Python TLS
-    fingerprint.  Redirects are followed automatically by curl_cffi.
+    fingerprint. Redirects are followed manually so every target is validated.
     """
     from curl_cffi.requests import AsyncSession
 
@@ -780,8 +780,22 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
     }
     timeout_val = settings.ARTICLE_READER_FETCH_TIMEOUT_SECONDS
 
-    async with AsyncSession(impersonate=impersonate, timeout=timeout_val, allow_redirects=True) as client:
-        response = await client.get(current_url, headers=headers)
+    visited = {current_url}
+    async with AsyncSession(impersonate=impersonate, timeout=timeout_val, allow_redirects=False) as client:
+        for _ in range(settings.ARTICLE_READER_MAX_REDIRECTS + 1):
+            response = await client.get(current_url, headers=headers, allow_redirects=False)
+            if response.status_code not in _REDIRECT_STATUS_CODES:
+                break
+            location = response.headers.get("location")
+            if not location:
+                raise ArticleReaderError("invalid_redirect", "原文跳转地址无效，请打开原文。", 502)
+            next_url = await _validate_public_url(urljoin(current_url, location))
+            if next_url in visited:
+                raise ArticleReaderError("redirect_loop", "原文跳转异常，请打开原文。", 502)
+            visited.add(next_url)
+            current_url = next_url
+        else:
+            raise ArticleReaderError("too_many_redirects", "原文跳转次数过多，请打开原文。", 502)
         if response.status_code >= 400:
             raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法提供正文，请打开原文。", 502)
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -842,18 +856,30 @@ async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]
     try:
         article = await _fetch_remote_article(url)
         return article, "httpx"
+    except httpx.RequestError as e:
+        # A connection/TLS failure is precisely when the second transport may
+        # help. Do not let httpx exceptions escape as a 500 before fallback.
+        logger.info("Tier 1 (httpx) network failure for %s: %s, trying curl_cffi", url, type(e).__name__)
     except ArticleReaderError as e:
         if e.code in _no_retry or not settings.ARTICLE_READER_CURL_CFFI_FALLBACK:
             raise
         logger.info("Tier 1 (httpx) failed for %s: %s, trying curl_cffi", url, e.code)
 
+    if not settings.ARTICLE_READER_CURL_CFFI_FALLBACK:
+        raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法连接，请打开原文。", 502)
+
     # Tier 2: curl_cffi (TLS impersonation)
+    from curl_cffi.curl import CurlError
+
     try:
         article = await _fetch_with_curl_cffi(url)
         return article, "curl_cffi"
     except ArticleReaderError as e:
         logger.warning("Tier 2 (curl_cffi) also failed for %s: %s", url, e.code)
         raise
+    except CurlError as e:
+        logger.warning("Tier 2 (curl_cffi) network failure for %s: %s", url, type(e).__name__)
+        raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法连接，请打开原文。", 502) from e
 
 
 def _snapshot_is_fresh(snapshot: ArticleSnapshot, now: datetime) -> bool:

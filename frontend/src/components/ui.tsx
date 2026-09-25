@@ -127,8 +127,8 @@ export function Metric({
 }
 
 // ─── PanelTitle ─────────────────────────────────────────────────────
-// 统一收敛此前散落在 stats / trends / today-picks / low-follower-viral /
-// trending 等 5+ 处的 PanelTitle 实现。签名取并集：icon + title + hint? + className?。
+// 统一收敛此前散落在 stats / trends / today-picks / trending 等页面的
+// PanelTitle 实现。签名取并集：icon + title + hint? + className?。
 // 各页迁移时若字号有微差（如 trending 用 text-[13px]，其余用 text-sm），
 // 统一以 text-sm 为规范；如需保留原字号可传 className 覆盖。
 

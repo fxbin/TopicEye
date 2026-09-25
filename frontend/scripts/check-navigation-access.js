@@ -52,37 +52,40 @@ const user = {
 };
 const admin = { ...user, role: 'admin', email: 'admin@example.com' };
 
+const enabledFeatures = { webnovel_module: true };
+
 function visibleLabels(currentUser) {
-  return visibleNavSpaces(currentUser).flatMap((space) => space.items.map((item) => item.label));
+  return visibleNavSpaces(currentUser, enabledFeatures).flatMap((space) => space.items.map((item) => item.label));
 }
 
 const anonymousLabels = visibleLabels(null);
-for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '信源管理', 'AI 引擎']) {
+assert(!anonymousLabels.includes('低粉爆文'), 'removed navigation should stay hidden');
+for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源', '管理后台']) {
   assert(!anonymousLabels.includes(label), `anonymous navigation should hide ${label}`);
 }
 
 const userLabels = visibleLabels(user);
-for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达']) {
+for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源']) {
   assert(userLabels.includes(label), `user navigation should show ${label}`);
 }
-for (const label of ['信源管理', 'AI 引擎']) {
+for (const label of ['管理后台', '低粉爆文']) {
   assert(!userLabels.includes(label), `user navigation should hide ${label}`);
 }
 
 const adminLabels = visibleLabels(admin);
-for (const label of ['信源管理', 'AI 引擎']) {
+for (const label of ['管理后台']) {
   assert(adminLabels.includes(label), `admin navigation should show ${label}`);
 }
 assert(adminLabels.includes('网文雷达'), 'admin navigation should still show 网文雷达');
 
-for (const pathName of ['/daily', '/weekly', '/monthly', '/stats', '/my-topics', '/favorites', '/algorithm', '/fanqie', '/profile']) {
+for (const pathName of ['/daily', '/weekly', '/monthly', '/stats', '/my-topics', '/favorites', '/algorithm', '/novel', '/sources/me', '/profile']) {
   assert(USER_ONLY_PATHS.includes(pathName), `USER_ONLY_PATHS should include ${pathName}`);
   assert.strictEqual(requiredAccessForPath(pathName), 'user');
-  assert.strictEqual(canAccessPath(pathName, null), false, `${pathName} should require login`);
-  assert.strictEqual(canAccessPath(pathName, user), true, `${pathName} should allow user`);
+  assert.strictEqual(canAccessPath(pathName, null, enabledFeatures), false, `${pathName} should require login`);
+  assert.strictEqual(canAccessPath(pathName, user, enabledFeatures), true, `${pathName} should allow user`);
 }
 
-for (const pathName of ['/sources', '/model-eval', '/contents', '/mother-topics/config']) {
+for (const pathName of ['/admin', '/admin/sources', '/admin/model-eval', '/admin/contents', '/admin/mother-topics']) {
   assert(ADMIN_ONLY_PATHS.includes(pathName), `ADMIN_ONLY_PATHS should include ${pathName}`);
   assert.strictEqual(requiredAccessForPath(pathName), 'admin');
   assert.strictEqual(canAccessPath(pathName, null), false, `${pathName} should require admin login`);
@@ -90,7 +93,7 @@ for (const pathName of ['/sources', '/model-eval', '/contents', '/mother-topics/
   assert.strictEqual(canAccessPath(pathName, admin), true, `${pathName} should allow admin`);
 }
 
-for (const pathName of ['/', '/trending', '/trends', '/today-picks', '/low-follower-viral', '/plans']) {
+for (const pathName of ['/', '/trending', '/trends', '/today-picks', '/plans']) {
   assert.strictEqual(requiredAccessForPath(pathName), 'public');
   assert.strictEqual(canAccessPath(pathName, null), true, `${pathName} should stay public`);
 }

@@ -81,19 +81,9 @@ Only `content_id` is required — every other field defaults to a neutral value.
 
 Items with `risk_score > 82` are hard-excluded (won't appear in results).
 
-### `POST /api/v1/scoring/lfv` — Low-follower-viral detection
-
-Same request/response shape, but uses a formula that rewards low source authority:
-
-```
-lfv = (viral*0.45 + creator*0.30 + quality*0.25) * obscure_factor * freshness_boost
-```
-
-where `obscure_factor = max(0.05, 1 - source_weight/100)`. Use this to find content heating up **before** the source becomes popular.
-
 ## Reading TopicEye data (skill endpoints)
 
-The scoring endpoints above rank **caller-supplied** items. The skill endpoints below let agents **read TopicEye's own curated output** — today's picks, daily report, and trends. All require the same Bearer token.
+The scoring endpoint above ranks **caller-supplied** items. The skill endpoints below let agents **read TopicEye's own curated output** — today's picks, daily report, and trends. All require the same Bearer token.
 
 ### `GET /api/v1/skill/today-picks`
 
@@ -149,11 +139,6 @@ curl -X POST http://localhost:8102/api/v1/scoring/score \
   -H "Content-Type: application/json" \
   -d '{"items":[{"content_id":1,"title":"AI agents reshape content","info_density":78,"actionability":65,"source_weight":70,"creator_score":72,"viral_score":45,"freshness_score":90,"quality_score":75,"risk_score":10,"source_weight_db":3}]}'
 
-# Low-follower viral detection on a batch
-curl -X POST http://localhost:8102/api/v1/scoring/lfv \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"items":[{"content_id":1,"title":"...","viral_score":80,"creator_score":60,"quality_score":70,"source_weight":30,"risk_score":5,"source_weight_db":1}]}'
 ```
 
 ## Dimension reference

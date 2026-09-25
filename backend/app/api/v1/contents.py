@@ -36,7 +36,6 @@ from app.services.content_list_cache import (
 )
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.content_serialization import content_with_latest_analysis, latest_analysis_from_item
-from app.services.content_summary import clean_content_summary
 from app.services.favorite_cache import invalidate_favorite_cache
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
 from app.services.scoring_flow import (
@@ -149,7 +148,7 @@ async def list_contents(
     include_trend_sources: bool = Query(False, description="Include榜单/趋势源 such as DouyinHot"),
     hours: int | None = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
     sort_by: str = Query(
-        "created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score|low_follower_viral)$"
+        "created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score)$"
     ),
     sort_order: str = Query("desc", pattern=r"^(asc|desc)$"),
     admin_view: bool = Query(False, description="Return management fields; admin only"),
@@ -211,10 +210,9 @@ async def list_contents(
     ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
 
-    # 等级/标签筛选只支持标准 SQL 排序路径；评分排序与低粉爆文路径在
-    # Python 侧分页，语义不同，明确拒绝而不是静默忽略。
-    if (recommend_level or tag) and sort_by in ("curation_score", "low_follower_viral"):
-        raise HTTPException(400, "recommend_level / tag 筛选暂不支持 curation_score / low_follower_viral 排序")
+    # 评分排序在 Python 侧分页，等级/标签筛选语义不同，明确拒绝而不是静默忽略。
+    if (recommend_level or tag) and sort_by == "curation_score":
+        raise HTTPException(400, "recommend_level / tag 筛选暂不支持 curation_score 排序")
 
     # ── Curation-score ranking path ────────────────────────────────────
     if sort_by == "curation_score":
@@ -230,108 +228,6 @@ async def list_contents(
             page_size=page_size,
             score_fn=score_items,
             sort_order=sort_order,
-            visible_user_id=current_user.id if current_user is not None else None,
-            public_only=current_user is None,
-        )
-
-    # ── Low-follower viral discovery path ────────────────────────────────
-    if sort_by == "low_follower_viral":
-        # 优先走 DuckDB（消除 500 行 Python 批处理）；不可用时 fallback 到原路径
-        try:
-            from app.services.duckdb_service import get_analytics, run_query
-
-            analytics = get_analytics()
-            if await run_query(lambda: analytics.available):
-                lfv_hours = hours or 48
-                offset = (page - 1) * page_size
-                # 走 duckdb_service 的单线程执行器：to_thread 会另建一条
-                # thread-local DuckDB 连接（重复 INSTALL/ATTACH 开销且不受
-                # 执行器串行保护），与其它 analytics 查询共享同一执行器。
-                lfv_items, lfv_total = await run_query(
-                    lambda: analytics.query_low_follower_viral(
-                        hours=lfv_hours,
-                        category=category,
-                        limit=page_size,
-                        offset=offset,
-                        visible_user_id=current_user.id if current_user is not None else None,
-                        public_only=current_user is None,
-                    )
-                )
-            result_items = []
-            for lfv in lfv_items:
-                raw = lfv["raw_item"]
-                analysis_data = {
-                    "adjusted_curation_score": lfv["lfv_final"],
-                    "score_breakdown": {
-                        "final_score": lfv["lfv_final"],
-                        "base_score": lfv["content_score"],
-                        "source_bonus": lfv["obscure_factor"],
-                        "time_decay": lfv["time_decay"],
-                        "dimension_scores": {
-                            "viral_score": raw.get("viral_score", 0),
-                            "creator_score": raw.get("creator_score", 0),
-                            "quality_score": raw.get("quality_score", 0),
-                            "source_weight": raw.get("source_weight") or 0,
-                            "obscure_factor": lfv["obscure_factor"],
-                            "freshness_boost": lfv["freshness_boost"],
-                        },
-                    },
-                    "curation_score": raw.get("curation_score"),
-                    "quality_score": raw.get("quality_score"),
-                    "freshness_score": raw.get("freshness_score"),
-                    "creator_score": raw.get("creator_score"),
-                    "viral_score": raw.get("viral_score"),
-                    "risk_score": raw.get("risk_score"),
-                }
-                result_items.append(
-                    {
-                        "id": raw["id"],
-                        "title": raw["title"],
-                        "url": raw["url"],
-                        "source_id": raw["source_id"],
-                        "source_name": raw["source_name"],
-                        "source_type": raw["source_type"],
-                        "platform": raw["platform"],
-                        "author": raw["author"],
-                        "published_at": raw.get("published_at"),
-                        "crawled_at": raw.get("crawled_at"),
-                        "content_hash": raw.get("content_hash"),
-                        "summary": clean_content_summary(raw.get("summary")),
-                        "cover_url": raw.get("cover_url"),
-                        "category": raw.get("category"),
-                        "tags": raw.get("tags"),
-                        "status": raw.get("status"),
-                        "topic_id": raw.get("topic_id"),
-                        "created_at": raw.get("created_at"),
-                        "analysis": analysis_data,
-                    }
-                )
-
-            payload = {"items": result_items, "total": lfv_total, "page": page, "page_size": page_size}
-            content = (
-                set_cached_content_list(cache_params, payload)
-                if cache_params.cacheable and not include_raw_content
-                else None
-            )
-            return Response(
-                content=content or json.dumps(payload, default=str),
-                media_type="application/json",
-                headers={"X-Content-List-Cache": "MISS (DuckDB-LFV)"},
-            )
-        except Exception:
-            logger.warning("DuckDB LFV path failed, falling back to Python scoring", exc_info=True)
-
-        from app.services.scoring_engine import score_low_follower_viral
-
-        return await _score_content_page(
-            db,
-            filters=filters,
-            ignored_ids=ignored_ids,
-            time_cutoff=time_cutoff,
-            exclude_source_types=exclude_source_types,
-            page=page,
-            page_size=page_size,
-            score_fn=score_low_follower_viral,
             visible_user_id=current_user.id if current_user is not None else None,
             public_only=current_user is None,
         )

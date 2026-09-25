@@ -82,7 +82,7 @@ class DuckDBAnalytics(PicksMixin, TopicsMixin, StatsMixin, ReportsMixin):
     source attached. This avoids concurrency issues and ensures fresh data.
 
     Query methods are split into mixins:
-    - PicksMixin: query_today_picks, query_low_follower_viral
+    - PicksMixin: query_today_picks
     - TopicsMixin: query_topics, query_trend_topics, query_keyword_cloud
     - StatsMixin: query_stats_*, query_daily_stats, query_dashboard_stats
     - ReportsMixin: query_content_for_report, query_content_for_weekly, query_webnovel_weekly

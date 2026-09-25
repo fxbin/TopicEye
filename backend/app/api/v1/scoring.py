@@ -2,12 +2,10 @@
 
 Exposes the topic-curation scoring engine as a stable HTTP API so external
 agents (Claude Code, Codex, n8n, custom scripts) can call it as their
-ranking layer. Two endpoints:
+ranking layer:
 
   POST /api/v1/scoring/score  — full curation pipeline (6-dim weighted)
-  POST /api/v1/scoring/lfv    — low-follower-viral detection
 
-Both accept the same request shape and return the same response shape.
 Auth uses Depends(get_current_user) which accepts both browser session
 tokens and personal API tokens (create one at /me/api-tokens).
 """
@@ -28,7 +26,7 @@ from app.schemas.scoring import (
     ScoringRequest,
     ScoringResponse,
 )
-from app.services.scoring_engine import ScoringInput, score_items, score_low_follower_viral
+from app.services.scoring_engine import ScoringInput, score_items
 
 router = APIRouter(prefix="/scoring", tags=["scoring"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
@@ -117,22 +115,4 @@ async def score_content(req: ScoringRequest, current_user: User = Depends(get_cu
     inputs = [_request_to_scoring_input(item) for item in req.items]
     scored = score_items(inputs)
     logger.info("Scoring /score: user_id=%d, items=%d", current_user.id, len(inputs))
-    return _build_response(scored)
-
-
-@router.post(
-    "/lfv",
-    response_model=ScoringResponse,
-    summary="Low-follower-viral detection",
-    description=(
-        "Identify breakout candidates from low-follower sources. Uses a different scoring "
-        "formula than /score: lfv = (viral*0.45 + creator*0.30 + quality*0.25) * obscure_factor "
-        "* freshness_boost, where obscure_factor rewards low source authority. "
-        "Use this to find content that's heating up before the source itself becomes popular."
-    ),
-)
-async def score_lfv(req: ScoringRequest, current_user: User = Depends(get_current_user)):
-    inputs = [_request_to_scoring_input(item) for item in req.items]
-    scored = score_low_follower_viral(inputs)
-    logger.info("Scoring /lfv: user_id=%d, items=%d", current_user.id, len(inputs))
     return _build_response(scored)

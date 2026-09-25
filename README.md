@@ -31,9 +31,9 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 |---|---|---|
 | ![today](docs/screenshots/screenshot-today.png) | ![daily](docs/screenshots/screenshot-daily.png) | ![trending](docs/screenshots/screenshot-trending.png) |
 
-| Trend Tracking | Low-Follower Viral | Algorithm Flow |
-|---|---|---|
-| ![trends](docs/screenshots/screenshot-trends.png) | ![lfv](docs/screenshots/screenshot-low-follower-viral.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) |
+| Trend Tracking | Algorithm Flow |
+|---|---|
+| ![trends](docs/screenshots/screenshot-trends.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) |
 
 ### Stats & Reports
 
@@ -83,7 +83,7 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 | **Curation scoring** | 6-dimension weighted engine + P70 percentile cutoff + risk control + user feedback calibration. |
 | **AI analysis** | Per-item summary, key points, topic suggestions (differentiated prompts for CN/EN content). |
 | **Daily / weekly / monthly reports** | Auto-generated from the content pool, with timeline view and scrollable history. |
-| **Trend radar** | Topic trending + low-follower viral detection (find breakout posts before they peak). |
+| **Trend radar** | Topic and keyword trend tracking. |
 | **WeRead integration** | Sync reading stats and bookshelf from WeRead API; daily auto-refresh cache, reading-time analytics, and bookshelf comparison. |
 | **Webnovel radar** | Fanqie / Qimao / Zhihu Yanxuan trending charts, gated behind a runtime feature flag. |
 | **Mother topics** | Multi-tenant topic templates — admins maintain the system library, users fork their own and customize keywords, weights, and target readers. Fork edits take effect immediately in the scoring queue. |

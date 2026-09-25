@@ -29,9 +29,9 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 |---|---|---|
 | ![today](docs/screenshots/screenshot-today.png) | ![daily](docs/screenshots/screenshot-daily.png) | ![trending](docs/screenshots/screenshot-trending.png) |
 
-| 趋势追踪 | 低粉爆文 | 算法流程 |
-|---|---|---|
-| ![trends](docs/screenshots/screenshot-trends.png) | ![lfv](docs/screenshots/screenshot-low-follower-viral.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) |
+| 趋势追踪 | 算法流程 |
+|---|---|
+| ![trends](docs/screenshots/screenshot-trends.png) | ![algorithm](docs/screenshots/screenshot-algorithm.png) |
 
 ### 数据统计与报告
 
@@ -81,7 +81,7 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 | 内容精选 | 6 维 LLM 评分引擎 + 百分位截断 (P70) + 风险控制 + 用户反馈校准 |
 | AI 分析 | 每条内容的摘要 / 关键点 / 选题建议（中英文差异化 prompt） |
 | 日报 / 周报 / 月报 | 自动从内容池生成，支持时间线视图与历史滚动浏览 |
-| 趋势雷达 | 关键词热度追踪 + 低粉爆文发现（在爆之前找到它） |
+| 趋势雷达 | 话题与关键词热度追踪 |
 | 微信读书 | 对接微信读书官方 gateway，同步阅读统计与书架数据；每日自动刷新缓存，阅读时长分析与书架对比 |
 | 网文雷达 | 番茄 / 七猫 / 知乎盐选热榜，受运行时功能开关控制，默认关闭 |
 | 母题模板 | 多租户模型——管理员维护系统模板库（只读），用户首次访问时自动 fork 一份到自己名下，可自定义关键词、权重、目标读者。修改立即影响打分队列。 |

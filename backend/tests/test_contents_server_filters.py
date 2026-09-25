@@ -201,15 +201,15 @@ async def test_tag_filter_matches_normalized_keys(filter_setup):
 
 
 @pytest.mark.asyncio
-async def test_level_and_tag_filters_rejected_for_scoring_sorts(filter_setup):
+async def test_level_and_tag_filters_rejected_for_scoring_sort(filter_setup):
     client, token, _ids_map = filter_setup
     headers = {"Authorization": f"Bearer {token}"}
 
     resp = await client.get("/contents?recommend_level=信号不足&sort_by=curation_score", headers=headers)
     assert resp.status_code == 400
 
-    resp = await client.get("/contents?tag=ai&sort_by=low_follower_viral", headers=headers)
-    assert resp.status_code == 400
+    resp = await client.get("/contents?sort_by=low_follower_viral", headers=headers)
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

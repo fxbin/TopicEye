@@ -1,4 +1,4 @@
-"""Pydantic schemas for the Agent-native scoring API (/scoring/score, /scoring/lfv).
+"""Pydantic schemas for the Agent-native scoring API (/scoring/score).
 
 These mirror the lightweight ScoringInput / ScoreBreakdown POPO classes in
 app/services/scoring_engine.py so they show up in the OpenAPI docs and can be

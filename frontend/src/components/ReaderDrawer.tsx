@@ -258,7 +258,13 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
               </div>
             )}
 
-            {!loading && error && (
+            {!loading && error && snapshot && (
+              <div role="status" className="mb-5 rounded-lg border border-amber-border bg-amber-light/40 px-4 py-3 text-sm text-gray-700">
+                站内请求未完成，以下仍是上次成功提取的内容：{error}
+              </div>
+            )}
+
+            {!loading && error && !snapshot && (
               <div className="rounded-lg border border-amber-border bg-amber-light/40 p-6 text-center">
                 <FileWarning size={28} className="mx-auto mb-3 text-amber" />
                 <h2 className="mb-2 text-base font-black text-gray-900">暂时无法站内阅读</h2>

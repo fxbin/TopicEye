@@ -65,6 +65,15 @@ def is_private_address(value: str) -> bool:
     )
 
 
+def resolved_address_is_blocked(address: str) -> bool:
+    """Check a DNS result, honoring only the configured local-proxy fake-IP range.
+
+    Callers must check the original hostname separately: a literal fake-IP URL
+    is never allowed merely because the proxy CIDR is configured.
+    """
+    return is_private_address(address) and not _in_proxy_fake_ip_range(address)
+
+
 def hostname_is_blocked(hostname: str | None) -> bool:
     """字面量检查（无 IO）：主机名是内网别名或私网 IP 字面量。
 
@@ -106,11 +115,5 @@ async def ensure_public_hostname(url: str, *, resolve: bool = True) -> None:
     except OSError:
         return
     for address in addresses:
-        if is_private_address(address):
-            # 本地代理 fake-ip 段：地址实际指向本机代理（Clash/Surge 等），
-            # 由代理按原始域名出网，不是真实的内网目标，放行。仅放行
-            # "域名解析结果"这一形态；IP 字面量在上面的 hostname_is_blocked
-            # 已拦截，不受影响。
-            if _in_proxy_fake_ip_range(address):
-                continue
+        if resolved_address_is_blocked(address):
             raise UnsafeUrlError(f"URL 主机 {host} 解析到内网或保留地址 {address}")

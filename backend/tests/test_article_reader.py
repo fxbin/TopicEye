@@ -259,6 +259,32 @@ async def test_reader_rejects_private_network_targets():
 
 
 @pytest.mark.asyncio
+async def test_reader_accepts_configured_proxy_fake_ip_dns_result(monkeypatch):
+    async def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, ("198.18.11.159", 0))]
+
+    monkeypatch.setattr(article_reader.asyncio.get_running_loop(), "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(article_reader.settings, "SSRF_FAKE_IP_PROXY_CIDR", "198.18.0.0/15")
+
+    assert await article_reader._validate_public_url("https://example.com/story") == "https://example.com/story"
+    with pytest.raises(article_reader.ArticleReaderError, match="该原文地址不允许站内读取"):
+        await article_reader._validate_public_url("http://198.18.11.159/internal")
+
+
+@pytest.mark.asyncio
+async def test_reader_still_blocks_unconfigured_private_dns_result(monkeypatch):
+    async def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, ("10.0.0.5", 0))]
+
+    monkeypatch.setattr(article_reader.asyncio.get_running_loop(), "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(article_reader.settings, "SSRF_FAKE_IP_PROXY_CIDR", "198.18.0.0/15")
+
+    with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+        await article_reader._validate_public_url("https://example.com/story")
+    assert exc_info.value.code == "blocked_url"
+
+
+@pytest.mark.asyncio
 async def test_remote_reader_follows_safe_redirect_and_extracts_article(monkeypatch):
     async def allow_url(url: str) -> str:
         return url
@@ -285,3 +311,86 @@ async def test_remote_reader_follows_safe_redirect_and_extracts_article(monkeypa
     assert extracted.canonical_url == "https://reader-test.example/article"
     assert extracted.title == "远程文章"
     assert extracted.extraction_method == "http"
+
+
+@pytest.mark.asyncio
+async def test_reader_retries_transport_error_with_curl_cffi(monkeypatch):
+    async def failed_httpx(url):
+        raise httpx.ConnectError("connection failed")
+
+    article = article_reader.ExtractedArticle(
+        canonical_url="https://example.com/story",
+        title="文章",
+        byline=None,
+        published_at=None,
+        excerpt=None,
+        text_content="可阅读的正文。" * 20,
+        content_blocks=[],
+        extraction_method="curl_cffi",
+    )
+
+    async def successful_curl(url):
+        return article
+
+    monkeypatch.setattr(article_reader, "_fetch_remote_article", failed_httpx)
+    monkeypatch.setattr(article_reader, "_fetch_with_curl_cffi", successful_curl)
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_CURL_CFFI_FALLBACK", True)
+
+    assert await article_reader._fetch_remote_article_tiered("https://example.com/story") == (article, "curl_cffi")
+
+
+@pytest.mark.asyncio
+async def test_reader_reports_both_transport_failures_as_source_error(monkeypatch):
+    from curl_cffi.curl import CurlError
+
+    async def failed_httpx(url):
+        raise httpx.ConnectError("connection failed")
+
+    async def failed_curl(url):
+        raise CurlError("connection failed")
+
+    monkeypatch.setattr(article_reader, "_fetch_remote_article", failed_httpx)
+    monkeypatch.setattr(article_reader, "_fetch_with_curl_cffi", failed_curl)
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_CURL_CFFI_FALLBACK", True)
+
+    with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+        await article_reader._fetch_remote_article_tiered("https://example.com/story")
+    assert exc_info.value.code == "upstream_unavailable"
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_curl_fallback_validates_redirect_before_following(monkeypatch):
+    from types import SimpleNamespace
+
+    import curl_cffi.requests
+
+    requested: list[str] = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            assert kwargs["allow_redirects"] is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, **kwargs):
+            assert kwargs["allow_redirects"] is False
+            requested.append(url)
+            return SimpleNamespace(status_code=302, headers={"location": "http://127.0.0.1/private"})
+
+    async def validate(url):
+        if article_reader.hostname_is_blocked(article_reader.urlparse(url).hostname):
+            raise article_reader.ArticleReaderError("blocked_url", "该原文地址不允许站内读取。")
+        return url
+
+    monkeypatch.setattr(curl_cffi.requests, "AsyncSession", FakeSession)
+    monkeypatch.setattr(article_reader, "_validate_public_url", validate)
+
+    with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+        await article_reader._fetch_with_curl_cffi("https://example.com/story")
+    assert exc_info.value.code == "blocked_url"
+    assert requested == ["https://example.com/story"]

@@ -269,6 +269,32 @@ async def apply_personalization_boost(
     return items
 
 
+async def compute_personalization_boosts_for_rows(
+    db: AsyncSession,
+    user_id: int | None,
+    rows: list[tuple[int, Any, str | None]],
+) -> dict[int, float]:
+    """批量计算个性化加成分（不修改 payload、不排序）。
+
+    输入 ``(content_id, tags, category)``；返回 ``{content_id: boost}``，
+    只含非零 boost。匿名 / 无兴趣向量 / 全部无匹配时返回空 dict，
+    调用方据此保持基础排序。供 today-picks 在截断前对完整候选池
+    计算加成分（旧的 apply_personalization_boost 只作用于已截断页）。
+    """
+    if user_id is None:
+        return {}
+    user_vector = await get_user_vector(db, user_id)
+    if not user_vector:
+        return {}
+    boosts: dict[int, float] = {}
+    for content_id, tags, category in rows:
+        tag_list = tags if isinstance(tags, list) else None
+        boost = compute_personalization_boost(tag_list, user_vector, category)
+        if boost:
+            boosts[content_id] = boost
+    return boosts
+
+
 # ── Helpers ────────────────────────────────────────────────────────────
 
 

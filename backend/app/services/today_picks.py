@@ -28,6 +28,61 @@ logger = logging.getLogger(__name__)
 # fallback 复刻 adjusted_curation_score 排序时使用。
 _OLTP_FALLBACK_WEIGHT_BONUS = 8
 
+# 个性化重排的探索保留比例：最终页中预留给「基础分最强但未因个人
+# 兴趣入选」条目的比例，防止兴趣匹配完全遮蔽高质量内容。
+_EXPLORE_RATIO = 0.2
+
+
+def _select_personalized_slate(
+    scored_rows: list[tuple[ScoreBreakdown, dict]],
+    boosts: dict[int, float],
+    limit: int | None,
+) -> list[tuple[ScoreBreakdown, dict]]:
+    """个性化优先的最终页选择（纯函数，便于测试）。
+
+    - boosts 为空（匿名 / 无兴趣向量 / 无任何标签匹配）：返回与基础
+      排序完全一致的前 limit 条——新用户与匿名行为不变；
+    - 有 boost：先按 ``final_score + boost`` 取 personal_slots 条，再从
+      基础序补 explore_slots 条探索位，最终 slate 按加成分排序。
+      截断前对完整入选池生效，基础排名靠后的高兴趣内容可以进入首屏。
+    """
+
+    def boosted_key(idx: int) -> float:
+        bd, row = scored_rows[idx]
+        return bd.final_score + boosts.get(int(row["id"]), 0.0)
+
+    if not limit:
+        if not boosts:
+            return list(scored_rows)
+        ordered = sorted(range(len(scored_rows)), key=lambda i: (-boosted_key(i), i))
+        return [scored_rows[i] for i in ordered]
+
+    if not boosts:
+        return list(scored_rows[:limit])
+
+    explore_slots = min(limit - 1, round(limit * _EXPLORE_RATIO)) if limit > 1 else 0
+    personal_slots = limit - explore_slots
+
+    base_order = sorted(range(len(scored_rows)), key=lambda i: (-scored_rows[i][0].final_score, i))
+    personal_order = sorted(range(len(scored_rows)), key=lambda i: (-boosted_key(i), i))
+
+    slate: list[int] = []
+    seen: set[int] = set()
+    for i in personal_order:
+        if len(slate) >= personal_slots:
+            break
+        slate.append(i)
+        seen.add(i)
+    for i in base_order:
+        if len(slate) >= limit:
+            break
+        if i not in seen:
+            slate.append(i)
+            seen.add(i)
+
+    slate.sort(key=lambda i: (-boosted_key(i), i))
+    return [scored_rows[i] for i in slate]
+
 
 async def build_today_picks(
     db: AsyncSession,
@@ -119,8 +174,40 @@ async def build_today_picks(
     # then truncated, making the default page transfer and render hundreds of
     # cards even when the UI only needed its first screen.
     total = len(scored_rows)
-    visible_rows = scored_rows[:limit] if limit else scored_rows
+
+    # ── 个性化重排：在截断前介入 ────────────────────────────────────
+    # 旧流程先截取前 limit 条再对结果加分，排 41 名的高兴趣内容永远
+    # 进不了 40 条首屏。现在对完整入选池计算加成分 → 选 slate（含探
+    # 索位）→ 再截断。boost 计算失败时回退基础排序，不阻塞精选。
+    boosts: dict[int, float] = {}
+    if owner_user_id is not None:
+        from app.services.interest_vector_service import compute_personalization_boosts_for_rows
+
+        try:
+            boosts = await compute_personalization_boosts_for_rows(
+                db,
+                owner_user_id,
+                [
+                    (
+                        int(row["id"]),
+                        _decode_json_value(row.get("ai_tags")) or _decode_json_value(row.get("tags")),
+                        row.get("category"),
+                    )
+                    for _bd, row in scored_rows
+                ],
+            )
+        except Exception:
+            logger.warning("personalization boost computation failed; using base order", exc_info=True)
+            boosts = {}
+
+    visible_rows = _select_personalized_slate(scored_rows, boosts, limit)
     response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
+    for item in response_items:
+        boost = boosts.get(int(item["id"]), 0.0)
+        item["personalization_boost"] = boost
+        analysis = item.get("analysis") or {}
+        if boost and "adjusted_curation_score" in analysis:
+            analysis["adjusted_curation_score"] = round(analysis["adjusted_curation_score"] + boost, 2)
     try:
         visible_group_ids = {
             assignment.event_group_id
@@ -143,19 +230,6 @@ async def build_today_picks(
             exc_info=True,
         )
 
-    # Apply personalization boost (async, non-blocking for new users)
-    if owner_user_id is not None:
-        from app.services.interest_vector_service import apply_personalization_boost
-
-        response_items = await apply_personalization_boost(db, owner_user_id, response_items)
-        # Re-sort by boosted adjusted_curation_score
-        response_items.sort(
-            key=lambda item: (item.get("analysis") or {}).get("adjusted_curation_score", 0),
-            reverse=True,
-        )
-    else:
-        for item in response_items:
-            item["personalization_boost"] = 0.0
     try:
         topic_map = {topic["id"]: topic for topic in await run_query(query_topics)}
     except Exception as exc:

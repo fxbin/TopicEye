@@ -905,3 +905,140 @@ async def test_fallback_aggregates_feedback_score(monkeypatch):
     await engine.dispose()
     target_row = next(row for row in rows if row["id"] == target_id)
     assert target_row["feedback_score"] == 30.0, f"应聚合 +30，实际 {target_row['feedback_score']}"
+
+
+# ── 个性化重排（截断前介入 + 探索位） ─────────────────────────────────
+
+
+def _personalized_rows(count: int) -> list[dict]:
+    """构造 count 行：id=i，基础 final_score = 101-i（基础序 = id 升序）。"""
+    rows = []
+    for i in range(1, count + 1):
+        row = dict(_duckdb_rows()[0])
+        row.update({"id": i, "title": f"row {i}", "url": f"https://example.com/row-{i}", "curation_score": 90.0})
+        rows.append(row)
+    return rows
+
+
+def _fake_scored(rows: list[dict]):
+    from app.services.scoring_engine import ScoreBreakdown
+
+    pairs = []
+    for row in rows:
+        final = 101 - row["id"]  # 基础序 = id 升序
+        pairs.append((ScoreBreakdown(content_id=row["id"], final_score=float(final)), row))
+    return pairs
+
+
+def _patch_scoring(monkeypatch, rows: list[dict]):
+    from app.repositories.ignored_repo import IgnoredRepo
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **_kwargs: rows)
+    monkeypatch.setattr(today_picks, "_score_rows", lambda _rows: _fake_scored(rows))
+
+    async def _topics():
+        return []
+
+    async def _no_personal_ignored(_self, _user_id):
+        return set()
+
+    monkeypatch.setattr(today_picks, "query_topics", _topics)
+    monkeypatch.setattr(IgnoredRepo, "list_personal_ignored_ids", _no_personal_ignored)
+
+
+def test_select_slate_without_boosts_matches_base_order():
+    rows = _personalized_rows(50)
+    scored = _fake_scored(rows)
+
+    limited = today_picks._select_personalized_slate(scored, {}, 40)
+    assert [row["id"] for _bd, row in limited] == list(range(1, 41))
+
+    full = today_picks._select_personalized_slate(scored, {}, None)
+    assert [row["id"] for _bd, row in full] == list(range(1, 51))
+
+
+def test_select_slate_promotes_deep_ranked_interest_match():
+    """基础排名 41 位的内容因兴趣加分必须能进入 40 条首屏。"""
+    rows = _personalized_rows(50)
+    scored = _fake_scored(rows)
+
+    slate = today_picks._select_personalized_slate(scored, {41: 1000.0}, 40)
+    ids = [row["id"] for _bd, row in slate]
+
+    assert len(ids) == 40
+    assert ids[0] == 41, "加成最高者排第一"
+    assert 40 not in ids, "基础分最低的入选者被高兴趣者顶出（探索位只保基础分最强者）"
+
+
+def test_select_slate_explore_slot_keeps_base_top():
+    """兴趣完全遮蔽基础序时，探索位保留基础第一名。"""
+    rows = _personalized_rows(10)
+    scored = _fake_scored(rows)
+    boosts = {i: 100.0 for i in range(6, 11)}  # 基础 6-10 名全被加分
+
+    slate = today_picks._select_personalized_slate(scored, boosts, 5)
+    ids = [row["id"] for _bd, row in slate]
+
+    assert len(ids) == 5
+    assert 1 in ids, "探索位应保留基础第一名"
+    assert ids[:4] == [6, 7, 8, 9], "加分者按加成分排前"
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_personalizes_before_truncation(monkeypatch):
+    """回归：个性化加分在截断之前介入——排 41 名的高兴趣内容进入 40 条首屏。"""
+    import app.services.interest_vector_service as ivs
+
+    rows = _personalized_rows(50)
+    _patch_scoring(monkeypatch, rows)
+
+    async def _boosts(_db, _user_id, tagged_rows):
+        ids = {content_id for content_id, _tags, _cat in tagged_rows}
+        assert ids == set(range(1, 51)), "加成计算必须覆盖完整入选池（截断前）"
+        return {41: 1000.0}
+
+    monkeypatch.setattr(ivs, "compute_personalization_boosts_for_rows", _boosts)
+
+    payload = await today_picks.build_today_picks(object(), hours=48, limit=40, owner_user_id=2)
+    items = payload["items"]
+    ids = [item["id"] for item in items]
+
+    assert len(ids) == 40
+    assert ids[0] == 41
+    assert 40 not in ids
+    boosted = items[0]
+    assert boosted["personalization_boost"] == 1000.0
+    assert boosted["analysis"]["adjusted_curation_score"] == pytest.approx((101 - 41) + 1000.0)
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_anonymous_unchanged(monkeypatch):
+    """匿名访问：无加成、顺序与基础排序一致（新用户行为不回归）。"""
+    rows = _personalized_rows(50)
+    _patch_scoring(monkeypatch, rows)
+
+    payload = await today_picks.build_today_picks(object(), hours=48, limit=40)
+    items = payload["items"]
+
+    assert [item["id"] for item in items] == list(range(1, 41))
+    assert all(item["personalization_boost"] == 0.0 for item in items)
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_boost_failure_falls_back_to_base_order(monkeypatch):
+    """加成计算异常时回退基础排序，精选不可用_personalized_rows 于个人化故障。"""
+    import app.services.interest_vector_service as ivs
+
+    rows = _personalized_rows(50)
+    _patch_scoring(monkeypatch, rows)
+
+    async def _boom(_db, _user_id, _rows):
+        raise RuntimeError("vector store down")
+
+    monkeypatch.setattr(ivs, "compute_personalization_boosts_for_rows", _boom)
+
+    payload = await today_picks.build_today_picks(object(), hours=48, limit=40, owner_user_id=2)
+    ids = [item["id"] for item in payload["items"]]
+
+    assert ids == list(range(1, 41))
+    assert all(item["personalization_boost"] == 0.0 for item in payload["items"])

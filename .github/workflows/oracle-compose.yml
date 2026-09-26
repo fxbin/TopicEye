@@ -1,0 +1,43 @@
+name: Oracle Compose Validation
+
+on:
+  pull_request:
+    paths:
+      - "docker-compose.oracle.yml"
+      - "deploy/oracle/**"
+      - "backend/Dockerfile"
+      - ".github/workflows/oracle-compose.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docker-compose.oracle.yml"
+      - "deploy/oracle/**"
+      - "backend/Dockerfile"
+      - ".github/workflows/oracle-compose.yml"
+
+jobs:
+  validate-oracle-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check smoke script syntax
+        run: bash -n deploy/oracle/verify.sh
+      - name: Validate standalone Oracle Compose
+        run: |
+          cp deploy/oracle/env.example .env
+          docker compose -f docker-compose.oracle.yml config --quiet
+          docker compose -f docker-compose.oracle.yml config --format json > /tmp/oracle-compose.json
+          python3 - <<'PY'
+          import json
+
+          with open("/tmp/oracle-compose.json", encoding="utf-8") as f:
+              config = json.load(f)
+
+          assert set(config["services"]) == {"backend", "frontend"}
+          assert all("ports" not in service for service in config["services"].values())
+          assert config["networks"]["textura-net"]["external"] is True
+          assert config["networks"]["textura-db-net"]["external"] is True
+          assert "postgres" not in config["services"]
+          assert "nginx" not in config["services"]
+          print("Oracle Compose: only TopicEye services, no host ports, shared external networks")
+          PY

@@ -1,0 +1,84 @@
+# Oracle ARM64 2-vCPU / ~12 GiB deployment.
+# Reuses the existing PostgreSQL 18, NPM, Cloudflare Tunnel, GPT-Load and RSSHub.
+name: topiceye-oracle
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: topiceye/backend:oracle
+    container_name: topiceye-backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?Set APP_SECRET_KEY in .env}
+      INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY:?Set INTEGRATION_SECRET_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
+      AUTH_COOKIE_SECURE: "true"
+      DUCKDB_EXTENSION_DIR: /opt/duckdb_extensions
+    volumes:
+      - backend-data:/app/data
+    expose:
+      - "8000"
+    networks:
+      app-net:
+        aliases:
+          - topiceye-backend
+      textura-net: {}
+      textura-db-net: {}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: ${TOPICEYE_BACKEND_MEM_LIMIT:-1536m}
+    cpus: ${TOPICEYE_BACKEND_CPUS:-1.0}
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_API_URL: http://topiceye-backend:8000
+    image: topiceye/frontend:oracle
+    container_name: topiceye-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      BACKEND_API_URL: http://topiceye-backend:8000
+    expose:
+      - "3000"
+    networks:
+      app-net: {}
+      textura-net:
+        aliases:
+          - topiceye-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: ${TOPICEYE_FRONTEND_MEM_LIMIT:-768m}
+    cpus: ${TOPICEYE_FRONTEND_CPUS:-0.75}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  app-net:
+    internal: true
+  textura-net:
+    external: true
+  textura-db-net:
+    external: true
+
+volumes:
+  backend-data:
+    name: topiceye-oracle-backend-data

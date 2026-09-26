@@ -56,6 +56,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 # Copy pre-downloaded DuckDB extensions to the path the app expects
 COPY --from=builder /app/data/duckdb_extensions /app/data/duckdb_extensions
+# Oracle uses /app/data as a persistent volume: make an independent copy so the
+# volume cannot shadow the pre-downloaded extension.
+COPY --from=builder /app/data/duckdb_extensions /opt/duckdb_extensions
 
 # Copy application code
 COPY . .

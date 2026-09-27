@@ -133,15 +133,21 @@ async def get_or_create_oauth_user(
     email_verified: bool,
     display_name: str | None = None,
 ) -> User:
-    """解析 OAuth 身份为本地 User，自动关联合并同邮箱账号。
+    """Resolve a verified third-party identity without elevating account privileges.
 
-    合并策略（见 plan）：
-    1. (provider, provider_user_id) 已绑定 → 直接返回关联 User
-    2. 未绑定 + email_verified=True + email 命中现有账号 → 新建 oauth_account 挂上去
-    3. 未绑定 + email_verified=False + email 命中现有账号 → 抛 OAuthAccountConflictError（防劫持）
-    4. 都没命中 → 创建新 User（无密码）+ oauth_account
+    - Existing provider binding: permit only active users with current verified email.
+    - New binding: only active non-admin users can link by the same verified email.
+    - New account: verified email is required; unverified identities are denied.
+    - Admin accounts require an explicit authenticated linking flow (not provided
+      by this function); an existing binding remains usable.
     """
     normalized = normalize_email(email)
+    if not normalized or not provider_user_id:
+        raise OAuthAccountConflictError("第三方登录身份信息不完整")
+    # An unverified identity must never create or log in to an account, even
+    # when a legacy (provider, provider_user_id) binding exists in the DB.
+    if email_verified is not True:
+        raise OAuthAccountConflictError("第三方邮箱未经验证，无法登录或关联账号")
 
     # 1. 已绑定的 provider 用户
     existing = await get_oauth_account(db, provider=provider, provider_user_id=provider_user_id)
@@ -158,11 +164,12 @@ async def get_or_create_oauth_user(
     # 检查邮箱是否已被现有账号占用
     existing_user = await get_user_by_email(db, normalized)
 
-    # 2 & 3. 邮箱冲突时的合并 / 拒绝
+    # Verified email can auto-link ONLY an active, non-admin local account.
+    # Never revive disabled users or grant an unbound OAuth identity admin access.
     if existing_user:
-        if not email_verified:
-            raise OAuthAccountConflictError("该邮箱已注册但 OAuth 邮箱未验证，请先用密码登录后在设置页绑定第三方账号")
-        # 已验证 → 自动合并：把 oauth_account 挂到现有账号
+        if not existing_user.is_active or existing_user.role == UserRole.ADMIN.value:
+            raise OAuthAccountConflictError("此账号不支持自动关联，请使用原有登录方式")
+        # 已验证的普通用户 → 自动关联现有账号
         await _link_oauth_account(
             db,
             user_id=existing_user.id,

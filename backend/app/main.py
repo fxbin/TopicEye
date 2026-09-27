@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 import app.models.analysis_job  # noqa: F401
 import app.models.app_setting  # noqa: F401
@@ -448,6 +449,17 @@ app = FastAPI(
     description="AI-powered content discovery and topic analysis platform",
     version="0.5.0",
     lifespan=lifespan,
+)
+
+# Authlib's OAuth state/nonce must persist across /login and /callback.
+# Signed, short-lived, host-only cookie; HTTPS-only in production.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.APP_SECRET_KEY,
+    session_cookie="topiceye_oauth_state",
+    max_age=900,
+    same_site="lax",
+    https_only=settings.AUTH_COOKIE_SECURE,
 )
 
 # CORS — allow frontend origins from config (CORS_ORIGINS)

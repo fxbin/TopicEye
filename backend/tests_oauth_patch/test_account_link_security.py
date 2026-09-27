@@ -19,13 +19,15 @@ from app.services import auth_service as auth  # noqa: E402
 
 def fake_db():
     return SimpleNamespace(
-        get=AsyncMock(), add=Mock(), delete=AsyncMock(),
+        get=AsyncMock(), add=Mock(), delete=AsyncMock(), scalar=AsyncMock(return_value=None),
         flush=AsyncMock(), refresh=AsyncMock(),
     )
 
 
-def fake_user(*, uid=7, email="same@example.com", role="user", active=True):
-    return SimpleNamespace(id=uid, email=email, role=role, is_active=active)
+def fake_user(*, uid=7, email="same@example.com", role="user", active=True, password="hash"):
+    return SimpleNamespace(
+        id=uid, email=email, role=role, is_active=active, password_hash=password,
+    )
 
 
 def stub_lookups(monkeypatch, *, binding=None, user=None):
@@ -100,7 +102,7 @@ async def test_unverified_new_identity_denied_without_any_db_write(
 async def test_unverified_previously_linked_identity_denied(monkeypatch):
     db = fake_db()
     linked, by_email, link = stub_lookups(
-        monkeypatch, binding=SimpleNamespace(user_id=7),
+        monkeypatch, binding=SimpleNamespace(user_id=7, email_verified=True),
     )
     with pytest.raises(auth.OAuthAccountConflictError, match="未经验证"):
         await auth.get_or_create_oauth_user(
@@ -139,7 +141,7 @@ async def test_active_prelinked_identity_logs_in_without_relinking(monkeypatch):
     user = fake_user()
     db.get.return_value = user
     linked, by_email, link = stub_lookups(
-        monkeypatch, binding=SimpleNamespace(user_id=user.id),
+        monkeypatch, binding=SimpleNamespace(user_id=user.id, email_verified=True),
     )
     result = await auth.get_or_create_oauth_user(
         db, provider="github", provider_user_id="already-linked",
@@ -157,7 +159,7 @@ async def test_existing_admin_binding_remains_usable_but_new_one_is_blocked(monk
     admin = fake_user(role="admin")
     db.get.return_value = admin
     _, _, link = stub_lookups(
-        monkeypatch, binding=SimpleNamespace(user_id=admin.id),
+        monkeypatch, binding=SimpleNamespace(user_id=admin.id, email_verified=True),
     )
     assert await auth.get_or_create_oauth_user(
         db, provider="github", provider_user_id="prelinked-admin",
@@ -171,7 +173,7 @@ async def test_disabled_previously_linked_identity_denied(monkeypatch):
     db = fake_db()
     db.get.return_value = fake_user(active=False)
     _, by_email, link = stub_lookups(
-        monkeypatch, binding=SimpleNamespace(user_id=7),
+        monkeypatch, binding=SimpleNamespace(user_id=7, email_verified=True),
     )
     with pytest.raises(auth.OAuthAccountConflictError, match="停用"):
         await auth.get_or_create_oauth_user(
@@ -201,3 +203,55 @@ async def test_incomplete_identity_rejected_before_lookup(
     linked.assert_not_awaited()
     by_email.assert_not_awaited()
     link.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_verified_identity_cannot_link_to_legacy_unverified_reserved_account(monkeypatch):
+    """Old unverified OAuth signups could reserve emails they did not own."""
+    db = fake_db()
+    db.scalar.return_value = 99
+    _, _, link = stub_lookups(monkeypatch, user=fake_user(password=None))
+    with pytest.raises(auth.OAuthAccountConflictError, match="人工核实"):
+        await auth.get_or_create_oauth_user(
+            db, provider="google", provider_user_id="real-owner",
+            email="same@example.com", email_verified=True,
+        )
+    db.scalar.assert_awaited_once()
+    link.assert_not_awaited()
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_legacy_prebound_identity_requires_review_even_if_now_verified(monkeypatch):
+    db = fake_db()
+    db.get.return_value = fake_user(password=None)
+    _, by_email, link = stub_lookups(
+        monkeypatch, binding=SimpleNamespace(user_id=7, email_verified=False),
+    )
+    with pytest.raises(auth.OAuthAccountConflictError, match="历史 OAuth"):
+        await auth.get_or_create_oauth_user(
+            db, provider="google", provider_user_id="old-unverified",
+            email="same@example.com", email_verified=True,
+        )
+    by_email.assert_not_awaited()
+    link.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing,oauth_link", [
+    (fake_user(password=None), None),
+    (fake_user(password="hashed"), 101),
+])
+async def test_seed_does_not_promote_passwordless_or_oauth_linked_account(
+    monkeypatch, existing, oauth_link,
+):
+    db = fake_db()
+    db.scalar.return_value = oauth_link
+    monkeypatch.setattr(auth, "get_user_by_email", AsyncMock(return_value=existing))
+    with pytest.raises(ValueError, match="refuses to promote"):
+        await auth.ensure_admin_user(
+            db, email=existing.email, password="StrongAdminSeed123!",
+        )
+    assert existing.role == "user"
+    db.flush.assert_not_awaited()
+    db.add.assert_not_called()

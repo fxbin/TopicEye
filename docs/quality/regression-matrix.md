@@ -74,19 +74,19 @@
 - PR #62 已禁止向管理员自动关联，service 层 docstring 明确要求显式绑定流程但未实现。
 - 回归测试候选：绑定端点四场景（正常 / 未 step-up / 绑定冲突 / 未验证邮箱）。owner：#64。
 
-### D-8 /health/ready 判定门恒真 — #71 🔴 待修复（P1）
+### D-8 /health/ready 判定门恒真 — #71 ✅ 已修复关闭（2026-09-27）
 - 症状：ready 的 oltp 判定读自纯元数据 dict（`database_diagnostics` 不做连通性探测），恒为 True，`not_ready` 分支不可达；OLTP 不可达仍返回 ready。
 - 边界：health 路由 / 部署路由层；复现性 always。
-- 回归测试候选：路由级四态（正常 / SCHEDULER_ENABLED=False / DuckDB 降级 / OLTP 不可达）。owner：#71（Parent #6）。
+- 回归测试：`tests/test_health_endpoints.py` 四态路由级（正常 / 调度器禁用 / DuckDB 降级 / OLTP 不可达 503 + /health 别名）。owner：#71（Parent #6，修复 PR #75）。
 
-### D-9 三处无主 create_task — #72 🔴 待修复（P1）
+### D-9 三处无主 create_task — #72 ✅ 已修复关闭（2026-09-27）
 - 症状：`scheduler.py:1204/1205` 启动 rescan/恢复任务与 `daily_reports.py:294` 日报后台——无引用、无异常收集、不受停机管理；日报 `mark_error` 失败被裸 `except: pass` 吞掉可永卡 GENERATING。
 - 边界：scheduler 启动路径 / daily_reports / lifespan 停机序。
-- 回归测试候选：异常捕获记日志、任务注册可 drain、mark_error 失败不吞。owner：#72（Parent #6）。
+- 回归测试：`tests/test_task_registry.py`（异常记日志注销 / drain 取消清空 / 超时告警不抛出）。owner：#72（Parent #6，修复 PR #76：`app/core/task_registry.py` 收编三处 + mark_error 留痕）。
 
-### D-10 优雅停机链中断点 — #73 🔴 待修复（P2）
+### D-10 优雅停机链中断点 — #73 ✅ 已修复关闭（2026-09-27）
 - 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
-- 回归测试候选：停机各步异常隔离、jieba 超时路径。owner：#73（Parent #6）。
+- 回归测试：`tests/test_shutdown_prewarm.py`（异常不外抛且留痕 / jieba 超时不挂死 / 正常与已取消路径）。owner：#73（Parent #6，修复 PR #77：`_shutdown_prewarm_tasks`）。
 
 ## 三、关键流程基线（9 项）
 
@@ -101,10 +101,10 @@
 | 5 | Today Picks 查询 / 标记 / 反馈 | `pytest tests/test_duckdb_service.py -k today_picks` + `pytest tests/test_today_picks.py tests/test_feedback_signal.py`（`-k` 是全局过滤器，不能与其它文件混在同一条命令，否则 feedback 用例被静默过滤） | ✅（today_picks 4/4；today_picks + feedback 25 passed） |
 | 6 | 热榜同步 / 快照 | `pytest tests/test_trending_pipeline.py tests/test_trends_api.py tests/test_trend.py` | ✅（2026-09-27 全量 exit 0，#68 后） |
 | 7 | DuckDB 不可用 → OLTP 回退 | `pytest tests/test_duckdb_service.py tests/test_latest_analysis_queries.py tests/test_digest_fallback.py tests/test_db_backend.py` | ✅（同上） |
-| 8 | 启动迁移 → 调度器 → 优雅停机 | `pytest tests/test_migrations.py tests/test_lifespan_duckdb_init.py tests/test_cache_warmup.py tests/test_startup_warmup_policy.py tests/test_interest_vector_lifecycle.py` | ✅（同上；#6 的生命周期组合场景补充仍待做） |
+| 8 | 启动迁移 → 调度器 → 优雅停机 | `pytest tests/test_migrations.py tests/test_lifespan_duckdb_init.py tests/test_cache_warmup.py tests/test_startup_warmup_policy.py tests/test_interest_vector_lifecycle.py tests/test_task_registry.py tests/test_shutdown_prewarm.py tests/test_rescan_selfheal.py tests/test_health_endpoints.py` | ✅（2026-09-27 全量 exit 0 ×2；#6 生命周期补充已并入，PR #74~#78） |
 | 9 | 前端主界面状态 | `cd frontend && npx tsc --noEmit && npm run test:coverage` | ✅（2026-09-27 tsc 通过 + 147/147 + coverage 通过，#66 vitest 5） |
 
-**全量基线**：`make test-backend`（一次性 PG 容器）+ 前端命令。2026-09-27 全量转绿：#67（cryptography 50.0.1）与 #68（fastapi 0.141.1 / starlette 1.7.0）各跑一次全量均 exit 0；main push CI（#65 引入）@ `9da010e` 起全绿，#2 的全量转绿 DoD 达成。
+**全量基线**：`make test-backend`（一次性 PG 容器）+ 前端命令。2026-09-27 全量转绿：#67（cryptography 50.0.1）与 #68（fastapi 0.141.1 / starlette 1.7.0）各跑一次全量均 exit 0；main push CI（#65 引入）@ `9da010e` 起全绿，#2 的全量转绿 DoD 达成。同日 #6 生命周期加固波（PR #74~#78）最终状态全量 exit 0（含新增 5 个生命周期测试文件；#77 所引的中间态全量日志被截断无结论行，以本最终状态运行覆盖实证）。
 
 ## 四、维护规则
 

@@ -9,6 +9,16 @@
 `docs/` 其余内容默认本地不入库（`.gitignore` 仅白名单 `quality/`），
 `.vidt/` 等 agent 工作目录是被忽略的可丢弃会话态，同样不是归宿。
 
+## Delivery Workflow（Issue → branch → PR → Verifier → merge）
+
+正常路径：**有意义的变更必须有 issue → 分支 → PR → 检查绿 → 合并**，直推 main 不是常规路径。
+
+- **分支命名**：`issue-<number>-<short-slug>`（如 `issue-4-cryptography-50`）。
+- **PR 必须链接 issue** 并附 Worker 证据（本地验证命令 + 结果，见 PR 模板 Verification 段）。
+- **Verifier 契约**：CI 五项检查（types / tests / lint / layering / security-scan）是机器 Verifier，全绿是合并且预存红已显式处置的前提；承载行为变更的 PR 还需在模板 Verifier verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
+- **热修例外**：生产事故可直推 main 修复，但须在 24h 内补 PR 或在关联 issue 留 post-hoc 审计评论（原因、影响面、回归验证）。
+- main 的 push CI 自动复验由 #65 引入；矩阵与 DoD 证据以 main 运行为准。
+
 ## Commit Discipline
 
 Follow the existing project history. Recent commits use concise Conventional

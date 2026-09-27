@@ -67,6 +67,7 @@ def _oltp_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(app_main, "async_session", lambda: _ProbeSession())
 
+
 def _oltp_down(monkeypatch: pytest.MonkeyPatch) -> None:
     class _BrokenSessionFactory:
         def __call__(self):
@@ -81,13 +82,11 @@ def _oltp_down(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_main, "async_session", _BrokenSessionFactory())
 
 
-
 async def test_live_ok_returns_alive():
     async with _client() as client:
         resp = await client.get("/health/live")
     assert resp.status_code == 200
     assert resp.json()["status"] == "alive"
-
 
 
 async def test_live_unhealthy_when_oltp_down(monkeypatch):
@@ -96,7 +95,6 @@ async def test_live_unhealthy_when_oltp_down(monkeypatch):
         resp = await client.get("/health/live")
     assert resp.status_code == 503
     assert resp.json()["status"] == "unhealthy"
-
 
 
 async def test_ready_ok(monkeypatch):
@@ -109,7 +107,6 @@ async def test_ready_ok(monkeypatch):
     assert payload["status"] == "ready"
     assert payload["database"]["duckdb"]["available"] is True
     assert "scheduler" in payload
-
 
 
 async def test_ready_scheduler_disabled_still_ready(monkeypatch):
@@ -128,7 +125,6 @@ async def test_ready_scheduler_disabled_still_ready(monkeypatch):
     assert payload["scheduler"]["running"] is False
 
 
-
 async def test_ready_duckdb_degraded_still_ready(monkeypatch):
     """DuckDB 降级（生产默认形态）不影响就绪，但必须如实上报不可用。"""
     _duckdb_down(monkeypatch)
@@ -142,7 +138,6 @@ async def test_ready_duckdb_degraded_still_ready(monkeypatch):
     assert payload["database"]["duckdb"]["status"] == "error"
 
 
-
 async def test_ready_oltp_unreachable_returns_503(monkeypatch):
     """核心回归（#71）：OLTP 不可达必须 not_ready + 503，而非恒 ready。"""
     _duckdb_ok(monkeypatch)
@@ -153,7 +148,6 @@ async def test_ready_oltp_unreachable_returns_503(monkeypatch):
     payload = resp.json()
     assert payload["status"] == "not_ready"
     assert payload["database"]["oltp_error"] == "ConnectionError"
-
 
 
 async def test_health_alias_matches_ready(monkeypatch):

@@ -66,13 +66,13 @@
 - **owner**：#4（前端 #66：`npm audit fix` + vitest 5.0.2 + @types/node 22；后端 #67：cryptography 50.0.1；#68：fastapi 0.141.1 + starlette 1.7.0）
 - **日志/证据**：`uvx pip-audit -r <uv export --frozen 产物> --no-deps --disable-pip`；修复前口径（后端 12 条唯一公告 + 前端 6 条）见 #4 评论存档
 
-### D-6 OAuth 回调经 URL fragment 传完整凭证 — #63 🟡 待实现（P2）
-- 非缺陷而是安全收窄项：HttpOnly cookie 已下发，但 fragment 仍暴露 token 给前端 JS。
-- 回归测试候选：`tests_oauth_patch/`（断言 fragment 不含 token 后转正到该套件）。owner：#63。
+### D-6 OAuth 回调经 URL fragment 传完整凭证 — #63 ✅ 已修复关闭（2026-09-27）
+- 安全收窄项：fragment 不再含 access token，仅带 provider/expires_at；凭证只经 HttpOnly cookie；前端回调页不消费任何凭证参数（旧 #token= 链接落地但不消费）。
+- 回归测试：`tests_oauth_patch/test_oauth_fix.py` GitHub/Google 双 mock 断言 fragment 无 token。owner：#63（修复 PR #80；真实 provider E2E 待人工回归）。
 
-### D-7 管理员第三方账号手动绑定流程缺失 — #64 🟡 待实现（P2）
-- PR #62 已禁止向管理员自动关联，service 层 docstring 明确要求显式绑定流程但未实现。
-- 回归测试候选：绑定端点四场景（正常 / 未 step-up / 绑定冲突 / 未验证邮箱）。owner：#64。
+### D-7 管理员第三方账号手动绑定流程缺失 — #64 ✅ 已修复关闭（2026-09-27）
+- 已实现 step-up 绑定流程：`POST /auth/oauth/{provider}/bind/start`（重输密码→绑定意图入 session，TTL 10min）+ 回调绑定分支（会话本人校验、未验证邮箱拒绝、双冲突防护）；绑定成功不建新登录会话。
+- 回归测试：`tests_oauth_patch/test_oauth_bind.py` 六场景（含会话不匹配与无意图回退）。owner：#64（修复 PR #81；设置页 UI 与解绑端点为后续）。
 
 ### D-8 /health/ready 判定门恒真 — #71 ✅ 已修复关闭（2026-09-27）
 - 症状：ready 的 oltp 判定读自纯元数据 dict（`database_diagnostics` 不做连通性探测），恒为 True，`not_ready` 分支不可达；OLTP 不可达仍返回 ready。

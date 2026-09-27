@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -37,12 +37,31 @@ def _is_provider_enabled(provider: str) -> bool:
 
 
 def _backend_callback_url(request: Request, provider: str) -> str:
-    """构造 provider 应回调回的后端地址（保持当前 host/scheme）。
+    """Use the configured external origin rather than an untrusted forwarded Host.
 
-    优先用 request.base_url，去掉末尾斜杠后拼接。
-    开发态：http://127.0.0.1:8102/api/v1/auth/oauth/{provider}/callback
+    Next.js rewrites may send FastAPI an internal Host / HTTP scheme.
+    SITE_BASE_URL is the explicitly configured public origin in production.
     """
-    base = str(request.base_url).rstrip("/")
+    configured = (settings.SITE_BASE_URL or "").strip()
+    if configured:
+        parts = urlsplit(configured)
+        if (
+            parts.scheme not in {"http", "https"}
+            or not parts.netloc
+            or parts.username is not None
+            or parts.password is not None
+            or parts.path not in {"", "/"}
+            or parts.query
+            or parts.fragment
+        ):
+            raise HTTPException(status_code=500, detail="SITE_BASE_URL must be an http(s) site origin")
+        if settings.is_production and parts.scheme != "https":
+            raise HTTPException(status_code=500, detail="Production SITE_BASE_URL must use HTTPS")
+        base = f"{parts.scheme}://{parts.netloc}"
+    elif settings.is_production:
+        raise HTTPException(status_code=500, detail="SITE_BASE_URL is required for production OAuth")
+    else:
+        base = str(request.base_url).rstrip("/")
     return f"{base}/api/v1/auth/oauth/{provider}/callback"
 
 
@@ -101,6 +120,9 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     except _OAuthUserInfoError as exc:
         logger.warning("OAuth userinfo failed: provider=%s, exc=%s", provider, exc)
         return _frontend_redirect(error=str(exc))
+    except Exception:
+        logger.exception("OAuth provider userinfo request failed: provider=%s", provider)
+        return _frontend_redirect(error="OAuth 用户资料请求失败，请稍后重试")
 
     if not email or not provider_user_id:
         return _frontend_redirect(error="OAuth 身份信息不完整（缺少邮箱或用户 ID）")
@@ -158,7 +180,7 @@ async def _extract_userinfo(client: Any, provider: str, token: dict) -> tuple[st
               必须额外调 /user/emails 取 primary+verified 的邮箱。
     """
     if provider == "google":
-        userinfo = await client.userinfo(token=token)
+        userinfo = token.get("userinfo") or await client.userinfo(token=token)
         provider_user_id = str(userinfo.get("sub") or "")
         email = userinfo.get("email") or ""
         # Google 返回 email_verified 可能是 bool 或字符串 "true"
@@ -168,42 +190,39 @@ async def _extract_userinfo(client: Any, provider: str, token: dict) -> tuple[st
         return provider_user_id, email, email_verified, display_name
 
     if provider == "github":
-        # authorize_access_token 已拿到 GitHub access token
-        github_token = token.get("access_token") or ""
-        userinfo = await client.userinfo(token=token)
+        # GitHub is OAuth2, not OIDC; use the REST endpoint explicitly.
+        user_resp = await client.get("user", token=token)
+        user_resp.raise_for_status()
+        userinfo = user_resp.json()
+        if not isinstance(userinfo, dict):
+            raise _OAuthUserInfoError("GitHub 用户资料响应异常")
         provider_user_id = str(userinfo.get("id") or "")
         display_name = userinfo.get("name") or userinfo.get("login")
+        if not provider_user_id:
+            raise _OAuthUserInfoError("GitHub 用户 ID 缺失")
 
-        # 优先用 userinfo.email（若有且已验证）
-        email = userinfo.get("email") or ""
-        email_verified = False
-        if email:
-            # GitHub userinfo 不带 verified 标志，仍需查 /user/emails 确认
-            email, email_verified = await _resolve_github_email(client, github_token)
-
-        if not email:
-            raise _OAuthUserInfoError("GitHub 账号未公开邮箱且无可验证邮箱，无法登录")
-        if not email_verified:
-            raise _OAuthUserInfoError("GitHub 账号邮箱未验证，无法用于登录")
-
+        # /user.email may be null for private profiles. Always require
+        # primary + verified from /user/emails; public email is not proof.
+        email, email_verified = await _resolve_github_email(client, token)
+        if not email or not email_verified:
+            raise _OAuthUserInfoError("GitHub 账号没有可验证的主邮箱，无法登录")
         return provider_user_id, email, email_verified, display_name
 
     raise _OAuthUserInfoError(f"不支持的 OAuth provider: {provider}")
 
 
-async def _resolve_github_email(client: Any, access_token: str) -> tuple[str, bool]:
-    """调 GitHub /user/emails 取第一个 primary+verified 的邮箱。"""
-    if not access_token:
+async def _resolve_github_email(client: Any, token: dict) -> tuple[str, bool]:
+    """Return the authenticated user's verified primary email."""
+    if not token.get("access_token"):
         return "", False
-    resp = await client.get(
-        "user/emails",
-        token={"access_token": access_token, "token_type": "bearer"},
-    )
+    resp = await client.get("user/emails", token=token)
     resp.raise_for_status()
-    emails = resp.json()
-    if not isinstance(emails, list):
-        return "", False
-    for entry in emails:
-        if entry.get("primary") and entry.get("verified"):
-            return entry.get("email", ""), True
+    entries = resp.json()
+    if not isinstance(entries, list):
+        raise _OAuthUserInfoError("GitHub 邮箱接口响应异常")
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("primary") is True and entry.get("verified") is True:
+            email = entry.get("email")
+            if isinstance(email, str) and email.strip():
+                return email.strip(), True
     return "", False

@@ -211,6 +211,20 @@ async def test_health_redacts_duckdb_database_secret_on_error(monkeypatch):
     monkeypatch.setattr(app_main, "database_profile", profile)
     monkeypatch.setattr(duckdb_service, "get_analytics", fail_get_analytics)
 
+    # 本测试关注 DuckDB 报错脱敏；stub 掉 OLTP 探测，避免 app 级全局连接池
+    # 在 function-scoped 事件循环下跨循环复用连接（见 test_health_endpoints.py）。
+    class _ProbeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def execute(self, _stmt):
+            return None
+
+    monkeypatch.setattr(app_main, "async_session", lambda: _ProbeSession())
+
     payload = await app_main.health_check()
 
     error = payload["database"]["duckdb"]["error"]

@@ -56,15 +56,15 @@
 - **回归测试**：同上（4 passed @ 2026-09-27）
 - **owner**：#45（修复 PR #54）
 
-### D-5 依赖安全漏洞 — #4 🔴 进行中
+### D-5 依赖安全漏洞 — #4 ✅ 已修复关闭（2026-09-27）
 - **症状**：pip-audit / npm audit 报漏洞
-- **环境**：uv.lock 锁定生产依赖（2026-09-27 重扫）
-- **期望 vs 实际**：无未处置高危漏洞；实际后端 12 条公告（按**唯一公告 ID** 计，pip-audit 2.7.3 于 2026-09-27 复扫：cryptography 45.0.7 五条，全清零需 ≥50.0.0；starlette 0.46.2 七条，需 ≥1.3.1，涉及 fastapi 连带大版本升级。pip-audit 按 PYSEC/GHSA 别名拆行时原始输出为 8+14 行，口径不同数字会随 OSV 库日更漂移）+ 前端 6 条（3 moderate / 2 high / 1 critical，`fixAvailable` 均为 true，`npm audit fix` 可修）
+- **环境**：uv.lock 锁定生产依赖 + 前端 package-lock（2026-09-27 修复后复扫）
+- **期望 vs 实际**：无未处置高危漏洞；修复后前后端均 0 公告（后端 `No known vulnerabilities found`，前端 `found 0 vulnerabilities`）
 - **边界**：依赖 / 部署镜像 / CI security-scan 作业
 - **严重度**：P0；**复现性**：always
-- **回归测试**：CI `security-scan` 作业（`workflow_dispatch` 可手动触发）
-- **owner**：#4（最新扫描结果与修复路径见 issue 评论）
-- **日志/证据**：`uvx pip-audit -r <uv export --frozen 产物> --no-deps --disable-pip`
+- **回归测试**：CI `security-scan` 作业自 PR #68 起全绿；main push 自动复验由 #65 引入
+- **owner**：#4（前端 #66：`npm audit fix` + vitest 5.0.2 + @types/node 22；后端 #67：cryptography 50.0.1；#68：fastapi 0.141.1 + starlette 1.7.0）
+- **日志/证据**：`uvx pip-audit -r <uv export --frozen 产物> --no-deps --disable-pip`；修复前口径（后端 12 条唯一公告 + 前端 6 条）见 #4 评论存档
 
 ### D-6 OAuth 回调经 URL fragment 传完整凭证 — #63 🟡 待实现（P2）
 - 非缺陷而是安全收窄项：HttpOnly cookie 已下发，但 fragment 仍暴露 token 给前端 JS。
@@ -81,16 +81,16 @@
 | # | 关键流程 | 验证命令（backend/ 下，遵守§一） | 状态 |
 |---|---|---|---|
 | 1 | 登录 / 会话 / OAuth | `pytest tests/test_auth.py tests/test_oauth_service.py`；隔离版 `python -m pytest tests_oauth_patch/`（须 `python -m`，见 §一） | ✅（隔离套件 27/27（oauth_fix 8 + account_link_security 19）；auth + oauth_service 19 passed） |
-| 2 | 信源创建 → 同步 → 内容落库 | `pytest tests/test_source_api.py tests/test_source_seed.py tests/test_api_source_scraper.py tests/test_content_pipeline.py` | 📋 |
-| 3 | 抽取 / 富化 / 分类 | `pytest tests/test_enricher.py tests/test_classifier_contract.py tests/test_content_labeling.py tests/test_content_summary.py tests/test_recognizer.py tests/test_tag_normalization.py` | 📋 |
+| 2 | 信源创建 → 同步 → 内容落库 | `pytest tests/test_source_api.py tests/test_source_seed.py tests/test_api_source_scraper.py tests/test_content_pipeline.py` | ✅（2026-09-27 全量 exit 0，#68 后） |
+| 3 | 抽取 / 富化 / 分类 | `pytest tests/test_enricher.py tests/test_classifier_contract.py tests/test_content_labeling.py tests/test_content_summary.py tests/test_recognizer.py tests/test_tag_normalization.py` | ✅（同上） |
 | 4 | 分析任务入队 → 恢复 → 完成/失败 | `pytest tests/test_analysis_recovery.py tests/test_analysis_jobs_persistence.py tests/test_job_tracker.py tests/test_analyses_api.py` | ✅（47 passed） |
 | 5 | Today Picks 查询 / 标记 / 反馈 | `pytest tests/test_duckdb_service.py -k today_picks` + `pytest tests/test_today_picks.py tests/test_feedback_signal.py`（`-k` 是全局过滤器，不能与其它文件混在同一条命令，否则 feedback 用例被静默过滤） | ✅（today_picks 4/4；today_picks + feedback 25 passed） |
-| 6 | 热榜同步 / 快照 | `pytest tests/test_trending_pipeline.py tests/test_trends_api.py tests/test_trend.py` | 📋 |
-| 7 | DuckDB 不可用 → OLTP 回退 | `pytest tests/test_duckdb_service.py tests/test_latest_analysis_queries.py tests/test_digest_fallback.py tests/test_db_backend.py` | 📋 |
-| 8 | 启动迁移 → 调度器 → 优雅停机 | `pytest tests/test_migrations.py tests/test_lifespan_duckdb_init.py tests/test_cache_warmup.py tests/test_startup_warmup_policy.py tests/test_interest_vector_lifecycle.py` | 📋（#6 将补充生命周期组合场景） |
-| 9 | 前端主界面状态 | `cd frontend && npx tsc --noEmit && npm run test:coverage` | 📋 |
+| 6 | 热榜同步 / 快照 | `pytest tests/test_trending_pipeline.py tests/test_trends_api.py tests/test_trend.py` | ✅（2026-09-27 全量 exit 0，#68 后） |
+| 7 | DuckDB 不可用 → OLTP 回退 | `pytest tests/test_duckdb_service.py tests/test_latest_analysis_queries.py tests/test_digest_fallback.py tests/test_db_backend.py` | ✅（同上） |
+| 8 | 启动迁移 → 调度器 → 优雅停机 | `pytest tests/test_migrations.py tests/test_lifespan_duckdb_init.py tests/test_cache_warmup.py tests/test_startup_warmup_policy.py tests/test_interest_vector_lifecycle.py` | ✅（同上；#6 的生命周期组合场景补充仍待做） |
+| 9 | 前端主界面状态 | `cd frontend && npx tsc --noEmit && npm run test:coverage` | ✅（2026-09-27 tsc 通过 + 147/147 + coverage 通过，#66 vitest 5） |
 
-**全量基线**：`make test-backend`（一次性 PG 容器）+ 前端命令。截至 2026-09-27 未跑全量（本轮仅做针对性取证）；上一次全量 PG 套件运行记录见 #34 诊断 PR 时代，全量转绿是 #2 DoD 的剩余项。
+**全量基线**：`make test-backend`（一次性 PG 容器）+ 前端命令。2026-09-27 全量转绿：#67（cryptography 50.0.1）与 #68（fastapi 0.141.1 / starlette 1.7.0）各跑一次全量均 exit 0；main push CI（#65 引入）@ `9da010e` 起全绿，#2 的全量转绿 DoD 达成。
 
 ## 四、维护规则
 

@@ -49,10 +49,11 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Docs (PRD, prototypes, internal plans) — keep screenshots and images for README
+# Docs (PRD, prototypes, internal plans) — tracked exceptions: screenshots / images (README 用) 与 quality（回归矩阵需入库）
 docs/*
 !docs/screenshots/
 !docs/images/
+!docs/quality/
 
 # Test cache
 .pytest_cache/

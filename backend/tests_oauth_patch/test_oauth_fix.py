@@ -169,8 +169,14 @@ async def test_mock_github_authorization_state_callback_and_auth_cookies(monkeyp
         assert "secure" in login.headers.get("set-cookie", "").lower()
         callback = await client.get("/api/v1/auth/oauth/github/callback?code=dummy&state=test-state")
         assert callback.status_code == 302
-        assert callback.headers["location"].startswith(PUBLIC_ORIGIN + "/oauth/callback#")
+        location = callback.headers["location"]
+        assert location.startswith(PUBLIC_ORIGIN + "/oauth/callback#")
         assert "topiceye_auth=" in callback.headers.get("set-cookie", "")
+        # #63：fragment 不含任何凭证，只带非敏感状态
+        fragment = location.split("#", 1)[1]
+        assert "token=" not in fragment
+        assert "provider=github" in fragment
+        assert "expires_at=" in fragment
         assert get_user.await_args.kwargs["email_verified"] is True
         create_session.assert_awaited_once()
 
@@ -203,6 +209,12 @@ async def test_mock_google_authorization_state_callback_and_auth_cookies(monkeyp
         assert provider.callback_uri == PUBLIC_ORIGIN + "/api/v1/auth/oauth/google/callback"
         callback = await client.get("/api/v1/auth/oauth/google/callback?code=dummy&state=test-state")
         assert callback.status_code == 302
-        assert callback.headers["location"].startswith(PUBLIC_ORIGIN + "/oauth/callback#")
+        location = callback.headers["location"]
+        assert location.startswith(PUBLIC_ORIGIN + "/oauth/callback#")
         assert "topiceye_auth=" in callback.headers.get("set-cookie", "")
+        # #63：fragment 不含任何凭证，只带非敏感状态
+        fragment = location.split("#", 1)[1]
+        assert "token=" not in fragment
+        assert "provider=google" in fragment
+        assert "expires_at=" in fragment
         create_session.assert_awaited_once()

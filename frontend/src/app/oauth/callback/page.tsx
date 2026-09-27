@@ -12,13 +12,13 @@ type Status = 'loading' | 'error' | 'success';
 /**
  * OAuth 回调消费页。
  *
- * 后端在 OAuth 成功后 302 到 /oauth/callback#token=xxx&expires_at=xxx，
+ * 后端在 OAuth 成功后 302 到 /oauth/callback#provider=xx&expires_at=xx，
  * 失败则 302 到 /oauth/callback?error=xxx。
  *
- * 认证 token 通过 HttpOnly cookie 下发（浏览器自动携带），
- * fragment 中的 token 仅用于兼容与 presence 标记设置。
- * 本页读取 URL fragment → 设置 presence cookie → 拉 me() → 写入 Context → 跳首页，
- * 并用 history.replaceState 清理 URL 避免残留。
+ * 会话凭证只通过 HttpOnly cookie 下发（浏览器自动携带），本页不读取
+ * 任何凭证类 fragment 参数（#63）；旧版 #token=... 链接仍能落地，
+ * 但 token 一律不消费。流程：设置 presence 标记 → 拉 me() → 写入
+ * Context → 跳首页，并用 history.replaceState 清理 URL。
  */
 export default function OauthCallbackPage() {
   const router = useRouter();
@@ -42,38 +42,29 @@ export default function OauthCallbackPage() {
         return;
       }
 
-      // 2. 解析 fragment 拿 token
+      // 2. 解析 fragment 中的非敏感状态（#63：不读取/消费任何凭证参数）
       const params = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash);
-      const token = params.get('token');
-      const expiresAt = params.get('expires_at');
-
-      if (!token || !expiresAt) {
-        if (!cancelled) {
-          setErrorMsg('OAuth 回调缺少登录凭证，请重新登录');
-          setStatus('error');
-        }
-        return;
-      }
+      const expiresAt = params.get('expires_at') ?? '';
 
       try {
-        // token 已在 HttpOnly cookie 中（后端 302 响应设置）。
-        // 设置 presence cookie 让前端判断登录状态，然后拉 me()。
+        // 会话凭证已在 HttpOnly cookie 中（后端 302 响应设置）。
+        // 设置 presence 标记让前端判断登录状态，然后以 cookie 拉 me()。
         setAuthToken('1');
         const user = await authApi.me();
         if (cancelled) return;
 
         applyAuthSession({
-          access_token: token,
+          access_token: 'http-only-cookie', // 占位：applyAuthSession 仅作 presence 用
           token_type: 'bearer',
           expires_at: expiresAt,
           user,
         });
 
-        // 抹掉 URL 里的 token，防止残留在浏览器历史
+        // 清理 URL，防止残留状态参数
         history.replaceState(null, '', '/oauth/callback');
         router.replace('/');
       } catch (err) {
-        // token 无效或 me() 失败 → 清理并报错
+        // cookie 缺失/无效或 me() 失败 → 清理并报错
         setAuthToken(null);
         if (!cancelled) {
           setErrorMsg(err instanceof Error ? err.message : '登录信息拉取失败，请重新登录');

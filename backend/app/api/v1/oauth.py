@@ -4,7 +4,8 @@
   1. 前端整页跳转 GET /auth/oauth/{provider}/login → 后端 302 到 provider 授权页
   2. provider 回调 GET /auth/oauth/{provider}/callback → 换 token + 拉 userinfo
   3. 解析为本地 User（自动合并同邮箱账号）+ 建 session
-  4. 302 到前端回调页，token 走 URL fragment（不进 server log / Referer）
+  4. 302 到前端回调页；会话凭证只经 HttpOnly cookie 下发，
+   fragment 仅携带非敏感状态（provider / expires_at，见 #63）
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ def _backend_callback_url(request: Request, provider: str) -> str:
 
 
 def _frontend_redirect(fragment: str | None = None, error: str | None = None) -> RedirectResponse:
-    """构造跳回前端的响应。token 走 fragment，错误走 query。"""
+    """构造跳回前端的响应。非敏感状态走 fragment，错误走 query（#63：fragment 不含凭证）。"""
     target = settings.OAUTH_FRONTEND_REDIRECT_URL
     if not target:
         raise HTTPException(
@@ -143,11 +144,12 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     access_token, session = await create_session(db, user)
     logger.info("OAuth login success: provider=%s, user_id=%d, email=%s", provider, user.id, email)
 
-    # token 通过 HttpOnly cookie 下发（浏览器自动携带）；
-    # expires_at 走 fragment 给前端做 refresh 判断（兼容旧逻辑）
+    # 会话凭证只经 HttpOnly cookie 下发（浏览器自动携带）；
+    # fragment 仅携带非敏感状态（provider / expires_at），不再包含
+    # access token——杜绝 token 暴露给前端 JS / 地址栏 / 历史记录（#63）。
     fragment = urlencode(
         {
-            "token": access_token,
+            "provider": provider,
             "expires_at": session.expires_at.isoformat(),
         }
     )

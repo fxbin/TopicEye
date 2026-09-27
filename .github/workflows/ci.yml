@@ -5,13 +5,16 @@
 # 保证 PR 阶段有真实门禁。高成本的 PostgreSQL 全量测试不在 GitHub 跑：
 # 本地执行 `make test-backend`（backend/scripts/test_full_local.sh，
 # 一次性 PG 容器跑在 127.0.0.1:5433，不占用开发栈）。
-# workflow_dispatch 保留用于合并后在 main 上手动复验轻量作业。
+# workflow_dispatch 保留手动触发；push 到 main 自动复验轻量作业，
+# 避免「直推 main 无任何 CI 证据」的盲区（见 #7 / #2）。
 # =============================================================================
 
 name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:

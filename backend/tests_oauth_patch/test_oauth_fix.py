@@ -4,6 +4,7 @@ Placed outside tests/ deliberately: tests/conftest.py has database cleanup
 fixtures and must never run against a production database.
 Run with an isolated dummy DATABASE_URL.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,9 +43,9 @@ class FakeGithub:
         self.calls = []
         self.callback_uri = None
         self.public_email = public_email
-        self.emails = emails if emails is not None else [
-            {"email": "private@example.com", "primary": True, "verified": True}
-        ]
+        self.emails = (
+            emails if emails is not None else [{"email": "private@example.com", "primary": True, "verified": True}]
+        )
 
     async def get(self, endpoint, *, token):
         self.calls.append(endpoint)
@@ -75,19 +76,21 @@ async def test_github_private_email_verified_primary():
 
 @pytest.mark.asyncio
 async def test_github_unverified_primary_rejected():
-    client = FakeGithub(public_email="public@example.com", emails=[
-        {"email": "public@example.com", "primary": True, "verified": False}
-    ])
+    client = FakeGithub(
+        public_email="public@example.com", emails=[{"email": "public@example.com", "primary": True, "verified": False}]
+    )
     with pytest.raises(oauth_routes._OAuthUserInfoError, match="可验证的主邮箱"):
         await oauth_routes._extract_userinfo(client, "github", {"access_token": "dummy"})
 
 
 @pytest.mark.asyncio
 async def test_github_secondary_verified_cannot_override_primary():
-    client = FakeGithub(emails=[
-        {"email": "unverified@example.com", "primary": True, "verified": False},
-        {"email": "secondary@example.com", "primary": False, "verified": True},
-    ])
+    client = FakeGithub(
+        emails=[
+            {"email": "unverified@example.com", "primary": True, "verified": False},
+            {"email": "secondary@example.com", "primary": False, "verified": True},
+        ]
+    )
     with pytest.raises(oauth_routes._OAuthUserInfoError, match="可验证的主邮箱"):
         await oauth_routes._extract_userinfo(client, "github", {"access_token": "dummy"})
 
@@ -95,22 +98,30 @@ async def test_github_secondary_verified_cannot_override_primary():
 @pytest.mark.asyncio
 async def test_google_prefers_verified_oidc_token_userinfo():
     client = SimpleNamespace(userinfo=AsyncMock(side_effect=AssertionError("Unexpected userinfo request")))
-    token = {"userinfo": {
-        "sub": "google-id", "email": "google@example.com", "email_verified": True, "name": "Google"
-    }}
+    token = {"userinfo": {"sub": "google-id", "email": "google@example.com", "email_verified": True, "name": "Google"}}
     assert await oauth_routes._extract_userinfo(client, "google", token) == (
-        "google-id", "google@example.com", True, "Google"
+        "google-id",
+        "google@example.com",
+        True,
+        "Google",
     )
     client.userinfo.assert_not_awaited()
 
 
 def internal_request():
-    return Request({
-        "type": "http", "asgi": {"version": "3.0"}, "scheme": "http",
-        "server": ("backend", 8000), "root_path": "",
-        "path": "/api/v1/auth/oauth/github/login", "query_string": b"",
-        "headers": [(b"host", b"backend:8000")], "client": ("127.0.0.1", 1234),
-    })
+    return Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "scheme": "http",
+            "server": ("backend", 8000),
+            "root_path": "",
+            "path": "/api/v1/auth/oauth/github/login",
+            "query_string": b"",
+            "headers": [(b"host", b"backend:8000")],
+            "client": ("127.0.0.1", 1234),
+        }
+    )
 
 
 def test_callback_uses_public_origin_over_internal_proxy(monkeypatch):
@@ -136,15 +147,21 @@ def make_app(monkeypatch, provider, provider_client):
     monkeypatch.setattr(oauth_routes, "ENABLED_PROVIDERS", [provider])
     monkeypatch.setattr(oauth_routes.oauth, "create_client", lambda _: provider_client)
     get_user = AsyncMock(return_value=SimpleNamespace(id=101, email="private@example.com"))
-    create_session = AsyncMock(return_value=(
-        "dummy-auth-cookie", SimpleNamespace(expires_at=datetime.now(UTC) + timedelta(hours=1)),
-    ))
+    create_session = AsyncMock(
+        return_value=(
+            "dummy-auth-cookie",
+            SimpleNamespace(expires_at=datetime.now(UTC) + timedelta(hours=1)),
+        )
+    )
     monkeypatch.setattr(oauth_routes, "get_or_create_oauth_user", get_user)
     monkeypatch.setattr(oauth_routes, "create_session", create_session)
     app = FastAPI()
     app.add_middleware(
-        SessionMiddleware, secret_key="dummy-test-only-signing-secret",
-        session_cookie="topiceye_oauth_state", https_only=True, same_site="lax",
+        SessionMiddleware,
+        secret_key="dummy-test-only-signing-secret",
+        session_cookie="topiceye_oauth_state",
+        https_only=True,
+        same_site="lax",
     )
     app.include_router(oauth_routes.router, prefix="/api/v1")
 
@@ -160,7 +177,9 @@ async def test_mock_github_authorization_state_callback_and_auth_cookies(monkeyp
     provider = FakeGithub()
     app, get_user, create_session = make_app(monkeypatch, "github", provider)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url=PUBLIC_ORIGIN, follow_redirects=False,
+        transport=httpx.ASGITransport(app=app),
+        base_url=PUBLIC_ORIGIN,
+        follow_redirects=False,
     ) as client:
         login = await client.get("/api/v1/auth/oauth/github/login")
         assert login.status_code in {302, 307}
@@ -189,9 +208,10 @@ class FakeGoogle(FakeGithub):
 
     async def authorize_access_token(self, request):
         assert request.session["fake_state"] == request.query_params["state"] == "test-state"
-        return {"access_token": "dummy", "userinfo": {
-            "sub": "g123", "email": "g@example.com", "email_verified": True, "name": "Google"
-        }}
+        return {
+            "access_token": "dummy",
+            "userinfo": {"sub": "g123", "email": "g@example.com", "email_verified": True, "name": "Google"},
+        }
 
     async def userinfo(self, *, token):
         raise AssertionError("OIDC token already includes userinfo")
@@ -202,7 +222,9 @@ async def test_mock_google_authorization_state_callback_and_auth_cookies(monkeyp
     provider = FakeGoogle()
     app, get_user, create_session = make_app(monkeypatch, "google", provider)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url=PUBLIC_ORIGIN, follow_redirects=False,
+        transport=httpx.ASGITransport(app=app),
+        base_url=PUBLIC_ORIGIN,
+        follow_redirects=False,
     ) as client:
         login = await client.get("/api/v1/auth/oauth/google/login")
         assert login.status_code in {302, 307}

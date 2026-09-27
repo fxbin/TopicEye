@@ -66,6 +66,15 @@ sudo ./deploy/deploy.sh --external-pg --domain 你的域名 --email 你@邮箱.c
 生产运行进程。对外部署时请在项目根目录 `.env` 中显式设置
 `APP_ENV=production`、`APP_SECRET_KEY` 和 `CORS_ORIGINS`；生产模式会拒绝默认密钥。
 
+### 1.4 支持的进程与 worker 拓扑（重要约束）
+
+**当前唯一受支持的拓扑：单 backend 进程**（`backend/Dockerfile` 的 CMD 为单 uvicorn 进程，无 `--workers`）。
+
+- APScheduler 使用内存 jobstore（非持久化、无 leader election）。多实例部署时**所有实例都会各自调度**，仅靠 DB 层租约兜底：cron/interval job 由 `@track_job` 的 `scheduled_jobs` 表行锁互斥，源同步由 `claim_sync` 租约互斥，分析内容由 fencing token 保证正确性。但**启动恢复会把其它健康实例正在执行的 RUNNING 分析 job 重置为 QUEUED**——正确性有 fencing 保证，代价是重复 LLM 消耗。
+- 多实例 HA 的前置条件：init container 单次执行 alembic（见 §6.3）+ 调度器 leader lease / fencing token（未实现，规划见 `docs/plan/llm-model-pool-roadmap.md`）。在那之前请保持单实例或用 `SCHEDULER_ENABLED=false` 拆分无调度器实例。
+- **`SCHEDULER_ENABLED=false` 是受支持部署形态**（纯 API / worker 拆分实例）：调度器不启动，`/health/ready` 不因此判定 not_ready（响应中 `scheduler.running=false`）。
+- **DuckDB 降级是受支持形态**（生产默认 `DUCKDB_STARTUP_INIT_ENABLED=false`，启动即降级走 OLTP）：today_picks 与 webnovel 周报有 OLTP 回退，stats / trends / skill 分析端点按设计直接 503（不回退）。健康端点语义见 §3.1。
+
 ---
 
 ## 2. 环境变量

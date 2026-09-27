@@ -1196,14 +1196,15 @@ def start_scheduler() -> None:
 
     # Immediately register all enabled sources so they start syncing
     # right away instead of waiting for the first 10-minute rescan.
-    import asyncio as _asyncio
+    # 启动任务经 track_background_task 受管：异常由 done callback 记日志，
+    # 优雅停机时由 drain_tracked_tasks 统一回收（issue #72）。
+    from app.core.task_registry import track_background_task
 
     try:
-        loop = _asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(_rescan_sources())
-            loop.create_task(_recover_analysis_jobs_on_startup())
-            logger.info("Scheduler: initial source rescan scheduled immediately")
+        asyncio.get_running_loop()
+        track_background_task(_rescan_sources(), name="startup-source-rescan")
+        track_background_task(_recover_analysis_jobs_on_startup(), name="startup-analysis-recovery")
+        logger.info("Scheduler: initial source rescan scheduled immediately")
     except RuntimeError:
         logger.warning("Scheduler: could not schedule initial rescan (no event loop)")
 

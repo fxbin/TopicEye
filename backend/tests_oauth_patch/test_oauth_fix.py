@@ -23,7 +23,6 @@ from starlette.requests import Request  # noqa: E402
 
 from app.api.v1 import oauth as oauth_routes  # noqa: E402
 
-
 PUBLIC_ORIGIN = "https://topic.example.com"
 
 

@@ -11,22 +11,27 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import _set_auth_cookies
+from app.api.v1.auth import _set_auth_cookies, get_current_user, get_optional_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.oauth import ENABLED_PROVIDERS, oauth
 from app.core.request_utils import client_ip
 from app.services.auth_service import (
     OAuthAccountConflictError,
+    OAuthBindConflictError,
     create_session,
     get_or_create_oauth_user,
+    link_oauth_identity_to_user,
+    verify_password,
 )
 
 router = APIRouter(prefix="/auth/oauth", tags=["auth"])
@@ -97,6 +102,67 @@ async def oauth_login(request: Request, provider: str):
     return await client.authorize_redirect(request, redirect_uri)
 
 
+# ── 显式绑定流程（#64：需要 step-up 的管理员/已登录用户第三方绑定）────
+
+
+BIND_INTENT_TTL_SECONDS = 600
+
+
+class OAuthBindStartRequest(BaseModel):
+    """发起绑定的 step-up 请求体：重新输入当前账号密码。"""
+
+    password: str
+
+
+def _pop_bind_intent(request: Request, provider: str) -> dict | None:
+    """取出并校验绑定意图：provider 匹配且未过期才有效。"""
+    try:
+        raw = request.session.pop("oauth_bind", None)
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("provider") != provider or float(raw.get("exp", 0)) < time.time():
+        return None
+    return raw
+
+
+@router.post("/{provider}/bind/start")
+async def oauth_bind_start(
+    provider: str,
+    payload: OAuthBindStartRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """发起第三方账号绑定（#64）：step-up 密码验证通过后进入 provider 授权。
+
+    绑定意图写入服务端 session（与 OAuth state 同生命周期，TTL 10 分钟），
+    回调时据此走绑定分支而非登录分支。
+    """
+    if not _is_provider_enabled(provider):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not enabled")
+    client = oauth.create_client(provider)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not registered")
+
+    # step-up：重新验证当前账号密码（未设密码的账号无法走此流程）
+    if not current_user.password_hash or not verify_password(payload.password, current_user.password_hash):
+        logger.warning(
+            "OAuth bind start rejected: step-up password mismatch user_id=%s", getattr(current_user, "id", None)
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="密码验证失败，无法发起绑定")
+
+    request.session["oauth_bind"] = {
+        "user_id": current_user.id,
+        "provider": provider,
+        "exp": time.time() + BIND_INTENT_TTL_SECONDS,
+    }
+    redirect_uri = _backend_callback_url(request, provider)
+    resp = await client.authorize_redirect(request, redirect_uri)
+    return {"authorize_url": resp.headers["location"]}
+
+
 # ── provider 回调 ─────────────────────────────────────────────────
 
 
@@ -128,6 +194,19 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     if not email or not provider_user_id:
         return _frontend_redirect(error="OAuth 身份信息不完整（缺少邮箱或用户 ID）")
 
+    bind_intent = _pop_bind_intent(request, provider)
+    if bind_intent is not None:
+        return await _handle_bind_callback(
+            request,
+            db,
+            provider=provider,
+            intent=bind_intent,
+            provider_user_id=str(provider_user_id),
+            email=email,
+            email_verified=email_verified,
+            display_name=display_name,
+        )
+
     try:
         user = await get_or_create_oauth_user(
             db,
@@ -156,6 +235,44 @@ async def oauth_callback(request: Request, provider: str, db: AsyncSession = Dep
     response = _frontend_redirect(fragment=fragment)
     _set_auth_cookies(response, access_token, session.expires_at)
     return response
+
+
+async def _handle_bind_callback(
+    request: Request,
+    db: AsyncSession,
+    *,
+    provider: str,
+    intent: dict,
+    provider_user_id: str,
+    email: str,
+    email_verified: bool,
+    display_name: str | None,
+) -> RedirectResponse:
+    """绑定分支回调：会话本人 + 已验证邮箱 + 无冲突 → 落 user_oauth_account。"""
+    current = await get_optional_current_user(request, authorization=None, db=db)
+    if current is None or current.id != intent.get("user_id"):
+        logger.warning(
+            "OAuth bind rejected: session mismatch provider=%s intent_user=%s", provider, intent.get("user_id")
+        )
+        return _frontend_redirect(error="绑定会话已失效或与当前登录不一致，请重新发起绑定")
+    if not email_verified:
+        return _frontend_redirect(error="该第三方身份邮箱未验证，无法绑定")
+    try:
+        account = await link_oauth_identity_to_user(
+            db,
+            user=current,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            email=email,
+            email_verified=email_verified,
+            display_name=display_name,
+        )
+    except (OAuthBindConflictError, ValueError) as exc:
+        logger.warning("OAuth bind failed: provider=%s user_id=%s exc=%s", provider, current.id, exc)
+        return _frontend_redirect(error=str(exc))
+    logger.info("OAuth identity bound: provider=%s user_id=%d account_id=%d", provider, current.id, account.id)
+    fragment = urlencode({"provider": provider, "bind": "linked"})
+    return _frontend_redirect(fragment=fragment)
 
 
 # ── 已启用 provider 列表（前端据此渲染按钮）──────────────────────────

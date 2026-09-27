@@ -106,6 +106,10 @@ async def create_user(
     return user
 
 
+class OAuthBindConflictError(Exception):
+    """显式绑定流程冲突：同 provider 已绑定 / 身份已被其它账号绑定。"""
+
+
 class OAuthAccountConflictError(Exception):
     """OAuth 登录时邮箱与现有账号冲突但无法自动合并。
 
@@ -122,6 +126,52 @@ async def get_oauth_account(db: AsyncSession, *, provider: str, provider_user_id
         )
     )
     return result.scalar_one_or_none()
+
+
+async def link_oauth_identity_to_user(
+    db: AsyncSession,
+    *,
+    user: User,
+    provider: str,
+    provider_user_id: str,
+    email: str,
+    email_verified: bool,
+    display_name: str | None = None,
+) -> UserOAuthAccount:
+    """把已验证的 OAuth 身份显式挂到指定账号（#64，管理员同样适用）。
+
+    与 get_or_create_oauth_user 的自动合并互补：调用方（API 层）必须已完成
+    step-up 验证并确认会话本人；本函数只负责冲突判定与落库，两种冲突一律
+    抛 OAuthBindConflictError（目标账号已有同 provider 绑定需先解绑、身份
+    已被其它账号绑定拒绝），防止置换攻击。
+    """
+    if not email_verified:
+        raise ValueError("该第三方身份邮箱未验证，无法绑定")
+
+    own_stmt = select(UserOAuthAccount).where(
+        UserOAuthAccount.user_id == user.id,
+        UserOAuthAccount.provider == provider,
+    )
+    own = (await db.execute(own_stmt)).scalar_one_or_none()
+    if own is not None:
+        raise OAuthBindConflictError("该账号已绑定此登录方式，请先解绑后再重新绑定")
+
+    taken = await get_oauth_account(db, provider=provider, provider_user_id=provider_user_id)
+    if taken is not None:
+        raise OAuthBindConflictError("该第三方身份已绑定其它账号，无法重复绑定")
+
+    account = UserOAuthAccount(
+        user_id=user.id,
+        provider=provider,
+        provider_user_id=provider_user_id,
+        provider_email=email,
+        email_verified=True,
+        display_name=display_name,
+    )
+    db.add(account)
+    await db.commit()
+    await db.refresh(account)
+    return account
 
 
 async def get_or_create_oauth_user(
@@ -263,9 +313,7 @@ async def ensure_admin_user(
         # promoted to admin merely by matching ADMIN_EMAIL.
         if not user.password_hash:
             raise ValueError("Admin seed refuses to promote a passwordless existing account")
-        oauth_link = await db.scalar(
-            select(UserOAuthAccount.id).where(UserOAuthAccount.user_id == user.id).limit(1)
-        )
+        oauth_link = await db.scalar(select(UserOAuthAccount.id).where(UserOAuthAccount.user_id == user.id).limit(1))
         if oauth_link is not None:
             raise ValueError("Admin seed refuses to promote an OAuth-linked existing account")
     if not user:

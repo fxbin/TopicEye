@@ -581,6 +581,17 @@ async def health_ready():
     用于"服务是否可以接收流量"的判断（部署/路由层）。
     """
     diagnostics = database_diagnostics(database_profile)
+
+    # OLTP 连通性必须真实探测：diagnostics 是纯元数据 dict，不能作为就绪依据（#71）。
+    oltp_error: str | None = None
+    try:
+        async with async_session() as db:
+            from sqlalchemy import text
+
+            await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        oltp_error = redact_database_secrets(type(exc).__name__, database_profile)
+
     try:
         from app.services.duckdb_service import get_analytics, run_query
 
@@ -600,17 +611,20 @@ async def health_ready():
     except Exception:
         scheduler_running = False
 
-    # 判定：DB OK 即 ready（DuckDB 有 fallback，scheduler 可能被配置禁用）
-    db_ok = diagnostics.get("oltp") is not None
-    overall = "ready" if db_ok else "not_ready"
-
-    return {
+    # 判定：OLTP 可达即 ready（DuckDB 有 fallback，scheduler 可能被配置禁用，
+    # 两者是受支持部署形态，见 DEPLOYMENT.md §1.4）；OLTP 不可达 → not_ready。
+    overall = "ready" if oltp_error is None else "not_ready"
+    payload = {
         "status": overall,
         "service": "topiceye-backend",
         "database": {
             "backend": database_profile.backend,
             **diagnostics,
+            **({"oltp_error": oltp_error} if oltp_error else {}),
             "duckdb": duckdb_status,
         },
         "scheduler": {"running": scheduler_running},
     }
+    if oltp_error is not None:
+        return JSONResponse(status_code=503, content=payload)
+    return payload

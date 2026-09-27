@@ -1,5 +1,14 @@
 # Agent Guidelines
 
+## Quality Registry Anchor
+
+缺陷与回归的唯一事实源：[`docs/quality/regression-matrix.md`](docs/quality/regression-matrix.md)。
+
+新确认缺陷先在该文件登记（十个维度）再开 issue；关闭 issue 时同步其状态；
+稳定化迭代收尾时刷新「未复跑」条目。不要把缺陷清单散落到其它文档或目录——
+`docs/` 其余内容默认本地不入库（`.gitignore` 仅白名单 `quality/`），
+`.vidt/` 等 agent 工作目录是被忽略的可丢弃会话态，同样不是归宿。
+
 ## Commit Discipline
 
 Follow the existing project history. Recent commits use concise Conventional

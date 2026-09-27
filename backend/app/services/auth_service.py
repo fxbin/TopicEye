@@ -154,6 +154,10 @@ async def get_or_create_oauth_user(
     if existing:
         user = await db.get(User, existing.user_id)
         if user and user.is_active:
+            # Historic releases permitted unverified OAuth-only accounts.
+            # Such existing bindings require ownership review before reuse.
+            if not existing.email_verified:
+                raise OAuthAccountConflictError("历史 OAuth 关联未经验证，请联系管理员核实账号归属")
             return user
         if user:
             raise OAuthAccountConflictError("绑定的账号已被停用，请联系管理员")
@@ -169,7 +173,20 @@ async def get_or_create_oauth_user(
     if existing_user:
         if not existing_user.is_active or existing_user.role == UserRole.ADMIN.value:
             raise OAuthAccountConflictError("此账号不支持自动关联，请使用原有登录方式")
-        # 已验证的普通用户 → 自动关联现有账号
+        # Reject email squatting from legacy unverified OAuth account creation.
+        # Otherwise the true verified owner can be joined to an account whose
+        # previous attacker still holds active sessions.
+        legacy_link = await db.scalar(
+            select(UserOAuthAccount.id)
+            .where(
+                UserOAuthAccount.user_id == existing_user.id,
+                UserOAuthAccount.email_verified.is_(False),
+            )
+            .limit(1)
+        )
+        if legacy_link is not None:
+            raise OAuthAccountConflictError("此邮箱关联的历史账号需要人工核实，暂时无法自动关联")
+        # 已验证的普通用户且无历史可疑绑定 → 自动关联现有账号
         await _link_oauth_account(
             db,
             user_id=existing_user.id,
@@ -241,6 +258,16 @@ async def ensure_admin_user(
 ) -> User:
     validate_admin_seed_password(password)
     user = await get_user_by_email(db, email)
+    if user and user.role != UserRole.ADMIN.value:
+        # An existing OAuth-owned or passwordless user must never be silently
+        # promoted to admin merely by matching ADMIN_EMAIL.
+        if not user.password_hash:
+            raise ValueError("Admin seed refuses to promote a passwordless existing account")
+        oauth_link = await db.scalar(
+            select(UserOAuthAccount.id).where(UserOAuthAccount.user_id == user.id).limit(1)
+        )
+        if oauth_link is not None:
+            raise ValueError("Admin seed refuses to promote an OAuth-linked existing account")
     if not user:
         return await create_user(
             db,

@@ -227,7 +227,6 @@ async def trigger_generate_version(
     改为异步：先创建/标记 GENERATING 记录立即返回 202，
     后台 task 完成后前端通过轮询 /today 拿最终结果。
     """
-    import asyncio
 
     from app.services.daily_report import _day_window, _local_today, _local_window_to_utc_naive
 
@@ -284,14 +283,17 @@ async def trigger_generate_version(
                 )
             except Exception as e:
                 logger.error("Background daily report generation failed: %s", e)
-                # 标记失败
+                # 标记失败；mark_error 再失败必须留痕（曾因 except: pass
+                # 导致报告永远卡在 GENERATING，issue #72），日志兜底。
                 try:
                     bg_repo = DailyReportRepository(bg_db)
                     await bg_repo.mark_error(report_id, f"生成失败: {str(e)[:200]}")
                 except Exception:
-                    pass
+                    logger.exception("Failed to mark daily report id=%s as ERROR", report_id)
 
-    asyncio.create_task(_bg_generate())
+    from app.core.task_registry import track_background_task
+
+    track_background_task(_bg_generate(), name=f"daily-report-bg-{report_id}")
 
     # 返回 GENERATING 状态（HTTP 202 Accepted）
     from fastapi.responses import JSONResponse

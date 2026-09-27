@@ -424,6 +424,12 @@ async def lifespan(app: FastAPI):
         await _jieba_prewarm_task
     shutdown_scheduler()
 
+    # 回收受管后台任务（调度器启动 rescan/恢复、日报后台生成等），
+    # 避免 loop 关闭腰斩或与 engine.dispose 竞争 session（issue #72）。
+    from app.core.task_registry import drain_tracked_tasks
+
+    await drain_tracked_tasks(timeout=30.0)
+
     # Drain interest-vector background rebuild tasks
     try:
         from app.services.interest_vector_service import drain_rebuild_tasks

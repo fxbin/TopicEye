@@ -74,6 +74,20 @@
 - PR #62 已禁止向管理员自动关联，service 层 docstring 明确要求显式绑定流程但未实现。
 - 回归测试候选：绑定端点四场景（正常 / 未 step-up / 绑定冲突 / 未验证邮箱）。owner：#64。
 
+### D-8 /health/ready 判定门恒真 — #71 🔴 待修复（P1）
+- 症状：ready 的 oltp 判定读自纯元数据 dict（`database_diagnostics` 不做连通性探测），恒为 True，`not_ready` 分支不可达；OLTP 不可达仍返回 ready。
+- 边界：health 路由 / 部署路由层；复现性 always。
+- 回归测试候选：路由级四态（正常 / SCHEDULER_ENABLED=False / DuckDB 降级 / OLTP 不可达）。owner：#71（Parent #6）。
+
+### D-9 三处无主 create_task — #72 🔴 待修复（P1）
+- 症状：`scheduler.py:1204/1205` 启动 rescan/恢复任务与 `daily_reports.py:294` 日报后台——无引用、无异常收集、不受停机管理；日报 `mark_error` 失败被裸 `except: pass` 吞掉可永卡 GENERATING。
+- 边界：scheduler 启动路径 / daily_reports / lifespan 停机序。
+- 回归测试候选：异常捕获记日志、任务注册可 drain、mark_error 失败不吞。owner：#72（Parent #6）。
+
+### D-10 优雅停机链中断点 — #73 🔴 待修复（P2）
+- 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
+- 回归测试候选：停机各步异常隔离、jieba 超时路径。owner：#73（Parent #6）。
+
 ## 三、关键流程基线（9 项）
 
 状态标记：✅ = 2026-09-27 在 main @ 7203847 新鲜复跑通过；📋 = 现有套件覆盖、未逐项复跑（跑全量即覆盖）。

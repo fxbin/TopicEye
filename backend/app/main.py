@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -243,6 +243,43 @@ def _prewarm_jieba() -> None:
         logger.debug("jieba prewarm skipped", exc_info=True)
 
 
+async def _shutdown_prewarm_tasks(
+    cache_task: asyncio.Task | None,
+    jieba_task: asyncio.Task | None,
+    *,
+    jieba_timeout: float = 10.0,
+) -> None:
+    """停机第一步：回收预热任务。异常隔离 + jieba 超时（issue #73）。
+
+    - 缓存预热任务以非 CancelledError 异常结束时只记 warning，
+      不再中断余下的调度器停机 / drain / DuckDB 关闭 / engine.dispose；
+    - jieba 预热底层是 to_thread（不可真正取消），必须 wait_for 加超时，
+      否则词典加载卡住会挂死整个优雅停机。
+    """
+    if cache_task is not None:
+        if not cache_task.done():
+            cache_task.cancel()
+        try:
+            # 已完成但带异常的任务同样要 await 取回（否则异常静默丢失）；
+            # 非 CancelledError 只记 warning，不中断余下停机步骤。
+            await cache_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.warning("Cache warmup task ended with error during shutdown", exc_info=True)
+
+    if jieba_task is None:
+        return
+    try:
+        await asyncio.wait_for(jieba_task, timeout=jieba_timeout)
+    except TimeoutError:
+        logger.warning("Jieba prewarm did not finish within %.0fs; proceeding with shutdown", jieba_timeout)
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.warning("Jieba prewarm task failed during shutdown", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cache_warmup_task
@@ -416,12 +453,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown: stop scheduler, close connections, dispose engine
-    if _cache_warmup_task and not _cache_warmup_task.done():
-        _cache_warmup_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await _cache_warmup_task
-    with suppress(Exception):
-        await _jieba_prewarm_task
+    await _shutdown_prewarm_tasks(_cache_warmup_task, _jieba_prewarm_task)
     shutdown_scheduler()
 
     # 回收受管后台任务（调度器启动 rescan/恢复、日报后台生成等），

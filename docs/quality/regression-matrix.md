@@ -88,6 +88,13 @@
 - 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
 - 回归测试：`tests/test_shutdown_prewarm.py`（异常不外抛且留痕 / jieba 超时不挂死 / 正常与已取消路径）。owner：#73（Parent #6，修复 PR #77：`_shutdown_prewarm_tasks`）。
 
+### D-11 含斜杠模型名的网关模型被 litellm 拒绝 — #83 ✅ 已修复关闭（2026-09-27）
+- 症状：model_test 对 `XingChenAGI/Xing4.0-29B` 报 `litellm.BadRequestError: LLM Provider NOT provided`。
+- 根因：`resolve_litellm_model` 对含 `/` 的 model_id 原样透传、跳过 provider 路由；「组织/模型」命名被 litellm 按首段当未知 provider 解析。影响 model_test 与分析管线全调用面。
+- 边界：llm/model_resolver / 模型目录；严重度 P1；复现性 always（该命名格式）。
+- 回归测试：`tests/test_llm_models.py` 四场景（custom+org/model → `openai/` 前缀、显式 provider+org/model、同前缀去重、无 provider 保持原样）。
+- owner：#83。
+
 ## 三、关键流程基线（9 项）
 
 状态标记：✅ = 2026-09-27 在 main @ 7203847 新鲜复跑通过；📋 = 现有套件覆盖、未逐项复跑（跑全量即覆盖）。

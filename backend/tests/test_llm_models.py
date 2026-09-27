@@ -122,6 +122,43 @@ def test_shared_model_resolver_prefers_explicit_litellm_model():
     assert resolve_litellm_model(model) == "openai/deepseek-v4-flash-free"
 
 
+def test_shared_model_resolver_routes_slash_namespaced_custom_model_as_openai():
+    """#83：组织/模型命名（XingChenAGI/Xing4.0-29B）在 custom 预设下必须走
+    OpenAI 兼容路由，原样透传会被 litellm 当未知 provider 拒绝。"""
+    model = SimpleNamespace(
+        provider="custom",
+        model_id="XingChenAGI/Xing4.0-29B",
+        api_base="https://api.xingchen.example/v1",
+    )
+
+    assert resolve_litellm_model(model) == "openai/XingChenAGI/Xing4.0-29B"
+
+
+def test_shared_model_resolver_routes_slash_namespaced_model_with_explicit_provider():
+    """显式 provider（如 openai 预设 + 自定义网关）时，组织/模型命名按该 provider 路由。"""
+    model = SimpleNamespace(
+        provider="openai",
+        model_id="XingChenAGI/Xing4.0-29B",
+        api_base="https://api.xingchen.example/v1",
+    )
+
+    assert resolve_litellm_model(model) == "openai/XingChenAGI/Xing4.0-29B"
+
+
+def test_shared_model_resolver_dedupes_provider_prefix():
+    """模型名已带同 provider 前缀时不重复拼接。"""
+    model = SimpleNamespace(provider="openai", model_id="openai/gpt-4.1-mini", api_base=None)
+
+    assert resolve_litellm_model(model) == "openai/gpt-4.1-mini"
+
+
+def test_shared_model_resolver_keeps_slash_model_id_without_any_provider():
+    """无任何 provider 信息时，含 "/" 的模型名保持原样（用户显式路由串）。"""
+    model = SimpleNamespace(provider="", model_id="deepseek/deepseek-chat", api_base=None)
+
+    assert resolve_litellm_model(model) == "deepseek/deepseek-chat"
+
+
 def test_shared_model_resolver_routes_bare_custom_provider_as_openai_compatible():
     # "完全自定义"预设落库的 provider=custom + 裸模型名：litellm 没有 custom
     # provider，唯一可行路由是 OpenAI 兼容网关。

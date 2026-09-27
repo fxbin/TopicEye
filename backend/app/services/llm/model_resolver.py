@@ -51,20 +51,22 @@ def resolve_litellm_model(model: ModelLike) -> str:
         return explicit_model
 
     model_id = _clean(model.model_id) or ""
-    if "/" in model_id:
-        return model_id
-
     provider = _clean(params.get("litellm_provider") or litellm_params.get("custom_llm_provider") or model.provider)
 
     if provider == "custom":
-        # litellm 没有 "custom" provider，"custom/<model>" 会被解析成未知路由
-        # （对可达端点也会打出错误路径）。选了"完全自定义"预设但只填裸模型名
-        # 时，唯一可行的路由是 OpenAI 兼容网关；模型名自带 "/" 的已在上面原样返回。
+        # litellm 没有 "custom" provider，"custom/<model>" 会被解析成未知路由。
+        # 选了「完全自定义」预设时唯一可行的路由是 OpenAI 兼容网关——模型名
+        # 含 "/"（如组织/模型命名 XingChenAGI/Xing4.0-29B）也必须走该路由：
+        # 原样透传会被 litellm 把首段当 provider 解析而报 BadRequestError（#83）。
         return f"openai/{model_id}"
 
     if provider:
-        return f"{provider}/{model_id}"
+        # 显式 provider 优先；模型名已带同前缀时去重，避免 openai/openai/...。
+        prefix = f"{provider}/"
+        return model_id if model_id.startswith(prefix) else f"{provider}/{model_id}"
 
+    # 无任何 provider 信息时，含 "/" 的模型名视为用户显式给出的 litellm 路由串
+    # （如 deepseek/deepseek-chat）原样返回；裸模型名同样原样返回。
     return model_id
 
 

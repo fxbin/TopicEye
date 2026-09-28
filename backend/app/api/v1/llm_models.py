@@ -678,13 +678,15 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
 
     resolved_model = _resolve_litellm_model(model)
 
-    test_prompt = "请用一句话介绍你自己，包括你的模型名称。"
+    # 连通性探测语义（配置时验证路由/可达/鉴权/模型存在）：提示词 ping +
+    # max_tokens=16 把输出上限压到短语级——成本趋近于零、推理型模型也来不及
+    # 长思考；思考占满 16 token 导致正文为空时，由下方 note 分支提示调大重试。
     kwargs = _completion_kwargs(
         model,
         resolved_model,
-        [{"role": "user", "content": test_prompt}],
+        [{"role": "user", "content": "ping"}],
         temperature=0.3,
-        max_tokens=200,
+        max_tokens=16,
     )
 
     start = time.monotonic()

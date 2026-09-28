@@ -122,6 +122,63 @@ def test_shared_model_resolver_prefers_explicit_litellm_model():
     assert resolve_litellm_model(model) == "openai/deepseek-v4-flash-free"
 
 
+def test_shared_model_resolver_routes_slash_namespaced_custom_model_as_openai():
+    """#83：组织/模型命名（example-org/example-29b）在 custom 预设下必须走
+    OpenAI 兼容路由，原样透传会被 litellm 当未知 provider 拒绝。"""
+    model = SimpleNamespace(
+        provider="custom",
+        model_id="example-org/example-29b",
+        api_base="https://api.example-gateway.test/v1",
+    )
+
+    assert resolve_litellm_model(model) == "openai/example-org/example-29b"
+
+
+def test_shared_model_resolver_routes_slash_namespaced_model_with_explicit_provider():
+    """显式 provider（如 openai 预设 + 自定义网关）时，组织/模型命名按该 provider 路由。"""
+    model = SimpleNamespace(
+        provider="openai",
+        model_id="example-org/example-29b",
+        api_base="https://api.example-gateway.test/v1",
+    )
+
+    assert resolve_litellm_model(model) == "openai/example-org/example-29b"
+
+
+def test_shared_model_resolver_dedupes_provider_prefix():
+    """模型名已带同 provider 前缀时不重复拼接。"""
+    model = SimpleNamespace(provider="openai", model_id="openai/gpt-4.1-mini", api_base=None)
+
+    assert resolve_litellm_model(model) == "openai/gpt-4.1-mini"
+
+
+def test_shared_model_resolver_keeps_slash_model_id_with_known_provider_prefix():
+    """无 provider 信息 + 首段命中 litellm 已知 provider：保持原样（显式路由串）。"""
+    model = SimpleNamespace(provider="", model_id="deepseek/deepseek-chat", api_base=None)
+
+    assert resolve_litellm_model(model) == "deepseek/deepseek-chat"
+
+
+def test_shared_model_resolver_falls_back_to_openai_for_unknown_slash_prefix():
+    """#83 应用层兜底：无 provider 信息 + 首段不是已知 provider（组织/模型命名，
+    或 provider 拼写错误）→ 走 OpenAI 兼容路由而非原样透传。"""
+    model = SimpleNamespace(
+        provider="",
+        model_id="example-org/example-29b",
+        api_base="https://api.example-gateway.test/v1",
+    )
+
+    assert resolve_litellm_model(model) == "openai/example-org/example-29b"
+
+
+def test_shared_model_resolver_falls_back_to_openai_for_typoed_provider_prefix():
+    """拼写错误的前缀（antrhopic）也走兜底：错误会表现为网关/OpenAI 的
+    model-not-found，而不是 litellm 的路由拒绝（应用层取舍，见 #83 评论）。"""
+    model = SimpleNamespace(provider="", model_id="antrhopic/claude-sonnet-4", api_base=None)
+
+    assert resolve_litellm_model(model) == "openai/antrhopic/claude-sonnet-4"
+
+
 def test_shared_model_resolver_routes_bare_custom_provider_as_openai_compatible():
     # "完全自定义"预设落库的 provider=custom + 裸模型名：litellm 没有 custom
     # provider，唯一可行路由是 OpenAI 兼容网关。

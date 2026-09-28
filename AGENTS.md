@@ -29,7 +29,7 @@
 
 正常路径：**有意义的变更必须有 issue → 分支 → PR → 检查绿 → 合并**，直推 main 不是常规路径。
 
-- **PR 必须经仓库所有者审核**：agent 可以创建分支、推送、开 PR、盯 CI，但**不得自行合并任何 PR**——即使五项检查全绿、即使对话中有过总括性授权。合并的唯一触发条件是所有者在对话中对该 PR 的明确批准（或所有者自行点击合并）。同理，直推 main、force-push、删除提交/历史改写等一切远端写入操作均需逐次明确批准。
+- **三道审批闸门（所有者 2026-09-28 定）**：agent 实现并本地验证后，先报告变更摘要/diff，**所有者审核批准后才可 `git commit`**；**创建 PR 前须先告知并获确认**；**合并 PR 需单独批准**。任何对话中的总括性授权都不覆盖这三道闸门，每个切片逐次过闸。直推 main、force-push、删除提交/历史改写等远端写入同样逐次批准。
 - **分支命名**：`issue-<number>-<short-slug>`（如 `issue-4-cryptography-50`）。
 - **PR 必须链接 issue** 并附 Worker 证据（本地验证命令 + 结果，见 PR 模板 Verification 段）。
 - **Verifier 契约**：CI 五项检查（types / tests / lint / layering / security-scan）是机器 Verifier，全绿是合并且预存红已显式处置的前提；承载行为变更的 PR 还需在模板 Verifier verdict 段落记录独立复核结论（复核者不得是同一实现过程）。

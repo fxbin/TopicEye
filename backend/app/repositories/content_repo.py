@@ -808,7 +808,9 @@ class ContentRepo(BaseRepository[ContentItem]):
                 selectinload(self.model.source),
             )
             .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-            .where(self.model.crawled_at >= cutoff)
+            # 窗口按原文发布时间优先（published_at 为空回退抓取时间），旧文晚抓
+            # 不进「今天」；与 DuckDB query_today_picks 的 COALESCE 口径对齐。
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) >= cutoff)
             .where(AiAnalysis.risk_score <= risk_threshold)
         )
         if category:
@@ -847,8 +849,10 @@ class ContentRepo(BaseRepository[ContentItem]):
                 selectinload(self.model.source),
             )
             .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-            .where(self.model.crawled_at >= window_start)
-            .where(self.model.crawled_at <= window_end)
+            # 报告窗口同样按原文发布时间归档：晚抓到的旧文归入其发布期，
+            # 不出现在之后的日报里（口径与 list_for_today_picks 一致）。
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) >= window_start)
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) <= window_end)
             .where(AiAnalysis.risk_score <= risk_threshold)
             .where(AiAnalysis.curation_score.isnot(None))
             .where(~self._accepted_event_member_exists())

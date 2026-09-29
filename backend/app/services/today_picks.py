@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -277,7 +277,9 @@ async def _build_today_picks_via_oltp(
             selectinload(ContentItem.analyses),
             selectinload(ContentItem.source),
         )
-        .where(ContentItem.crawled_at >= cutoff)
+        # 窗口按原文发布时间优先（published_at 为空的信源回退抓取时间），
+        # 旧文晚抓不进「今天」；与 DuckDB query_today_picks 的 COALESCE 口径对齐。
+        .where(func.coalesce(ContentItem.published_at, ContentItem.crawled_at) >= cutoff)
         .order_by(ContentItem.crawled_at.desc())
     )
     if category:

@@ -105,7 +105,7 @@ class PicksMixin:
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
             LEFT JOIN feedback_scores f ON f.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
-            WHERE c.crawled_at >= ?
+            WHERE COALESCE(c.published_at, c.crawled_at) >= ?
               AND ignored.content_id IS NULL
               AND a.risk_score <= {risk_threshold}
               AND a.curation_score IS NOT NULL

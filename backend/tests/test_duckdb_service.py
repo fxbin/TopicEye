@@ -826,7 +826,8 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
             category VARCHAR,
             source_name VARCHAR,
             platform VARCHAR,
-            crawled_at TIMESTAMP
+            crawled_at TIMESTAMP,
+            published_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -873,12 +874,12 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
     now = datetime.now(UTC).replace(tzinfo=None).replace(tzinfo=None)
     conn.execute("INSERT INTO oltp_db.sources VALUES (10, 4)")
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (1, 10, '反馈后的最新分析', 'https://example.com/1', 'AI', '测试信源', 'rss', ?)",
-        [now],
+        "INSERT INTO oltp_db.content_items VALUES (1, 10, '反馈后的最新分析', 'https://example.com/1', 'AI', '测试信源', 'rss', ?, ?)",
+        [now, now],
     )
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (2, NULL, '无反馈样本', 'https://example.com/2', 'AI', '测试信源', 'rss', ?)",
-        [now],
+        "INSERT INTO oltp_db.content_items VALUES (2, NULL, '无反馈样本', 'https://example.com/2', 'AI', '测试信源', 'rss', ?, ?)",
+        [now, now],
     )
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, '旧摘要', 95, 95, 95, 95, 95, 10, 99, 95, 95, 95, '[\"旧\"]', '旧推荐', '旧理由', ?)",
@@ -930,7 +931,8 @@ def test_daily_report_content_query_uses_latest_analysis_only(monkeypatch):
             url VARCHAR,
             category VARCHAR,
             source_name VARCHAR,
-            crawled_at TIMESTAMP
+            crawled_at TIMESTAMP,
+            published_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -951,12 +953,12 @@ def test_daily_report_content_query_uses_latest_analysis_only(monkeypatch):
 
     now = datetime.now(UTC).replace(tzinfo=None)
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (1, '多次分析样本', 'https://example.com/1', 'AI', '测试信源', ?)",
-        [now],
+        "INSERT INTO oltp_db.content_items VALUES (1, '多次分析样本', 'https://example.com/1', 'AI', '测试信源', ?, ?)",
+        [now, now],
     )
     conn.execute(
-        "INSERT INTO oltp_db.content_items VALUES (2, '普通样本', 'https://example.com/2', 'AI', '测试信源', ?)",
-        [now],
+        "INSERT INTO oltp_db.content_items VALUES (2, '普通样本', 'https://example.com/2', 'AI', '测试信源', ?, ?)",
+        [now, now],
     )
     conn.execute(
         "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, '旧日报摘要', 99, 99, 99, 10, 99, '旧理由', ?)",
@@ -996,7 +998,8 @@ def test_digest_content_queries_exclude_ignored_content(monkeypatch):
             category VARCHAR,
             source_name VARCHAR,
             platform VARCHAR,
-            crawled_at TIMESTAMP
+            crawled_at TIMESTAMP,
+            published_at TIMESTAMP
         )
     """)
     conn.execute("""
@@ -1040,8 +1043,8 @@ def test_digest_content_queries_exclude_ignored_content(monkeypatch):
     now = datetime.now(UTC).replace(tzinfo=None)
     for content_id, title in ((1, "已忽略素材"), (2, "保留素材")):
         conn.execute(
-            "INSERT INTO oltp_db.content_items VALUES (?, NULL, ?, ?, 'AI', '测试信源', 'rss', ?)",
-            [content_id, title, f"https://example.com/{content_id}", now],
+            "INSERT INTO oltp_db.content_items VALUES (?, NULL, ?, ?, 'AI', '测试信源', 'rss', ?, ?)",
+            [content_id, title, f"https://example.com/{content_id}", now, now],
         )
         conn.execute(
             """

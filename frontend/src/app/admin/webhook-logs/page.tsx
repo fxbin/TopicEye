@@ -99,8 +99,13 @@ export default function WebhookLogsPage() {
     );
   }
 
+  // 注意口径：successCount / failCount 只统计**当前页** logs（PAGE_SIZE 行），
+  // 而 total 是全局条数。二者若以同款 Badge 并排，读者会把 2/1240 读成 0.16% 失败率，
+  // 真相是「最近 30 条里失败 2 条」。因此页内计数一律显式标注「本页」。
   const successCount = logs.filter((l) => l.success).length;
   const failCount = logs.length - successCount;
+  const pageStart = logs.length === 0 ? 0 : offset + 1;
+  const pageEnd = offset + logs.length;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
@@ -137,18 +142,23 @@ export default function WebhookLogsPage() {
             <span className="text-[12px] text-gray-400">加载中...</span>
           ) : (
             <>
-              <Badge tone="neutral">共 {total} 条</Badge>
-              {successCount > 0 && (
-                <Badge tone="teal">
-                  <CheckCircle2 size={10} className="mr-0.5" />
-                  成功 {successCount}
-                </Badge>
-              )}
-              {failCount > 0 && (
-                <Badge tone="red">
-                  <XCircle size={10} className="mr-0.5" />
-                  失败 {failCount}
-                </Badge>
+              <Badge tone="neutral">全部 {total} 条</Badge>
+              {logs.length > 0 && (
+                <>
+                  <Badge tone="neutral">
+                    本页 {pageStart}-{pageEnd}
+                  </Badge>
+                  {/* 成功/失败徽章无条件渲染：徽章的缺席本身会制造
+                      「这一页没有失败」的错误信念。0 失败显式写 0。 */}
+                  <Badge tone="teal">
+                    <CheckCircle2 size={10} className="mr-0.5" />
+                    本页成功 {successCount}
+                  </Badge>
+                  <Badge tone={failCount > 0 ? 'red' : 'neutral'}>
+                    <XCircle size={10} className="mr-0.5" />
+                    本页失败 {failCount}
+                  </Badge>
+                </>
               )}
             </>
           )}

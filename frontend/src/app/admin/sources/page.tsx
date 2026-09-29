@@ -426,6 +426,8 @@ export default function SourcesPage() {
   // 批量选择：多选 + 批量启用/暂停
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
+  // 批量操作结果反馈（成功 / 部分失败）。失败必须可见——见 handleBatchToggle。
+  const [batchResult, setBatchResult] = useState<{ tone: 'teal' | 'red'; text: string } | null>(null);
   const handleSelectSource = (source: BackendSource, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -445,19 +447,48 @@ export default function SourcesPage() {
   const handleBatchToggle = async (enabled: boolean) => {
     if (selectedIds.size === 0 || batchProcessing) return;
     setBatchProcessing(true);
+    setBatchResult(null);
+    const ids = Array.from(selectedIds);
+    const failedIds: number[] = [];
     try {
-      // 循环调 update 端点（已存在，单 source 调）
-      const ids = Array.from(selectedIds);
+      // 循环调 update 端点（已存在，单 source 调）。
+      // 逐条失败必须收集并上抛到 UI：吞进 console 会让 UI 报告成功而实际未改，
+      // 这批信源会继续按原状态采集并污染内容池，而操作者无从察觉。
       for (const id of ids) {
         try {
           await sourcesApi.update(id, { enabled });
         } catch (err) {
           console.error(`Batch toggle source ${id} failed:`, err);
+          failedIds.push(id);
         }
       }
-      setSelectedIds(new Set());
+      // 执行完成后重建选择态：失败项保持选中以便直接重试。
+      // 注意批量期间复选框未被禁用，用户可能中途勾选新项——这些项不在本批快照内，
+      // 必须保留，不能被这次重建静默丢弃。
+      const batchSet = new Set(ids);
+      setSelectedIds((prev) => {
+        const next = new Set<number>();
+        for (const id of failedIds) next.add(id);
+        for (const id of prev) {
+          if (!batchSet.has(id)) next.add(id);
+        }
+        return next;
+      });
       await fetchSources();
       await fetchSourceMap();
+
+      const verb = enabled ? '启用' : '停用';
+      const succeededCount = ids.length - failedIds.length;
+      if (failedIds.length === 0) {
+        setBatchResult({ tone: 'teal', text: `已${verb} ${ids.length} 个信源。` });
+      } else {
+        setBatchResult({
+          tone: 'red',
+          text:
+            `已${verb} ${succeededCount} 个信源，${failedIds.length} 个失败并保持选中：` +
+            `${failedIds.join('、')}。请检查网络或该信源状态后重试。`,
+        });
+      }
     } finally {
       setBatchProcessing(false);
     }
@@ -850,6 +881,10 @@ export default function SourcesPage() {
 
       {error && (
         <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
+      )}
+
+      {batchResult && (
+        <AdminNoticeBanner tone={batchResult.tone} onClose={() => setBatchResult(null)}>{batchResult.text}</AdminNoticeBanner>
       )}
 
       {/* Status filter tabs — applies to all source list views */}

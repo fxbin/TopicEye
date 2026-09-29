@@ -28,6 +28,7 @@ import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
 import { EvidenceProfileModal } from '@/components/EvidenceProfileModal';
 import { RSSHubManager, SourceListPanel, FeatureFlagsPanel } from './_panels';
+import { describeBatchResult, recomputeSelectionAfterBatch, runBatchToggle } from './_batch-utils';
 
 // ─── Page Component ───
 
@@ -426,6 +427,8 @@ export default function SourcesPage() {
   // 批量选择：多选 + 批量启用/暂停
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
+  // 批量操作结果反馈（成功 / 部分失败）。失败必须可见——见 handleBatchToggle。
+  const [batchResult, setBatchResult] = useState<{ tone: 'teal' | 'red'; text: string } | null>(null);
   const handleSelectSource = (source: BackendSource, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -445,19 +448,22 @@ export default function SourcesPage() {
   const handleBatchToggle = async (enabled: boolean) => {
     if (selectedIds.size === 0 || batchProcessing) return;
     setBatchProcessing(true);
+    setBatchResult(null);
+    const ids = Array.from(selectedIds);
     try {
-      // 循环调 update 端点（已存在，单 source 调）
-      const ids = Array.from(selectedIds);
-      for (const id of ids) {
-        try {
-          await sourcesApi.update(id, { enabled });
-        } catch (err) {
-          console.error(`Batch toggle source ${id} failed:`, err);
-        }
-      }
-      setSelectedIds(new Set());
+      // 逐条执行与失败收集见 _batch-utils.ts（纯函数，有单测覆盖）。
+      // 单条失败不中断整批，但必须被收集并上抛到 UI。
+      const failedIds = await runBatchToggle(
+        ids,
+        (id) => sourcesApi.update(id, { enabled }),
+        (id, err) => console.error(`Batch toggle source ${id} failed:`, err),
+      );
+      // 执行完成后重建选择态：失败项保持选中以便直接重试。
+      setSelectedIds((prev) => recomputeSelectionAfterBatch(prev, ids, failedIds));
       await fetchSources();
       await fetchSourceMap();
+
+      setBatchResult(describeBatchResult(ids.length, failedIds, enabled));
     } finally {
       setBatchProcessing(false);
     }
@@ -850,6 +856,10 @@ export default function SourcesPage() {
 
       {error && (
         <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
+      )}
+
+      {batchResult && (
+        <AdminNoticeBanner tone={batchResult.tone} onClose={() => setBatchResult(null)}>{batchResult.text}</AdminNoticeBanner>
       )}
 
       {/* Status filter tabs — applies to all source list views */}

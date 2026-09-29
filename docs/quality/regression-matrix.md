@@ -89,7 +89,7 @@
 - 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
 - 回归测试：`tests/test_shutdown_prewarm.py`（异常不外抛且留痕 / jieba 超时不挂死 / 正常与已取消路径）。owner：#73（Parent #6，修复 PR #77：`_shutdown_prewarm_tasks`）。
 
-### 管理后台批量操作静默失败 — #88 🔧 修复完成待合并（2026-09-29）
+### 管理后台批量操作静默失败 — #88 ✅ 已修复关闭（2026-09-29，PR #89 合并）
 - 症状：`sources/page.tsx` `handleBatchToggle` 逐条 `sourcesApi.update` 的 `catch` 只写 `console.error`，循环结束后**无条件** `setSelectedIds(new Set())` + `fetchSources()`。批量停用 30 个信源、其中 5 个失败时，UI 表现为「全部处理完」，失败的 5 个仍按原状态继续采集并污染内容池，而操作者无从察觉。
 - 环境/前提：生产数据，仅管理员账号；`PATCH /api/v1/sources/{id}` 任一请求失败（网络抖动 / 404 / 5xx）即可触发。
 - 复现：信源管理页多选 ≥2 个信源 → 批量停用 → 中途阻断网络或使其中之一更新失败 → 观察 UI 与浏览器控制台对照。
@@ -99,7 +99,7 @@
 - 回归测试：`npx vitest run src/app/admin/sources/_batch-utils.test.ts`（11 条）。选择态重算与结果文案已抽为纯函数 `_batch-utils.ts`，`.tsx` 只做调用；已用变异测试验证——把实现改回旧行为（失败进 console + 无条件清空）后 3 条转红，其中包含「中途新勾选项被静默丢弃」这条。
 - owner：#88。
 
-### Webhook 日志页读数口径撒谎 — #88 🔧 修复完成待合并（2026-09-29）
+### Webhook 日志页读数口径撒谎 — #88 ✅ 已修复关闭（2026-09-29，PR #89 合并）
 - 症状：`webhook-logs/page.tsx` 的 `successCount` / `failCount` 只统计**当前页** 30 行，却与全局 `total` 并排渲染成同款 Badge。读者会把「本页 2 失败」除以「共 1240 条」读成 0.16% 失败率，真相是第 5 页可能还躺着 40 条。更严重的是失败徽章以 `failCount > 0` 为条件渲染——翻到失败为 0 的分页时「失败」整枚徽章消失，**徽章的缺席本身制造错误信念**。
 - 环境/前提：任何有 ≥1 页推送日志的生产数据。
 - 复现：`/admin/webhook-logs` 翻页，观察任意分页顶部的 Badge 组。
@@ -110,7 +110,7 @@
   - **覆盖边界（独立复核 M3 实证，勿夸大）**：修复前 `summarizeLogPage` 的 6 个公式与修复后逐字相同，只测它**证明不了**本缺陷；真正的修复是把「渲染成什么」下沉成 `buildSummaryBadges`，其断言（失败徽章 0 时仍存在且为中性色、全部徽章带「本页」/「全部」口径词、空页只留 1 枚）才真正对应缺陷本身。JSX 渲染层仍无组件测试（见下方遗留项）。
 - owner：#88。
 
-### 管理后台面包屑缺 4 项映射 — #88 🔧 修复完成待合并（2026-09-29）
+### 管理后台面包屑缺 4 项映射 — #88 ✅ 已修复关闭（2026-09-29，PR #89 合并）
 - 症状：`AdminTopBar.tsx` 的 `ADMIN_PAGE_LABELS` 只有 10 条，侧边栏 `ADMIN_NAV_ITEMS` 有 15 项。`prompts` / `scoring-dashboard` / `evidence` / `webhook-logs` 四页无映射，`findPageLabel` 回退显示兜底文案「管理」，与侧边栏自相矛盾。（另经核实：概览卡片 13 张、面包屑 10 条、侧边栏 15 项三份目录互相矛盾，说明分类从未被写下来过。）
 - 环境/前提：always。
 - 复现：访问上述四页之一，观察顶栏面包屑第二段。

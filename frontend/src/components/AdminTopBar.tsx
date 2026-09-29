@@ -6,6 +6,9 @@ import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 
 // 路径 → 页面名映射（面包屑用）
+// 必须与 AdminSidebar 的 ADMIN_NAV_ITEMS 一一对应：漏项会让顶栏回退显示
+// 兜底文案「管理」，与侧边栏自相矛盾——顶栏说错了话，一次往返的代价。
+// （/dashboard 监控大盘不在 admin 壳内，由侧边栏 window.open 单独打开。）
 const ADMIN_PAGE_LABELS: Record<string, string> = {
   '/admin': '概览',
   '/admin/sources': '信源管理',
@@ -15,7 +18,11 @@ const ADMIN_PAGE_LABELS: Record<string, string> = {
   '/admin/model-eval': 'AI 引擎',
   '/admin/mother-topics': '系统母题模板库',
   '/admin/updates': '发版记录',
+  '/admin/prompts': 'Prompt 管理',
+  '/admin/scoring-dashboard': '评分看板',
+  '/admin/evidence': '可信线索',
   '/admin/feedback': '反馈工作台',
+  '/admin/webhook-logs': 'Webhook 日志',
   '/admin/settings': '系统设置',
 };
 

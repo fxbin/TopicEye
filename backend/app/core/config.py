@@ -176,6 +176,13 @@ class Settings(BaseSettings):
     LLM_WORKER_CONCURRENCY: int = 4
     # 单次运行时调用的硬上限；模型 extra_params.timeout 只能把它调小，不能放大。
     LLM_COMPLETION_TIMEOUT_SECONDS: float = 45.0
+    # 预算熔断（budget_guard）：按 llm_call_logs 实际 DONE 调用数的三窗保险丝，
+    # 超限直接拒绝新调用（分析链路走本地降级，窗口过后自动恢复）。
+    # 默认 0 = 全部关闭（opt-in，不改变现有部署行为）；0 同样适用于单窗关闭。
+    # 开启建议：分钟窗不低于 LLM_REQUESTS_PER_MINUTE，日窗按可接受的烧钱上限设。
+    LLM_BUDGET_CALLS_PER_MINUTE: int = 0
+    LLM_BUDGET_CALLS_PER_HOUR: int = 0
+    LLM_BUDGET_CALLS_PER_DAY: int = 0
     ANALYSIS_WORKER_CONCURRENCY: int = 3
     ANALYSIS_MAX_ATTEMPTS: int = 5
     ANALYSIS_RETRY_BASE_DELAY_SECONDS: int = 60

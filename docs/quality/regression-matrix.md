@@ -89,9 +89,40 @@
 - 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
 - 回归测试：`tests/test_shutdown_prewarm.py`（异常不外抛且留痕 / jieba 超时不挂死 / 正常与已取消路径）。owner：#73（Parent #6，修复 PR #77：`_shutdown_prewarm_tasks`）。
 
+### 管理后台批量操作静默失败 — #88 🔧 修复完成待合并（2026-09-29）
+- 症状：`sources/page.tsx` `handleBatchToggle` 逐条 `sourcesApi.update` 的 `catch` 只写 `console.error`，循环结束后**无条件** `setSelectedIds(new Set())` + `fetchSources()`。批量停用 30 个信源、其中 5 个失败时，UI 表现为「全部处理完」，失败的 5 个仍按原状态继续采集并污染内容池，而操作者无从察觉。
+- 环境/前提：生产数据，仅管理员账号；`PATCH /api/v1/sources/{id}` 任一请求失败（网络抖动 / 404 / 5xx）即可触发。
+- 复现：信源管理页多选 ≥2 个信源 → 批量停用 → 中途阻断网络或使其中之一更新失败 → 观察 UI 与浏览器控制台对照。
+- 期望 vs 实际：期望逐条失败上抛 UI、成功项与失败项分别反馈；实际只有 console 记录，UI 无任何差异。
+- 边界：仅前端 `sources/page.tsx`；**不改写入语义**，只改失败可见性与选择态保留。
+- 严重度：P0（数据污染且不可察觉）；**复现性**：conditional（依赖批量中至少一条更新失败）。
+- 回归测试：`npx vitest run src/app/admin/sources/_batch-utils.test.ts`（11 条）。选择态重算与结果文案已抽为纯函数 `_batch-utils.ts`，`.tsx` 只做调用；已用变异测试验证——把实现改回旧行为（失败进 console + 无条件清空）后 3 条转红，其中包含「中途新勾选项被静默丢弃」这条。
+- owner：#88。
+
+### Webhook 日志页读数口径撒谎 — #88 🔧 修复完成待合并（2026-09-29）
+- 症状：`webhook-logs/page.tsx` 的 `successCount` / `failCount` 只统计**当前页** 30 行，却与全局 `total` 并排渲染成同款 Badge。读者会把「本页 2 失败」除以「共 1240 条」读成 0.16% 失败率，真相是第 5 页可能还躺着 40 条。更严重的是失败徽章以 `failCount > 0` 为条件渲染——翻到失败为 0 的分页时「失败」整枚徽章消失，**徽章的缺席本身制造错误信念**。
+- 环境/前提：任何有 ≥1 页推送日志的生产数据。
+- 复现：`/admin/webhook-logs` 翻页，观察任意分页顶部的 Badge 组。
+- 期望 vs 实际：期望页内计数带明确口径标注、失败数显式渲染；实际两者视觉同层且口径未标注，失败为 0 时徽章缺席。
+- 边界：仅前端展示层；**不改数值来源**，不改 API。
+- 严重度：P1（对交付健康度给出错误读数，不直接损坏数据）；**复现性**：always。
+- 回归测试：`npx vitest run src/app/admin/webhook-logs/_scope-utils.test.ts`（15 条）。徽章**构造**（口径标注 + 无条件渲染）已抽为 `buildSummaryBadges` 纯函数并被锁住。
+  - **覆盖边界（独立复核 M3 实证，勿夸大）**：修复前 `summarizeLogPage` 的 6 个公式与修复后逐字相同，只测它**证明不了**本缺陷；真正的修复是把「渲染成什么」下沉成 `buildSummaryBadges`，其断言（失败徽章 0 时仍存在且为中性色、全部徽章带「本页」/「全部」口径词、空页只留 1 枚）才真正对应缺陷本身。JSX 渲染层仍无组件测试（见下方遗留项）。
+- owner：#88。
+
+### 管理后台面包屑缺 4 项映射 — #88 🔧 修复完成待合并（2026-09-29）
+- 症状：`AdminTopBar.tsx` 的 `ADMIN_PAGE_LABELS` 只有 10 条，侧边栏 `ADMIN_NAV_ITEMS` 有 15 项。`prompts` / `scoring-dashboard` / `evidence` / `webhook-logs` 四页无映射，`findPageLabel` 回退显示兜底文案「管理」，与侧边栏自相矛盾。（另经核实：概览卡片 13 张、面包屑 10 条、侧边栏 15 项三份目录互相矛盾，说明分类从未被写下来过。）
+- 环境/前提：always。
+- 复现：访问上述四页之一，观察顶栏面包屑第二段。
+- 期望 vs 实际：期望显示真实页面名；**实际显示「概览」**（独立复核更正：实现者原记为「管理」有误——旧实现里 `/admin` 本身是前缀匹配键，`/admin/prompts` 先命中 `/admin/` 落成「概览」，压根走不到兜底文案。真实症状比原记录更严重：不是泛化文案，而是谎称在概览页）。
+- 边界：前端。实际改动含 `AdminTopBar.tsx` + `AdminSidebar.tsx` 重构 + 新增 `src/lib/admin-nav.ts` 单一事实源（实现者原记为「仅 AdminTopBar.tsx」，有误）。
+- 严重度：P2（说错话的廉价困惑，不改变任何决定的对错）；**复现性**：always。
+- 回归测试：`npx vitest run src/lib/__tests__/admin-nav.test.ts`（13 条）。导航清单与面包屑映射合并到 `src/lib/admin-nav.ts` 单一事实源，映射由清单派生；`nav-checklist` 等价断言（壳内每项都有映射、label 与清单逐项一致）已在其中，漏项即红。顺带修掉一个被测试抓出的旧行为：`/admin/任何未知路径` 曾因壳根前缀匹配被判成「概览」，现已回退兜底。
+- owner：#88。
+
 ## 三、关键流程基线（9 项）
 
-状态标记：✅ = 2026-09-27 在 main @ 7203847 新鲜复跑通过；📋 = 现有套件覆盖、未逐项复跑（跑全量即覆盖）。
+状态标记：✅ = 2026-09-27 在 main @ 7203847 新鲜复跑通过；📋 = 现有套件覆盖、未逐项复跑（跑全量即覆盖）；🔧 = 修复完成待合并（PR 已开、CI 绿、独立复核非 pass 尚未全部处置）。
 
 | # | 关键流程 | 验证命令（backend/ 下，遵守§一） | 状态 |
 |---|---|---|---|

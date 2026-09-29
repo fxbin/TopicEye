@@ -17,6 +17,7 @@ import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components
 import { LoadingState } from '@/components/StateView';
 import { dailyReportApi } from '@/lib/api';
 import type { WebhookDeliveryLogItem } from '@/lib/api/_domains';
+import { buildSummaryBadges, summarizeLogPage } from './_scope-utils';
 
 const PAGE_SIZE = 30;
 
@@ -99,12 +100,14 @@ export default function WebhookLogsPage() {
     );
   }
 
-  const successCount = logs.filter((l) => l.success).length;
-  const failCount = logs.length - successCount;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  // 顶部徽章的构造见 _scope-utils.ts（有单测）——缺陷 #2 的真修复全在那个
+  // 纯函数里，JSX 只负责渲染，`.tsx` 不可测的问题不再存在。
+  const { hasPrev, hasNext, currentPage, totalPages } = summarizeLogPage(
+    logs,
+    total,
+    offset,
+    PAGE_SIZE,
+  );
 
   return (
     <AdminPageShell maxWidth={1200}>
@@ -137,19 +140,16 @@ export default function WebhookLogsPage() {
             <span className="text-[12px] text-gray-400">加载中...</span>
           ) : (
             <>
-              <Badge tone="neutral">共 {total} 条</Badge>
-              {successCount > 0 && (
-                <Badge tone="teal">
-                  <CheckCircle2 size={10} className="mr-0.5" />
-                  成功 {successCount}
+              {buildSummaryBadges(
+                summarizeLogPage(logs, total, offset, PAGE_SIZE),
+                total,
+              ).map((b) => (
+                <Badge key={b.key} tone={b.tone}>
+                  {b.icon === 'check' && <CheckCircle2 size={10} className="mr-0.5" />}
+                  {b.icon === 'x' && <XCircle size={10} className="mr-0.5" />}
+                  {b.label}
                 </Badge>
-              )}
-              {failCount > 0 && (
-                <Badge tone="red">
-                  <XCircle size={10} className="mr-0.5" />
-                  失败 {failCount}
-                </Badge>
-              )}
+              ))}
             </>
           )}
         </div>

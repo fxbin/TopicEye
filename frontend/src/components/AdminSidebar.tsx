@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { cx } from '@/components/ui';
 import { useAppContext } from '@/components/ClientLayout';
+import { ADMIN_NAV_ITEMS as ADMIN_NAV_ENTRIES } from '@/lib/admin-nav';
 
 interface AdminNavItem {
   id: string;
@@ -32,24 +33,35 @@ interface AdminNavItem {
   icon: LucideIcon;
 }
 
-// admin 全量导航（含不在 NAV_SPACES 里的 /admin/contents、/admin/mother-topics）
-const ADMIN_NAV_ITEMS: AdminNavItem[] = [
-  { id: 'dashboard', label: '概览', href: '/admin', icon: LayoutDashboard },
-  { id: 'monitor', label: '监控大盘', href: '/dashboard', icon: Activity },
-  { id: 'sources', label: '信源管理', href: '/admin/sources', icon: RadioTower },
-  { id: 'contents', label: '内容管理', href: '/admin/contents', icon: Newspaper },
-  { id: 'content-events', label: '内容事件治理', href: '/admin/content-events', icon: GitMerge },
-  { id: 'users', label: '用户管理', href: '/admin/users', icon: Users },
-  { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', icon: BrainCircuit },
-  { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', icon: BookOpen },
-  { id: 'updates', label: '发版记录', href: '/admin/updates', icon: Rocket },
-  { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', icon: ScrollText },
-  { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', icon: BarChart3 },
-  { id: 'evidence', label: '可信线索', href: '/admin/evidence', icon: ShieldCheck },
-  { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', icon: MessageSquareWarning },
-  { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', icon: Send },
-  { id: 'settings', label: '系统设置', href: '/admin/settings', icon: Settings },
-];
+// 图标是渲染关注点，留在组件侧（@/lib/admin-nav 保持纯逻辑、可在 node 环境测）。
+// 缺映射时响亮抛错而不是静默渲染空白——「挂起/未挂载/被跳过」必须显式报错。
+const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  monitor: Activity,
+  sources: RadioTower,
+  contents: Newspaper,
+  'content-events': GitMerge,
+  users: Users,
+  'model-eval': BrainCircuit,
+  'mother-topics': BookOpen,
+  updates: Rocket,
+  prompts: ScrollText,
+  'scoring-dashboard': BarChart3,
+  evidence: ShieldCheck,
+  feedback: MessageSquareWarning,
+  'webhook-logs': Send,
+  settings: Settings,
+};
+
+// admin 全量导航（含不在 NAV_SPACES 里的 /admin/contents、/admin/mother-topics）。
+// href/label 来自 @/lib/admin-nav 的唯一清单，顶栏面包屑由同一份派生（#88）。
+const ADMIN_NAV_ITEMS: AdminNavItem[] = ADMIN_NAV_ENTRIES.map((entry) => {
+  const icon = ADMIN_NAV_ICONS[entry.id];
+  if (!icon) {
+    throw new Error(`AdminSidebar: 导航项 ${entry.id} 缺少图标映射`);
+  }
+  return { id: entry.id, label: entry.label, href: entry.href, icon };
+});
 
 export default function AdminSidebar() {
   const pathname = usePathname();

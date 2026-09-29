@@ -17,7 +17,7 @@ import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components
 import { LoadingState } from '@/components/StateView';
 import { dailyReportApi } from '@/lib/api';
 import type { WebhookDeliveryLogItem } from '@/lib/api/_domains';
-import { summarizeLogPage } from './_scope-utils';
+import { buildSummaryBadges, summarizeLogPage } from './_scope-utils';
 
 const PAGE_SIZE = 30;
 
@@ -100,19 +100,14 @@ export default function WebhookLogsPage() {
     );
   }
 
-  // 口径：successCount / failCount 只统计**当前页** logs（PAGE_SIZE 行），
-  // 而 total 是全局条数。二者若以同款 Badge 并排，读者会把 2/1240 读成 0.16%
-  // 失败率，真相是「最近 30 条里失败 2 条」。逐条计算见 _scope-utils.ts（有单测）。
-  const {
-    pageStart,
-    pageEnd,
-    successCount,
-    failCount,
-    hasPrev,
-    hasNext,
-    currentPage,
-    totalPages,
-  } = summarizeLogPage(logs, total, offset, PAGE_SIZE);
+  // 顶部徽章的构造见 _scope-utils.ts（有单测）——缺陷 #2 的真修复全在那个
+  // 纯函数里，JSX 只负责渲染，`.tsx` 不可测的问题不再存在。
+  const { hasPrev, hasNext, currentPage, totalPages } = summarizeLogPage(
+    logs,
+    total,
+    offset,
+    PAGE_SIZE,
+  );
 
   return (
     <AdminPageShell maxWidth={1200}>
@@ -145,24 +140,16 @@ export default function WebhookLogsPage() {
             <span className="text-[12px] text-gray-400">加载中...</span>
           ) : (
             <>
-              <Badge tone="neutral">全部 {total} 条</Badge>
-              {logs.length > 0 && (
-                <>
-                  <Badge tone="neutral">
-                    本页 {pageStart}-{pageEnd}
-                  </Badge>
-                  {/* 成功/失败徽章无条件渲染：徽章的缺席本身会制造
-                      「这一页没有失败」的错误信念。0 失败显式写 0。 */}
-                  <Badge tone="teal">
-                    <CheckCircle2 size={10} className="mr-0.5" />
-                    本页成功 {successCount}
-                  </Badge>
-                  <Badge tone={failCount > 0 ? 'red' : 'neutral'}>
-                    <XCircle size={10} className="mr-0.5" />
-                    本页失败 {failCount}
-                  </Badge>
-                </>
-              )}
+              {buildSummaryBadges(
+                summarizeLogPage(logs, total, offset, PAGE_SIZE),
+                total,
+              ).map((b) => (
+                <Badge key={b.key} tone={b.tone}>
+                  {b.icon === 'check' && <CheckCircle2 size={10} className="mr-0.5" />}
+                  {b.icon === 'x' && <XCircle size={10} className="mr-0.5" />}
+                  {b.label}
+                </Badge>
+              ))}
             </>
           )}
         </div>

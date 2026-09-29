@@ -59,3 +59,54 @@ export function summarizeLogPage(
     totalPages: Math.ceil(total / pageSize) || 1,
   };
 }
+
+/** 顶部徽章的呈现描述。tone 为 null 表示该徽章不渲染。 */
+export interface SummaryBadge {
+  key: string;
+  label: string;
+  tone: 'neutral' | 'teal' | 'red';
+  icon: 'check' | 'x' | 'none';
+}
+
+/**
+ * 构建顶部徽章组——**#88 缺陷 #2 的真修复就在这里**。
+ *
+ * 此前该修复写在 JSX 里，`.tsx` 在本仓库结构性不可测（无 jsdom/testing-library），
+ * 独立复核的变异测试 M3 把整段 JSX 还原成修复前形态后 179 条测试全绿存活。
+ * 把「渲染成什么」也变成纯函数，修复才真正被钉住。
+ *
+ * 三条硬规则（每条都对应一个曾经的错误信念）：
+ * 1. 全局计数与页内计数**视觉分层**且都带口径词（「全部」/「本页」），不得并排同款。
+ * 2. 成功/失败徽章**无条件渲染**——0 失败显式写 0，徽章的缺席本身就是错误信念。
+ * 3. 空页不产出「本页 0-0」这种假区间，只留全局计数。
+ */
+export function buildSummaryBadges(
+  summary: LogPageSummary,
+  total: number,
+): SummaryBadge[] {
+  const badges: SummaryBadge[] = [
+    { key: 'total', label: `全部 ${total} 条`, tone: 'neutral', icon: 'none' },
+  ];
+
+  if (summary.pageEnd === 0) return badges;
+
+  badges.push({
+    key: 'page-range',
+    label: `本页 ${summary.pageStart}-${summary.pageEnd}`,
+    tone: 'neutral',
+    icon: 'none',
+  });
+  badges.push({
+    key: 'page-success',
+    label: `本页成功 ${summary.successCount}`,
+    tone: 'teal',
+    icon: 'check',
+  });
+  badges.push({
+    key: 'page-fail',
+    label: `本页失败 ${summary.failCount}`,
+    tone: summary.failCount > 0 ? 'red' : 'neutral',
+    icon: 'x',
+  });
+  return badges;
+}

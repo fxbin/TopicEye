@@ -89,6 +89,36 @@
 - 症状：`_cache_warmup_task` 非 CancelledError 异常会中断后续全部清理步骤；jieba 预热 await 无超时且 `to_thread` 不可取消，可挂死停机；整体停机无 deadline。
 - 回归测试：`tests/test_shutdown_prewarm.py`（异常不外抛且留痕 / jieba 超时不挂死 / 正常与已取消路径）。owner：#73（Parent #6，修复 PR #77：`_shutdown_prewarm_tasks`）。
 
+### 管理后台批量操作静默失败 — #88 🔧 修复中（2026-09-29，PR 未开）
+- 症状：`sources/page.tsx` `handleBatchToggle` 逐条 `sourcesApi.update` 的 `catch` 只写 `console.error`，循环结束后**无条件** `setSelectedIds(new Set())` + `fetchSources()`。批量停用 30 个信源、其中 5 个失败时，UI 表现为「全部处理完」，失败的 5 个仍按原状态继续采集并污染内容池，而操作者无从察觉。
+- 环境/前提：生产数据，仅管理员账号；`PATCH /api/v1/sources/{id}` 任一请求失败（网络抖动 / 404 / 5xx）即可触发。
+- 复现：信源管理页多选 ≥2 个信源 → 批量停用 → 中途阻断网络或使其中之一更新失败 → 观察 UI 与浏览器控制台对照。
+- 期望 vs 实际：期望逐条失败上抛 UI、成功项与失败项分别反馈；实际只有 console 记录，UI 无任何差异。
+- 边界：仅前端 `sources/page.tsx`；**不改写入语义**，只改失败可见性与选择态保留。
+- 严重度：P0（数据污染且不可察觉）；**复现性**：conditional（依赖批量中至少一条更新失败）。
+- 回归测试：**暂缺**。`vitest.config.ts` 为 `environment: 'node'` + `include: ['src/**/*.test.ts']`，`.tsx` 组件行为不在覆盖内，CI 五 job 亦无 eslint，无法机器钉住。关闭条件：随 `check_admin_conventions.py` 门禁脚本补断言，或扩 vitest 覆盖到 DOM。
+- owner：#88。
+
+### Webhook 日志页读数口径撒谎 — #88 🔧 修复中（2026-09-29，PR 未开）
+- 症状：`webhook-logs/page.tsx` 的 `successCount` / `failCount` 只统计**当前页** 30 行，却与全局 `total` 并排渲染成同款 Badge。读者会把「本页 2 失败」除以「共 1240 条」读成 0.16% 失败率，真相是第 5 页可能还躺着 40 条。更严重的是失败徽章以 `failCount > 0` 为条件渲染——翻到失败为 0 的分页时「失败」整枚徽章消失，**徽章的缺席本身制造错误信念**。
+- 环境/前提：任何有 ≥1 页推送日志的生产数据。
+- 复现：`/admin/webhook-logs` 翻页，观察任意分页顶部的 Badge 组。
+- 期望 vs 实际：期望页内计数带明确口径标注、失败数显式渲染；实际两者视觉同层且口径未标注，失败为 0 时徽章缺席。
+- 边界：仅前端展示层；**不改数值来源**，不改 API。
+- 严重度：P1（对交付健康度给出错误读数，不直接损坏数据）；**复现性**：always。
+- 回归测试：**暂缺**，原因同上。关闭条件随 #88 门禁脚本补齐。
+- owner：#88。
+
+### 管理后台面包屑缺 4 项映射 — #88 🔧 修复中（2026-09-29，PR 未开）
+- 症状：`AdminTopBar.tsx` 的 `ADMIN_PAGE_LABELS` 只有 10 条，侧边栏 `ADMIN_NAV_ITEMS` 有 15 项。`prompts` / `scoring-dashboard` / `evidence` / `webhook-logs` 四页无映射，`findPageLabel` 回退显示兜底文案「管理」，与侧边栏自相矛盾。（另经核实：概览卡片 13 张、面包屑 10 条、侧边栏 15 项三份目录互相矛盾，说明分类从未被写下来过。）
+- 环境/前提：always。
+- 复现：访问上述四页之一，观察顶栏面包屑第二段。
+- 期望 vs 实际：期望显示真实页面名；实际显示「管理」。
+- 边界：仅前端 `AdminTopBar.tsx`。
+- 严重度：P2（说错话的廉价困惑，不改变任何决定的对错）；**复现性**：always。
+- 回归测试：**暂缺**，原因同上。关闭条件：随门禁脚本补 `nav-checklist` 断言（清单与路由一一对应，缺项即红），使该类漏项不可复发。
+- owner：#88。
+
 ## 三、关键流程基线（9 项）
 
 状态标记：✅ = 2026-09-27 在 main @ 7203847 新鲜复跑通过；📋 = 现有套件覆盖、未逐项复跑（跑全量即覆盖）。

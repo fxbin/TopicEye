@@ -47,6 +47,45 @@ export function recomputeSelectionAfterBatch(
 }
 
 /**
+ * 逐条执行批量启停并收集失败项——**#88 缺陷 #1 的真修复就在这里**。
+ *
+ * 此前「catch 里记 failedIds」这段写在 `.tsx` 的 for 循环里，`.tsx` 在本仓库
+ * 结构性不可测（无 jsdom/testing-library），独立复核的变异测试 M4 删掉
+ * `failedIds.push(id)` 后 179 条测试全绿存活。把执行与收集也变成纯函数，
+ * 「失败不可见」这个缺陷才真正被钉住。
+ *
+ * 关键语义：**单条失败不得中断整批**——修复前的循环正是这么吞掉的，
+ * UI 报告「全部处理完」而实际有 N 条未改。
+ *
+ * @param ids      本批 id 快照（循环开始时捕获，不受执行期间用户操作影响）
+ * @param update   单条更新操作，抛错即视为该条失败
+ * @param onError  失败回调（用于 console 留痕等副作用），不影响返回值
+ * @returns 失败 id 列表，顺序与 `ids` 一致
+ */
+export async function runBatchToggle(
+  ids: readonly number[],
+  update: (id: number) => Promise<unknown>,
+  onError?: (id: number, err: unknown) => void,
+): Promise<number[]> {
+  const failedIds: number[] = [];
+  for (const id of ids) {
+    try {
+      await update(id);
+    } catch (err) {
+      // onError 是留痕用的旁路，自身抛错绝不能中断整批——否则一个日志回调
+      // 就能让「收集失败」退化成「整批中止」，反而比原缺陷更糟。
+      try {
+        onError?.(id, err);
+      } catch {
+        // 留痕失败不重抛：调用方需要的是失败 id 列表，不是异常
+      }
+      failedIds.push(id);
+    }
+  }
+  return failedIds;
+}
+
+/**
  * 生成批量操作的结果反馈文案。
  *
  * 全部成功给 teal；只要有一条失败就给 red 并逐条列出失败 id——失败不可见

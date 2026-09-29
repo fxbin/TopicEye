@@ -28,7 +28,7 @@ import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
 import { EvidenceProfileModal } from '@/components/EvidenceProfileModal';
 import { RSSHubManager, SourceListPanel, FeatureFlagsPanel } from './_panels';
-import { describeBatchResult, recomputeSelectionAfterBatch } from './_batch-utils';
+import { describeBatchResult, recomputeSelectionAfterBatch, runBatchToggle } from './_batch-utils';
 
 // ─── Page Component ───
 
@@ -450,21 +450,15 @@ export default function SourcesPage() {
     setBatchProcessing(true);
     setBatchResult(null);
     const ids = Array.from(selectedIds);
-    const failedIds: number[] = [];
     try {
-      // 循环调 update 端点（已存在，单 source 调）。
-      // 逐条失败必须收集并上抛到 UI：吞进 console 会让 UI 报告成功而实际未改，
-      // 这批信源会继续按原状态采集并污染内容池，而操作者无从察觉。
-      for (const id of ids) {
-        try {
-          await sourcesApi.update(id, { enabled });
-        } catch (err) {
-          console.error(`Batch toggle source ${id} failed:`, err);
-          failedIds.push(id);
-        }
-      }
+      // 逐条执行与失败收集见 _batch-utils.ts（纯函数，有单测覆盖）。
+      // 单条失败不中断整批，但必须被收集并上抛到 UI。
+      const failedIds = await runBatchToggle(
+        ids,
+        (id) => sourcesApi.update(id, { enabled }),
+        (id, err) => console.error(`Batch toggle source ${id} failed:`, err),
+      );
       // 执行完成后重建选择态：失败项保持选中以便直接重试。
-      // 逐条逻辑见 _batch-utils.ts（纯函数，有单测覆盖）。
       setSelectedIds((prev) => recomputeSelectionAfterBatch(prev, ids, failedIds));
       await fetchSources();
       await fetchSourceMap();

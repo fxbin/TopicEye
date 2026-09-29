@@ -28,6 +28,7 @@ import { SourceMapCard, SourceMapView } from './_components';
 import { AddSourceModal, BatchImportModal, EditSourceModal } from './_modals';
 import { EvidenceProfileModal } from '@/components/EvidenceProfileModal';
 import { RSSHubManager, SourceListPanel, FeatureFlagsPanel } from './_panels';
+import { describeBatchResult, recomputeSelectionAfterBatch } from './_batch-utils';
 
 // ─── Page Component ───
 
@@ -463,32 +464,12 @@ export default function SourcesPage() {
         }
       }
       // 执行完成后重建选择态：失败项保持选中以便直接重试。
-      // 注意批量期间复选框未被禁用，用户可能中途勾选新项——这些项不在本批快照内，
-      // 必须保留，不能被这次重建静默丢弃。
-      const batchSet = new Set(ids);
-      setSelectedIds((prev) => {
-        const next = new Set<number>();
-        for (const id of failedIds) next.add(id);
-        for (const id of prev) {
-          if (!batchSet.has(id)) next.add(id);
-        }
-        return next;
-      });
+      // 逐条逻辑见 _batch-utils.ts（纯函数，有单测覆盖）。
+      setSelectedIds((prev) => recomputeSelectionAfterBatch(prev, ids, failedIds));
       await fetchSources();
       await fetchSourceMap();
 
-      const verb = enabled ? '启用' : '停用';
-      const succeededCount = ids.length - failedIds.length;
-      if (failedIds.length === 0) {
-        setBatchResult({ tone: 'teal', text: `已${verb} ${ids.length} 个信源。` });
-      } else {
-        setBatchResult({
-          tone: 'red',
-          text:
-            `已${verb} ${succeededCount} 个信源，${failedIds.length} 个失败并保持选中：` +
-            `${failedIds.join('、')}。请检查网络或该信源状态后重试。`,
-        });
-      }
+      setBatchResult(describeBatchResult(ids.length, failedIds, enabled));
     } finally {
       setBatchProcessing(false);
     }

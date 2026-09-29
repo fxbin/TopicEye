@@ -17,6 +17,7 @@ import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components
 import { LoadingState } from '@/components/StateView';
 import { dailyReportApi } from '@/lib/api';
 import type { WebhookDeliveryLogItem } from '@/lib/api/_domains';
+import { summarizeLogPage } from './_scope-utils';
 
 const PAGE_SIZE = 30;
 
@@ -99,17 +100,19 @@ export default function WebhookLogsPage() {
     );
   }
 
-  // 注意口径：successCount / failCount 只统计**当前页** logs（PAGE_SIZE 行），
-  // 而 total 是全局条数。二者若以同款 Badge 并排，读者会把 2/1240 读成 0.16% 失败率，
-  // 真相是「最近 30 条里失败 2 条」。因此页内计数一律显式标注「本页」。
-  const successCount = logs.filter((l) => l.success).length;
-  const failCount = logs.length - successCount;
-  const pageStart = logs.length === 0 ? 0 : offset + 1;
-  const pageEnd = offset + logs.length;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  // 口径：successCount / failCount 只统计**当前页** logs（PAGE_SIZE 行），
+  // 而 total 是全局条数。二者若以同款 Badge 并排，读者会把 2/1240 读成 0.16%
+  // 失败率，真相是「最近 30 条里失败 2 条」。逐条计算见 _scope-utils.ts（有单测）。
+  const {
+    pageStart,
+    pageEnd,
+    successCount,
+    failCount,
+    hasPrev,
+    hasNext,
+    currentPage,
+    totalPages,
+  } = summarizeLogPage(logs, total, offset, PAGE_SIZE);
 
   return (
     <AdminPageShell maxWidth={1200}>

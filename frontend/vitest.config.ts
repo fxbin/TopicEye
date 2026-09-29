@@ -27,6 +27,10 @@ export default defineConfig({
         'src/lib/navigation.ts',
         'src/lib/utils.ts',
         'src/lib/datetime.ts',
+        // #88：导航清单是侧边栏与面包屑的唯一数据源，派生关系必须锁住
+        'src/lib/admin-nav.ts',
+        'src/app/admin/sources/_batch-utils.ts',
+        'src/app/admin/webhook-logs/_scope-utils.ts',
       ],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

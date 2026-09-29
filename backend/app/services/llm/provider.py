@@ -152,6 +152,13 @@ async def call_llm_with_metadata(
         if cached is not None:
             return cached, {"cache_hit": True}
 
+    # Budget fuse: reject paid calls once a rolling budget window is exhausted.
+    # Checked after the response cache on purpose — cache hits are free and
+    # must keep serving while new paid calls are refused.
+    from app.services.llm.budget_guard import ensure_llm_budget
+
+    await ensure_llm_budget(scene)
+
     try:
         result = await _call_llm_with_metadata_inner(
             messages,
@@ -172,12 +179,14 @@ async def call_llm_with_metadata(
         return result
     except Exception as exc:
         # 输入或内容策略错误不反映模型可用性，不能污染全局熔断器。
+        from app.services.llm.budget_guard import LlmBudgetExceededError
         from app.services.llm.circuit_breaker import CircuitOpenError
 
         # 429 和本地候选冷却代表局部容量耗尽，由 per-model failover 管理；
         # 把它们累计到路由熔断器会让一个配额不足的渠道阻断全部调用。
+        # 预算熔断同理：拒绝花钱不是故障，不得让预算恢复后仍被熔断。
         if (
-            not isinstance(exc, CircuitOpenError | LlmCapacityUnavailableError)
+            not isinstance(exc, CircuitOpenError | LlmCapacityUnavailableError | LlmBudgetExceededError)
             and not _is_deterministic_request_error(exc)
             and not _is_rate_limit_error(exc)
         ):

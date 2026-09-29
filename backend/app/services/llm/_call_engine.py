@@ -251,8 +251,11 @@ def _should_retry(exc: BaseException) -> bool:
     覆盖 DeepSeek/GLM/智谱等通过 openai-compat 抛通用 APIError 的场景。
 
     BadRequestError (400) 也不重试：内容过滤等确定性错误重试只会浪费时间。
+    预算熔断拒绝（LlmBudgetExceededError）同理：窗口未恢复前重试必被再拒。
     """
-    if isinstance(exc, RateLimitError) or _is_deterministic_request_error(exc):
+    from app.services.llm.budget_guard import LlmBudgetExceededError
+
+    if isinstance(exc, RateLimitError | LlmBudgetExceededError) or _is_deterministic_request_error(exc):
         return False
     return not _is_rate_limit_error(exc)
 

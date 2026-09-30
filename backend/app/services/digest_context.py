@@ -67,6 +67,7 @@ def _row_to_scoring_input(row: dict) -> ScoringInput:
         category=row.get("category"),
         source_name=row.get("source_name"),
         crawled_at=row.get("crawled_at"),
+        summary_source=row.get("summary_source"),
         curation_score=value_or_default(row.get("curation_score"), 0),
         info_density=value_or_default(row.get("info_density"), 50),
         actionability=value_or_default(row.get("actionability"), 50),

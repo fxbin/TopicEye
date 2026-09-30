@@ -630,6 +630,14 @@ export function PickCard({
           <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-[11px] text-gray-300">/</span>
           <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
+          {analysis?.summary_source === 'local_fallback' && (
+            <span
+              title="该内容降级为本地速览：触发原因（预算/熔断）消除后将自动重新进行 AI 分析，分数为估算值"
+              className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"
+            >
+              本地速览 · 待 AI 复核
+            </span>
+          )}
           {item.category && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{item.category}</span>}
           {item.content_type && <span className="rounded-full bg-teal-light px-2 py-0.5 text-[10px] font-bold text-teal">{item.content_type}</span>}
           {tags.slice(0, 3).map((tag) => (

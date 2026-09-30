@@ -340,6 +340,8 @@ export interface ContentAnalysis {
   creator_score: number;
   viral_score: number;
   risk_score: number;
+  // 分析来源标记：'local_fallback' = 降级本地速览（#90，前端据此显示待复核标记）
+  summary_source?: string | null;
   platform_fit?: Record<string, unknown> | null;
   recommended_reason?: string | null;
   summary?: string | null;

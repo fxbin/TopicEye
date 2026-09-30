@@ -848,7 +848,8 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
             tags VARCHAR,
             recommendation VARCHAR,
             recommended_reason VARCHAR,
-            created_at TIMESTAMP
+            created_at TIMESTAMP,
+            summary_source VARCHAR
         )
     """)
     conn.execute("""
@@ -882,15 +883,15 @@ def test_digest_content_query_uses_latest_analysis_and_feedback_order(monkeypatc
         [now, now],
     )
     conn.execute(
-        "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, '旧摘要', 95, 95, 95, 95, 95, 10, 99, 95, 95, 95, '[\"旧\"]', '旧推荐', '旧理由', ?)",
+        "INSERT INTO oltp_db.ai_analyses VALUES (1, 1, '旧摘要', 95, 95, 95, 95, 95, 10, 99, 95, 95, 95, '[\"旧\"]', '旧推荐', '旧理由', ?, NULL)",
         [now - timedelta(hours=2)],
     )
     conn.execute(
-        "INSERT INTO oltp_db.ai_analyses VALUES (2, 1, '新摘要', 70, 70, 70, 65, 80, 10, 70, 82, 81, 72, '[\"新\"]', '新推荐', '新理由', ?)",
+        "INSERT INTO oltp_db.ai_analyses VALUES (2, 1, '新摘要', 70, 70, 70, 65, 80, 10, 70, 82, 81, 72, '[\"新\"]', '新推荐', '新理由', ?, NULL)",
         [now - timedelta(hours=1)],
     )
     conn.execute(
-        "INSERT INTO oltp_db.ai_analyses VALUES (3, 2, '无反馈摘要', 72, 72, 72, 60, 75, 10, 72, 74, 73, 50, '[\"AI\"]', '推荐', '理由', ?)",
+        "INSERT INTO oltp_db.ai_analyses VALUES (3, 2, '无反馈摘要', 72, 72, 72, 60, 75, 10, 72, 74, 73, 50, '[\"AI\"]', '推荐', '理由', ?, NULL)",
         [now],
     )
     conn.execute("INSERT INTO oltp_db.user_feedback VALUES (1, 1, 1, 20.0, ?)", [now])
@@ -1020,7 +1021,8 @@ def test_digest_content_queries_exclude_ignored_content(monkeypatch):
             tags VARCHAR,
             recommendation VARCHAR,
             recommended_reason VARCHAR,
-            created_at TIMESTAMP
+            created_at TIMESTAMP,
+            summary_source VARCHAR
         )
     """)
     conn.execute("""
@@ -1049,7 +1051,7 @@ def test_digest_content_queries_exclude_ignored_content(monkeypatch):
         conn.execute(
             """
             INSERT INTO oltp_db.ai_analyses VALUES (
-                ?, ?, '摘要', 90, 90, 90, 90, 90, 10, 90, 90, 90, 90, '["AI"]', '推荐', '理由', ?
+                ?, ?, '摘要', 90, 90, 90, 90, 90, 10, 90, 90, 90, 90, '["AI"]', '推荐', '理由', ?, NULL
             )
             """,
             [content_id, content_id, now],

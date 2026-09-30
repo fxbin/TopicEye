@@ -44,6 +44,7 @@ def build_scoring_input(item: Any, feedback_score: float = 0) -> ScoringInput:
         content_id=item.id,
         title=item.title,
         category=item.category,
+        summary_source=analysis.summary_source,
         source_id=item.source_id,
         source_name=item.source_name,
         published_at=item.published_at,

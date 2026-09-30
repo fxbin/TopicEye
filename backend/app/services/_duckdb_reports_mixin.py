@@ -80,7 +80,8 @@ class ReportsMixin:
                    COALESCE(f.feedback_score, 0) AS feedback_score,
                    COALESCE(a.curation_score, 0)
                        + LEAST({feedback_max}, GREATEST({feedback_min}, COALESCE(f.feedback_score, 0))) * {feedback_weight}
-                       AS adjusted_score
+                       AS adjusted_score,
+                   a.summary_source
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
@@ -120,6 +121,7 @@ class ReportsMixin:
                 "source_weight_db": int(row[21]) if row[21] else 3,
                 "feedback_score": float(row[22]) if row[22] else 0,
                 "adjusted_score": round(float(row[23] or 0), 1),
+                "summary_source": row[24],
             }
             for row in results
         ]

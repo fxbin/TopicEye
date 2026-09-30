@@ -183,6 +183,9 @@ class Settings(BaseSettings):
     LLM_BUDGET_CALLS_PER_MINUTE: int = 0
     LLM_BUDGET_CALLS_PER_HOUR: int = 0
     LLM_BUDGET_CALLS_PER_DAY: int = 0
+    # 预算豁免场景（逗号分隔）：这些 scene 的调用不做预算检查。日报/周报/月报
+    # 低频且是核心承诺（预算耗尽会让 daily_report 直接走 ERROR），默认豁免。
+    LLM_BUDGET_EXEMPT_SCENES: str = "daily_report,weekly_digest,monthly_digest"
     ANALYSIS_WORKER_CONCURRENCY: int = 3
     ANALYSIS_MAX_ATTEMPTS: int = 5
     ANALYSIS_RETRY_BASE_DELAY_SECONDS: int = 60

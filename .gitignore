@@ -73,3 +73,6 @@ htmlcov/
 .brooks-lint-history.json
 .vidt/
 .node-version
+
+# 独立 worktree 工作区（issue 切片隔离）
+.worktrees/

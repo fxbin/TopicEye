@@ -1,6 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
-from app.services.scoring_engine import CONFIG, ScoringInput, score_items
+from app.services.scoring_engine import (
+    CONFIG,
+    ScoringInput,
+    _compute_percentile_threshold,
+    score_items,
+)
 
 _NOW = datetime(2026, 1, 1, 12, 0, 0)
 
@@ -253,11 +258,27 @@ def test_p70_threshold_excludes_local_fallback_fake_scores():
 
 
 def test_all_fallback_batch_falls_back_to_full_scores():
-    """全候选皆降级时回退全量计算，P70 引擎不因空集崩溃。"""
+    """全候选皆降级时，门槛仍由本批实际分数决定，不退回全局默认阈值。
+
+    这个分支不是防御性冗余：真实分为空时若直接把空列表交给
+    ``_compute_percentile_threshold``，它会返回 ``CONFIG["curation_threshold"]``
+    （55），而降级内容的 final_score 普遍低于该值，结果是整批一条都选不出来。
+    """
     fallback_items = [_item(i, summary_source="local_fallback", curation_score=62) for i in range(1, 5)]
     scored = score_items(fallback_items)
     assert len(scored) == 4
-    assert all(bd.threshold_used is not None for bd, _ in scored)
+
+    thresholds = {bd.threshold_used for bd, _ in scored}
+    assert len(thresholds) == 1
+    threshold = thresholds.pop()
+
+    own_scores = [bd.final_score for bd, _ in scored]
+    assert threshold == _compute_percentile_threshold(own_scores, 70), "门槛应由本批实际分数决定"
+
+    # 守门断言：门槛退回全局默认时本批会全部低于阈值、页面一条都不出。
+    # 删掉 score_items 里的 `or [bd.final_score ...]` 回退分支，本测试必红。
+    assert threshold != CONFIG["curation_threshold"]
+    assert any(bd.selected for bd, _ in scored), "门槛来自本批分数时至少应选出一条"
 
 
 def test_scoring_input_defaults_summary_source_none():

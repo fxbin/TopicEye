@@ -120,16 +120,16 @@
 - 回归测试：`npx vitest run src/lib/__tests__/admin-nav.test.ts`（13 条）。导航清单与面包屑映射合并到 `src/lib/admin-nav.ts` 单一事实源，映射由清单派生；`nav-checklist` 等价断言（壳内每项都有映射、label 与清单逐项一致）已在其中，漏项即红。顺带修掉一个被测试抓出的旧行为：`/admin/任何未知路径` 曾因壳根前缀匹配被判成「概览」，现已回退兜底。
 - owner：#88。
 
-### LLM 降级内容永久结疤：local_fallback 无恢复路径 — #90 🐛 待修复（2026-09-30）
+### LLM 降级内容再也不会被重新分析：local_fallback 无恢复路径 — #90 🔧 修复完成待合并（2026-10-01）
 - 症状：LLM 降级路径（熔断 `CircuitOpenError` / 内容过滤 `BadRequestError` / 预算 `LlmBudgetExceededError` 三种触发源共用）把内容写为 `ANALYZED` 终态、`AiAnalysis.summary_source='local_fallback'` 落库后，**全代码库没有任何 requeue 消费者**——重分析资格谓词只认 PENDING/僵死 ANALYZING/ERROR，手动分析端点遇已有记录早退。降级内容是确定性假分数（curation 61-64 窄带、risk 恒 28、模板推荐语），today-picks 以 40px 大字渲染且前端不读 `summary_source`，用户无法分辨；窄带假分参与 P70 计算会拖低百分位门槛、挤掉真实 65-70 分内容。
 - 环境/前提：任一降级触发源命中即触发；当前部署全走本地模型（`llm_call_logs.total_cost` 全 0），预算闸实际不触发，触发面在切换付费 API 后成为现实。
 - 复现：触发降级（如断言 `LlmBudgetExceededError` 路径或熔断 OPEN）→ 确认内容 `status=ANALYZED`、`summary_source='local_fallback'` → 检索全部重分析入口（`_analysis_candidate_condition`、`api/v1/analyses.py` 手动端点、scripts/）确认无路径捡起该内容。
 - 期望 vs 实际：期望触发原因消除后（预算窗口滚过/熔断恢复）内容可被重新 LLM 分析；实际永久停留假分形态。
-- 边界：`analysis.py` 降级路径 + `content_repo.py` 重分析资格谓词；修复为 requeue job + P70 排除 + 前端「本地速览·待 AI 复核」标记 + 日报豁免的一揽子（详见 #90）。
-- 严重度：P1（预算日窗最坏锁 ~24h × 实测 ~250 条/时摄入 ≈ 数千条永久假分；当前零账单部署不触发故非 P0）；**复现性**：always（降级发生即结疤）。
-- 回归测试：待 requeue 落地补——造 fallback 内容 → 模拟预算恢复 → 断言内容回 PENDING 并被重新分析；P70 排除与前端标记各有对应测试（教训机器化随修复交付）。
+- 边界：`analysis.py` 降级路径 + `content_repo.py` 重分析资格谓词。已修（分支 `wip-llm-budget-guard`，2 笔提交）：新增 `services/analysis_requeue.py` requeue 服务 + scheduler 每 15 分钟调度，预算余量 ≥30% 且降级满 60 分钟后把 `local_fallback` 内容重置回 PENDING；P70 门槛改为只由真实 LLM 评分决定（`scoring_engine.py`）；`summary_source` 透传补齐 DuckDB 主路径、OLTP fallback、API payload 与周/月报 digest；today-picks 卡片显示「本地速览 · 待 AI 复核」标记；预算闸豁免 daily_report/weekly_digest/monthly_digest。
+- 严重度：P1（预算日窗最坏锁 ~24h × 实测 ~250 条/时摄入 ≈ 数千条永久假分；当前零账单部署不触发故非 P0）；**复现性**：always（降级发生即永久停留假分）。
+- 回归测试：`uv run python -m pytest tests/test_analysis_requeue.py -q`（6 条：资格与字段重置 / limit 最旧优先 / 服务层余量门控 / 余量阈值语义 / 豁免场景绕行 / ≥2 条 fallback 不再回收）；`tests/test_llm_budget_guard.py`（9 条）；`tests/test_scoring_engine.py -k "p70 or all_fallback"`（2 条）。变异验证（2026-10-01 独立复核）：删掉 P70 排除逻辑 → `test_p70_threshold_excludes_local_fallback_fake_scores` 转红；删掉全降级批次的 `or [...]` 回退分支 → `test_all_fallback_batch_falls_back_to_full_scores` 转红（**该分支非防御性冗余**：真实分为空时 `_compute_percentile_threshold` 返回全局默认 55，而降级内容 final_score 普遍低于 55，回退缺失会导致整批选不出内容）。全量后端套件仅 2 条 FAILED，均为 `test_source_url_safety.py` 依赖真实网络的存量红，在 main 上同样 FAILED，非本次引入。
 - owner：#90。
-- **存量定性（勿误读）**：非预算闸（`feat(llm): 增加三窗预算熔断闸`）引入——熔断降级早就同样结疤；预算闸放大触发面，圆桌评审三席独立发现。发现方式：预算数值圆桌（2026-09-30，Memory 存 `.vidt/roundtable/budget-fuse-values/`，会话态）。
+- **存量定性（勿误读）**：非预算闸（`feat(llm): 增加三窗预算熔断闸`）引入——熔断降级早就同样留下假分内容；预算闸放大触发面，圆桌评审三席独立发现。发现方式：预算数值圆桌（2026-09-30，Memory 存 `.vidt/roundtable/budget-fuse-values/`，会话态）。
 
 ## 三、关键流程基线（9 项）
 

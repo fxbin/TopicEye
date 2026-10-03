@@ -323,3 +323,32 @@ async def record_llm_call_in_new_session(
         except Exception as exc:
             await db.rollback()
             logger.warning("LLM usage log skipped: %s", exc)
+
+
+async def count_recent_llm_calls() -> tuple[int, int, int]:
+    """Count DONE LLM calls in the trailing 1m / 1h / 24h windows.
+
+    Single aggregate query backing the budget fuse (budget_guard); only
+    billable (status="DONE") calls count, rejected-by-fuse calls never
+    reach this table.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import case, func
+
+    from app.core.database import async_session
+
+    now = datetime.now(UTC)
+    async with async_session() as db:
+        result = await db.execute(
+            select(
+                func.count(case((LlmCallLog.created_at >= now - timedelta(minutes=1), 1))),
+                func.count(case((LlmCallLog.created_at >= now - timedelta(hours=1), 1))),
+                func.count(),
+            ).where(
+                LlmCallLog.status == "DONE",
+                LlmCallLog.created_at >= now - timedelta(hours=24),
+            )
+        )
+        minute_calls, hour_calls, day_calls = result.one()
+        return int(minute_calls), int(hour_calls), int(day_calls)

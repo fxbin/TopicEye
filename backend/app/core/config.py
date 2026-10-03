@@ -176,6 +176,16 @@ class Settings(BaseSettings):
     LLM_WORKER_CONCURRENCY: int = 4
     # 单次运行时调用的硬上限；模型 extra_params.timeout 只能把它调小，不能放大。
     LLM_COMPLETION_TIMEOUT_SECONDS: float = 45.0
+    # 预算熔断（budget_guard）：按 llm_call_logs 实际 DONE 调用数的三窗保险丝，
+    # 超限直接拒绝新调用（分析链路走本地降级，窗口过后自动恢复）。
+    # 默认 0 = 全部关闭（opt-in，不改变现有部署行为）；0 同样适用于单窗关闭。
+    # 开启建议：分钟窗不低于 LLM_REQUESTS_PER_MINUTE，日窗按可接受的烧钱上限设。
+    LLM_BUDGET_CALLS_PER_MINUTE: int = 0
+    LLM_BUDGET_CALLS_PER_HOUR: int = 0
+    LLM_BUDGET_CALLS_PER_DAY: int = 0
+    # 预算豁免场景（逗号分隔）：这些 scene 的调用不做预算检查。日报/周报/月报
+    # 低频且是核心承诺（预算耗尽会让 daily_report 直接走 ERROR），默认豁免。
+    LLM_BUDGET_EXEMPT_SCENES: str = "daily_report,weekly_digest,monthly_digest"
     ANALYSIS_WORKER_CONCURRENCY: int = 3
     ANALYSIS_MAX_ATTEMPTS: int = 5
     ANALYSIS_RETRY_BASE_DELAY_SECONDS: int = 60

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _creation_llm_error_message(exc: Exception) -> str:
     """Return an actionable, non-internal error message for creation callers."""
+    from app.services.llm.budget_guard import LlmBudgetExceededError
     from app.services.llm.circuit_breaker import CircuitOpenError
     from app.services.llm.provider import LlmCapacityUnavailableError
 
@@ -33,6 +34,8 @@ def _creation_llm_error_message(exc: Exception) -> str:
         return "创作方案暂时排队等待可用模型渠道，请稍后重试。"
     if isinstance(exc, CircuitOpenError):
         return "创作方案服务暂时不可用，系统正在自动恢复，请稍后重试。"
+    if isinstance(exc, LlmBudgetExceededError):
+        return "模型调用预算已达今日上限，创作方案稍后自动恢复，请明日再试。"
     return "创作方案生成失败，请稍后重试。"
 
 

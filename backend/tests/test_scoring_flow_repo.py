@@ -654,3 +654,110 @@ async def test_scoring_flow_counts_respect_visible_user_id():
         assert count_all == 3, f"全局应见 3 条，实际 {count_all}"
 
     await engine.dispose()
+
+
+def _window_test_source(now: datetime) -> Source:
+    return Source(
+        id=1,
+        name="窗口测试信源",
+        source_type=SourceType.RSS,
+        url="https://example.com/window.xml",
+        category="AI",
+        status=SourceStatus.ACTIVE,
+        enabled=True,
+        weight=3,
+    )
+
+
+def _analyzed_item(
+    item_id: int,
+    *,
+    crawled_at: datetime,
+    published_at: datetime | None,
+) -> ContentItem:
+    return ContentItem(
+        id=item_id,
+        title=f"窗口样本 {item_id}",
+        url=f"https://example.com/window-{item_id}",
+        source_id=1,
+        source_name="窗口测试信源",
+        source_type="RSS",
+        category="AI",
+        status=ContentStatus.ANALYZED,
+        crawled_at=crawled_at,
+        published_at=published_at,
+    )
+
+
+async def _seed_window_items(db, now: datetime) -> None:
+    """三条内容：旧文晚抓 / 无发布时间 / 正常新文，各带一条低风险分析。"""
+    items = [
+        # 旧文晚抓：3 天前发布、刚刚才发现 —— 不应进「今天」的候选
+        _analyzed_item(1, crawled_at=now, published_at=now - timedelta(days=3)),
+        # 无发布时间的信源：回退按抓取时间计（2 小时前抓到）
+        _analyzed_item(2, crawled_at=now - timedelta(hours=2), published_at=None),
+        # 正常新文：半小时前发布、刚刚抓到（发布时间在报告窗口内）
+        _analyzed_item(3, crawled_at=now, published_at=now - timedelta(minutes=30)),
+    ]
+    db.add_all(items)
+    db.add_all(
+        [
+            AiAnalysis(
+                id=item_id,
+                content_id=item_id,
+                curation_score=80,
+                risk_score=10,
+                created_at=now,
+            )
+            for item_id in (1, 2, 3)
+        ]
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_today_picks_window_prefers_published_at():
+    """旧文晚抓不进今日候选；published_at 缺失回退 crawled_at。"""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    now = datetime.now(UTC)
+    async with session_factory() as db:
+        db.add(_window_test_source(now))
+        await _seed_window_items(db, now)
+
+        repo = ContentRepo(db)
+        items = await repo.list_for_today_picks(hours=24)
+
+        assert {item.id for item in items} == {2, 3}, "3 天前发布的旧文即使刚被抓到也不应进 24h 候选窗口"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_report_window_prefers_published_at():
+    """报告窗口按原文发布时间归档：晚抓到的旧文不进之后的日报。"""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    now = datetime.now(UTC)
+    async with session_factory() as db:
+        db.add(_window_test_source(now))
+        await _seed_window_items(db, now)
+
+        repo = ContentRepo(db)
+        # 报告窗口覆盖「刚刚」（旧文 id=1 的 crawled_at 在窗口内、published_at 在窗口外）
+        report_items = await repo.list_for_report_window(
+            window_start=now - timedelta(hours=1),
+            window_end=now + timedelta(hours=1),
+        )
+        assert 1 not in {
+            item.id for item in report_items
+        }, "旧文（published_at 在报告窗口外）不应因晚抓而出现在本期日报"
+        assert 3 in {item.id for item in report_items}
+
+    await engine.dispose()

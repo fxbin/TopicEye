@@ -783,6 +783,77 @@ class ContentRepo(BaseRepository[ContentItem]):
 
     # ── Today picks candidates (SQLite fallback) ─────────────────
 
+    async def reset_local_fallback_for_reanalysis(
+        self,
+        *,
+        limit: int = 50,
+        cooldown_minutes: int = 60,
+        max_age_days: int = 7,
+    ) -> int:
+        """Requeue local_fallback-analyzed content for real LLM analysis (#90).
+
+        降级触发原因（预算窗口/熔断）消除后由 requeue job 调用，把永久假分
+        变回真实分析。只回收「最新一条分析是 local_fallback」的 ANALYZED 内容：
+
+        - 最旧优先（``limit`` 限速，避免一次灌满分析队列）；
+        - ``cooldown_minutes``：降级落库后至少等待，防止预算临界值附近
+          requeue→再降级→再 requeue 的反复横跳；
+        - ``max_age_days``：只回收近 N 天（旧内容重分析价值低）；
+        - ``skip_analysis`` 为 True 的内容不回收（显式跳过 LLM 的语义优先）；
+        - 已有 ≥2 条 local_fallback 分析的内容不回收：attempts=0 重置使
+          ANALYSIS_MAX_ATTEMPTS 失效，内容过滤类确定性降级（不消耗预算
+          计数、余量门控拦不住）反复 requeue 会浪费调用（#90 复核结论）。
+
+        返回实际重置条数。SELECT+UPDATE 两步：UPDATE 复核 status=ANALYZED
+        防两步间隙状态漂移。
+        """
+        from datetime import timedelta
+
+        from sqlalchemy import update
+
+        from app.models.analysis import AiAnalysis
+
+        now = naive_utc_now()
+        latest_analysis_id = self._latest_analysis_id_subquery(AiAnalysis)
+        candidate_ids_stmt = (
+            select(self.model.id)
+            .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
+            .where(self.model.status == ContentStatus.ANALYZED)
+            .where(self.model.skip_analysis.is_(False))
+            .where(self.model.updated_at <= now - timedelta(minutes=cooldown_minutes))
+            .where(self.model.created_at >= now - timedelta(days=max_age_days))
+            .where(AiAnalysis.summary_source == "local_fallback")
+            .where(
+                self.model.id.notin_(
+                    select(AiAnalysis.content_id)
+                    .where(AiAnalysis.summary_source == "local_fallback")
+                    .group_by(AiAnalysis.content_id)
+                    .having(func.count() >= 2)
+                )
+            )
+            .order_by(self.model.created_at.asc())
+            .limit(limit)
+        )
+        rows = await self.db.execute(candidate_ids_stmt)
+        ids = [int(row[0]) for row in rows.all()]
+        if not ids:
+            return 0
+
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id.in_(ids))
+            .where(self.model.status == ContentStatus.ANALYZED)
+            .values(
+                status=ContentStatus.PENDING,
+                updated_at=now,
+                analysis_attempts=0,
+                analysis_next_retry_at=None,
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+            )
+        )
+        return int(result.rowcount or 0)
+
     async def list_for_today_picks(
         self,
         hours: int = 48,
@@ -808,7 +879,9 @@ class ContentRepo(BaseRepository[ContentItem]):
                 selectinload(self.model.source),
             )
             .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-            .where(self.model.crawled_at >= cutoff)
+            # 窗口按原文发布时间优先（published_at 为空回退抓取时间），旧文晚抓
+            # 不进「今天」；与 DuckDB query_today_picks 的 COALESCE 口径对齐。
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) >= cutoff)
             .where(AiAnalysis.risk_score <= risk_threshold)
         )
         if category:
@@ -847,8 +920,10 @@ class ContentRepo(BaseRepository[ContentItem]):
                 selectinload(self.model.source),
             )
             .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-            .where(self.model.crawled_at >= window_start)
-            .where(self.model.crawled_at <= window_end)
+            # 报告窗口同样按原文发布时间归档：晚抓到的旧文归入其发布期，
+            # 不出现在之后的日报里（口径与 list_for_today_picks 一致）。
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) >= window_start)
+            .where(func.coalesce(self.model.published_at, self.model.crawled_at) <= window_end)
             .where(AiAnalysis.risk_score <= risk_threshold)
             .where(AiAnalysis.curation_score.isnot(None))
             .where(~self._accepted_event_member_exists())

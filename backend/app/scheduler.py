@@ -890,6 +890,20 @@ async def _normalize_content_events() -> dict:
 # ── Lifecycle helpers ─────────────────────────────────────────────────
 
 
+async def _requeue_local_fallback() -> None:
+    """#90：预算/熔断恢复后补分析降级内容（余量门控见 analysis_requeue）。"""
+    from app.services.analysis_requeue import requeue_local_fallback_content
+
+    try:
+        async with async_session() as db:
+            count = await requeue_local_fallback_content(db)
+            await db.commit()
+        if count:
+            logger.info("Scheduler: requeued %d local_fallback item(s) for re-analysis", count)
+    except Exception:
+        logger.exception("Scheduler: local_fallback requeue failed")
+
+
 def start_scheduler() -> None:
     """Register all scheduled jobs and start the scheduler."""
     if scheduler.running:
@@ -1110,6 +1124,16 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=4, minute=15),
         id="topic_clustering_daily",
         name="话题聚类每日执行",
+        replace_existing=True,
+    )
+
+    # 降级内容补分析 (#90)：每 15 分钟在预算余量充足时，把 local_fallback
+    # 降级内容重置回 PENDING 让分析队列重新拿真实 LLM 分析
+    scheduler.add_job(
+        _requeue_local_fallback,
+        trigger=IntervalTrigger(minutes=15),
+        id="requeue_local_fallback",
+        name="降级内容补分析（预算余量门控）",
         replace_existing=True,
     )
 

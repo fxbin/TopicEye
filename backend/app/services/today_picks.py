@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -277,7 +277,9 @@ async def _build_today_picks_via_oltp(
             selectinload(ContentItem.analyses),
             selectinload(ContentItem.source),
         )
-        .where(ContentItem.crawled_at >= cutoff)
+        # 窗口按原文发布时间优先（published_at 为空的信源回退抓取时间），
+        # 旧文晚抓不进「今天」；与 DuckDB query_today_picks 的 COALESCE 口径对齐。
+        .where(func.coalesce(ContentItem.published_at, ContentItem.crawled_at) >= cutoff)
         .order_by(ContentItem.crawled_at.desc())
     )
     if category:
@@ -429,6 +431,7 @@ def _row_to_scoring_input(row: dict) -> ScoringInput:
         content_id=row["id"],
         title=row.get("title") or "",
         category=row.get("category"),
+        summary_source=row.get("summary_source"),
         source_id=row.get("source_id"),
         source_name=row.get("source_name"),
         published_at=row.get("published_at"),
@@ -478,6 +481,8 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
         "short_video_plan": _decode_json_value(row.get("short_video_plan")),
         "risk_notes": _decode_json_value(row.get("risk_notes")),
         "curation_score": row.get("curation_score") or 0,
+        # 分析来源：'local_fallback' 时前端显示「本地速览·待 AI 复核」标记（#90）
+        "summary_source": row.get("summary_source"),
         "tags": analysis_tags,
         "recommendation": _clean_optional_text(row.get("recommendation")),
         "info_density": row.get("info_density") or 0,

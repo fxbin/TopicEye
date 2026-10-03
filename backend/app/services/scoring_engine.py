@@ -89,15 +89,18 @@ class ScoringInput:
         "source_weight_db",  # Source.weight from DB (1-5)
         # Feedback signal
         "feedback_score",  # user feedback signal (0+, default 0)
+        # Analysis provenance
+        "summary_source",  # e.g. "local_fallback" for degraded local analysis (#90)
     )
 
     def __init__(self, **kwargs):
         for slot in self.__slots__:
             if slot == "feedback_score":
                 setattr(self, slot, kwargs.get(slot, 0))
-            elif slot in ("published_at", "crawled_at"):
+            elif slot in ("published_at", "crawled_at", "summary_source"):
                 # datetime 字段默认 None（表示"没有"），不能是 0（int），
                 # 否则 _compute_time_decay 的 ensure_aware_utc(0) 会崩。
+                # summary_source 同理默认 None（表示真实 LLM 分析）。
                 setattr(self, slot, kwargs.get(slot))
             else:
                 setattr(self, slot, kwargs.get(slot, 0))
@@ -442,7 +445,14 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     if cfg["curation_mode"] == "percentile":
         # Use final_score ranking: top (100 - percentile)% are selected
         # e.g. curation_percentile=70 -> top 30% selected, bounded by base quality.
-        final_scores = [bd.final_score for bd, _ in results]
+        # P70 门槛只由真实 LLM 评分决定：local_fallback 的确定性假分
+        # （curation 收敛 61-64 窄带）不得污染百分位门槛、挤掉真实内容。
+        # 降级项仍参与 selected 判定与展示（前端带「本地速览」标记），
+        # 由 requeue job 尽快换回真实分析（#90）。全候选皆降级时改用全量分数：
+        # 空列表会被 _compute_percentile_threshold 回退到全局默认阈值（55），
+        # 而降级内容的 final_score 普遍低于它，那样整批一条都选不出来。
+        real_scores = [bd.final_score for bd, item in results if item.summary_source != "local_fallback"]
+        final_scores = real_scores or [bd.final_score for bd, _ in results]
         actual_threshold = _compute_percentile_threshold(
             final_scores,
             cfg["curation_percentile"],

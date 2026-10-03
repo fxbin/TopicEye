@@ -29,7 +29,8 @@ class ReportsMixin:
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
-            WHERE c.crawled_at >= '{cutoff}'
+            -- 窗口按原文发布时间优先（口径同 list_for_report_window / query_today_picks）
+            WHERE COALESCE(c.published_at, c.crawled_at) >= '{cutoff}'
               AND ignored.content_id IS NULL
               AND a.curation_score IS NOT NULL
             ORDER BY (COALESCE(a.creator_score, 0) + COALESCE(a.viral_score, 0)) DESC
@@ -79,14 +80,16 @@ class ReportsMixin:
                    COALESCE(f.feedback_score, 0) AS feedback_score,
                    COALESCE(a.curation_score, 0)
                        + LEAST({feedback_max}, GREATEST({feedback_min}, COALESCE(f.feedback_score, 0))) * {feedback_weight}
-                       AS adjusted_score
+                       AS adjusted_score,
+                   a.summary_source
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
             LEFT JOIN feedback_scores f ON f.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
-            WHERE CAST(c.crawled_at AS DATE) >= DATE '{start_date}'
-              AND CAST(c.crawled_at AS DATE) <= DATE '{end_date}'
+            -- 周报/月报同样按原文发布时间归档，口径与日报窗口一致
+            WHERE CAST(COALESCE(c.published_at, c.crawled_at) AS DATE) >= DATE '{start_date}'
+              AND CAST(COALESCE(c.published_at, c.crawled_at) AS DATE) <= DATE '{end_date}'
               AND ignored.content_id IS NULL
               AND a.curation_score IS NOT NULL
             ORDER BY adjusted_score DESC, COALESCE(a.creator_score, 0) DESC
@@ -118,6 +121,7 @@ class ReportsMixin:
                 "source_weight_db": int(row[21]) if row[21] else 3,
                 "feedback_score": float(row[22]) if row[22] else 0,
                 "adjusted_score": round(float(row[23] or 0), 1),
+                "summary_source": row[24],
             }
             for row in results
         ]

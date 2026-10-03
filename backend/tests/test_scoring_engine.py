@@ -1,6 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
-from app.services.scoring_engine import CONFIG, ScoringInput, score_items
+from app.services.scoring_engine import (
+    CONFIG,
+    ScoringInput,
+    _compute_percentile_threshold,
+    score_items,
+)
 
 _NOW = datetime(2026, 1, 1, 12, 0, 0)
 
@@ -210,3 +215,73 @@ def test_diversity_promotes_other_source_over_same_source_run():
     # 第一名仍是分数最高的同源第一条；同源第二条因惩罚被其它来源反超
     assert final_ids[0] == 1
     assert final_ids.index(99) < final_ids.index(2)
+
+
+def test_p70_threshold_excludes_local_fallback_fake_scores():
+    """#90：local_fallback 的确定性假分不得污染 P70 门槛。
+
+    三组对照（自证明区分度——守门断言保证若删掉排除逻辑本测试必红）：
+    - real_only：3 条真实分（90/80/70），门槛 T1 只由真实分决定；
+    - mixed：再混入 2 条假分（85/75，标记 local_fallback）——真实项门槛
+      仍应为 T1（排除生效）；
+    - full：同样的 2 条 85/75 但标记为真实分析——门槛 T2 应不同于 T1，
+      证明该分数组合确实会移动门槛（若排除逻辑失效，mixed 会退化成
+      full 的门槛，测试转红）。
+    """
+
+    def _scored(content_id: int, curation: int, **extra) -> ScoringInput:
+        return _item(content_id, curation_score=curation, **extra)
+
+    real_items = [_scored(1, 90), _scored(2, 80), _scored(3, 70)]
+    fallback_items = [
+        _scored(98, 85, summary_source="local_fallback"),
+        _scored(99, 75, summary_source="local_fallback"),
+    ]
+    same_scores_as_real = [_scored(98, 85), _scored(99, 75)]  # 不带标记
+
+    baseline = score_items(list(real_items))
+    mixed = score_items(real_items + fallback_items)
+    full = score_items(real_items + same_scores_as_real)
+
+    t_baseline = {bd.threshold_used for bd, _ in baseline}
+    t_mixed_real = {bd.threshold_used for bd, item in mixed if item.content_id in (1, 2, 3)}
+    t_full = {bd.threshold_used for bd, _ in full}
+
+    assert len(t_baseline) == 1 and len(t_full) == 1
+    assert t_mixed_real == t_baseline, "混入 fallback 假分后真实项门槛不应改变"
+    assert t_full != t_baseline, "守门断言：85/75 混入真实批应移动门槛——本断言失败说明对照构造失去区分度"
+
+    # fallback 项自身仍参与判定与展示（不静默消失），且用同一门槛判定
+    fallback_results = {item.content_id: bd for bd, item in mixed if item.content_id in (98, 99)}
+    assert len(fallback_results) == 2
+    assert {bd.threshold_used for bd in fallback_results.values()} == t_baseline
+
+
+def test_all_fallback_batch_falls_back_to_full_scores():
+    """全候选皆降级时，门槛仍由本批实际分数决定，不退回全局默认阈值。
+
+    这个分支不是防御性冗余：真实分为空时若直接把空列表交给
+    ``_compute_percentile_threshold``，它会返回 ``CONFIG["curation_threshold"]``
+    （55），而降级内容的 final_score 普遍低于该值，结果是整批一条都选不出来。
+    """
+    fallback_items = [_item(i, summary_source="local_fallback", curation_score=62) for i in range(1, 5)]
+    scored = score_items(fallback_items)
+    assert len(scored) == 4
+
+    thresholds = {bd.threshold_used for bd, _ in scored}
+    assert len(thresholds) == 1
+    threshold = thresholds.pop()
+
+    own_scores = [bd.final_score for bd, _ in scored]
+    assert threshold == _compute_percentile_threshold(own_scores, 70), "门槛应由本批实际分数决定"
+
+    # 守门断言：门槛退回全局默认时本批会全部低于阈值、页面一条都不出。
+    # 删掉 score_items 里的 `or [bd.final_score ...]` 回退分支，本测试必红。
+    assert threshold != CONFIG["curation_threshold"]
+    assert any(bd.selected for bd, _ in scored), "门槛来自本批分数时至少应选出一条"
+
+
+def test_scoring_input_defaults_summary_source_none():
+    """未传 summary_source 的旧构造路径默认 None（表示真实 LLM 分析）。"""
+    item = _item(1)
+    assert item.summary_source is None

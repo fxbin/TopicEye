@@ -448,11 +448,10 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
         # P70 门槛只由真实 LLM 评分决定：local_fallback 的确定性假分
         # （curation 收敛 61-64 窄带）不得污染百分位门槛、挤掉真实内容。
         # 降级项仍参与 selected 判定与展示（前端带「本地速览」标记），
-        # 由 requeue job 尽快换回真实分析（#90）。全候选皆降级时回退全量，
-        # 避免 _compute_percentile_threshold 收到空列表。
-        real_scores = [
-            bd.final_score for bd, item in results if item.summary_source != "local_fallback"
-        ]
+        # 由 requeue job 尽快换回真实分析（#90）。全候选皆降级时改用全量分数：
+        # 空列表会被 _compute_percentile_threshold 回退到全局默认阈值（55），
+        # 而降级内容的 final_score 普遍低于它，那样整批一条都选不出来。
+        real_scores = [bd.final_score for bd, item in results if item.summary_source != "local_fallback"]
         final_scores = real_scores or [bd.final_score for bd, _ in results]
         actual_threshold = _compute_percentile_threshold(
             final_scores,

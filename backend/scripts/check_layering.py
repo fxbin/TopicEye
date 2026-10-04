@@ -11,7 +11,7 @@
 
 **不检查**的项（因为是符号级且和允许项同模块，自动判定会大量误报）：
 `from app.models import <ORMModel>` 与 `<ORMModel>` 混在 Enum / User 依赖注入里的情况，
-仍靠 AGENTS.md 的人工评审 checklist 兜底。
+仍靠 AGENTS.md 2.2 分层表「禁止」列的人工评审兜底。
 
 用法：
     python scripts/check_layering.py            # 检查默认目录

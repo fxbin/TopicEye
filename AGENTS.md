@@ -1,233 +1,166 @@
 # Agent Guidelines
 
-## Quality Registry Anchor
+## 一、这个仓库是什么
 
-缺陷与回归的唯一事实源：[`docs/quality/regression-matrix.md`](docs/quality/regression-matrix.md)。
+TopicEye 是给内容创作者用的选题雷达：持续抓取 25+ 信源（RSS / Reddit / YouTube /
+播客 / newsletter / 趋势榜），用可解释的六维引擎给每条内容打分，挑出今天值得写的题目。
 
-新确认缺陷先在该文件登记（十个维度）再开 issue；关闭 issue 时同步其状态；
-稳定化迭代收尾时刷新「未复跑」条目。不要把缺陷清单散落到其它文档或目录——
-`docs/` 其余内容默认本地不入库（`.gitignore` 仅白名单 `quality/`），
-`.vidt/` 等 agent 工作目录是被忽略的可丢弃会话态，同样不是归宿。
+两件不看代码就会踩空的事：
 
-## 权限档位与安全不变量（参照 DeepSeek Harness 橙皮书 v260814 的规范实现）
+- **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
+  `app/repositories/`）；DuckDB 承担分析查询（picks / stats / topics / reports，见
+  `app/services/duckdb_service.py` 及其 mixin）。跨层读写时先确认自己在哪一套里。
+- **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见
+  [`.agents/notes/`](.agents/notes/)，跑测守则见第三节。
+
+**AGENTS.md 即模型接口**：本文件喂给 agent，命令、路径、门禁清单过期等于静默的错误。遇到
+文中描述与代码不符时以代码为准并顺手修正本文件；承载行为变更的 PR 必须同步核对相关段落。
+本文只写本仓库特有的事实与约束，与通用 skill 规则冲突时以本文为准。
+
+## 二、动手前：权限与不可违背的约定
 
 每个 agent 会话开场即生效的**三句权限档位**（任何一条要突破都必须先获所有者批准）：
 
 1. **可写范围**：仅本仓库工作区（分支、暂存、本地提交）；仓库外文件一律只读。
-2. **远端写入**：push 分支、创建 PR 属常规动作；**合并 PR、直推 main、force-push、删除提交/历史改写——逐次审批**（见 Delivery Workflow）。
-3. **高风险操作**：数据库迁移、删除类命令、依赖大版本升级——先备份、留回滚路径，再动手（见「迁移与高风险变更」）。
+2. **提交与远端写入**：`git commit`、push 分支、创建 PR 属常规动作；**合并 PR、直推 main、force-push、删除提交/历史改写——逐次审批**（见 4.1）。
+3. **高风险操作**：数据库迁移、删除类命令、依赖大版本升级——先备份、留回滚路径，再动手（见 2.3）。
 
-从橙皮书采纳的规范条目：
+### 2.1 安全不变量
 
-- **教训必须机器化**：事故/缺陷的复盘结论只有落成测试或 CI 门禁才算关闭，只写进文档不算（现状范例：backend-layering 作业、回归矩阵每条的回归测试列）。
+skill 的通用机制不覆盖以下四条：
+
+- **教训必须机器化**：事故/缺陷的复盘结论只有落成测试或 CI 门禁才算关闭，只写进文档不算（现状范例：`backend-layering` 与 `agent-docs` 两个作业，以及每条缺陷配套的回归测试）。
 - **中断重试纪律**：被中断的副作用操作（迁移、远端写入、发布）不得盲目重试——先核实外部状态（迁移版本、远端 ref、受影响数据行）或问所有者；仅只读/幂等操作可直接重试。
 - **安全关键依赖的采用度门槛**：承担安全不变量的依赖（加密、认证协议、沙箱类）必须有被证明的采用度与维护活跃度；其余位置优先选成熟依赖而非手写。
 - **禁止安静的失败**：启动期任何组件「挂起等待/未挂载/被跳过」必须显式报错或记 warning；静默 PENDING 按缺陷处理（先例：健康与生命周期加固波，#71~#73）。
-- **AGENTS.md 即模型接口**：本文件是喂给 agent 的，其事实性声明（命令、路径、门禁清单）过期比普通文档严重一档——承载行为变更的 PR 必须同步核对本文相关段落。
 
-## Delivery Workflow（Issue → branch → PR → Verifier → merge）
+### 2.2 后端分层
 
-正常路径：**有意义的变更必须有 issue → 分支 → PR → 检查绿 → 合并**，直推 main 不是常规路径。
-
-- **三道审批闸门（所有者 2026-09-28 定）**：agent 实现并本地验证后，先报告变更摘要/diff，**所有者审核批准后才可 `git commit`**；**创建 PR 前须先告知并获确认**；**合并 PR 需单独批准**。任何对话中的总括性授权都不覆盖这三道闸门，每个切片逐次过闸。直推 main、force-push、删除提交/历史改写等远端写入同样逐次批准。
-- **分支命名**：`issue-<number>-<short-slug>`（如 `issue-4-cryptography-50`）。
-- **PR 必须链接 issue** 并附 Worker 证据（本地验证命令 + 结果，见 PR 模板 Verification 段）。
-- **Verifier 契约**：CI 五项检查（types / tests / lint / layering / security-scan）是机器 Verifier，全绿是合并且预存红已显式处置的前提；承载行为变更的 PR 还需在模板 Verifier verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
-- **热修例外**：生产事故可直推 main 修复，但须在 24h 内补 PR 或在关联 issue 留 post-hoc 审计评论（原因、影响面、回归验证）。
-- main 的 push CI 自动复验由 #65 引入；矩阵与 DoD 证据以 main 运行为准。
-
-## Commit Discipline
-
-Follow the existing project history. Recent commits use concise Conventional
-Commit-style messages with Chinese summaries:
-
-```text
-fix(auth): 降低登录链路数据库写锁等待
-fix(cache): 重试统计工作台启动预热
-fix(trending): 合并重复信源筛选项
-```
-
-Use this shape for new commits:
-
-```text
-<type>(<scope>): <中文说明>
-```
-
-Preferred types:
-
-- `fix`: bug fixes, permission changes, UI behavior corrections, config safety fixes
-- `feat`: user-visible new capability
-- `chore`: tooling, scripts, repository hygiene, non-product maintenance
-- `test`: tests only
-- `docs`: documentation only
-
-Preferred scopes:
-
-- `auth`, `cache`, `trending`, `backend`, `frontend`, `config`, `db`, `docs`, `test`
-
-## Commit Boundaries
-
-- Keep each commit focused on one user-visible behavior, risk boundary, or maintenance concern.
-- Do not mix backend, frontend, docs, and config changes unless they are required for the same fix.
-- Put tests in the same commit as the behavior they verify.
-- Keep local-only files out of commits, especially `backend/.env`, databases, venvs, caches, screenshots, and generated browser artifacts.
-- Stage explicit paths. Avoid `git add -A` when the worktree contains unrelated or user-owned changes.
-
-## Before Committing
-
-Inspect the staged diff:
-
-```bash
-git diff --cached --stat
-git diff --cached --summary
-```
-
-Run the smallest relevant verification:
-
-- Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
-- Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q`（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
-- Shell scripts: `bash -n <script>`
-- Frontend type check: `cd frontend && npx tsc --noEmit`
-- Full quality gate (manual): `make lint`（ruff + 分层检查 + 前端类型检查）
-
-Note: `frontend` currently has an `npm run lint` script that invokes `next lint`,
-which may fail under the installed Next.js version by treating `lint` as a
-project directory. Prefer `npx tsc --noEmit` unless the lint script is fixed.
-
-## Rewriting Local Commits
-
-If asked to adjust recent commits:
-
-- First confirm the worktree is clean.
-- Create a backup branch before rewriting, for example:
-
-```bash
-git branch backup/recent-before-rewrite HEAD
-```
-
-- Preserve the final file tree unless the user explicitly asks for content changes.
-- After rewriting, compare with the backup branch:
-
-```bash
-git diff backup/recent-before-rewrite..HEAD
-```
-
-An empty diff means the rewrite only changed commit history, not project content.
-
-## Commit Examples
-
-Good:
-
-```text
-fix(auth): 登录页隐藏应用导航
-fix(auth): 移出默认管理员种子凭据
-fix(backend): 整理后端根目录诊断脚本
-docs: 补充 agent 提交规范
-```
-
-Avoid:
-
-```text
-Update stuff
-Fix bugs
-Move admin seed credentials to env
-Deduplicate trending source filters
-```
-
-## Layering Discipline
-
-后端依赖方向（严格单向，禁止逆向或跨层）：
+依赖方向严格单向，禁止逆向或跨层：
 
 ```text
 api/v1/ ──► services/ ──► repositories/ ──► models/ ──► sqlalchemy
 ```
 
-### 各层职责与禁止事项
-
 | 层 | 允许 | 禁止 |
 |---|---|---|
-| `api/v1/` | 路由声明、请求校验、调用 service / repository、response shaping | `import sqlalchemy`（例外：`AsyncSession` 仅作类型注解可保留）；`from app.models import <ORMModel>`（ORM 模型类）；直接 `select(...)` / `db.execute(...)` / `db.add(...)` |
+| `api/v1/` | 路由声明、请求校验、调用 service / repository、response shaping | `import sqlalchemy`；`from app.models import <ORMModel>`；直接 `select(...)` / `db.execute(...)` / `db.add(...)` |
 | `services/` | 业务编排、事务边界、调用 repository、跨 repo 组合 | 无（允许直接 import sqlalchemy / app.models） |
 | `repositories/` | ORM 唯一入口，CRUD + 复杂查询封装，继承 `BaseRepository[ModelType]` 或独立类 | 互相 `import`（repo 之间不依赖）；写业务逻辑（业务逻辑属于 service） |
 | `models/` | 纯 ORM 声明、字段定义、`__table_args__` | 业务方法、副作用、IO 操作 |
 | `schemas/` | Pydantic 请求/响应模型、序列化 | ORM import、DB 访问 |
 
-### 例外清单
+**例外**（允许 api 层 import，因为它们是值对象或依赖注入需要，不是 ORM 模型）：
+`app.models.<X>` 中的 Enum 类、`AsyncSession` 类型注解、`app.core.database.get_db`、
+`IntegrityError` 等异常类。
 
-- `app.models.<X>` 中的 **Enum 类**（如 `SourceStatus`、`ContentStatus`、`FavoriteTargetType`）允许 api 层 import，因为它们是值对象而非 ORM 模型。
-- `AsyncSession` 作 FastAPI 依赖注入的类型注解允许 api 层 import（`from sqlalchemy.ext.asyncio import AsyncSession`）。
-- `app.core.database.get_db` 作 FastAPI 依赖允许 api 层 import。
-- `IntegrityError` 等异常类允许 api 层 import（用于 try/except 捕获）。
+**机器强制的边界**：`make layering`（等价于 `cd backend && uv run python
+scripts/check_layering.py`，CI 作业 `backend-layering`）只作用于 `app/api/v1/`，且只认两条：
+禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` / `sqlalchemy.exc` 除外），禁止直接写
+`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`。上表其余禁止项
+它查不出——`from app.models import <ORMModel>` 与 api 层合法要用的 Enum、依赖注入同模块，
+自动判定会误报，只能人工看。
 
-### 存量违规与迁移策略
-
-`api/v1/` 层的**硬违规（直接写 ORM 查询）已基本清零**。剩余的 `import sqlalchemy`
-绝大多数是 `AsyncSession` 类型注解与 `sqlalchemy.exc` 异常类等**已列入例外**的用法。
-
-**机器强制**：`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`
-出现在 `api/v1/*.py` 会被 CI 的 `backend-layering` 作业阻断（本地跑 `make layering`
-或 `python scripts/check_layering.py`），无需再靠人工数文件。符号级的
-`from app.models import <ORMModel>`（ORM 模型类混在 Enum/User 依赖里）因与允许项同模块，
-自动判定会误报，仍靠下面的评审 checklist 兜底。
-
-迁移策略（仍适用于符号级存量清理）：
-
-1. **新增代码必须遵循分层约束**，PR 评审时强制检查。
-2. **存量按风险等级打包迁移**，每个 commit 迁移 3-5 个相关的 api 文件（避免单 commit 过碎、也避免大批量混合）。打包维度：同类查询模式（如纯 list / 含 JOIN / 含聚合）或同业务域（如 trending 系列）。
-3. **迁移优先级**：含复杂 JOIN / 子查询 / N+1 的 endpoint 优先；纯 `get_by_id` 类简单查询可后迁。
-4. 迁移时行为必须完全等价，**不优化性能、不改变返回字段**，避免混合关注点。
-
-### 评审 checklist
-
-提交前自查 3 条：
-
-- [ ] 新增的 `api/v1/*.py` 是否 import 了 `sqlalchemy`（除 `AsyncSession` 类型注解）或 `app.models.<ORMModel>`？
-- [ ] 新增的 ORM 查询（`select` / `db.execute` / `db.add`）是否在 `api/v1/*.py` 中？如在，必须下沉到 `repositories/`。
-- [ ] 新增的 `repositories/*.py` 是否互相 `import`？如在，必须拆解或合并到同一 repo。
-
-### 示例
-
-**违规**（api 层直接写 ORM 查询）：
-
-```python
-# app/api/v1/topics.py
-from sqlalchemy import select, func
-from app.models.topic import TopicGroup
-
-@router.get("")
-async def list_topics(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(TopicGroup).order_by(TopicGroup.best_score.desc()))
-    return {"items": result.scalars().all()}
-```
-
-**合规**（下沉到 repo）：
-
-```python
-# app/repositories/topic_repo.py
-class TopicRepository(BaseRepository[TopicGroup]):
-    model = TopicGroup
-
-    async def list_ordered_by_best_score(self) -> Sequence[TopicGroup]:
-        stmt = select(TopicGroup).order_by(TopicGroup.best_score.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
-
-# app/api/v1/topics.py
-from app.repositories.topic_repo import TopicRepository
-
-@router.get("")
-async def list_topics(db: AsyncSession = Depends(get_db)):
-    repo = TopicRepository(db)
-    items = await repo.list_ordered_by_best_score()
-    return {"items": items}
-```
-
-## 迁移与高风险变更
-
-数据库迁移属高风险操作，执行前先备份、出问题有回滚路径：
+### 2.3 迁移与高风险变更
 
 - **前置备份**：`cd backend && ./scripts/backup_db.sh`（PG pg_dump，默认保留 7 份）。
-- **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。会先自动备份，再执行
-  `alembic downgrade <target>`（`target` 可选，默认 `-1` 回退一格；也可传具体 revision 或 `base`）。
+- **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。会先自动备份，再执行 `alembic downgrade <target>`（`target` 可选，默认 `-1` 回退一格；也可传具体 revision 或 `base`）。
 - **验证**：先在测试环境跑 `alembic downgrade -1`，确认上一版 schema 被恢复且应用能启动，再到生产执行。
 - `alembic/env.py` 的 `render_as_batch=True` 对 PostgreSQL 无害，保留 batch 模式备用。
+
+## 三、怎么验
+
+### 3.1 跑测试前必读
+
+`backend/tests/conftest.py` 有 autouse `clean_tables` fixture，会对 `DATABASE_URL`
+指向的库执行 `TRUNCATE ... CASCADE` 并终止其它连接。**直接对开发库跑 `pytest tests/`
+会清空数据。**
+
+| 场景 | 命令 |
+|---|---|
+| 后端全量（推荐） | `make test-backend` —— 自动起一次性 PG 容器（127.0.0.1:5433），跑完即删；`TEST_PG_PORT` 可换端口并行 |
+| 针对性 PG 测试 | 自建一次性库（`CREATE DATABASE ..._tmp`），`DATABASE_URL` 指向运行，用完 `DROP DATABASE` |
+| OAuth 隔离测试 | `DATABASE_URL='postgresql+asyncpg://dummy:dummy@localhost:5432/never_connect' uv run --no-sync python -m pytest tests_oauth_patch/` —— 全 mock 不连库；**必须 `python -m`**（该目录无 `__init__.py`，裸 `pytest` 解析不到 `app` 包） |
+
+### 3.2 改了什么，就验什么
+
+```bash
+git log --name-only -5 -- <改动的文件>   # 历史上和它一起改过的测试
+make test-backend                         # 或直接跑全量
+```
+
+挑着跑时盯住改动有没有跨到存储分工上——读写落在 Postgres 还是 DuckDB，跨错了口径会静默不一致。
+
+### 3.3 其它命令
+
+- Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
+- Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
+- Shell scripts: `bash -n <script>`
+- Layering: `make layering`
+- AGENTS.md 引用: `cd backend && uv run python scripts/check_agent_docs.py`（校验本文引用的路径与 make 目标，CI 作业 `agent-docs`）
+- Frontend type check: `cd frontend && npx tsc --noEmit`
+- Frontend tests: `cd frontend && npm run test:coverage`（含覆盖率门禁，对应 CI `frontend-tests`）
+- Full quality gate: `make lint`（ruff + 分层检查 + 前端类型检查）
+
+## 四、怎么交
+
+正常路径：**有意义的变更必须有 issue → 分支 → PR → 检查绿 → 合并**，直推 main 不是常规路径。
+
+### 4.1 审批闸门（所有者定）
+
+逐次审批的那一类（第二节第 2 条），一次授权不覆盖下一次。其余属常规动作，默认行为是
+实现并本地验证 → 报告变更摘要/diff → 等批准再 commit。**所有者也可在任务开始时一次性授权
+本次范围内自行 commit 与建 PR**，agent 据此连做多个切片（每个切片仍是独立 commit，见 4.3），
+结束时报告完整 diff，形状不合意 `git reset` 回退即可。
+
+- **分支命名**：`issue-<number>-<short-slug>`（如 `issue-90-llm-fallback-requeue`）。
+- **热修例外**：生产事故可直推 main 修复，但须在 24h 内补 PR 或在关联 issue 留 post-hoc 审计评论（原因、影响面、回归验证）。
+- main 的 push CI 自动复验由 PR #65 引入；DoD 证据以 main 运行为准。
+
+### 4.2 提交信息
+
+形如 `<type>(<scope>): <中文说明>`，`type` 用 `fix` / `feat` / `chore` / `test` / `docs`，
+`<scope>` 用这次实际碰到的模块名（`auth`、`scoring`、`trending` 等），不套固定清单。
+
+```text
+fix(auth): 降低登录链路数据库写锁等待
+fix(trending): 合并重复信源筛选项
+test(scoring): 补推荐档位边界的断言
+docs: 跑测前必读补上 OAuth 隔离测试为什么必须 python -m
+```
+
+**说明用日常中文**，不搞翻译腔、不生造术语、不为强调堆砌修饰。读者应能从一句话
+看出仓库变成了什么样，而不是读到「登记 X」「同步 Y」这类流程动作。
+
+末尾的 `(#NN)` **只写 issue 号**——GitHub 两者共用编号空间，写错不报错，只让读的人分不清
+是哪种对象；分支与 issue 的对应关系写在 PR 描述里。编号不是必写，只有它确实是这次改动的
+原因时才写，且不追溯既往提交。
+
+### 4.3 commit 边界
+
+- 一个 commit 只做一件事：不要把 backend / frontend / docs / config 混在一起（除非
+  同一修复必需），测试与它验证的代码同 commit。
+- 本地文件不进库：`backend/.env`、数据库、venv、缓存、截图、生成的浏览器产物。
+- 显式暂存路径，工作区有他人改动时禁 `git add -A`。
+
+改写历史前建备份分支（`git branch backup/<理由>-<日期> HEAD`），改完用
+`git diff <备份分支>..HEAD` 验证文件树未变——空 diff 说明只改了历史没改内容。本仓库**一律
+禁止 force-push main**（不只是需审批）；其他分支的 force-push 按第二节第 2 条逐次过闸，
+历史改写只存在于本地。
+
+> 暂存范围、提交形状、产物边界由 skill 的 `git_workflow_guardrail.py`（G0–G4 阶段）
+> 机器校验，本节只管机器判不了的「这算不算一件事」。
+
+### 4.4 Verifier 契约
+
+CI 六项检查（types / tests / lint / layering / agent-docs / security-scan）是机器
+Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 描述须附 Worker 证据（本地
+验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
+verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
+
+- **当前 `security-scan` 为红**：6 个 high 全在 eslint 工具链（`eslint-config-next` →
+  `@next/eslint-plugin-next` → `fast-glob` → `micromatch` → `braces`），`package.json`
+  与 main 逐字节一致，非本 PR 引入。`npm audit fix --force` 的方案是降级到
+  `eslint-config-next@14.2.35`（破坏性变更），未采用。合并前显式声明这是已知预存红，不要
+  误记成自己引入的失败。依据见
+  [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。

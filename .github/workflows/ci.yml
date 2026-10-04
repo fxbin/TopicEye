@@ -1,7 +1,7 @@
 # =============================================================================
 # TopicEye CI — PR 轻量门禁（GitHub）+ 全量测试本地执行
 # =============================================================================
-# pull_request 触发轻量作业（类型检查 / 前端单测 / lint / 分层 / 安全扫描），
+# pull_request 触发轻量作业（类型检查 / 前端单测 / lint / 分层 / 文档引用 / 安全扫描），
 # 保证 PR 阶段有真实门禁。高成本的 PostgreSQL 全量测试不在 GitHub 跑：
 # 本地执行 `make test-backend`（backend/scripts/test_full_local.sh，
 # 一次性 PG 容器跑在 127.0.0.1:5433，不占用开发栈）。
@@ -104,6 +104,24 @@ jobs:
           python-version: "3.12"
       - name: Check API layering
         run: python scripts/check_layering.py
+
+  # ── AGENTS.md 引用校验 ──
+  # AGENTS.md 是喂给 agent 的指令文件，命令与路径过期等于静默的错误。
+  # 手工核对不可持续，故机器化：路径与 make 目标两类可无歧义判定。
+  # 只查 AGENTS.md，不查 .agents/notes/ —— 后者是决策记录，里面的路径
+  # 描述的是当时状态，允许随代码演进而变旧。
+  agent-docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check AGENTS.md references
+        run: python scripts/check_agent_docs.py ../AGENTS.md
 
   # ── 依赖安全扫描 ──
   security-scan:

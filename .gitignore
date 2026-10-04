@@ -49,7 +49,9 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Docs (PRD, prototypes, internal plans) — tracked exceptions: screenshots / images (README 用) 与 quality（回归矩阵需入库）
+# Docs (PRD, prototypes, internal plans) — tracked exceptions: screenshots / images (README 用)
+# quality 白名单保留备用：原回归矩阵已删除，内容迁至 AGENTS.md 与 .agents/notes/，
+# 但 docs/ 下仍可能出现需入库的设计文档
 docs/*
 !docs/screenshots/
 !docs/images/

@@ -1,16 +1,22 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, Plus, Server, Settings, Trash2, Webhook } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Loader2, LogIn, Mail, Plus, Server, Settings, Trash2, Webhook } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
-import type { EmailProviderConfig, NotificationWebhookConfig, WebhookItem, WebhookItemUpdate } from '@/lib/api/_analytics';
+import type { EmailProviderConfig, NotificationWebhookConfig, OAuthProviderItem, WebhookItem, WebhookItemUpdate } from '@/lib/api/_analytics';
 import { NOTIFICATION_EVENT_TYPES } from '@/lib/api/_analytics';
 import { Badge, Button, Panel } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { LoadingState } from '@/components/StateView';
 
 const DEFAULT_FROM_NAME = 'TopicEye';
+
+/** 第三方登录 provider 显示名 */
+const OAUTH_PROVIDER_LABELS: Record<string, string> = {
+  google: 'Google 登录',
+  github: 'GitHub 登录',
+};
 
 /** Brevo 官方资源链接 */
 const BREVO_LINKS = {
@@ -65,12 +71,29 @@ export default function AdminSettingsPage() {
   const [webhookNotice, setWebhookNotice] = useState<string | null>(null);
   const [webhookError, setWebhookError] = useState<string | null>(null);
 
+  // 第三方登录（OAuth）provider 配置状态
+  const [oauthProviders, setOauthProviders] = useState<OAuthProviderItem[]>([]);
+  const [oauthForms, setOauthForms] = useState<Record<string, { client_id: string; client_secret: string; enabled: boolean }>>({});
+  const [oauthSaving, setOauthSaving] = useState<string | null>(null);
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  const syncOauthForms = (providers: OAuthProviderItem[]) => {
+    setOauthProviders(providers);
+    setOauthForms(
+      Object.fromEntries(
+        providers.map((p) => [p.provider, { client_id: p.client_id || '', client_secret: '', enabled: p.enabled }]),
+      ),
+    );
+  };
+
   useEffect(() => {
     Promise.all([
       settingsApi.getEmailProvider(),
       settingsApi.getNotificationWebhook(),
+      settingsApi.getOAuthProviders(),
     ])
-      .then(([emailData, webhookData]) => {
+      .then(([emailData, webhookData, oauthData]) => {
         setConfig(emailData);
         setProvider(emailData.provider);
         setFromEmail(emailData.from_email);
@@ -90,6 +113,8 @@ export default function AdminSettingsPage() {
             note: wh.note,
           })),
         );
+
+        syncOauthForms(oauthData.providers);
       })
       .catch(() => setError('加载配置失败'))
       .finally(() => setLoading(false));
@@ -161,6 +186,33 @@ export default function AdminSettingsPage() {
       setWebhookError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setWebhookSaving(false);
+    }
+  };
+
+  // ── 第三方登录 provider 保存（逐 provider） ──
+  const handleUpdateOauthForm = (provider: string, updates: Partial<{ client_id: string; client_secret: string; enabled: boolean }>) => {
+    setOauthForms((prev) => ({ ...prev, [provider]: { ...prev[provider], ...updates } }));
+  };
+
+  const handleSaveOauth = async (provider: string) => {
+    const form = oauthForms[provider];
+    if (!form) return;
+    setOauthSaving(provider);
+    setOauthError(null);
+    setOauthNotice(null);
+    try {
+      await settingsApi.updateOAuthProvider(provider, {
+        client_id: form.client_id,
+        client_secret: form.client_secret,
+        enabled: form.enabled,
+      });
+      setOauthNotice(`${OAUTH_PROVIDER_LABELS[provider] || provider} 已保存`);
+      const fresh = await settingsApi.getOAuthProviders();
+      syncOauthForms(fresh.providers);
+    } catch (err) {
+      setOauthError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setOauthSaving(null);
     }
   };
 
@@ -421,6 +473,97 @@ export default function AdminSettingsPage() {
               <li key={note}>{note}</li>
             ))}
           </ul>
+        </Panel>
+
+        {/* ── 第三方登录（OAuth provider 凭据，DB 单一事实源 #94） ── */}
+        <Panel className="p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <LogIn size={16} className="text-gray-500" />
+              <h2 className="text-base font-black text-gray-900">第三方登录</h2>
+            </div>
+            {oauthProviders.some((p) => p.enabled && p.client_secret_configured) ? (
+              <Badge tone="teal">
+                <CheckCircle2 size={12} className="mr-1" />
+                {oauthProviders.filter((p) => p.enabled && p.client_secret_configured).length} 个已启用
+              </Badge>
+            ) : (
+              <Badge tone="amber">未启用</Badge>
+            )}
+          </div>
+
+          <p className="mb-4 text-xs text-gray-500">
+            配置 Google / GitHub 登录凭据，保存后即时生效（无需重启）。client_secret 加密存储，永不回传。
+          </p>
+
+          <div className="space-y-4">
+            {oauthProviders.map((p) => {
+              const form = oauthForms[p.provider] || { client_id: '', client_secret: '', enabled: false };
+              const configured = p.client_secret_configured && !!p.client_id;
+              return (
+                <div key={p.provider} className="rounded-sm border border-gray-200 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.enabled}
+                        onChange={(e) => handleUpdateOauthForm(p.provider, { enabled: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <span className="text-sm font-black text-gray-700">{OAUTH_PROVIDER_LABELS[p.provider] || p.provider}</span>
+                      {configured ? (
+                        <Badge tone={p.enabled ? 'teal' : 'neutral'}>{p.enabled ? '已启用' : '已配置未启用'}</Badge>
+                      ) : (
+                        <Badge tone="amber">未配置</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-black text-gray-500">Client ID</span>
+                    <input
+                      value={form.client_id}
+                      onChange={(e) => handleUpdateOauthForm(p.provider, { client_id: e.target.value })}
+                      placeholder={p.provider === 'google' ? 'xxxx.apps.googleusercontent.com' : 'Ov23liXXXXXXXXXXXXXX'}
+                      className="h-9 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
+                    />
+                  </label>
+
+                  <label className="mt-3 block">
+                    <span className="mb-1.5 block text-xs font-black text-gray-500">Client Secret</span>
+                    <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus:ring-primary-light">
+                      <KeyRound size={14} className="shrink-0 text-gray-400" />
+                      <input
+                        value={form.client_secret}
+                        onChange={(e) => handleUpdateOauthForm(p.provider, { client_secret: e.target.value })}
+                        type="password"
+                        placeholder={p.client_secret_configured ? '已配置（加密存储）留空不修改' : '输入 Client Secret'}
+                        className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
+                      />
+                    </div>
+                  </label>
+
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      variant="primary"
+                      onClick={() => handleSaveOauth(p.provider)}
+                      disabled={oauthSaving === p.provider || (form.enabled && (!form.client_id.trim() || (!form.client_secret.trim() && !p.client_secret_configured)))}
+                    >
+                      {oauthSaving === p.provider ? <Loader2 size={14} className="animate-spin" /> : null}
+                      {oauthSaving === p.provider ? '保存中...' : '保存'}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {oauthError && (
+            <AdminNoticeBanner tone="red" onClose={() => setOauthError(null)}>{oauthError}</AdminNoticeBanner>
+          )}
+          {oauthNotice && (
+            <AdminNoticeBanner tone="teal" onClose={() => setOauthNotice(null)}>{oauthNotice}</AdminNoticeBanner>
+          )}
         </Panel>
 
         {/* ── 通知推送 webhook（多 webhook 列表） ── */}

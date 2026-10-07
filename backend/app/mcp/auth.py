@@ -30,6 +30,10 @@ class TopicEyeTokenVerifier(TokenVerifier):
                     return None
                 # session 关闭前读取，避免 detached 属性访问歧义
                 user_id = user.id
+                # get_user_for_token 会顺带滑动续期 session / 更新 API token
+                # last_used_at；REST 路径靠 get_db 的 commit 落库，这里显式
+                # commit，否则仅经 MCP 使用时这些副作用写会被静默回滚。
+                await db.commit()
         except Exception:
             logger.exception("MCP token verification failed")
             return None

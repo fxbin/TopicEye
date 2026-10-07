@@ -124,8 +124,40 @@ async def test_tools_listed(monkeypatch):
 async def test_tool_requires_authenticated_caller():
     """in-process 连接没有 HTTP bearer 层——工具自身的认证守卫必须拦下。"""
     async with Client(mcp_server) as client:
-        result = await client.call_tool("score_items", {"items": [{"content_id": "c1"}]})
+        # 用合法参数（content_id 为 int），确保 is_error 只能来自认证守卫而非参数校验
+        result = await client.call_tool("score_items", {"items": [{"content_id": 1}]})
     assert result.is_error is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("get_today_picks", {"hours": 0}),  # hours ge=1
+        ("get_today_picks", {"limit": 101}),  # limit le=100
+        ("get_trends", {"days": 31}),  # days le=30
+        ("get_trends", {"limit": 9}),  # limit ge=10
+        ("score_items", {"items": []}),  # min_length=1
+        (
+            "score_items",
+            {"items": [{"content_id": i} for i in range(51)]},  # max_length=50
+        ),
+    ],
+)
+async def test_tool_input_bounds_enforced(monkeypatch, tool, args):
+    """工具入参边界与 REST 端点一致——越界参数按工具错误返回（不应执行到业务层）。"""
+    calls = []
+
+    async def _fake_build(db, **kwargs):
+        calls.append(kwargs)
+        return {"items": [], "total": 0, "event_members_hidden": 0, "topics": [], "page": 1, "page_size": 20}
+
+    monkeypatch.setattr("app.mcp.server._caller_user_id", lambda: 1)
+    monkeypatch.setattr("app.mcp.server.build_today_picks", _fake_build)
+    async with Client(mcp_server) as client:
+        result = await client.call_tool(tool, args)
+    assert result.is_error is True
+    assert calls == []  # 业务层未被触达
 
 
 @pytest.mark.asyncio
@@ -220,17 +252,29 @@ async def test_get_trends_duckdb_unavailable(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_trends_passthrough(monkeypatch):
-    captured = {}
+    """days/limit 透传到 DuckDB 查询（经 run_query 调用 lambda 的形式捕获）。"""
+    captured: dict[str, list[dict]] = {}
+
+    def _trend_topics(days=7):
+        captured.setdefault("topics_calls", []).append({"days": days})
+        return [{"name": "MCP", "best_score": 88.0}]
+
+    def _keyword_cloud(days=7, limit=50):
+        captured.setdefault("keywords_calls", []).append({"days": days, "limit": limit})
+        return [{"keyword": "MCP", "count": 9}]
 
     async def _run(query):
-        captured["query"] = query
-        return [{"name": "MCP", "count": 9}]
+        return query()
 
     monkeypatch.setattr("app.mcp.server._caller_user_id", lambda: 1)
     monkeypatch.setattr("app.mcp.server.duckdb_service.run_query", _run)
+    monkeypatch.setattr("app.mcp.server.duckdb_service.query_trend_topics", _trend_topics)
+    monkeypatch.setattr("app.mcp.server.duckdb_service.query_keyword_cloud", _keyword_cloud)
     async with Client(mcp_server) as client:
         result = await client.call_tool("get_trends", {"days": 3, "limit": 30})
     assert result.is_error is False
+    assert captured["topics_calls"] == [{"days": 3}]
+    assert captured["keywords_calls"] == [{"days": 3, "limit": 30}]
     assert result.structured_content["days"] == 3
 
 

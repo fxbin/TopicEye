@@ -166,7 +166,9 @@ TopicEye also speaks the **Model Context Protocol** natively: a streamable-http 
 
 **Auth is the same Bearer token as the REST API** (see Authentication above) — create a personal API token, then configure your MCP client to send it as an `Authorization: Bearer <token>` header.
 
-### Tools (all read-only)
+### Tools (no destructive writes)
+
+All tools mirror the REST agent endpoints. Note `get_daily_report` without `date` auto-generates today's snapshot when absent (a write + potential LLM cost), same as the REST endpoint.
 
 | Tool | What it does | Mirrors |
 |---|---|---|

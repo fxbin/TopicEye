@@ -1,7 +1,8 @@
 """TopicEye MCP server — 选题雷达的 Model Context Protocol 入口。
 
-四个只读工具全部镜像 agent 专用 REST 端点（见 AGENT_API.md），不重复
-业务逻辑，只做协议适配：
+四个工具全部镜像 agent 专用 REST 端点（见 AGENT_API.md），不重复
+业务逻辑，只做协议适配（均无破坏性写操作；get_daily_report 缺省分支
+会自动生成当日快照）：
 
   get_today_picks ← GET /api/v1/skill/today-picks
   get_daily_report ← GET /api/v1/skill/daily-report
@@ -69,7 +70,10 @@ def _transport_security() -> TransportSecuritySettings:
         return TransportSecuritySettings(enable_dns_rebinding_protection=False)
     netloc = urlparse(settings.SITE_BASE_URL).netloc
     origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-    return TransportSecuritySettings(allowed_hosts=[netloc], allowed_origins=origins)
+    # SDK 的 Host 校验只认精确值或 "base:*" 通配；SITE_BASE_URL 不带端口时
+    # 补通配条目，避免下游代理显式回写端口（:443 等）导致全线 421。
+    allowed_hosts = [netloc, f"{netloc}:*"]
+    return TransportSecuritySettings(allowed_hosts=allowed_hosts, allowed_origins=origins)
 
 
 _base = _base_url()
@@ -207,7 +211,9 @@ async def get_trends(
         "用于给自己的候选选题排序、解释为什么某条内容得分高。"
     ),
 )
-async def score_items(items: list[ScoringRequestItem]) -> dict[str, Any]:
+async def score_items(
+    items: Annotated[list[ScoringRequestItem], Field(min_length=1, max_length=50, description="待打分条目，1-50 条")],
+) -> dict[str, Any]:
     _caller_user_id()
     inputs = [request_item_to_scoring_input(item) for item in items]
     scored = run_score_items(inputs)

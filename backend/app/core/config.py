@@ -156,11 +156,8 @@ class Settings(BaseSettings):
     TRUST_FORWARDED_IP: bool = True
 
     # ── OAuth (Google / GitHub 登录) ──
-    # 留空则该 provider 不启用。申请方式见 .env.example。
-    OAUTH_GOOGLE_CLIENT_ID: str = ""
-    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
-    OAUTH_GITHUB_CLIENT_ID: str = ""
-    OAUTH_GITHUB_CLIENT_SECRET: str = ""
+    # provider 凭据（client_id / client_secret / 启用开关）自 #94 起存 DB，
+    # 在管理后台 /admin/settings 配置；此处只保留部署级常量。
     # OAuth 登录成功后重定向到的前端回调页（token 走 URL fragment 传回）。
     # 留空则 OAuth 回调会返回 400；部署时必须通过 .env 设置。
     OAUTH_FRONTEND_REDIRECT_URL: str = ""
@@ -259,16 +256,6 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS into a clean list of origin strings."""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
-
-    @property
-    def oauth_enabled_providers(self) -> list[str]:
-        """已配置 client_id 的 OAuth provider 列表（前端据此渲染按钮）。"""
-        providers: list[str] = []
-        if self.OAUTH_GOOGLE_CLIENT_ID and self.OAUTH_GOOGLE_CLIENT_SECRET:
-            providers.append("google")
-        if self.OAUTH_GITHUB_CLIENT_ID and self.OAUTH_GITHUB_CLIENT_SECRET:
-            providers.append("github")
-        return providers
 
 
 settings = Settings()

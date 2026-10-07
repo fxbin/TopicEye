@@ -28,6 +28,7 @@ from app.models.favorite import FavoriteItem
 from app.models.ignored import IgnoredItem
 from app.models.metrics import ContentMetrics
 from app.models.metrics_snapshot import MetricsSnapshotRecord
+from app.models.oauth_provider import OAuthProvider
 from app.models.pick_mark import PickMark
 from app.models.product_feedback import IssueFeedback, ProductUpdate
 from app.models.prompt_registry import PromptRegistry
@@ -93,6 +94,7 @@ __all__ = [
     "EvidenceType",
     "EvidenceInteraction",
     "UserInterestVector",
+    "OAuthProvider",
     "PickMark",
     "ContentLabel",
     "ContentLabelValue",

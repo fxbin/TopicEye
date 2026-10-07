@@ -72,8 +72,10 @@ def make_bind_app(monkeypatch, provider_client, *, user, link=None, verify_ok=Tr
     monkeypatch.setattr(oauth_routes.settings, "OAUTH_FRONTEND_REDIRECT_URL", PUBLIC_ORIGIN + "/oauth/callback")
     monkeypatch.setattr(oauth_routes.settings, "APP_ENV", "production")
     monkeypatch.setattr(oauth_routes.settings, "AUTH_COOKIE_SECURE", True)
-    monkeypatch.setattr(oauth_routes, "ENABLED_PROVIDERS", ["github"])
-    monkeypatch.setattr(oauth_routes.oauth, "create_client", lambda _: provider_client)
+    async def fake_resolve(db, name):
+        return provider_client if name == "github" else None
+
+    monkeypatch.setattr(oauth_routes, "_resolve_provider_client", fake_resolve)
 
     get_user = AsyncMock(return_value=SimpleNamespace(id=101, email="private@example.com"))
     create_session = AsyncMock(

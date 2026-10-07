@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1.admin_content_events import router as admin_content_events_router
 from app.api.v1.admin_evidence import router as admin_evidence_router
+from app.api.v1.admin_oauth import router as admin_oauth_router
 from app.api.v1.admin_prompts import router as admin_prompts_router
 from app.api.v1.admin_ranking_eval import router as admin_ranking_eval_router
 from app.api.v1.admin_scoring_dashboard import router as admin_scoring_dashboard_router
@@ -93,3 +94,4 @@ router.include_router(admin_ranking_eval_router)
 router.include_router(admin_scoring_dashboard_router)
 router.include_router(admin_evidence_router)
 router.include_router(admin_content_events_router)
+router.include_router(admin_oauth_router)

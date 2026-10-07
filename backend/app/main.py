@@ -450,9 +450,24 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Background read cache warmup scheduled")
 
+    # ── MCP server session manager（streamable-http 子应用挂载在 /mcp）──
+    # mount 的子应用 lifespan 不会执行，必须由宿主接管 session manager，
+    # 否则首个请求报 "Task group is not initialized"。
+    from contextlib import AsyncExitStack
+
+    mcp_stack = AsyncExitStack()
+    if settings.MCP_ENABLED:
+        from app.mcp import mcp_server
+
+        await mcp_stack.enter_async_context(mcp_server.session_manager.run())
+        logger.info("MCP server running — endpoint /mcp/")
+    else:
+        logger.info("MCP server disabled by config (MCP_ENABLED=false)")
+
     yield
 
-    # Shutdown: stop scheduler, close connections, dispose engine
+    # Shutdown: stop MCP server, stop scheduler, close connections, dispose engine
+    await mcp_stack.aclose()
     await _shutdown_prewarm_tasks(_cache_warmup_task, _jieba_prewarm_task)
     shutdown_scheduler()
 
@@ -537,6 +552,14 @@ app.include_router(agent_skills_router)
 from app.api.dashboard import router as dashboard_router  # noqa: E402
 
 app.include_router(dashboard_router)
+
+# MCP server（streamable-http，2026-07-28 无状态协议，自动兼容旧客户端）—
+# 用户在 AI 客户端（Claude Code / ZCode 等）配置站点 Bearer token（个人
+# API token）即可直连选题雷达。禁用时跳过挂载，lifespan 里有显式日志。
+if settings.MCP_ENABLED:
+    from app.mcp import build_streamable_http_app  # noqa: E402
+
+    app.mount("/mcp", build_streamable_http_app())
 
 
 # ── 根路径 /metrics 别名（Prometheus 标准约定）─────────────────────────

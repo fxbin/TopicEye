@@ -8,6 +8,7 @@
 - /api/v1/auth/*      : 20 req/min（登录/注册防爆破）
 - /api/v1/creation/*  : 30 req/min（LLM 调用昂贵）
 - 其他 /api/v1/*      : 200 req/min（常规 API）
+- /mcp/*              : 60 req/min（MCP 工具调用，每次都要查库验 token）
 - /health, /metrics   : 不限（监控 scrape）
 """
 
@@ -26,6 +27,7 @@ from app.core.request_utils import client_ip
 _RATE_RULES: list[tuple[str, int, int]] = [
     ("/api/v1/auth", 20, 60),
     ("/api/v1/creation", 30, 60),
+    ("/mcp", 60, 60),
     ("/api/v1", 200, 60),
 ]
 

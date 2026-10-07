@@ -159,3 +159,42 @@ curl -X POST http://localhost:8102/api/v1/scoring/score \
 ## OpenAPI spec
 
 The full machine-readable spec is available at `/openapi.json` (or browse interactively at `/docs`). The scoring schemas (`ScoringRequestItem`, `ScoreBreakdownResponse`) are included so code generators and MCP servers can consume them directly.
+
+## MCP Server
+
+TopicEye also speaks the **Model Context Protocol** natively: a streamable-http MCP server is mounted at **`/mcp`** (2026-07-28 stateless protocol; the same server auto-negotiates older protocol revisions for legacy clients).
+
+**Auth is the same Bearer token as the REST API** (see Authentication above) — create a personal API token, then configure your MCP client to send it as an `Authorization: Bearer <token>` header.
+
+### Tools (no destructive writes)
+
+All tools mirror the REST agent endpoints. Note `get_daily_report` without `date` auto-generates today's snapshot when absent (a write + potential LLM cost), same as the REST endpoint.
+
+| Tool | What it does | Mirrors |
+|---|---|---|
+| `get_today_picks(hours, limit, category)` | 精选选题（含评分明细） | `GET /api/v1/skill/today-picks` |
+| `get_daily_report(date?)` | 选题日报（按 token 所属用户） | `GET /api/v1/skill/daily-report` |
+| `get_trends(days, limit)` | 话题趋势 + 关键词词频 | `GET /api/v1/skill/trends` |
+| `score_items(items)` | 候选内容跑六维打分（`content_id` 为整数，1-50 条） | `POST /api/v1/scoring/score` |
+
+### Client config examples
+
+ZCode / Claude Code style (header-authenticated streamable-http):
+
+```json
+{
+  "mcpServers": {
+    "topiceye": {
+      "url": "https://<your-host>/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}
+```
+
+Operational notes:
+
+- `MCP_ENABLED=false` disables the server (no route mounted; startup logs state it explicitly).
+- Rate limit: 60 req/min per IP on `/mcp`.
+- Production requires `SITE_BASE_URL` to be set (enables Host/Origin validation against DNS-rebinding; otherwise a startup warning is logged and the check stays off).
+- Status of dynamic OAuth authorization (browser pop-up login): not yet implemented — the advertised issuer points back at the site, and clients should use pre-provisioned API tokens. Static Bearer tokens work with every MCP client; adding a real authorization server is a follow-up option (the verifier is swappable behind the SDK's `TokenVerifier`).

@@ -5,6 +5,10 @@
 TopicEye 是给内容创作者用的选题雷达：持续抓取 25+ 信源（RSS / Reddit / YouTube /
 播客 / newsletter / 趋势榜），用可解释的六维引擎给每条内容打分，挑出今天值得写的题目。
 
+对外有两条 agent 入口：REST（`AGENT_API.md` 文档化的 skill/scoring 端点）与 MCP
+server（`app/mcp/`，挂载在 `/mcp`，Bearer token 认证，官方 `mcp` SDK 实现 2026-07-28
+无状态协议）。
+
 两件不看代码就会踩空的事：
 
 - **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
@@ -59,7 +63,8 @@ scripts/check_layering.py`，CI 作业 `backend-layering`）只作用于 `app/ap
 禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` / `sqlalchemy.exc` 除外），禁止直接写
 `select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`。上表其余禁止项
 它查不出——`from app.models import <ORMModel>` 与 api 层合法要用的 Enum、依赖注入同模块，
-自动判定会误报，只能人工看。
+自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的入口层，不在机器检查范围内，
+按上表 api 行的纪律人工把关（当前只调 services 与 `DailyReportRepository`）。
 
 ### 2.3 迁移与高风险变更
 

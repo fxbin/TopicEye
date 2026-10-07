@@ -234,8 +234,6 @@ npm run dev
 |---|---|---|
 | `DATABASE_URL` | *(必填)* | PostgreSQL 连接串，如 `postgresql+asyncpg://user:pass@host:5432/topiceye`。SQLite 支持已移除。 |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | 允许的前端来源，逗号分隔 |
-| `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | 空 | 启用 Google 登录 |
-| `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | 空 | 启用 GitHub 登录 |
 | `OAUTH_FRONTEND_REDIRECT_URL` | `http://localhost:3000/oauth/callback` | 前端 OAuth 回调页（token 走 URL fragment） |
 | `ADMIN_SEED_ENABLED` | `false` | 设 `true` 并配 `ADMIN_EMAIL` / `ADMIN_PASSWORD`，启动时创建或提升管理员 |
 | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `20` | 每 IP 登录速率限制 |
@@ -245,6 +243,8 @@ npm run dev
 | `ARTICLE_READER_ENABLED` | `true` | 站内阅读器开关（仅抓公开 HTML，带 SSRF 防护） |
 
 > **网文雷达模块**（番茄 / 七猫 / 知乎盐选）受运行时功能开关控制，默认关闭。管理员可在 **信源管理 → 功能模块开关** 一键开启，或调 `PUT /api/v1/settings/feature-flags`。无需重启。
+>
+> **第三方登录**（Google / GitHub）在后台配置（**管理后台 → 系统设置 → 第三方登录**）：client id / secret 与启用开关存数据库（secret 加密存储），保存后即时生效，无需重启。
 >
 > **邮件验证** 在管理后台设置页配置，两种 provider：
 > - **Brevo API** — 免费版 300 邮件/天，无需信用卡，但需账号审核。

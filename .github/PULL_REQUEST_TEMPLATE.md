@@ -2,7 +2,10 @@
 
 <!-- One or two sentences: what does this change do, and why? -->
 
-Refs #<issue>
+Fixes #<issue>
+
+<!-- 合并时自动关闭该 issue。只有确实想让 issue 保持 OPEN 继续跟踪后续批次时，
+     才改成 `Refs #<issue>`——`Refs` 不会触发自动关闭。 -->
 
 ## Area
 
@@ -31,7 +34,7 @@ pass / fail / hold + 一句依据。纯依赖/文档/配置切片可写「CI 门
 ## Checklist
 
 - [ ] Commits follow Conventional Commits (`feat(auth): ...`) — see [AGENTS.md](../AGENTS.md)
-- [ ] Branch named `issue-<number>-<short-slug>` and PR links the issue
+- [ ] Branch named `issue-<number>-<short-slug>`; PR 正文写 `Fixes #<number>` 让 issue 随合并关闭（确需保留 issue 才用 `Refs`）
 - [ ] No local-only files staged (`.env`, `*.db`, `venv/`, `node_modules/`, screenshots)
 - [ ] New source connector? Registered in `scrapers/__init__.py` and a test added under `tests/`
 - [ ] Docs updated (`.env.example`, README) if config/behavior changed

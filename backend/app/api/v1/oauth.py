@@ -6,6 +6,9 @@
   3. 解析为本地 User（自动合并同邮箱账号）+ 建 session
   4. 302 到前端回调页；会话凭证只经 HttpOnly cookie 下发，
    fragment 仅携带非敏感状态（provider / expires_at，见 #63）
+
+provider 凭据自 #94 起存 DB（oauth_providers 表，后台 /admin/settings 配置），
+每次请求经 oauth_provider_service 解析构造 client，后台改动即时生效。
 """
 
 from __future__ import annotations
@@ -23,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import _set_auth_cookies, get_current_user, get_optional_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.oauth import ENABLED_PROVIDERS, oauth
 from app.core.request_utils import client_ip
 from app.services.auth_service import (
     OAuthAccountConflictError,
@@ -33,13 +35,26 @@ from app.services.auth_service import (
     link_oauth_identity_to_user,
     verify_password,
 )
+from app.services.oauth_provider_service import (
+    build_provider_client,
+    get_active_provider_config,
+    list_enabled_providers,
+)
 
 router = APIRouter(prefix="/auth/oauth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-def _is_provider_enabled(provider: str) -> bool:
-    return provider in ENABLED_PROVIDERS
+async def _resolve_provider_client(db: AsyncSession, provider: str):
+    """从 DB 配置解析已启用的 provider 并构造 authlib client。
+
+    provider 未配置 / 未启用 / 凭据不全时返回 None，调用方按 404 处理。
+    独立成函数是隔离测试的单一替换点（tests_oauth_patch 整体 monkeypatch 它）。
+    """
+    config = await get_active_provider_config(db, provider)
+    if config is None:
+        return None
+    return build_provider_client(provider, config)
 
 
 def _backend_callback_url(request: Request, provider: str) -> str:
@@ -91,13 +106,11 @@ def _frontend_redirect(fragment: str | None = None, error: str | None = None) ->
 
 
 @router.get("/{provider}/login")
-async def oauth_login(request: Request, provider: str):
+async def oauth_login(request: Request, provider: str, db: AsyncSession = Depends(get_db)):
     """整页跳转到 provider 的 OAuth 授权页。前端用 window.location.href 直接跳。"""
-    if not _is_provider_enabled(provider):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not enabled")
-    client = oauth.create_client(provider)
+    client = await _resolve_provider_client(db, provider)
     if client is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not registered")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not enabled")
     redirect_uri = _backend_callback_url(request, provider)
     return await client.authorize_redirect(request, redirect_uri)
 
@@ -140,11 +153,9 @@ async def oauth_bind_start(
     绑定意图写入服务端 session（与 OAuth state 同生命周期，TTL 10 分钟），
     回调时据此走绑定分支而非登录分支。
     """
-    if not _is_provider_enabled(provider):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not enabled")
-    client = oauth.create_client(provider)
+    client = await _resolve_provider_client(db, provider)
     if client is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not registered")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"OAuth provider '{provider}' not enabled")
 
     # step-up：重新验证当前账号密码（未设密码的账号无法走此流程）
     if not current_user.password_hash or not verify_password(payload.password, current_user.password_hash):
@@ -169,12 +180,9 @@ async def oauth_bind_start(
 @router.get("/{provider}/callback")
 async def oauth_callback(request: Request, provider: str, db: AsyncSession = Depends(get_db)):
     """provider 授权后回调：换 token → 拉 userinfo → 建/找 User → 建 session → 302 回前端。"""
-    if not _is_provider_enabled(provider):
-        return _frontend_redirect(error=f"OAuth provider '{provider}' not enabled")
-
-    client = oauth.create_client(provider)
+    client = await _resolve_provider_client(db, provider)
     if client is None:
-        return _frontend_redirect(error=f"OAuth provider '{provider}' not registered")
+        return _frontend_redirect(error=f"OAuth provider '{provider}' not enabled")
 
     try:
         token = await client.authorize_access_token(request)
@@ -279,9 +287,9 @@ async def _handle_bind_callback(
 
 
 @router.get("/providers")
-async def oauth_providers() -> dict[str, list[str]]:
-    """返回已配置 client_id 的 provider 列表。"""
-    return {"providers": list(ENABLED_PROVIDERS)}
+async def oauth_providers(db: AsyncSession = Depends(get_db)) -> dict[str, list[str]]:
+    """返回已启用且凭据齐全的 provider 列表（DB 单一事实源，#94）。"""
+    return {"providers": await list_enabled_providers(db)}
 
 
 # ── userinfo 解析（provider 差异隔离在这里）─────────────────────────

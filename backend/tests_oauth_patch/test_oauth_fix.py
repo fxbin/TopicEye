@@ -143,8 +143,11 @@ def make_app(monkeypatch, provider, provider_client):
     monkeypatch.setattr(oauth_routes.settings, "OAUTH_FRONTEND_REDIRECT_URL", PUBLIC_ORIGIN + "/oauth/callback")
     monkeypatch.setattr(oauth_routes.settings, "APP_ENV", "production")
     monkeypatch.setattr(oauth_routes.settings, "AUTH_COOKIE_SECURE", True)
-    monkeypatch.setattr(oauth_routes, "ENABLED_PROVIDERS", [provider])
-    monkeypatch.setattr(oauth_routes.oauth, "create_client", lambda _: provider_client)
+
+    async def fake_resolve(db, name):
+        return provider_client if name == provider else None
+
+    monkeypatch.setattr(oauth_routes, "_resolve_provider_client", fake_resolve)
     get_user = AsyncMock(return_value=SimpleNamespace(id=101, email="private@example.com"))
     create_session = AsyncMock(
         return_value=(

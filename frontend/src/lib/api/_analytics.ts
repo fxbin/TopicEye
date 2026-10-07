@@ -81,6 +81,22 @@ export const NOTIFICATION_EVENT_TYPES: Array<{ value: string; label: string; des
   { value: 'test', label: '测试发送', desc: '点击「发送测试」按钮时推送' },
 ];
 
+/** 单个第三方登录 provider 配置状态（secret 只回传是否已配置，永不回传值） */
+export interface OAuthProviderItem {
+  provider: string;
+  client_id: string | null;
+  enabled: boolean;
+  client_secret_configured: boolean;
+  updated_at: string | null;
+}
+
+/** 第三方登录 provider 配置更新请求。client_secret 为空时保留原值 */
+export interface OAuthProviderUpdate {
+  client_id: string;
+  client_secret: string;
+  enabled: boolean;
+}
+
 // ─── Settings API ───
 
 export const settingsApi = {
@@ -144,6 +160,19 @@ export const settingsApi = {
     error?: string;
   }> {
     return request('/settings/notification-webhook/test', { method: 'POST' });
+  },
+
+  /** 获取第三方登录 provider 配置状态（client_secret 脱敏，管理员） */
+  getOAuthProviders(): Promise<{ providers: OAuthProviderItem[] }> {
+    return request('/admin/oauth/providers');
+  },
+
+  /** 更新单个第三方登录 provider 配置。client_secret 为空时保留原值（管理员） */
+  updateOAuthProvider(provider: string, data: OAuthProviderUpdate): Promise<OAuthProviderItem> {
+    return request(`/admin/oauth/providers/${provider}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
 };

@@ -236,8 +236,6 @@ All configuration is environment-driven. See [`backend/.env.example`](backend/.e
 |---|---|---|
 | `DATABASE_URL` | *(required)* | PostgreSQL connection string, e.g. `postgresql+asyncpg://user:pass@host:5432/topiceye`. SQLite support has been removed. |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed frontend origins. |
-| `OAUTH_GOOGLE_CLIENT_ID` / `_SECRET` | empty | Enable Google login. [Guide](backend/.env.example). |
-| `OAUTH_GITHUB_CLIENT_ID` / `_SECRET` | empty | Enable GitHub login. |
 | `OAUTH_FRONTEND_REDIRECT_URL` | `http://localhost:3000/oauth/callback` | Frontend OAuth callback page (token travels via URL fragment). |
 | `ADMIN_SEED_ENABLED` | `false` | Set to `true` plus `ADMIN_EMAIL` / `ADMIN_PASSWORD` to seed/promote an admin on startup. |
 | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `20` | Login rate limit per IP. |
@@ -247,6 +245,8 @@ All configuration is environment-driven. See [`backend/.env.example`](backend/.e
 | `ARTICLE_READER_ENABLED` | `true` | In-app reader for public HTML (SSRF-guarded, no auth bypass). |
 
 > **Webnovel-CN module** (Fanqie / Qimao / Zhihu Yanxuan) is gated behind a runtime feature flag — disabled by default. Admins can enable it from **Source management → Feature flags** in the UI, or via `PUT /api/v1/settings/feature-flags`. No restart needed.
+>
+> **Third-party login** (Google / GitHub) is configured from the admin settings page (**Admin → Settings → Third-party Login**): client id / secret and the enable toggle are stored in the database (secret encrypted), effective immediately without a restart.
 >
 > **Email verification** is configured from the admin settings page. Two providers are supported:
 > - **Brevo API** — free tier 300 emails/day, no credit card required but account approval needed.

@@ -13,90 +13,16 @@ tokens and personal API tokens (create one at /me/api-tokens).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from app.api.v1.auth import get_current_user
 from app.models.user import User
-from app.schemas.scoring import (
-    ScoreBreakdownResponse,
-    ScoreResultItem,
-    ScoringRequest,
-    ScoringResponse,
-)
-from app.services.scoring_engine import ScoringInput, score_items
+from app.schemas.scoring import ScoringRequest, ScoringResponse
+from app.services.scoring_engine import build_scoring_response, request_item_to_scoring_input, score_items
 
 router = APIRouter(prefix="/scoring", tags=["scoring"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
-
-
-def _parse_dt(value: Any) -> datetime | None:
-    """Parse ISO 8601 string / datetime / None into datetime | None."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    return None
-
-
-def _request_to_scoring_input(item) -> ScoringInput:
-    """Adapt a Pydantic ScoringRequestItem → engine ScoringInput (POPROW).
-
-    Mirrors digest_context._row_to_scoring_input but operates on the typed
-    request schema instead of a raw dict.
-    """
-    return ScoringInput(
-        content_id=item.content_id,
-        title=item.title or "",
-        category=item.category,
-        source_id=item.source_id,
-        source_name=item.source_name,
-        published_at=_parse_dt(item.published_at),
-        crawled_at=_parse_dt(item.crawled_at),
-        curation_score=item.curation_score or 0,
-        info_density=item.info_density if item.info_density is not None else 50,
-        actionability=item.actionability if item.actionability is not None else 50,
-        source_weight=item.source_weight if item.source_weight is not None else 50,
-        creator_score=item.creator_score or 0,
-        viral_score=item.viral_score or 0,
-        freshness_score=item.freshness_score if item.freshness_score is not None else 50,
-        quality_score=item.quality_score or 0,
-        hot_score=item.hot_score or 0,
-        risk_score=item.risk_score or 0,
-        source_weight_db=item.source_weight_db or 3,
-        feedback_score=item.feedback_score or 0,
-    )
-
-
-def _build_response(scored) -> ScoringResponse:
-    """Convert engine output [(ScoreBreakdown, ScoringInput)] → ScoringResponse."""
-    results = [
-        ScoreResultItem(
-            content_id=inp.content_id,
-            score=ScoreBreakdownResponse(
-                content_id=inp.content_id,
-                base_score=bd.base_score,
-                source_bonus=bd.source_bonus,
-                quality_factor=bd.quality_factor,
-                risk_factor=bd.risk_factor,
-                time_decay=bd.time_decay,
-                diversity_factor=bd.diversity_factor,
-                final_score=bd.final_score,
-                dimension_scores=bd.dimension_scores or {},
-                selected=bd.selected,
-                threshold_used=bd.threshold_used,
-            ),
-        )
-        for bd, inp in scored
-    ]
-    return ScoringResponse(results=results, count=len(results))
 
 
 @router.post(
@@ -112,7 +38,7 @@ def _build_response(scored) -> ScoringResponse:
     ),
 )
 async def score_content(req: ScoringRequest, current_user: User = Depends(get_current_user)):
-    inputs = [_request_to_scoring_input(item) for item in req.items]
+    inputs = [request_item_to_scoring_input(item) for item in req.items]
     scored = score_items(inputs)
     logger.info("Scoring /score: user_id=%d, items=%d", current_user.id, len(inputs))
-    return _build_response(scored)
+    return build_scoring_response(scored)

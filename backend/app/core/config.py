@@ -50,6 +50,10 @@ class Settings(BaseSettings):
 
     SCHEDULER_ENABLED: bool = True
     CACHE_WARMUP_ENABLED: bool = True
+    # MCP server（/mcp，streamable-http）。每个工具调用都要求 Bearer token
+    # （个人 API token / session token，与 REST API 同一套）。关闭时不挂载
+    # 路由、不启动 session manager（启动日志显式记录，不静默跳过）。
+    MCP_ENABLED: bool = True
     READ_CACHE_TTL_SECONDS: float = 60.0
     # 整体同步超时(秒)。包含 fetch + classify + persist 三阶段。
     # 120s 对 arXiv/HN/36氪 等条目多的信源太短(classify 阶段 LLM 调用慢),

@@ -17,6 +17,13 @@ import heapq
 import math
 from datetime import UTC, datetime
 
+from app.schemas.scoring import (
+    ScoreBreakdownResponse,
+    ScoreResultItem,
+    ScoringRequestItem,
+    ScoringResponse,
+)
+
 # ── Tunable configuration ────────────────────────────────────────────
 
 CONFIG = {
@@ -470,3 +477,76 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
         )
 
     return results
+
+
+# ── HTTP / MCP 适配辅助 ───────────────────────────────────────────────
+#
+# 从 app/api/v1/scoring.py 上移：REST 端点与 MCP score_items 工具共用
+# 同一套 schema→引擎转换与响应组装，避免 MCP 层反向 import api 层。
+
+
+def parse_iso_datetime(value: object) -> datetime | None:
+    """Parse ISO 8601 string / datetime / None into datetime | None."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def request_item_to_scoring_input(item: ScoringRequestItem) -> ScoringInput:
+    """Adapt a Pydantic ScoringRequestItem → engine ScoringInput (POPROW).
+
+    Mirrors digest_context._row_to_scoring_input but operates on the typed
+    request schema instead of a raw dict.
+    """
+    return ScoringInput(
+        content_id=item.content_id,
+        title=item.title or "",
+        category=item.category,
+        source_id=item.source_id,
+        source_name=item.source_name,
+        published_at=parse_iso_datetime(item.published_at),
+        crawled_at=parse_iso_datetime(item.crawled_at),
+        curation_score=item.curation_score or 0,
+        info_density=item.info_density if item.info_density is not None else 50,
+        actionability=item.actionability if item.actionability is not None else 50,
+        source_weight=item.source_weight if item.source_weight is not None else 50,
+        creator_score=item.creator_score or 0,
+        viral_score=item.viral_score or 0,
+        freshness_score=item.freshness_score if item.freshness_score is not None else 50,
+        quality_score=item.quality_score or 0,
+        hot_score=item.hot_score or 0,
+        risk_score=item.risk_score or 0,
+        source_weight_db=item.source_weight_db or 3,
+        feedback_score=item.feedback_score or 0,
+    )
+
+
+def build_scoring_response(scored: list[tuple[ScoreBreakdown, ScoringInput]]) -> ScoringResponse:
+    """Convert engine output [(ScoreBreakdown, ScoringInput)] → ScoringResponse."""
+    results = [
+        ScoreResultItem(
+            content_id=inp.content_id,
+            score=ScoreBreakdownResponse(
+                content_id=inp.content_id,
+                base_score=bd.base_score,
+                source_bonus=bd.source_bonus,
+                quality_factor=bd.quality_factor,
+                risk_factor=bd.risk_factor,
+                time_decay=bd.time_decay,
+                diversity_factor=bd.diversity_factor,
+                final_score=bd.final_score,
+                dimension_scores=bd.dimension_scores or {},
+                selected=bd.selected,
+                threshold_used=bd.threshold_used,
+            ),
+        )
+        for bd, inp in scored
+    ]
+    return ScoringResponse(results=results, count=len(results))

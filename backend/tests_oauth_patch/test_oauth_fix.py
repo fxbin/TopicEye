@@ -143,6 +143,7 @@ def make_app(monkeypatch, provider, provider_client):
     monkeypatch.setattr(oauth_routes.settings, "OAUTH_FRONTEND_REDIRECT_URL", PUBLIC_ORIGIN + "/oauth/callback")
     monkeypatch.setattr(oauth_routes.settings, "APP_ENV", "production")
     monkeypatch.setattr(oauth_routes.settings, "AUTH_COOKIE_SECURE", True)
+
     async def fake_resolve(db, name):
         return provider_client if name == provider else None
 

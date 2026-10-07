@@ -28,11 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_optional(value: str | None) -> str | None:
-    """空白输入归一为 None，避免把纯空格存成凭据。"""
+    """空白输入归一为 None，避免把纯空格存成凭据。
+
+    str() 兜底与 llm_models._normalize_optional_config_value 同源：
+    非字符串入参（畸形报文）走 422 而不是校验器内 AttributeError 500。
+    """
     if value is None:
         return None
-    stripped = value.strip()
-    return stripped or None
+    cleaned = str(value).strip()
+    return cleaned or None
 
 
 class OAuthProviderItem(BaseModel):

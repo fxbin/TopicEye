@@ -158,9 +158,11 @@ Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 
 验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
 verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
 
-- **当前 `security-scan` 为红**：6 个 high 全在 eslint 工具链（`eslint-config-next` →
-  `@next/eslint-plugin-next` → `fast-glob` → `micromatch` → `braces`），`package.json`
-  与 main 逐字节一致，非本 PR 引入。`npm audit fix --force` 的方案是降级到
+- **当前 `security-scan` 为红**：唯一来源是前端 npm audit 的 8 个 high，全在 eslint
+  工具链（`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` →
+  `micromatch` → `braces`）。`npm audit fix --force` 的方案是降级到
   `eslint-config-next@14.2.35`（破坏性变更），未采用。合并前显式声明这是已知预存红，不要
   误记成自己引入的失败。依据见
   [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。
+  后端 pip-audit 曾因 `multidict 6.9.0`（GHSA-54p9-h82j-f925，aiohttp 传递依赖）转红，
+  已随 #99 升到 6.9.1 修复——后端再红即新问题，不要归并到这条预存红。

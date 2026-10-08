@@ -163,12 +163,11 @@ Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 
 验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
 verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
 
-- **当前 `security-scan` 为红**：唯一来源是前端 npm audit 的 braces 链（1 条 advisory
-  GHSA-vfj7-8cjw-p6xm 沿 `eslint-config-next` → `@next/eslint-plugin-next` →
-  `fast-glob` → `micromatch` → `braces` 计 5 个 high）。braces 全部已发布版本（最新
-  3.0.3）都在 advisory 范围内，**上游无补丁可升**；`npm audit fix --force` 的方案是降级到
-  `eslint-config-next@14.2.35`（破坏性变更），未采用。该链只在 dev 工具链（eslint），
-  DoS 级，合并前显式声明这是已知预存红，不要误记成自己引入的失败。依据见
+- **前端 npm audit 口径为生产依赖**（`--omit=dev`，#105）：dev 工具链的 braces 链
+  （GHSA-vfj7-8cjw-p6xm，`eslint-config-next` → `fast-glob` → `micromatch` → `braces`）
+  覆盖 braces 全部已发布版本、上游无补丁，且只在 eslint dev 依赖里（DoS 级），不挡门；
+  生产依赖维持 high 级严格门禁（next 16.3.8 / sharp / brace-expansion 等已随 #101 修复）。
+  braces 上游发布补丁（>3.0.3）后：`npm audit fix` 并去掉 workflow 里的 `--omit=dev`
+  恢复全量口径。force 降级 `eslint-config-next@14.2.35` 的方案仍维持否决，依据见
   [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。
-  其余前端高危已随 #101 消除（next 16.3.8 / brace-expansion / sharp）；后端 pip-audit
-  曾因 `multidict 6.9.0` 转红，已随 #99 修复——除 braces 链外再红即新问题。
+  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复——**security-scan 再红即新问题**。

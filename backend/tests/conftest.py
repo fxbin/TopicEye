@@ -149,6 +149,20 @@ async def clean_tables():
     yield
 
 
+# ── Function-scoped cleanup: 每个测试后清空模块级 engine 连接池 ──
+# pytest-asyncio 为每个测试创建新事件循环,而 app.core.database.engine 是
+# 模块级单例:池化的 asyncpg 连接会跨循环存活,下一个测试(或其后台任务)
+# 复用旧循环连接即报 "Future attached to a different loop",且症状是此后
+# 所有 PG 测试连环 mass-E(#97)。dispose 清空连接池,让下次 checkout 在
+# 当前循环新建连接;测试 PG 在本机,重连成本可忽略。
+@pytest_asyncio.fixture(autouse=True)
+async def dispose_module_engine_connections():
+    yield
+    from app.core.database import engine
+
+    await engine.dispose()
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def reset_llm_provider_state():
     """每个测试前重置 LLM provider 模块级 state + logging 配置。

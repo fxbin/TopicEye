@@ -150,7 +150,9 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          npm audit --audit-level=high
+          # 只审计生产依赖：dev 工具链（eslint 的 braces 链）有全版本受影响的
+          # DoS advisory 且上游无补丁，不挡门；生产依赖维持 high 级严格门禁
+          npm audit --audit-level=high --omit=dev
       - name: Enforce security audit results
         if: always()
         env:

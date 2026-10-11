@@ -72,8 +72,8 @@ class SmtpProvider(EmailProvider):
         异常:
             EmailSendError: 依赖缺失、连接或认证失败时抛出
         """
-        # 延迟导入：aiosmtplib 仅在 SMTP 模式实际发送时需要，
-        # 避免未安装该依赖时影响 Brevo 模式与应用启动
+        # 延迟导入：aiosmtplib 仅在实际发送时需要，缺失时给出可操作的报错
+        # 而不是拖垮应用启动
         try:
             import aiosmtplib
         except ImportError as exc:
@@ -117,7 +117,7 @@ def _build_verification_email_text(code: str) -> str:
 def _build_verification_email_html(code: str) -> str:
     """构造验证码邮件 HTML 内容。
 
-    与 Brevo Provider 保持一致的视觉风格。
+    纯文本降级内容与此 HTML 保持一致，供不支持 HTML 的客户端显示。
 
     参数:
         code: 验证码明文

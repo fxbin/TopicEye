@@ -217,44 +217,28 @@ def test_diversity_promotes_other_source_over_same_source_run():
     assert final_ids.index(99) < final_ids.index(2)
 
 
-def test_p70_threshold_excludes_local_fallback_fake_scores():
-    """#90：local_fallback 的确定性假分不得污染 P70 门槛。
-
-    三组对照（自证明区分度——守门断言保证若删掉排除逻辑本测试必红）：
-    - real_only：3 条真实分（90/80/70），门槛 T1 只由真实分决定；
-    - mixed：再混入 2 条假分（85/75，标记 local_fallback）——真实项门槛
-      仍应为 T1（排除生效）；
-    - full：同样的 2 条 85/75 但标记为真实分析——门槛 T2 应不同于 T1，
-      证明该分数组合确实会移动门槛（若排除逻辑失效，mixed 会退化成
-      full 的门槛，测试转红）。
+def test_local_fallback_fake_scores_do_not_displace_real_selections():
+    """#90（2026-10-09 名次截断语义）：假分参与排序与展示，但中低分假分
+    不得挤占真实内容的入选名额——真实内容的入选集合与无假分批次一致。
     """
 
     def _scored(content_id: int, curation: int, **extra) -> ScoringInput:
         return _item(content_id, curation_score=curation, **extra)
 
-    real_items = [_scored(1, 90), _scored(2, 80), _scored(3, 70)]
-    fallback_items = [
+    real = [_scored(1, 90), _scored(2, 80), _scored(3, 70)]
+    fake = [
         _scored(98, 85, summary_source="local_fallback"),
         _scored(99, 75, summary_source="local_fallback"),
     ]
-    same_scores_as_real = [_scored(98, 85), _scored(99, 75)]  # 不带标记
 
-    baseline = score_items(list(real_items))
-    mixed = score_items(real_items + fallback_items)
-    full = score_items(real_items + same_scores_as_real)
+    baseline_selected = {bd.content_id for bd, _ in score_items(list(real)) if bd.selected}
+    mixed = score_items(real + fake)
+    mixed_real_selected = {bd.content_id for bd, it in mixed if bd.selected and it.summary_source != "local_fallback"}
 
-    t_baseline = {bd.threshold_used for bd, _ in baseline}
-    t_mixed_real = {bd.threshold_used for bd, item in mixed if item.content_id in (1, 2, 3)}
-    t_full = {bd.threshold_used for bd, _ in full}
-
-    assert len(t_baseline) == 1 and len(t_full) == 1
-    assert t_mixed_real == t_baseline, "混入 fallback 假分后真实项门槛不应改变"
-    assert t_full != t_baseline, "守门断言：85/75 混入真实批应移动门槛——本断言失败说明对照构造失去区分度"
-
-    # fallback 项自身仍参与判定与展示（不静默消失），且用同一门槛判定
-    fallback_results = {item.content_id: bd for bd, item in mixed if item.content_id in (98, 99)}
-    assert len(fallback_results) == 2
-    assert {bd.threshold_used for bd in fallback_results.values()} == t_baseline
+    assert baseline_selected == {1}
+    assert mixed_real_selected == {1}, "85/75 的假分不得挤掉真实头名的入选名额"
+    # 假分按分数参与排序（85 排第二），但 keep=1 截断不入——宁缺毋滥
+    assert all(not bd.selected for bd, it in mixed if it.summary_source == "local_fallback")
 
 
 def test_all_fallback_batch_falls_back_to_full_scores():
@@ -285,3 +269,36 @@ def test_scoring_input_defaults_summary_source_none():
     """未传 summary_source 的旧构造路径默认 None（表示真实 LLM 分析）。"""
     item = _item(1)
     assert item.summary_source is None
+
+
+def test_percentile_selection_is_exact_top_percentile():
+    """2026-10-09 精选率层 2 修复：放行恰为 top-(100-percentile)%，无 off-by-one。
+
+    >= 语义放行 n-rank+1 条（n=10 的 P70 下 4 条=40%）；> 语义恰 3 条=30%。
+    """
+    items = [
+        _item(i, curation_score=70 + i * 3, creator_score=70, viral_score=70, quality_score=70)
+        for i in range(10)  # 70..97 十档不并列
+    ]
+    scored = score_items(items)
+    selected = [bd for bd, _ in scored if bd.selected]
+    assert len(selected) == 3, f"P70 下 10 条应恰选 3 条（30%），实际 {len(selected)}"
+
+
+def test_percentile_tie_block_at_threshold_is_rejected_not_admitted():
+    """并列块不再被门槛整块放行：>= 曾把 7 条并列 60 分全部放行（70%+）。
+
+    名次截断下按 final_score 排序取 top-3，7 条并列 60 分一条不占名额。
+    """
+    items = [
+        _item(i, curation_score=60, creator_score=70, viral_score=70, quality_score=70)
+        for i in range(1, 8)  # 7 条并列 60
+    ] + [
+        _item(8, curation_score=80, creator_score=75, viral_score=75, quality_score=75),
+        _item(9, curation_score=90, creator_score=80, viral_score=80, quality_score=80),
+        _item(10, curation_score=95, creator_score=85, viral_score=85, quality_score=85),
+    ]
+    scored = score_items(items)
+    selected = [bd for bd, _ in scored if bd.selected]
+    assert len(selected) == 3, f"门槛值并列块应整块不选，实际选了 {len(selected)}"
+    assert {bd.content_id for bd in selected} == {8, 9, 10}

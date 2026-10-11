@@ -791,7 +791,7 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
     ids = await _seed_oltp_fixture(
         engine,
         extra_content=[
-            {"title": "中风险样本", "url": "https://example.com/mid-risk", "risk_score": 60.0},
+            {"title": "中风险样本", "url": "https://example.com/mid-risk", "risk_score": 60.0, "curation_score": 95.0},
             {
                 "title": "低质量1",
                 "url": "https://example.com/low-1",
@@ -816,6 +816,20 @@ async def test_fallback_risk_threshold_aligned_to_82(monkeypatch):
             {
                 "title": "低质量4",
                 "url": "https://example.com/low-4",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
+            {
+                "title": "低质量5",
+                "url": "https://example.com/low-5",
+                "quality_score": 40.0,
+                "curation_score": 50.0,
+                "risk_score": 10.0,
+            },
+            {
+                "title": "低质量6",
+                "url": "https://example.com/low-6",
                 "quality_score": 40.0,
                 "curation_score": 50.0,
                 "risk_score": 10.0,

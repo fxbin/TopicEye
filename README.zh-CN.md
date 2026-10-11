@@ -86,7 +86,7 @@ AI 驱动的内容发现与选题分析平台。TopicEye 持续抓取 25+ 信源
 | 网文雷达 | 番茄 / 七猫 / 知乎盐选热榜，受运行时功能开关控制，默认关闭 |
 | 母题模板 | 多租户模型——管理员维护系统模板库（只读），用户首次访问时自动 fork 一份到自己名下，可自定义关键词、权重、目标读者。修改立即影响打分队列。 |
 | AI 模型评测 | 后台 UI 对比多个 LLM 在同一 prompt 下的表现，追踪质量与成本，为不同任务选合适的路由组。 |
-| 邮件验证 | 事务邮件支持 Brevo API 或任意 SMTP（QQ 企业邮 / Gmail 等），在管理后台设置页配置。 |
+| 邮件验证 | 事务邮件走任意标准 SMTP（QQ 企业邮 / Gmail / 自建等），在管理后台设置页配置。 |
 | 站内阅读 | 对原文链接的站内阅读器——仅抓取公开 HTML，不使用登录态 / Cookie / 验证码 / 反爬绕过，带 SSRF 防护与快照缓存。 |
 | 收藏夹 | 跨会话保存感兴趣的内容（按用户隔离） |
 | 我的选题 | 个性化选题配置，支持母题 fork、关键词过滤、评分覆盖 |
@@ -112,7 +112,7 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 | `models/` | 纯 ORM 声明、字段定义、`__table_args__` | 业务方法、副作用、IO |
 | `schemas/` | Pydantic 请求/响应模型、序列化 | ORM import、DB 访问 |
 
-跨层支撑：`core/`（配置、DB、日志、retry）、`middleware/`（限流、请求指标）、`services/email/`（Brevo + SMTP）、`services/llm/`（failover / 熔断 / 响应缓存）、`services/scrapers/` + `services/trending_scrapers/`（按信源的抓取器）。
+跨层支撑：`core/`（配置、DB、日志、retry）、`middleware/`（限流、请求指标）、`services/email/`（SMTP）、`services/llm/`（failover / 熔断 / 响应缓存）、`services/scrapers/` + `services/trending_scrapers/`（按信源的抓取器）。
 
 ### 评分引擎
 
@@ -162,7 +162,7 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 - **前端：** Next.js 16 · React 19 · TypeScript · Tailwind CSS v4
 - **数据库：** PostgreSQL 16 · DuckDB 作为 OLTP 的只读分析层
 - **认证：** 不透明 bearer token（DB hash）+ Authlib OAuth
-- **邮件：** Brevo API 或 SMTP（按部署自行配置）
+- **邮件：** 任意标准 SMTP 服务器（按部署自行配置）
 - **基础设施：** Docker / docker-compose（dev + prod）· APScheduler
 
 ## 快速开始
@@ -246,9 +246,8 @@ npm run dev
 >
 > **第三方登录**（Google / GitHub）在后台配置（**管理后台 → 系统设置 → 第三方登录**）：client id / secret 与启用开关存数据库（secret 加密存储），保存后即时生效，无需重启。
 >
-> **邮件验证** 在管理后台设置页配置，两种 provider：
-> - **Brevo API** — 免费版 300 邮件/天，无需信用卡，但需账号审核。
-> - **SMTP** — 自带任意 provider（QQ 企业邮 / Gmail 等），无需审核。
+> **邮件验证** 在管理后台设置页配置：自带任意标准 SMTP 服务器（QQ 企业邮 / Gmail /
+> 自建 Postfix 等）。部分邮箱（QQ / 163）需使用授权码而非登录密码。
 
 ## 开发
 

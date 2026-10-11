@@ -88,7 +88,7 @@ TopicEye continuously crawls 25+ sources (RSS, Reddit, YouTube, podcasts, newsle
 | **Webnovel radar** | Fanqie / Qimao / Zhihu Yanxuan trending charts, gated behind a runtime feature flag. |
 | **Mother topics** | Multi-tenant topic templates — admins maintain the system library, users fork their own and customize keywords, weights, and target readers. Fork edits take effect immediately in the scoring queue. |
 | **AI model evaluation** | Admin UI to compare LLM models side-by-side on the same prompts, track quality and cost, and pick the right routing group per task. |
-| **Email verification** | Transactional email via Brevo API or any SMTP provider (QQ Enterprise / Gmail / etc.), configured from the admin settings page. |
+| **Email verification** | Transactional email via any standard SMTP provider (QQ Enterprise / Gmail / self-hosted etc.), configured from the admin settings page. |
 | **Article reader** | In-app reader for source URLs — fetches public HTML only, no auth/cookies/captcha bypass, with SSRF guard and snapshot caching. |
 | **Favorites** | Save items across sessions (per-user). |
 | **My topics** | Personalized topic configuration with mother-topic fork, keyword filters, and scoring overrides. |
@@ -114,7 +114,7 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 | `models/` | Pure ORM declarations, field definitions, `__table_args__` | Business methods, side effects, IO |
 | `schemas/` | Pydantic request/response models, serialization | ORM imports, DB access |
 
-Cross-cutting: `core/` (config, DB, logging, retry), `middleware/` (rate limit, request metrics), `services/email/` (Brevo + SMTP), `services/llm/` (failover, circuit breaker, response cache), `services/scrapers/` + `services/trending_scrapers/` (per-source fetchers).
+Cross-cutting: `core/` (config, DB, logging, retry), `middleware/` (rate limit, request metrics), `services/email/` (SMTP), `services/llm/` (failover, circuit breaker, response cache), `services/scrapers/` + `services/trending_scrapers/` (per-source fetchers).
 
 ### Scoring engine
 
@@ -164,7 +164,7 @@ Full config in [backend/app/services/scoring_engine.py](backend/app/services/sco
 - **Frontend:** Next.js 16 · React 19 · TypeScript · Tailwind CSS v4
 - **Database:** PostgreSQL 16 · DuckDB as a read-only analytics layer over OLTP
 - **Auth:** Opaque bearer tokens (DB-hashed) + OAuth via Authlib
-- **Email:** Brevo API or SMTP (user-configurable per deployment)
+- **Email:** any standard SMTP server (user-configurable per deployment)
 - **Infra:** Docker / docker-compose (dev + prod) · APScheduler
 
 ## Quick start
@@ -248,9 +248,9 @@ All configuration is environment-driven. See [`backend/.env.example`](backend/.e
 >
 > **Third-party login** (Google / GitHub) is configured from the admin settings page (**Admin → Settings → Third-party Login**): client id / secret and the enable toggle are stored in the database (secret encrypted), effective immediately without a restart.
 >
-> **Email verification** is configured from the admin settings page. Two providers are supported:
-> - **Brevo API** — free tier 300 emails/day, no credit card required but account approval needed.
-> - **SMTP** — bring your own provider (QQ Enterprises / Gmail / etc.), no approval needed.
+> **Email verification** is configured from the admin settings page: bring your own SMTP server
+> (QQ Enterprises / Gmail / self-hosted Postfix etc.). Some providers (QQ / 163) require an
+> app-specific authorization code instead of the login password.
 
 ## Development
 

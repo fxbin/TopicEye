@@ -14,28 +14,24 @@ import type {
   TrendPoint,
 } from '@/types/trends';
 
-/** 邮件 Provider 配置响应（api_key / smtp_password 脱敏） */
+/** 邮件 Provider 配置响应（smtp_password 脱敏）。#108 起仅剩自定义 SMTP */
 export interface EmailProviderConfig {
   provider: string;
   from_email: string;
   from_name: string;
-  api_key_configured: boolean;
-  api_key_preview: string;
   smtp_host: string;
   smtp_port: number;
   smtp_username: string;
   smtp_password_configured: boolean;
   smtp_password_preview: string;
   smtp_use_ssl: boolean;
-  supported_providers: string[];
 }
 
-/** 邮件 Provider 配置更新请求。api_key / smtp_password 为空时保留原值 */
+/** 邮件 Provider 配置更新请求。smtp_password 为空时保留原值 */
 export interface EmailProviderConfigUpdate {
   provider: string;
   from_email: string;
   from_name: string;
-  api_key: string;
   smtp_host: string;
   smtp_port: number;
   smtp_username: string;
@@ -126,12 +122,12 @@ export const settingsApi = {
     });
   },
 
-  /** 获取邮件 Provider 配置（api_key 脱敏） */
+  /** 获取邮件 Provider 配置（密码脱敏） */
   getEmailProvider(): Promise<EmailProviderConfig> {
     return request('/settings/email-provider');
   },
 
-  /** 更新邮件 Provider 配置。api_key 为空时保留原值 */
+  /** 更新邮件 Provider 配置。smtp_password 为空时保留原值 */
   updateEmailProvider(data: EmailProviderConfigUpdate): Promise<{ updated: boolean }> {
     return request('/settings/email-provider', {
       method: 'PUT',

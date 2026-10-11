@@ -312,12 +312,18 @@ def _pick_row(content_id: int) -> dict:
 async def test_today_picks_hides_all_event_members_and_exposes_reason(
     monkeypatch,
 ):
-    rows = [
-        _pick_row(1),
-        _pick_row(2),
-        _pick_row(3),
-        _pick_row(4),
-    ]
+    rows = [_pick_row(i) for i in (1, 2, 3, 4)]
+    # 名次截断口径（2026-10-09）下 n=4 的 keep=1 装不下「canonical+独立内容」
+    # 两条意图目标：id=1/4 拉到最高两档、补 3 条低分陪跑撑到 n=7（keep=2）。
+    rows[0]["curation_score"] = 94.0
+    rows[3]["curation_score"] = 95.0
+    # 事件成员（id2/3）在 scoring 前被剔除出候选：陪跑补足 5 条，
+    # 保证剔除后候选仍 n=7（keep=2），canonical(id1) 与独立内容(id4)稳进。
+    for i in (5, 6, 7, 8, 9):
+        r = _pick_row(i)
+        r["curation_score"] = 50.0
+        r["quality_score"] = 40.0
+        rows.append(r)
     assignments = {
         1: EventAssignment(1, 10, 1, True),
         2: EventAssignment(2, 10, 1, False, "corroboration", 0.93),
@@ -387,9 +393,11 @@ async def test_today_picks_hides_all_event_members_and_exposes_reason(
         limit=None,
     )
 
-    assert [item["id"] for item in payload["items"]] == [1, 4]
+    assert {item["id"] for item in payload["items"]} == {1, 4}
     assert payload["event_members_hidden"] == 2
-    normalization = payload["items"][0]["normalization"]
+    # 名次截断后 items 按分数序（id4 在前），canonical 的归一化信息按 id 定位
+    canonical = next(item for item in payload["items"] if item["id"] == 1)
+    normalization = canonical["normalization"]
     assert normalization["member_count"] == 2
     assert normalization["has_more"] is True
     assert normalization["members"][0]["relation_type"] == "corroboration"

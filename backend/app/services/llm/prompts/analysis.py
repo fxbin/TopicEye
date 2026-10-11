@@ -3,7 +3,16 @@ Analysis prompts — extracted from app.services.analysis.
 
 Used by:
     - app.services.analysis.analyze_content
+
+评分口径(加权/门槛/风险扣分)一律从 app.services.scoring_caliber 渲染,
+本文件不得手写数字——tests/test_scoring_caliber.py 锁死漂移(#110)。
 """
+
+from app.services.scoring_caliber import (
+    curation_threshold_text,
+    curation_weights_text,
+    risk_penalty_text,
+)
 
 SYSTEM_PROMPT = """你是一位资深内容策展分析师，负责评估内容的选题价值并决定是否入选精选。
 
@@ -16,7 +25,8 @@ SYSTEM_PROMPT = """你是一位资深内容策展分析师，负责评估内容�
 
 所有评分范围 0-100。所有输出文本使用中文。语气直接、有态度、不说客套话。"""
 
-ANALYSIS_PROMPT = """请对以下内容进行完整分析。
+ANALYSIS_PROMPT = (
+    """请对以下内容进行完整分析。
 
 标题：{title}
 正文：{content}
@@ -39,7 +49,11 @@ ANALYSIS_PROMPT = """请对以下内容进行完整分析。
     "info_density": <0-100, 信息密度：纯转发/空话=0-20, 有观点=40-60, 有数据/案例/方法=70-100>,
     "actionability": <0-100, 可操作性：纯资讯=10-30, 有参考价值=40-60, 能直接上手用=70-100>,
     "source_weight": <0-100, 来源权威度：匿名/营销号=10-30, 二手转载=40-60, 一手信源/官方/KOL=70-100>,
-    "curation_score": <0-100, 综合精选分（加权：信息密度30%+可操作性25%+创作者价值20%+爆文潜力15%+来源10%，风险分>70则扣20分）>
+    "curation_score": <0-100, 综合精选分（加权："""
+    + curation_weights_text()
+    + """，"""
+    + risk_penalty_text()
+    + """）>
   }},
   "recommendation": "中文摘要式推荐理由（50字以内）。先用一句话概括这条内容的核心信息，再点出为什么值得关注/适合写；不要翻译腔、不要英文、不要营销夸张词、不要只写行动建议。例：'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'）",
   "creator_angles": [""],
@@ -52,7 +66,10 @@ ANALYSIS_PROMPT = """请对以下内容进行完整分析。
 - 60-69：有参考价值但不够突出
 - <60：信息量低/纯情绪/重复内容/过于个人化
 
-精选门槛为 60 分。"""
+精选门槛为 """
+    + curation_threshold_text()
+    + """。"""
+)
 
 # ── English (HackerNews / international) prompts ────────────────────────────
 
@@ -75,7 +92,8 @@ When scoring such content, DO NOT penalize for brevity or discussion format. A c
 
 All scores are 0-100. IMPORTANT: all output text must be Chinese, even if the source content is English. Be direct, opinionated, no platitudes."""
 
-ANALYSIS_PROMPT_EN = """Analyze the following content thoroughly.
+ANALYSIS_PROMPT_EN = (
+    """Analyze the following content thoroughly.
 
 Title: {title}
 Content: {content}
@@ -99,7 +117,11 @@ Output strictly in this JSON format (no other text). All text values must be in 
     "info_density": <0-100, pure share/empty talk=0-20, has opinions=40-60, has data/case/method=70-100>,
     "actionability": <0-100, pure news=10-30, reference value=40-60, directly actionable=70-100>,
     "source_weight": <0-100, anonymous/spam=10-30, second-hand=40-60, first-hand/official/KOL=70-100>,
-    "curation_score": <0-100, weighted: info density 30%+ actionability 25%+ creator value 20%+ viral potential 15%+ source 10%, risk>70 deducts 20 points>
+    "curation_score": <0-100, weighted: """
+    + curation_weights_text("en")
+    + """, """
+    + risk_penalty_text("en")
+    + """>
   }},
   "recommendation": "中文摘要式推荐理由（≤50 chars）。Summarize core info in one sentence, then explain why it's worth writing about. 不要输出英文、不要营销夸张词、不要只写行动建议。Example: 'OpenCode Zen 把优选编码模型做成统一网关，适合关注 AI 编程工具生态的人跟进'",
   "creator_angles": [""],
@@ -112,7 +134,10 @@ Curation score (curation_score) guidelines:
 - 60-69: reference value but not outstanding
 - <60: low information / purely emotional / repetitive / overly personal
 
-Curation threshold is 60 points."""
+Curation threshold is """
+    + curation_threshold_text("en")
+    + """."""
+)
 
 
 # ── arXiv / academic paper prompts ──────────────────────────────────────────
@@ -133,7 +158,8 @@ PAPER_SYSTEM_PROMPT = """你是一位资深的学术内容策展分析师，擅�
 
 所有评分范围 0-100。所有输出文本使用中文。语气直接、专业、不说客套话。"""
 
-PAPER_ANALYSIS_PROMPT = """请对以下英文学术论文进行分析解读。
+PAPER_ANALYSIS_PROMPT = (
+    """请对以下英文学术论文进行分析解读。
 
 标题：{title}
 正文（摘要/内容）：{content}
@@ -156,7 +182,11 @@ PAPER_ANALYSIS_PROMPT = """请对以下英文学术论文进行分析解读。
     "info_density": <0-100, 信息密度：纯概念/无实证=20-40, 有方法/实验=60-80, 有完整验证=90-100>,
     "actionability": <0-100, 可操作性：纯理论=10-30, 有开源代码/可复现=60-80, 能直接落地应用=90-100>,
     "source_weight": <0-100, 来源权威度：预印本未评审=40-60, 顶会/知名团队=70-90>,
-    "curation_score": <0-100, 综合精选分（加权：信息密度30%+可操作性25%+创作者价值20%+传播潜力15%+来源10%，风险分>70则扣20分）>
+    "curation_score": <0-100, 综合精选分（加权："""
+    + curation_weights_text()
+    + """，"""
+    + risk_penalty_text()
+    + """）>
   }},
   "recommendation": "中文推荐理由（50字以内）。先用一句话说清论文核心贡献，再点出为什么值得中文创作者关注。不要翻译腔、不要营销词。",
   "deep_read": {{
@@ -180,7 +210,10 @@ PAPER_ANALYSIS_PROMPT = """请对以下英文学术论文进行分析解读。
 - 60-69：有参考价值但不够突出
 - <60：增量工作/过于晦涩/受众极窄
 
-精选门槛为 60 分。"""
+精选门槛为 """
+    + curation_threshold_text()
+    + """。"""
+)
 
 
 # ── Lite prescreen prompts ─────────────────────────────────────────────────

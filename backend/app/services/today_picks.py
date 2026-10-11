@@ -24,9 +24,9 @@ from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown
 
 logger = logging.getLogger(__name__)
 
-# 与 DuckDB query_today_picks 的 weight_bonus 默认值（duckdb_service.py）一致，
-# fallback 复刻 adjusted_curation_score 排序时使用。
-_OLTP_FALLBACK_WEIGHT_BONUS = 8
+# 与 DuckDB query_today_picks 共用同一加成口径（scoring_caliber.CONFIG 的
+# picks_weight_bonus，#110），fallback 复刻 adjusted_curation_score 排序时使用。
+_OLTP_FALLBACK_WEIGHT_BONUS = SCORING_CONFIG["picks_weight_bonus"]
 
 # 个性化重排的探索保留比例：最终页中预留给「基础分最强但未因个人
 # 兴趣入选」条目的比例，防止兴趣匹配完全遮蔽高质量内容。

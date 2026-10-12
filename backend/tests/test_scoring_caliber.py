@@ -17,9 +17,14 @@ import re
 from app.services import scoring_engine
 from app.services.llm.prompts import analysis as analysis_prompts
 from app.services.scoring_caliber import (
+    ANCHOR_BANDS,
     CONFIG,
+    DIMENSION_ANCHORS_EN,
+    DIMENSION_ANCHORS_ZH,
     LLM_RISK_PENALTY_POINTS,
     LLM_RISK_PENALTY_TRIGGER,
+    dimension_anchor_lines,
+    dimension_anchor_section,
 )
 
 SIX_DIM_KEYS = (
@@ -141,3 +146,48 @@ def test_today_picks_fallback_weight_bonus_matches_config():
     from app.services.today_picks import _OLTP_FALLBACK_WEIGHT_BONUS
 
     assert CONFIG["picks_weight_bonus"] == _OLTP_FALLBACK_WEIGHT_BONUS
+
+
+# ── 六维行为锚点(#114) ───────────────────────────────────────────────
+
+SIX_SCORE_FIELDS = {
+    "quality_score",
+    "hot_score",
+    "freshness_score",
+    "creator_score",
+    "viral_score",
+    "risk_score",
+}
+
+
+def test_anchor_tables_complete():
+    """中英锚点表必须同维、每维恰四档、每档一句非空行为描述。"""
+    assert set(DIMENSION_ANCHORS_ZH) == SIX_SCORE_FIELDS
+    assert set(DIMENSION_ANCHORS_EN) == SIX_SCORE_FIELDS
+    for table in (DIMENSION_ANCHORS_ZH, DIMENSION_ANCHORS_EN):
+        for dim, descriptions in table.items():
+            assert len(descriptions) == len(ANCHOR_BANDS), f"{dim} 档数不符"
+            assert all(isinstance(d, str) and d.strip() for d in descriptions), f"{dim} 有空档描述"
+
+
+def test_prompts_contain_anchor_sections_verbatim():
+    """中/英 prompt 的锚点段落必须与 caliber 渲染逐字一致;档位边界同源。"""
+    zh = analysis_prompts.ANALYSIS_PROMPT
+    en = analysis_prompts.ANALYSIS_PROMPT_EN
+    assert dimension_anchor_section() in zh, "中文 prompt 缺锚点段或被手改"
+    assert dimension_anchor_section("en") in en, "英文 prompt 缺锚点段或被手改"
+
+    expected_bands = [f"{lo}-{hi}" for lo, hi in ANCHOR_BANDS]
+    for lang, prompt in (("zh", zh), ("en", en)):
+        for dim in sorted(SIX_SCORE_FIELDS):
+            m = re.search(rf"^- {dim}[：:].*$", prompt, re.M)
+            assert m, f"{lang} prompt 缺 {dim} 锚点行"
+            bands = re.findall(r"(\d+-\d+)=", m.group(0))
+            assert bands == expected_bands, f"{lang} {dim} 档位与 ANCHOR_BANDS 不一致: {m.group(0)}"
+
+
+def test_paper_prompt_excludes_anchor_section():
+    """论文版是否挂锚点是独立决策(#114),首期明确不挂——锁住范围防误植。"""
+    assert "六维评分锚点" not in analysis_prompts.PAPER_ANALYSIS_PROMPT
+    for line in dimension_anchor_lines():
+        assert line not in analysis_prompts.PAPER_ANALYSIS_PROMPT

@@ -11,6 +11,7 @@ Used by:
 from app.services.scoring_caliber import (
     curation_threshold_text,
     curation_weights_text,
+    dimension_anchor_section,
     risk_penalty_text,
 )
 
@@ -59,6 +60,10 @@ ANALYSIS_PROMPT = (
   "creator_angles": [""],
   "title_suggestions": [""]
 }}
+
+"""
+    + dimension_anchor_section()
+    + """
 
 精选分（curation_score）评判标准：
 - ≥80：重大发布/独家/强实用性工具/高传播力事件
@@ -127,6 +132,10 @@ Output strictly in this JSON format (no other text). All text values must be in 
   "creator_angles": [""],
   "title_suggestions": [""]
 }}
+
+"""
+    + dimension_anchor_section("en")
+    + """
 
 Curation score (curation_score) guidelines:
 - ≥80: major release / exclusive / highly actionable tool / high-spread event

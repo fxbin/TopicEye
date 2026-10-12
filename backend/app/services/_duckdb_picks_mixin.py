@@ -12,12 +12,26 @@ from app.services._duckdb_sql import LATEST_ANALYSIS_CTE
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG
 
 
+def resolve_picks_params(
+    curation_threshold: float | None,
+    weight_bonus: float | None,
+) -> tuple[float, float]:
+    """query_today_picks 的口径默认值统一取自 SCORING_CONFIG(#110)。
+
+    此前签名里硬编码 55/8,CONFIG 调整时这里静默不跟随。
+    """
+    return (
+        float(SCORING_CONFIG["curation_threshold"] if curation_threshold is None else curation_threshold),
+        float(SCORING_CONFIG["picks_weight_bonus"] if weight_bonus is None else weight_bonus),
+    )
+
+
 class PicksMixin:
     def query_today_picks(
         self,
         hours: int = 48,
-        curation_threshold: float = 55,
-        weight_bonus: int = 8,
+        curation_threshold: float | None = None,
+        weight_bonus: float | None = None,
         risk_threshold: float | None = None,
         category: str | None = None,
         content_type: str | None = None,
@@ -29,8 +43,10 @@ class PicksMixin:
         Top curated picks from the last N hours.
 
         Runs the curation scoring + source weight adjustment entirely in DuckDB.
-        Returns items with adjusted_curation_score >= threshold.
+        Returns items with adjusted_curation_score >= threshold. 门槛与加成
+        默认值运行时取自 SCORING_CONFIG(#110),签名不再硬编码数字。
         """
+        curation_threshold, weight_bonus = resolve_picks_params(curation_threshold, weight_bonus)
         conn = self._get_conn()
         cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
         # 忽略口径按用户隔离：全局屏蔽 + 当前用户个人忽略（匿名只见全局）

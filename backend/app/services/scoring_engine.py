@@ -8,7 +8,9 @@ Design inspired by multi-stage recommendation pipelines:
   4. Diversity: down-rank when same source/category dominates
   5. Risk controls: hard-exclude high-risk items and softly penalize mid-risk items
 
-All tuning constants live in the CONFIG dict at the top for easy adjustment.
+All tuning constants live in app.services.scoring_caliber.CONFIG — the single
+source of truth shared with the LLM prompts and the DuckDB picks query (#110).
+Re-exported here as CONFIG for compatibility with existing importers.
 """
 
 from __future__ import annotations
@@ -23,48 +25,11 @@ from app.schemas.scoring import (
     ScoringRequestItem,
     ScoringResponse,
 )
+from app.services.scoring_caliber import CONFIG
 
 # ── Tunable configuration ────────────────────────────────────────────
-
-CONFIG = {
-    # 6-dimension weights (must sum to 1.0)
-    "w_info_density": 0.25,  # 信息密度
-    "w_actionability": 0.20,  # 可操作性
-    "w_creator_value": 0.18,  # 创作者价值
-    "w_viral_potential": 0.15,  # 爆文潜力
-    "w_source_authority": 0.12,  # 来源权威度
-    "w_freshness": 0.10,  # 时效新鲜度
-    # Source weight mapping (source.weight 1-5 → bonus)
-    "source_weight_bonus_factor": 6.0,  # per weight-unit above 3
-    # Time decay
-    "time_decay_lambda": 0.02,  # decay rate: exp(-lambda * hours)
-    "time_decay_floor": 0.3,  # minimum time decay (never fully kill)
-    # Content quality gates
-    "quality_gate_min": 45,  # below this, content is probably too thin for curation
-    "quality_gate_strong": 70,  # full trust above this composite quality level
-    "quality_gate_floor": 0.55,  # lowest multiplier for weak-but-not-risky content
-    "min_selected_base_score": 58,  # do not select weak items just because a batch is weak
-    # Source diversity
-    "diversity_penalty_base": 0.85,  # multiplier per same-source duplicate
-    "category_diversity_penalty_base": 0.92,
-    "same_source_grace": 1,  # first item per source is free
-    "same_category_grace": 3,  # first few items per category are free
-    # Risk
-    "risk_threshold": 82,  # hard-exclude above this
-    "risk_soft_start": 45,  # risk starts reducing rank after this
-    "risk_soft_floor": 0.55,  # minimum multiplier before hard exclusion
-    # Curation threshold (minimum final score to be selected)
-    "curation_threshold": 55,  # slightly lower than before, because scores are now more calibrated
-    # Fallback: when curation_score is 0 but other scores exist
-    "fallback_use_avg": True,
-    # ── Percentile-based curation mode ──
-    "curation_mode": "percentile",  # "percentile" | "fixed"
-    "curation_percentile": 70,  # top ~30% selected (P70 and above) → ~25-30% curation rate
-    # ── User feedback signal ──
-    "w_feedback": 0.15,  # 15% weight for feedback_score
-    "feedback_score_min": -20.0,  # one effective negative vote should not dominate ranking
-    "feedback_score_max": 20.0,  # one effective positive vote should not dominate ranking
-}
+# 唯一声明处已迁至 app/services/scoring_caliber.py(#110):prompt 教学与
+# picks 查询共享同一份口径,tests/test_scoring_caliber.py 锁死漂移。
 
 
 # ── Data containers ──────────────────────────────────────────────────
@@ -188,10 +153,11 @@ def _compute_base_score(item: ScoringInput) -> tuple[float, dict]:
 
     dim_sum = sum(dimensions.values())
 
-    # Blend: if LLM gave a curation_score, weight it 60% + 40% dimension sum
-    # Otherwise, use pure dimension sum
+    # Blend: if LLM gave a curation_score, weight it by curation_blend_weight
+    # (CONFIG, #110) and the rest on the dimension sum; otherwise pure sum
     if cs > 0:
-        base = cs * 0.6 + dim_sum * 0.4
+        p = cfg["curation_blend_weight"]
+        base = cs * p + dim_sum * (1 - p)
     elif cfg["fallback_use_avg"]:
         # Fallback: average of available scores
         scores = [

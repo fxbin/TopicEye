@@ -205,12 +205,14 @@ The authorization server (AS) lives at the site root, with `issuer = SITE_BASE_U
 |---|---|
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 AS metadata |
 | `GET /.well-known/oauth-protected-resource/mcp` | RFC 9728 resource metadata (points clients at the AS) |
-| `GET/POST /authorize` | Authorization endpoint (PKCE S256 mandatory) → redirects to the consent page |
-| `POST /token` | Token endpoint (authorization_code + refresh_token grants) |
+| `GET/POST /authorize` | Authorization endpoint (PKCE S256 mandatory) → redirects to the consent page. Requires a logged-in browser session: anonymous GET is redirected to the login page with a `returnTo` bounce-back; anonymous POST gets 400. The initiating user is bound to the request — only the initiator can view/approve/deny it on the consent page |
+| `POST /token` | Token endpoint (authorization_code + refresh_token grants). A replayed (already-consumed) authorization code is rejected and logged as an exfiltration signal |
 | `POST /register` | RFC 7591 dynamic client registration |
 | `POST /revoke` | RFC 7009 revocation (family-wide; note: the SDK requires a `client_secret` form field to be present — public clients send an empty value) |
 
-The consent page itself (`/mcp/authorize` on the frontend) talks to three session-authenticated REST endpoints: `GET /api/v1/mcp-oauth/authorize-info`, `POST /api/v1/mcp-oauth/approve`, `POST /api/v1/mcp-oauth/deny`. Authorization codes are single-use and expire in 10 minutes.
+The consent page itself (`/mcp/authorize` on the frontend) talks to three session-authenticated REST endpoints: `GET /api/v1/mcp-oauth/authorize-info`, `POST /api/v1/mcp-oauth/approve`, `POST /api/v1/mcp-oauth/deny` — all three initiator-only. Authorization codes are single-use and expire in 10 minutes. The consent page marks every DCR-registered client as an unvetted third-party app (client names are self-declared).
+
+Tool-level scopes are enforced by a central fail-closed gate (`TOOL_REQUIRED_SCOPES` in `app/mcp/scopes.py`); all four current tools are read-only and require no scopes. Adding any new tool (especially the first write tool) must register it there — a CI assertion keeps the tool set and the gate registry in lockstep, and the full scope model is the tracked precondition for the first write tool (issue #118).
 
 Operational notes:
 

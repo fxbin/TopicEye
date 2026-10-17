@@ -59,6 +59,11 @@ class MCPOAuthAuthorization(Base):
     )
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
     user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    # 发起 /authorize 的浏览器会话用户；approve/deny/info 只允许发起者本人，
+    # 堵住「攻击者发起、诱导受害者批准」的同意页 CSRF 路径（issue #118 圆桌裁定）
+    initiator_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, comment="发起授权请求的用户（绑定校验）"
+    )
     code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="批准时生成的授权码 sha256")
     scopes: Mapped[str | None] = mapped_column(Text, nullable=True, comment="JSON 数组")
     state: Mapped[str | None] = mapped_column(Text, nullable=True, comment="客户端 state 原样带回")

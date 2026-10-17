@@ -110,13 +110,25 @@ async def get_client(db, client_id: str) -> OAuthClientInformationFull | None:
 # ── 授权请求 → 同意页 → 授权码 ─────────────────────────────────────────
 
 
-async def create_authorization_request(db, *, client_id: str, params: AuthorizationParams) -> str:
-    """/authorize 落一条 pending 授权请求，返回前端同意页 URL。"""
+async def create_authorization_request(
+    db,
+    *,
+    client_id: str,
+    params: AuthorizationParams,
+    initiator_user_id: int | None,
+) -> str:
+    """/authorize 落一条 pending 授权请求，返回前端同意页 URL。
+
+    ``initiator_user_id`` 是发起 /authorize 的浏览器会话用户（由宿主包装
+    路由解析并经 contextvar 传入）；后续 info/approve/deny 只允许发起者
+    本人操作，堵住「攻击者发起、诱导受害者批准」的同意页 CSRF 路径。
+    """
     request_id = str(uuid.uuid4())
     row = MCPOAuthAuthorization(
         request_id=request_id,
         status="pending",
         client_id=client_id,
+        initiator_user_id=initiator_user_id,
         scopes=json.dumps(params.scopes or []),
         state=params.state,
         code_challenge=params.code_challenge,
@@ -130,17 +142,23 @@ async def create_authorization_request(db, *, client_id: str, params: Authorizat
     return _consent_url(request_id)
 
 
-async def _pending_row(db, request_id: str) -> MCPOAuthAuthorization | None:
-    """取 pending 且未过期的授权请求行；其余状态一律视为不存在。"""
+async def _pending_row(db, request_id: str, *, acting_user_id: int) -> MCPOAuthAuthorization | None:
+    """取 pending、未过期且**发起者是本人**的授权请求行；其余一律视为不存在。
+
+    发起者为 NULL 的行（理论上只有绕过包装路由才会产生）同样拒绝——
+    fail-closed，宁可要求重新发起也不给 approve-any 留缝。
+    """
     row = await MCPOAuthAuthorizationRepository(db).get_by_request_id(request_id)
     if row is None or row.status != "pending" or _expired(row.expires_at):
+        return None
+    if row.initiator_user_id is None or row.initiator_user_id != acting_user_id:
         return None
     return row
 
 
-async def get_authorization_info(db, request_id: str) -> dict | None:
+async def get_authorization_info(db, request_id: str, *, viewer_user_id: int) -> dict | None:
     """同意页展示信息：应用名、主页、请求的 scope 与回调目标主机。"""
-    row = await _pending_row(db, request_id)
+    row = await _pending_row(db, request_id, acting_user_id=viewer_user_id)
     if row is None:
         return None
     client = await get_client(db, row.client_id)
@@ -156,10 +174,11 @@ async def get_authorization_info(db, request_id: str) -> dict | None:
 async def approve_authorization(db, request_id: str, user_id: int) -> tuple[str, str] | None:
     """用户点「授权」：盖 code_hash、记 user，返回 (raw_code, 回调跳转地址)。
 
-    pending→approved 用条件 UPDATE 原子迁移：双开标签页并发点「授权」只有
-    一路拿到有效 code（另一路 404），不会出现两枚 code 相互覆盖。
+    只允许发起者本人批准（_pending_row 校验 initiator）；pending→approved
+    用条件 UPDATE 原子迁移：双开标签页并发点「授权」只有一路拿到有效
+    code（另一路 404），不会出现两枚 code 相互覆盖。
     """
-    row = await _pending_row(db, request_id)
+    row = await _pending_row(db, request_id, acting_user_id=user_id)
     if row is None:
         return None
     code = secrets.token_urlsafe(32)
@@ -176,9 +195,9 @@ async def approve_authorization(db, request_id: str, user_id: int) -> tuple[str,
     return code, redirect_to
 
 
-async def deny_authorization(db, request_id: str) -> str | None:
-    """用户点「拒绝」：按 RFC 6749 带 error=access_denied 回调。"""
-    row = await _pending_row(db, request_id)
+async def deny_authorization(db, request_id: str, *, acting_user_id: int) -> str | None:
+    """用户点「拒绝」：按 RFC 6749 带 error=access_denied 回调（仅发起者）。"""
+    row = await _pending_row(db, request_id, acting_user_id=acting_user_id)
     if row is None:
         return None
     row.status = "denied"
@@ -192,6 +211,15 @@ async def deny_authorization(db, request_id: str) -> str | None:
 async def load_authorization_code(db, *, client_id: str, code: str) -> AuthorizationCode | None:
     authz_repo = MCPOAuthAuthorizationRepository(db)
     row = await authz_repo.get_by_code_hash(hash_token(code))
+    if row is not None and row.status == "consumed":
+        # 已消费的授权码再次出现 = 泄密信号（能走到消费完说明第一次兑换成功，
+        # 而携带正确 code 的只有客户端或截获者）。当前只告警记录；整族撤销
+        # 与 family 关联列随完整 scope 模型排期（issue #118，写工具前置 DoD）。
+        logger.warning(
+            "MCP OAuth 授权码重放信号：request_id=%s client=%s（token 未连坐撤销，见 issue #118）",
+            row.request_id,
+            row.client_id,
+        )
     if row is None or row.status != "approved" or row.client_id != client_id or _expired(row.expires_at):
         return None
     return AuthorizationCode(

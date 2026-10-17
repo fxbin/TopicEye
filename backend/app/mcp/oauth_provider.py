@@ -57,8 +57,15 @@ class TopicEyeOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
             await mcp_oauth_service.register_client(db, client_info)
 
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
+        # 发起者由宿主包装路由解析并经 ContextVar 传入（见 authorize_route.py）；
+        # SDK 的 authorize 链路拿不到 HTTP 请求，这是唯一的传递通道
+        from app.mcp.authorize_route import initiator_user_id_var
+
+        initiator = initiator_user_id_var.get()
         async with _db_session() as db:
-            return await mcp_oauth_service.create_authorization_request(db, client_id=client.client_id, params=params)
+            return await mcp_oauth_service.create_authorization_request(
+                db, client_id=client.client_id, params=params, initiator_user_id=initiator
+            )
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str

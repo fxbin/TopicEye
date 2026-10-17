@@ -60,9 +60,11 @@ def _params(challenge: str) -> AuthorizationParams:
 
 
 async def _approved_code(db, user_id: int, client: OAuthClientInformationFull) -> str:
-    """走完整路径拿到已批准的授权码。"""
+    """走完整路径拿到已批准的授权码（发起者=user_id 本人）。"""
     _verifier, challenge = _pkce()
-    consent_url = await svc.create_authorization_request(db, client_id=client.client_id, params=_params(challenge))
+    consent_url = await svc.create_authorization_request(
+        db, client_id=client.client_id, params=_params(challenge), initiator_user_id=user_id
+    )
     request_id = consent_url.split("request_id=")[1]
     result = await svc.approve_authorization(db, request_id, user_id)
     assert result is not None
@@ -120,12 +122,14 @@ async def test_authorization_lifecycle(test_session_factory):
         await db.commit()
 
         verifier, challenge = _pkce()
-        consent_url = await svc.create_authorization_request(db, client_id=client.client_id, params=_params(challenge))
+        consent_url = await svc.create_authorization_request(
+            db, client_id=client.client_id, params=_params(challenge), initiator_user_id=user.id
+        )
         assert "/mcp/authorize?request_id=" in consent_url
         request_id = consent_url.split("request_id=")[1]
 
-        # 同意页信息
-        info = await svc.get_authorization_info(db, request_id)
+        # 同意页信息（仅发起者可见）
+        info = await svc.get_authorization_info(db, request_id, viewer_user_id=user.id)
         assert info is not None
         assert info["client_name"] == "pytest-mcp"
         assert info["redirect_host"] == "127.0.0.1"
@@ -141,7 +145,7 @@ async def test_authorization_lifecycle(test_session_factory):
 
         # 批准后重复 approve / info 都失效（一次性）
         assert await svc.approve_authorization(db, request_id, user.id) is None
-        assert await svc.get_authorization_info(db, request_id) is None
+        assert await svc.get_authorization_info(db, request_id, viewer_user_id=user.id) is None
 
         # load → exchange
         auth_code = await svc.load_authorization_code(db, client_id=client.client_id, code=code)
@@ -171,17 +175,21 @@ async def test_authorization_lifecycle(test_session_factory):
 @pytest.mark.asyncio
 async def test_authorization_deny(test_session_factory):
     async with test_session_factory() as db:
+        user = await create_user(db, email="mcp-deny@t", password="pw")
+        await db.commit()
         client = _client_info()
         await svc.register_client(db, client)
         _verifier, challenge = _pkce()
-        consent_url = await svc.create_authorization_request(db, client_id=client.client_id, params=_params(challenge))
+        consent_url = await svc.create_authorization_request(
+            db, client_id=client.client_id, params=_params(challenge), initiator_user_id=user.id
+        )
         request_id = consent_url.split("request_id=")[1]
 
-        redirect_to = await svc.deny_authorization(db, request_id)
+        redirect_to = await svc.deny_authorization(db, request_id, acting_user_id=user.id)
         assert redirect_to is not None
         assert "error=access_denied" in redirect_to and "state=st4te-xyz" in redirect_to
         # deny 后请求终态
-        assert await svc.deny_authorization(db, request_id) is None
+        assert await svc.deny_authorization(db, request_id, acting_user_id=user.id) is None
 
 
 @pytest.mark.asyncio
@@ -213,7 +221,9 @@ async def test_concurrent_approve_only_one_wins(test_session_factory):
         client = _client_info()
         await svc.register_client(db, client)
         _verifier, challenge = _pkce()
-        consent_url = await svc.create_authorization_request(db, client_id=client.client_id, params=_params(challenge))
+        consent_url = await svc.create_authorization_request(
+            db, client_id=client.client_id, params=_params(challenge), initiator_user_id=user.id
+        )
         request_id = consent_url.split("request_id=")[1]
 
         first = await svc.approve_authorization(db, request_id, user.id)
@@ -365,3 +375,61 @@ async def test_cleanup_expired(test_session_factory):
         removed = await svc.cleanup_expired(db)
         assert removed["authorizations"] >= 1
         assert removed["tokens"] >= 1
+
+
+# ── 发起者绑定 + 重放信号 ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_initiator_binding_blocks_non_initiator(test_session_factory):
+    """发起者绑定：非发起者 info/approve/deny 全部 None；无发起者的行 fail-closed。"""
+    async with test_session_factory() as db:
+        alice = await create_user(db, email="init-alice@t", password="pw")
+        bob = await create_user(db, email="init-bob@t", password="pw")
+        await db.commit()
+        client = _client_info()
+        await svc.register_client(db, client)
+        _verifier, challenge = _pkce()
+        consent_url = await svc.create_authorization_request(
+            db, client_id=client.client_id, params=_params(challenge), initiator_user_id=alice.id
+        )
+        request_id = consent_url.split("request_id=")[1]
+
+        # B（非发起者）三路全拒绝
+        assert await svc.get_authorization_info(db, request_id, viewer_user_id=bob.id) is None
+        assert await svc.approve_authorization(db, request_id, bob.id) is None
+        assert await svc.deny_authorization(db, request_id, acting_user_id=bob.id) is None
+
+        # A（发起者）正常
+        assert await svc.get_authorization_info(db, request_id, viewer_user_id=alice.id) is not None
+        result = await svc.approve_authorization(db, request_id, alice.id)
+        assert result is not None
+
+        # 发起者为 NULL 的行（绕过包装路由才会产生）同样 fail-closed
+        consent_url2 = await svc.create_authorization_request(
+            db, client_id=client.client_id, params=_params(challenge), initiator_user_id=None
+        )
+        request_id2 = consent_url2.split("request_id=")[1]
+        assert await svc.get_authorization_info(db, request_id2, viewer_user_id=alice.id) is None
+        assert await svc.approve_authorization(db, request_id2, alice.id) is None
+
+
+@pytest.mark.asyncio
+async def test_consumed_code_replay_logs_warning(test_session_factory, caplog):
+    """已消费 code 重放：返回 None 且留下泄密信号告警（连坐撤销见 issue #118）。"""
+    import logging
+
+    async with test_session_factory() as db:
+        user = await create_user(db, email="replay@t", password="pw")
+        await db.commit()
+        client = _client_info()
+        await svc.register_client(db, client)
+        code = await _approved_code(db, user.id, client)
+        auth_code = await svc.load_authorization_code(db, client_id=client.client_id, code=code)
+        tokens = await svc.exchange_authorization_code(db, auth_code)
+        assert tokens.access_token
+
+        with caplog.at_level(logging.WARNING, logger="app.services.mcp_oauth_service"):
+            replayed = await svc.load_authorization_code(db, client_id=client.client_id, code=code)
+        assert replayed is None
+        assert any("授权码重放信号" in r.message for r in caplog.records)

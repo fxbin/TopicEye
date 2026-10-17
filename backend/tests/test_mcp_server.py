@@ -348,3 +348,60 @@ async def test_http_mcp_stateless_roundtrip(test_session_factory, monkeypatch):
     assert result["isError"] is False
     assert result["structuredContent"]["count"] == 1
     assert result["structuredContent"]["results"][0]["content_id"] == 101
+
+
+# ── scope 中央闸门（fail-closed，issue #118 前置结构）──────────────────
+
+
+def test_scope_gate_fail_closed_unit():
+    """未登记工具直接拒绝；已登记工具 required ⊆ granted 才放行。"""
+    import pytest as _pytest
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from app.mcp.scopes import TOOL_REQUIRED_SCOPES, require_tool_access
+
+    # 未登记 → 拒绝（新工具不声明 scope 上不了线）
+    with _pytest.raises(ToolError):
+        require_tool_access("brand_new_tool", [])
+    # 已登记且无要求 → 任意 token 放行
+    require_tool_access("score_items", [])
+    # 已登记且有权 → 放行
+    require_tool_access("score_items", ["mcp:read", "mcp:write"])
+    # 登记集与工具集一致性由 test_every_tool_registered_in_scope_gate 单独断言
+    assert all(isinstance(v, frozenset) for v in TOOL_REQUIRED_SCOPES.values())
+
+
+@pytest.mark.asyncio
+async def test_every_tool_registered_in_scope_gate(monkeypatch):
+    """CI 断言：MCP 工具集 == 闸门登记集，漏登记过不了门（教训机器化）。"""
+    from app.mcp.scopes import TOOL_REQUIRED_SCOPES
+
+    monkeypatch.setattr("app.mcp.server._caller_user_id", lambda: 1)
+    async with Client(mcp_server) as client:
+        result = await client.list_tools()
+    assert {t.name for t in result.tools} == set(TOOL_REQUIRED_SCOPES)
+
+
+@pytest.mark.asyncio
+async def test_scope_gate_enforced_on_tool_call(monkeypatch):
+    """登记了所需 scope 的工具：token 无权 → 工具错误；有权 → 正常执行。"""
+    from mcp.server.auth.provider import AccessToken
+
+    from app.mcp import scopes as mcp_scopes
+
+    monkeypatch.setattr("app.mcp.server._caller_user_id", lambda: 1)
+    monkeypatch.setitem(mcp_scopes.TOOL_REQUIRED_SCOPES, "score_items", frozenset({"mcp:write"}))
+
+    def _token_with(scopes: list[str]):
+        # get_access_token 是同步 contextvar 读取，mock 必须同步返回构造好的对象
+        return AccessToken(token="t", client_id="1", scopes=scopes)
+
+    monkeypatch.setattr("app.mcp.server.get_access_token", lambda: _token_with([]))
+    async with Client(mcp_server) as client:
+        denied = await client.call_tool("score_items", {"items": [{"content_id": 1}]})
+    assert denied.is_error is True
+
+    monkeypatch.setattr("app.mcp.server.get_access_token", lambda: _token_with(["mcp:write"]))
+    async with Client(mcp_server) as client:
+        allowed = await client.call_tool("score_items", {"items": [{"content_id": 1}]})
+    assert allowed.is_error is False

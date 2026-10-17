@@ -68,6 +68,12 @@ def upgrade() -> None:
         ),
         sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=True),
+        sa.Column(
+            "initiator_user_id",
+            sa.Integer(),
+            nullable=True,
+            comment="发起授权请求的用户（绑定校验）",
+        ),
         sa.Column("code_hash", sa.String(length=64), nullable=True, comment="批准时生成的授权码 sha256"),
         sa.Column("scopes", sa.Text(), nullable=True, comment="JSON 数组"),
         sa.Column("state", sa.Text(), nullable=True, comment="客户端 state 原样带回"),
@@ -79,6 +85,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["initiator_user_id"], ["users.id"], ondelete="CASCADE"),
     )
     op.create_index("ix_mcp_oauth_authorizations_request_id", "mcp_oauth_authorizations", ["request_id"], unique=True)
     op.create_index("ix_mcp_oauth_authorizations_code_hash", "mcp_oauth_authorizations", ["code_hash"], unique=True)

@@ -6,9 +6,11 @@
 - POST /mcp-oauth/deny           — 用户拒绝，返回 error=access_denied 回调地址
 
 授权码签发、TTL、单次性语义在 ``app/services/mcp_oauth_service.py``；
-本层只做会话校验（get_current_user）与 response shaping。授权请求
-不属于任何用户（approve 前未绑定身份），因此不做属主校验——请求
-request_id 本身是 256-bit 随机值且 10 分钟过期、approve 后立即失效。
+本层只做会话校验（get_current_user）与 response shaping。三个端点都
+要求操作者是授权请求的**发起者**（service 层校验 initiator_user_id，
+非发起者一律 404 不暴露存在性）——发起者绑定由 ``app/mcp/authorize_route.py``
+的 /authorize 包装路由落库，request_id 是 uuid4（≈122 bit 熵）、
+10 分钟过期且一次性。
 """
 
 from __future__ import annotations
@@ -44,8 +46,8 @@ async def get_authorize_info(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """同意页展示信息：应用名、主页、请求的 scope 与回调目标主机。"""
-    info = await mcp_oauth_service.get_authorization_info(db, request_id)
+    """同意页展示信息：应用名、主页、请求的 scope 与回调目标主机（仅发起者）。"""
+    info = await mcp_oauth_service.get_authorization_info(db, request_id, viewer_user_id=current_user.id)
     if info is None:
         raise HTTPException(status_code=404, detail=_GONE)
     return info
@@ -74,8 +76,8 @@ async def deny_authorization(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """拒绝授权：按 RFC 6749 以 error=access_denied 回调客户端。"""
-    redirect_to = await mcp_oauth_service.deny_authorization(db, req.request_id)
+    """拒绝授权：按 RFC 6749 以 error=access_denied 回调客户端（仅发起者）。"""
+    redirect_to = await mcp_oauth_service.deny_authorization(db, req.request_id, acting_user_id=current_user.id)
     if redirect_to is None:
         raise HTTPException(status_code=404, detail=_GONE)
     await db.commit()

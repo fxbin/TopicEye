@@ -29,7 +29,7 @@ from mcp_types import (
 
 from app.api.v1 import mcp_oauth as mcp_oauth_api
 from app.core.database import get_db
-from app.mcp import auth as mcp_auth, oauth_provider as mcp_provider
+from app.mcp import auth as mcp_auth, authorize_route as mcp_authorize_route, oauth_provider as mcp_provider
 from app.mcp.server import build_oauth_routes, build_streamable_http_app, mcp_server
 from app.services.auth_service import create_session, create_user
 
@@ -82,9 +82,10 @@ def _make_app(test_session_factory) -> FastAPI:
 
 @pytest.fixture(autouse=True)
 def _patch_provider_sessions(test_session_factory, monkeypatch):
-    """provider 与 verifier 都走独立 session 工厂（测试内存库）。"""
+    """provider / verifier / authorize 包装路由都走独立 session 工厂（测试内存库）。"""
     monkeypatch.setattr(mcp_provider, "async_session", test_session_factory)
     monkeypatch.setattr(mcp_auth, "async_session", test_session_factory)
+    monkeypatch.setattr(mcp_authorize_route, "async_session", test_session_factory)
 
 
 async def _seed_session_user(test_session_factory) -> tuple[int, str]:
@@ -114,7 +115,11 @@ async def _register_client(client: AsyncClient) -> str:
     return body["client_id"]
 
 
-async def _start_authorization(client: AsyncClient, client_id: str, challenge: str) -> str:
+async def _start_authorization(
+    client: AsyncClient, client_id: str, challenge: str, session_token: str | None = None
+) -> str:
+    """发起 /authorize；带会话即绑定发起者（生产路径恒带，见 authorize_route）。"""
+    headers = {"Authorization": f"Bearer {session_token}"} if session_token else None
     resp = await client.get(
         "/authorize",
         params={
@@ -125,6 +130,7 @@ async def _start_authorization(client: AsyncClient, client_id: str, challenge: s
             "code_challenge_method": "S256",
             "state": "http-state",
         },
+        headers=headers,
     )
     assert resp.status_code == 302, resp.text
     location = resp.headers["location"]
@@ -164,7 +170,7 @@ async def _full_grant(client: AsyncClient, session_token: str) -> tuple[str, dic
     """DCR → authorize → approve → token，返回 (client_id, tokens)。"""
     client_id = await _register_client(client)
     verifier, challenge = _pkce()
-    request_id = await _start_authorization(client, client_id, challenge)
+    request_id = await _start_authorization(client, client_id, challenge, session_token)
     redirect_to = await _approve(client, request_id, session_token)
     code = parse_qs(urlparse(redirect_to).query)["code"][0]
     tokens = await _exchange_code(client, client_id, code, verifier)
@@ -186,7 +192,7 @@ async def test_full_oauth_dance_to_mcp_tool_call(test_session_factory):
 
         # 同意页信息端点也顺带验证（认证 + 内容）
         verifier2, challenge2 = _pkce()
-        request_id2 = await _start_authorization(client, client_id, challenge2)
+        request_id2 = await _start_authorization(client, client_id, challenge2, session_token)
         info = await client.get(
             "/api/v1/mcp-oauth/authorize-info",
             params={"request_id": request_id2},
@@ -286,7 +292,7 @@ async def test_wrong_pkce_verifier_rejected(test_session_factory):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client_id = await _register_client(client)
         _verifier, challenge = _pkce()
-        request_id = await _start_authorization(client, client_id, challenge)
+        request_id = await _start_authorization(client, client_id, challenge, session_token)
         redirect_to = await _approve(client, request_id, session_token)
         code = parse_qs(urlparse(redirect_to).query)["code"][0]
 
@@ -312,7 +318,7 @@ async def test_authorization_code_single_use_http(test_session_factory):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client_id, _tokens = await _full_grant(client, session_token)
         verifier, challenge = _pkce()
-        request_id = await _start_authorization(client, client_id, challenge)
+        request_id = await _start_authorization(client, client_id, challenge, session_token)
         redirect_to = await _approve(client, request_id, session_token)
         code = parse_qs(urlparse(redirect_to).query)["code"][0]
 
@@ -339,7 +345,7 @@ async def test_deny_flow(test_session_factory):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client_id = await _register_client(client)
         _verifier, challenge = _pkce()
-        request_id = await _start_authorization(client, client_id, challenge)
+        request_id = await _start_authorization(client, client_id, challenge, session_token)
 
         resp = await client.post(
             "/api/v1/mcp-oauth/deny",
@@ -372,12 +378,14 @@ async def test_consent_endpoints_require_auth(test_session_factory):
 @pytest.mark.asyncio
 async def test_authorize_rejects_unregistered_redirect_uri(test_session_factory):
     """开放重定向守卫：redirect_uri 不在客户端注册列表内必须 400，不落库。"""
+    _user_id, session_token = await _seed_session_user(test_session_factory)
     transport = ASGITransport(app=_make_app(test_session_factory))
     _verifier, challenge = _pkce()
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client_id = await _register_client(client)
         resp = await client.get(
             "/authorize",
+            headers={"Authorization": f"Bearer {session_token}"},
             params={
                 "client_id": client_id,
                 "redirect_uri": "http://127.0.0.1:9999/evil-callback",
@@ -399,7 +407,7 @@ async def test_token_rejects_redirect_uri_mismatch(test_session_factory):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client_id = await _register_client(client)
         verifier, challenge = _pkce()
-        request_id = await _start_authorization(client, client_id, challenge)
+        request_id = await _start_authorization(client, client_id, challenge, session_token)
         redirect_to = await _approve(client, request_id, session_token)
         code = parse_qs(urlparse(redirect_to).query)["code"][0]
 
@@ -419,11 +427,13 @@ async def test_token_rejects_redirect_uri_mismatch(test_session_factory):
 
 @pytest.mark.asyncio
 async def test_authorize_rejects_unknown_client(test_session_factory):
+    _user_id, session_token = await _seed_session_user(test_session_factory)
     transport = ASGITransport(app=_make_app(test_session_factory))
     _verifier, challenge = _pkce()
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             "/authorize",
+            headers={"Authorization": f"Bearer {session_token}"},
             params={
                 "client_id": "no-such-client",
                 "redirect_uri": REDIRECT_URI,
@@ -490,3 +500,89 @@ async def test_static_token_still_works_alongside_oauth(test_session_factory):
         )
         assert resp.status_code == 200
         assert resp.json()["result"]["isError"] is False
+
+
+# ── 发起者绑定（issue #116 圆桌裁定 ①：堵 approve-any 冒用路径）────────
+
+
+@pytest.mark.asyncio
+async def test_authorize_anonymous_redirects_to_login(test_session_factory):
+    """匿名浏览器发起 /authorize → 302 登录页，returnTo 带完整查询串可续传。"""
+    transport = ASGITransport(app=_make_app(test_session_factory))
+    _verifier, challenge = _pkce()
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        client_id = await _register_client(client)
+        resp = await client.get(
+            "/authorize",
+            params={
+                "client_id": client_id,
+                "redirect_uri": REDIRECT_URI,
+                "response_type": "code",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "state": "anon",
+            },
+        )
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "/login?returnTo=" in location
+        # returnTo 是编码后的完整 /authorize 地址（含查询串）
+        assert "%2Fauthorize%3F" in location
+
+
+@pytest.mark.asyncio
+async def test_authorize_post_anonymous_rejected(test_session_factory):
+    """POST /authorize 匿名 → 400（POST 无法断点续传，不做登录重定向）。"""
+    transport = ASGITransport(app=_make_app(test_session_factory))
+    _verifier, challenge = _pkce()
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        client_id = await _register_client(client)
+        resp = await client.post(
+            "/authorize",
+            data={
+                "client_id": client_id,
+                "redirect_uri": REDIRECT_URI,
+                "response_type": "code",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_only_initiator_can_view_or_approve(test_session_factory):
+    """发起者绑定：B 看不到 A 发起的请求（info 404），approve 也 404；A 本人正常。"""
+    from app.services.auth_service import create_session, create_user
+
+    async with test_session_factory() as db:
+        alice = await create_user(db, email="bind-alice@t", password="pw")
+        bob = await create_user(db, email="bind-bob@t", password="pw")
+        await db.commit()
+        alice_token, _r1 = await create_session(db, alice)
+        bob_token, _r2 = await create_session(db, bob)
+        await db.commit()
+
+    transport = ASGITransport(app=_make_app(test_session_factory))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        client_id = await _register_client(client)
+        _verifier, challenge = _pkce()
+        request_id = await _start_authorization(client, client_id, challenge, alice_token)
+
+        # B（非发起者）看不到也批不了
+        info_b = await client.get(
+            "/api/v1/mcp-oauth/authorize-info",
+            params={"request_id": request_id},
+            headers={"Authorization": f"Bearer {bob_token}"},
+        )
+        assert info_b.status_code == 404
+        approve_b = await client.post(
+            "/api/v1/mcp-oauth/approve",
+            json={"request_id": request_id},
+            headers={"Authorization": f"Bearer {bob_token}"},
+        )
+        assert approve_b.status_code == 404
+
+        # A（发起者）正常批准（code 正常签发；兑换链路由 _full_grant 覆盖）
+        redirect_to = await _approve(client, request_id, alice_token)
+        assert "code=" in redirect_to

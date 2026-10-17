@@ -116,6 +116,10 @@ export default function McpAuthorizePage() {
               {info.redirect_host && (
                 <p className="mt-1 text-xs text-gray-400">回调地址：{info.redirect_host}</p>
               )}
+              {/* DCR 开放注册，客户端名可任意取（含仿冒官方）——知情权必须显式给出 */}
+              <p className="mt-2 text-xs font-bold text-amber-600">
+                该应用为未经 TopicEye 审核的第三方客户端，请确认你信任它再授权。
+              </p>
             </div>
 
             <div className="mb-5 space-y-2 text-[13px] leading-6 text-gray-600">
@@ -123,7 +127,7 @@ export default function McpAuthorizePage() {
               <ul className="space-y-1.5">
                 <li className="flex items-start gap-2">
                   <Badge tone="teal">读</Badge>
-                  <span>读取今日精选选题、选题日报、话题趋势与关键词</span>
+                  <span>读取今日精选选题、选题日报（缺失时会自动生成当日快照）、话题趋势与关键词</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Badge tone="primary">算</Badge>

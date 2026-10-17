@@ -113,7 +113,13 @@ export default function LoginPage() {
             verification_code: verificationCode.trim(),
           });
       applyAuthSession(session);
-      router.push(returnTo);
+      if (returnTo && returnTo !== '/') {
+        // returnTo 可能指向后端路径（如 /authorize，经 next rewrite 代理），
+        // 必须整页导航——客户端路由推不到 rewrite 目标
+        window.location.href = returnTo;
+      } else {
+        router.push('/');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : mode === 'login' ? '登录失败' : '注册失败');
     } finally {

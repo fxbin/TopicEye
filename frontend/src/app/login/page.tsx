@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, KeyRound, LockKeyhole, Mail, Radar, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { authApi } from '@/lib/api';
+import { sanitizeReturnTo } from '@/lib/navigation';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 
 type AuthMode = 'login' | 'register';
@@ -46,6 +47,13 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
+  // 登录后的回跳地址（MCP 授权同意页等场景带 returnTo 进来），只接受站内路径
+  const [returnTo, setReturnTo] = useState('/');
+
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('returnTo');
+    setReturnTo(sanitizeReturnTo(raw));
+  }, []);
 
   // 拉取后端已启用的 OAuth provider 列表，决定是否渲染对应按钮
   useEffect(() => {
@@ -105,7 +113,7 @@ export default function LoginPage() {
             verification_code: verificationCode.trim(),
           });
       applyAuthSession(session);
-      router.push('/');
+      router.push(returnTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : mode === 'login' ? '登录失败' : '注册失败');
     } finally {

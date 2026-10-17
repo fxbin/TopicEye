@@ -108,9 +108,20 @@ const EXTRA_ADMIN_ONLY_PATHS = [
   '/admin/users',
 ];
 
-// 显式声明的公开路径（未登录可访问）。OAuth 回调页必须在此列，
-// 否则未登录态进来会被路由守卫踢去 /login，丢失 URL fragment 里的 token。
-const PUBLIC_PATHS = ['/login', '/oauth/callback'];
+// 显式声明的公开路径（未登录可访问）。OAuth 回调页与 MCP 授权同意页
+// 必须在此列：前者被守卫拦截会丢 URL fragment 里的 token，后者未登录
+// 进来应由页面自己带 returnTo 跳登录（守卫不知道如何保住 query 参数）。
+const PUBLIC_PATHS = ['/login', '/oauth/callback', '/mcp/authorize'];
+
+/**
+ * 净化登录后的回跳地址：只接受站内路径（以单个 / 开头），
+ * 拒绝协议相对地址（//evil.com）与反斜杠变体，防开放重定向。
+ */
+export function sanitizeReturnTo(value: string | null | undefined): string {
+  if (!value) return '/';
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  return value;
+}
 
 function uniquePaths(paths: string[]): string[] {
   return Array.from(new Set(paths));

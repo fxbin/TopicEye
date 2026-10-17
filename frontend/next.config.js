@@ -55,6 +55,14 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${backendApiUrl}/api/:path*`,
       },
+      // MCP OAuth 授权服务器端点（issuer = SITE_BASE_URL 必须能服务这些根路径）：
+      // RFC 8414 AS 元数据 / DCR（RFC 7591）/ 授权码 + PKCE / RFC 7009 撤销，
+      // 以及 RFC 9728 protected-resource 元数据（/.well-known/*）
+      { source: '/authorize', destination: `${backendApiUrl}/authorize` },
+      { source: '/token', destination: `${backendApiUrl}/token` },
+      { source: '/register', destination: `${backendApiUrl}/register` },
+      { source: '/revoke', destination: `${backendApiUrl}/revoke` },
+      { source: '/.well-known/:path*', destination: `${backendApiUrl}/.well-known/:path*` },
       // 内置监控大盘（后端自包含 HTML 页面，纯 Canvas 图表）
       {
         source: '/dashboard',

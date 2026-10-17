@@ -23,6 +23,7 @@ import app.models.fanqie  # noqa: F401
 import app.models.favorite  # noqa: F401
 import app.models.feedback  # noqa: F401
 import app.models.llm_model  # noqa: F401
+import app.models.mcp_oauth  # noqa: F401
 import app.models.metrics_snapshot  # noqa: F401
 import app.models.monthly_digest  # noqa: F401
 import app.models.mother_topic  # noqa: F401
@@ -560,6 +561,23 @@ if settings.MCP_ENABLED:
     from app.mcp import build_streamable_http_app  # noqa: E402
 
     app.mount("/mcp", build_streamable_http_app())
+
+    # MCP 动态 OAuth 授权服务器（AS）：/authorize /token /register /revoke +
+    # RFC 8414/9728 元数据，固定根路径路由（issuer 必须=SITE_BASE_URL origin）。
+    # issuer 非法（SDK 强制 https、loopback 除外，如局域网 http 开发）时
+    # 显式报错并跳过挂载——静态 token 用法不受影响，但不静默吞掉。
+    if settings.MCP_OAUTH_ENABLED:
+        from app.mcp.server import build_oauth_routes  # noqa: E402
+
+        try:
+            app.router.routes.extend(build_oauth_routes())
+        except ValueError as exc:
+            logger.error(
+                "MCP OAuth AS 未挂载：issuer 校验失败（%s，SITE_BASE_URL=%r）。"
+                "/mcp 仍可用静态 Bearer token，但动态 OAuth 登录不可用",
+                exc,
+                settings.SITE_BASE_URL,
+            )
 
 
 # ── 根路径 /metrics 别名（Prometheus 标准约定）─────────────────────────

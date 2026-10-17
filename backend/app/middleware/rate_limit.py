@@ -27,6 +27,12 @@ from app.core.request_utils import client_ip
 _RATE_RULES: list[tuple[str, int, int]] = [
     ("/api/v1/auth", 20, 60),
     ("/api/v1/creation", 30, 60),
+    # MCP OAuth 授权服务器端点（未认证面，公网可达）：DCR 收紧防刷注册，
+    # authorize/token 覆盖正常客户端节奏（含 PKCE 重试与 refresh 轮换）
+    ("/authorize", 30, 60),
+    ("/token", 30, 60),
+    ("/register", 10, 60),
+    ("/revoke", 30, 60),
     ("/mcp", 60, 60),
     ("/api/v1", 200, 60),
 ]

@@ -164,7 +164,10 @@ The full machine-readable spec is available at `/openapi.json` (or browse intera
 
 TopicEye also speaks the **Model Context Protocol** natively: a streamable-http MCP server is mounted at **`/mcp`** (2026-07-28 stateless protocol; the same server auto-negotiates older protocol revisions for legacy clients).
 
-**Auth is the same Bearer token as the REST API** (see Authentication above) — create a personal API token, then configure your MCP client to send it as an `Authorization: Bearer <token>` header.
+**Two auth paths are supported:**
+
+1. **Dynamic OAuth 2.1 (browser pop-up login)** — the standard MCP client flow. Point your MCP client at `https://<your-host>/mcp` with no token; the client discovers the authorization server via RFC 9728 metadata, registers itself (RFC 7591 dynamic client registration), and opens a browser for you to log in and approve. Access tokens live 60 min, refresh tokens 30 days with rotation (a replayed refresh token revokes its whole family).
+2. **Static Bearer token** (see Authentication above) — create a personal API token and configure your MCP client to send it as an `Authorization: Bearer <token>` header. Works with every MCP client, including ones without OAuth support.
 
 ### Tools (no destructive writes)
 
@@ -179,7 +182,7 @@ All tools mirror the REST agent endpoints. Note `get_daily_report` without `date
 
 ### Client config examples
 
-ZCode / Claude Code style (header-authenticated streamable-http):
+ZCode / Claude Code style (header-authenticated streamable-http, static token):
 
 ```json
 {
@@ -192,9 +195,26 @@ ZCode / Claude Code style (header-authenticated streamable-http):
 }
 ```
 
+OAuth mode needs no `headers` — just the URL. The client will pop up a browser on first connect; after you log in and click 授权 (approve) on the consent page, it stores the tokens itself.
+
+### Dynamic OAuth endpoints
+
+The authorization server (AS) lives at the site root, with `issuer = SITE_BASE_URL`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 AS metadata |
+| `GET /.well-known/oauth-protected-resource/mcp` | RFC 9728 resource metadata (points clients at the AS) |
+| `GET/POST /authorize` | Authorization endpoint (PKCE S256 mandatory) → redirects to the consent page |
+| `POST /token` | Token endpoint (authorization_code + refresh_token grants) |
+| `POST /register` | RFC 7591 dynamic client registration |
+| `POST /revoke` | RFC 7009 revocation (family-wide; note: the SDK requires a `client_secret` form field to be present — public clients send an empty value) |
+
+The consent page itself (`/mcp/authorize` on the frontend) talks to three session-authenticated REST endpoints: `GET /api/v1/mcp-oauth/authorize-info`, `POST /api/v1/mcp-oauth/approve`, `POST /api/v1/mcp-oauth/deny`. Authorization codes are single-use and expire in 10 minutes.
+
 Operational notes:
 
-- `MCP_ENABLED=false` disables the server (no route mounted; startup logs state it explicitly).
-- Rate limit: 60 req/min per IP on `/mcp`.
-- Production requires `SITE_BASE_URL` to be set (enables Host/Origin validation against DNS-rebinding; otherwise a startup warning is logged and the check stays off).
-- Status of dynamic OAuth authorization (browser pop-up login): not yet implemented — the advertised issuer points back at the site, and clients should use pre-provisioned API tokens. Static Bearer tokens work with every MCP client; adding a real authorization server is a follow-up option (the verifier is swappable behind the SDK's `TokenVerifier`).
+- `MCP_ENABLED=false` disables the whole MCP surface (no route mounted; startup logs state it explicitly). `MCP_OAUTH_ENABLED=false` disables only the OAuth endpoints (static tokens keep working).
+- Rate limits: 60 req/min per IP on `/mcp`; 30/min on `/authorize` and `/token`; 10/min on `/register`.
+- Production requires `SITE_BASE_URL` to be set (enables Host/Origin validation against DNS-rebinding; otherwise a startup warning is logged and the check stays off). The OAuth issuer must be HTTPS (loopback hosts excepted) — with an invalid issuer the AS routes are not mounted, an explicit error is logged, and static tokens keep working.
+- Single-origin deployments behind the Next.js proxy: `/authorize`, `/token`, `/register`, `/revoke`, and `/.well-known/*` are proxied to the backend by `next.config.js` rewrites.

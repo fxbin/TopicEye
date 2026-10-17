@@ -6,8 +6,9 @@ TopicEye 是给内容创作者用的选题雷达：持续抓取 25+ 信源（RSS
 播客 / newsletter / 趋势榜），用可解释的六维引擎给每条内容打分，挑出今天值得写的题目。
 
 对外有两条 agent 入口：REST（`AGENT_API.md` 文档化的 skill/scoring 端点）与 MCP
-server（`app/mcp/`，挂载在 `/mcp`，Bearer token 认证，官方 `mcp` SDK 实现 2026-07-28
-无状态协议）。
+server（`app/mcp/`，挂载在 `/mcp`，Bearer token 认证——静态个人 token 或动态
+OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官方 `mcp` SDK 实现
+2026-07-28 无状态协议）。
 
 两件不看代码就会踩空的事：
 
@@ -64,7 +65,9 @@ scripts/check_layering.py`，CI 作业 `backend-layering`）只作用于 `app/ap
 `select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`。上表其余禁止项
 它查不出——`from app.models import <ORMModel>` 与 api 层合法要用的 Enum、依赖注入同模块，
 自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的入口层，不在机器检查范围内，
-按上表 api 行的纪律人工把关（当前只调 services 与 `DailyReportRepository`）。
+按上表 api 行的纪律人工把关（当前只调 services 与 `DailyReportRepository`；OAuth
+provider 的业务编排在 `app/services/mcp_oauth_service.py`，同意页 REST 端点在
+`app/api/v1/mcp_oauth.py`）。
 
 ### 2.3 迁移与高风险变更
 

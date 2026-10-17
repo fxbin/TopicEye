@@ -13,6 +13,11 @@
 JSON、无服务端会话，与 2026-07-28 无状态协议形态一致，也绕开了宿主
 BaseHTTPMiddleware 对 SSE 长流的潜在缓冲问题。协议版本由 SDK 与客户端
 自动协商（2026-07-28 及全部旧修订均可服务）。
+
+动态 OAuth 授权（浏览器弹窗登录）的 AS 路由由 ``build_oauth_routes()``
+单独构建、挂宿主根路径（issuer 必须=站点 origin）；同意页交互走
+``app/api/v1/mcp_oauth.py`` 三个 REST 端点，token 业务在
+``app/services/mcp_oauth_service.py``。
 """
 
 from __future__ import annotations
@@ -24,14 +29,20 @@ from urllib.parse import urlparse
 
 from mcp.server import MCPServer
 from mcp.server.auth.middleware.auth_context import get_access_token
-from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.provider import OAuthAuthorizationServerProvider
+from mcp.server.auth.routes import create_auth_routes, create_protected_resource_routes
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import Field
+from pydantic import AnyHttpUrl, Field
+from starlette.routing import Route
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.mcp.auth import TopicEyeTokenVerifier
+from app.mcp.authorize_route import make_authorize_route
+from app.mcp.oauth_provider import TopicEyeOAuthProvider
+from app.mcp.scopes import require_tool_access
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.schemas.daily_report import DailyReportResponse
 from app.schemas.scoring import ScoringRequestItem
@@ -92,7 +103,13 @@ mcp_server = MCPServer(
     auth=AuthSettings(
         issuer_url=_base,
         resource_server_url=f"{_base}/mcp",
+        # 有意为之：工具级 scope 由 app/mcp/scopes.py 中央闸门强制（fail-closed），
+        # 此处 required_scopes 保持空；首个写操作工具落地真实 scope 语义时
+        # 一并收口（issue #118 前置 DoD）。
         required_scopes=[],
+        # 有意为之：开启 RFC 8707 校验会拒绝无 resource 指示符的存量静态
+        # token（session / 个人 API token）。完整 scope 模型落地时走双路径
+        # 收口：新 OAuth 令牌强制校验、存量静态令牌标记位豁免（issue #118）。
         validate_token_resource=False,
     ),
     subscriptions=False,
@@ -112,6 +129,40 @@ def build_streamable_http_app():
         stateless_http=True,
         transport_security=_transport_security(),
     )
+
+
+def build_oauth_routes() -> list[Route]:
+    """动态 OAuth 授权服务器（AS）+ RFC 9728 protected-resource 元数据路由。
+
+    返回的是固定根路径的 Starlette Route（/token /register /revoke 与两个
+    /.well-known），必须挂在宿主 app 根上——issuer 又必须等于该 origin，
+    因此不能放进 /mcp 子应用（会错位到 /mcp/authorize）。issuer 非法
+    （非 https 且非 loopback）时抛 ValueError，由宿主决定显式降级
+    （见 main.py：error log + 跳过挂载）。
+
+    /authorize 用自建包装路由**替换** SDK 原生路由：解析发起者会话、
+    未登录先跳登录页（returnTo 断点续传），再委托 SDK handler（见
+    authorize_route.py）——绑定发起者是堵住 approve-any 冒用路径的前提。
+
+    DCR（RFC 7591）与 /revoke（RFC 7009）均启用：MCP 桌面客户端依赖
+    动态注册接入，token 撤销按 family 级联（见 mcp_oauth_service）。
+    """
+    provider: OAuthAuthorizationServerProvider = TopicEyeOAuthProvider()
+    sdk_routes = create_auth_routes(
+        provider,
+        issuer_url=AnyHttpUrl(_base),
+        client_registration_options=ClientRegistrationOptions(enabled=True),
+        revocation_options=RevocationOptions(enabled=True),
+    )
+    # 同路径替换：SDK 的 /authorize 让位给带发起者绑定的包装路由
+    routes = [r for r in sdk_routes if r.path != "/authorize"]
+    routes.append(make_authorize_route(provider))
+    routes += create_protected_resource_routes(
+        resource_url=AnyHttpUrl(f"{_base}/mcp"),
+        authorization_servers=[AnyHttpUrl(_base)],
+        resource_name="TopicEye 选题雷达",
+    )
+    return routes
 
 
 @asynccontextmanager
@@ -138,6 +189,12 @@ def _caller_user_id() -> int:
     return int(client_id)
 
 
+def _enforce_tool_scopes(tool_name: str) -> None:
+    """工具级 scope 中央闸门（fail-closed，见 app/mcp/scopes.py）。"""
+    access_token = get_access_token()
+    require_tool_access(tool_name, access_token.scopes if access_token else [])
+
+
 @mcp_server.tool(
     name="get_today_picks",
     title="今日精选选题",
@@ -152,6 +209,7 @@ async def get_today_picks(
     category: str | None = None,
 ) -> dict[str, Any]:
     _caller_user_id()
+    _enforce_tool_scopes("get_today_picks")
     async with _db_session() as db:
         payload = await build_today_picks(db, category=category, hours=hours, limit=limit)
     return SkillTodayPicksResponse(**payload).model_dump(mode="json")
@@ -169,6 +227,7 @@ async def get_daily_report(
     date: Annotated[str | None, Field(description="YYYY-MM-DD，缺省=今天")] = None,
 ) -> dict[str, Any]:
     user_id = _caller_user_id()
+    _enforce_tool_scopes("get_daily_report")
     async with _db_session() as db:
         if date:
             report = await DailyReportRepository(db).get_by_date(date, owner_user_id=user_id)
@@ -192,6 +251,7 @@ async def get_trends(
     limit: Annotated[int, Field(ge=10, le=200, description="关键词返回上限")] = 50,
 ) -> dict[str, Any]:
     _caller_user_id()
+    _enforce_tool_scopes("get_trends")
     try:
         topics = await duckdb_service.run_query(lambda: duckdb_service.query_trend_topics(days=days))
         keywords = await duckdb_service.run_query(lambda: duckdb_service.query_keyword_cloud(days=days, limit=limit))
@@ -215,6 +275,7 @@ async def score_items(
     items: Annotated[list[ScoringRequestItem], Field(min_length=1, max_length=50, description="待打分条目，1-50 条")],
 ) -> dict[str, Any]:
     _caller_user_id()
+    _enforce_tool_scopes("score_items")
     inputs = [request_item_to_scoring_input(item) for item in items]
     scored = run_score_items(inputs)
     return build_scoring_response(scored).model_dump(mode="json")

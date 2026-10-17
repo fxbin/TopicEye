@@ -10,7 +10,8 @@ import type { PrefetchData } from '@/lib/server-prefetch';
 // Backward compat: 38 个消费者从 @/components/ClientLayout 导入 useAppContext
 export { useAppContext };
 
-const CHROMELESS_PATHS = new Set(['/login']);
+// 无侧边栏的整屏页：登录页与 MCP 授权同意页（弹窗场景，只要居中卡片）
+const CHROMELESS_PATHS = new Set(['/login', '/mcp/authorize']);
 const ADMIN_PATH_PREFIX = '/admin';
 
 /**

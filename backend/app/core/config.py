@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     # （个人 API token / session token，与 REST API 同一套）。关闭时不挂载
     # 路由、不启动 session manager（启动日志显式记录，不静默跳过）。
     MCP_ENABLED: bool = True
+    # MCP 动态 OAuth 授权服务器（/authorize /token /register /revoke + RFC 8414/9728
+    # 元数据，挂在站点根路径）。issuer = SITE_BASE_URL；非法 issuer（如局域网
+    # http，SDK 强制 https、loopback 除外）时启动显式报错并跳过挂载，静态
+    # token 用法不受影响。
+    MCP_OAUTH_ENABLED: bool = True
+    # 授权码 / pending 授权请求 TTL（秒）
+    MCP_OAUTH_CODE_TTL_SECONDS: int = 600
+    # access token TTL（秒）；refresh 轮换时旧对整体撤销
+    MCP_OAUTH_ACCESS_TOKEN_TTL_SECONDS: int = 3600
+    MCP_OAUTH_REFRESH_TOKEN_DAYS: int = 30
+    # 同意页在前端的路径（与 SITE_BASE_URL 拼出完整回调地址）
+    MCP_OAUTH_CONSENT_PATH: str = "/mcp/authorize"
     READ_CACHE_TTL_SECONDS: float = 60.0
     # 整体同步超时(秒)。包含 fetch + classify + persist 三阶段。
     # 120s 对 arXiv/HN/36氪 等条目多的信源太短(classify 阶段 LLM 调用慢),

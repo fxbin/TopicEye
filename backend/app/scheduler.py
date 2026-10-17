@@ -787,6 +787,31 @@ async def _cleanup_email_verification_codes() -> None:
 
 
 @track_job(
+    "cleanup_mcp_oauth",
+    name="MCP OAuth 过期数据清理",
+    timeout=60,
+    description="每日03:55清理过期的 MCP OAuth 授权行与已撤销过期的 token（终态行保留 1 天排障）",
+)
+async def _cleanup_mcp_oauth() -> None:
+    """清理过期的 MCP OAuth 授权行与已撤销过期的 token（daily）。
+
+    授权码 / pending 授权请求 10 分钟过期，access 60 分钟过期；这里删的是
+    超过 1 天排障保留期的终态行（见 mcp_oauth_service.cleanup_expired）。
+    """
+    logger.info("Scheduler: cleanup_mcp_oauth started")
+    try:
+        from app.services.mcp_oauth_service import cleanup_expired
+
+        async with async_session() as db:
+            removed = await cleanup_expired(db)
+            await db.commit()
+        logger.info("Scheduler: cleanup_mcp_oauth removed %s", removed)
+        return removed
+    except Exception:
+        logger.exception("Scheduler: cleanup_mcp_oauth failed")
+
+
+@track_job(
     "refresh_weread_stats_cache",
     name="微信读书统计缓存刷新",
     timeout=600,
@@ -952,6 +977,15 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour=3, minute=50),
         id="cleanup_email_verification_codes",
         name="Cleanup expired email verification codes",
+        replace_existing=True,
+    )
+
+    # MCP OAuth 授权码/token 过期清理 at 03:55（终态行保留 1 天排障）
+    scheduler.add_job(
+        _cleanup_mcp_oauth,
+        trigger=CronTrigger(hour=3, minute=55),
+        id="cleanup_mcp_oauth",
+        name="Cleanup expired MCP OAuth codes and tokens",
         replace_existing=True,
     )
 

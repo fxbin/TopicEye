@@ -19,6 +19,7 @@ from app.api.v1.feedback import router as feedback_router
 from app.api.v1.integrations import router as integrations_router
 from app.api.v1.llm_evaluations import router as llm_evaluations_router
 from app.api.v1.llm_models import router as llm_models_router
+from app.api.v1.mcp_oauth import router as mcp_oauth_router
 from app.api.v1.metrics import router as metrics_router
 from app.api.v1.model_catalog import router as model_catalog_router
 from app.api.v1.monthly_digests import router as monthly_digests_router
@@ -50,6 +51,7 @@ router = APIRouter(prefix="/api/v1")
 router.include_router(auth_router)
 router.include_router(oauth_router)
 router.include_router(user_api_tokens_router)
+router.include_router(mcp_oauth_router)
 router.include_router(plans_router)
 router.include_router(integrations_router)
 router.include_router(scoring_router)

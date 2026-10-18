@@ -110,10 +110,11 @@ make test-backend                         # 或直接跑全量
 - Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
 - Shell scripts: `bash -n <script>`
 - Layering: `make layering`
+- Scoring mirror: `cd backend && uv run python scripts/check_scoring_mirror.py`（前端镜像口径对比 CONFIG，CI 作业 `scoring-mirror`）
 - AGENTS.md 引用: `cd backend && uv run python scripts/check_agent_docs.py`（校验本文引用的路径与 make 目标，CI 作业 `agent-docs`）
 - Frontend type check: `cd frontend && npx tsc --noEmit`
 - Frontend tests: `cd frontend && npm run test:coverage`（含覆盖率门禁，对应 CI `frontend-tests`）
-- Full quality gate: `make lint`（ruff + 分层检查 + 前端类型检查）
+- Full quality gate: `make lint`（ruff + 分层检查 + 口径一致性 + 前端类型检查）
 
 ## 四、怎么交
 
@@ -166,7 +167,7 @@ docs: 跑测前必读补上 OAuth 隔离测试为什么必须 python -m
 
 ### 4.4 Verifier 契约
 
-CI 六项检查（types / tests / lint / layering / agent-docs / security-scan）是机器
+CI 七项检查（types / tests / lint / layering / scoring-mirror / agent-docs / security-scan）是机器
 Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 描述须附 Worker 证据（本地
 验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
 verdict 段落记录独立复核结论（复核者不得是同一实现过程）。

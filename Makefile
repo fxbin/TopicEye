@@ -9,12 +9,12 @@
 #   make setup          安装后端 + 前端依赖
 #   make dev            docker compose 起全栈
 #   make test           跑后端 + 前端测试
-#   make lint           完整质量门（ruff + 分层 + 前端类型检查）
+#   make lint           完整质量门（ruff + 分层 + 口径一致 + 前端类型检查）
 # =============================================================================
 
 .DEFAULT_GOAL := help
 .PHONY: help setup dev dev-db test test-backend test-frontend \
-        lint lint-backend lint-frontend layering backup
+        lint lint-backend lint-frontend layering scoring-mirror backup
 
 help:  ## 列出所有可用目标
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -38,13 +38,16 @@ test-backend:  ## 后端全量 pytest（自动起一次性 PG 容器，跑完即
 test-frontend:  ## 前端 vitest + 覆盖率门禁（对应 CI frontend-tests）
 	cd frontend && npm run test:coverage
 
-lint: lint-backend layering lint-frontend  ## 完整质量门（ruff + 分层 + tsc）
+lint: lint-backend layering scoring-mirror lint-frontend  ## 完整质量门（ruff + 分层 + 口径一致 + tsc）
 
 lint-backend:  ## 后端 ruff 全量检查 + 格式检查（手动质量门）
 	cd backend && uv run ruff check . && uv run ruff format --check .
 
 layering:  ## 分层纪律检查：api/v1 禁 ORM 查询；repositories 禁 services 逆向 import
 	cd backend && uv run python scripts/check_layering.py
+
+scoring-mirror:  ## 前后端评分口径一致性（前端镜像 82/45 对比 CONFIG，#112）
+	cd backend && uv run python scripts/check_scoring_mirror.py
 
 lint-frontend:  ## 前端类型检查（AGENTS.md 首选，比 npm run lint 稳）
 	cd frontend && npx tsc --noEmit

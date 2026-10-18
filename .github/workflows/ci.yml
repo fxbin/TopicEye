@@ -123,6 +123,22 @@ jobs:
       - name: Check AGENTS.md references
         run: python scripts/check_agent_docs.py ../AGENTS.md
 
+  # ── 前后端评分口径一致性（#112）──
+  # 前端 recommendation.ts 镜像的两个门槛数字（82/45）与
+  # app/core/scoring_caliber.py CONFIG 对比；#110 的学费不允许再交一次。
+  scoring-mirror:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check scoring caliber mirror
+        run: python scripts/check_scoring_mirror.py
+
   # ── 依赖安全扫描 ──
   security-scan:
     runs-on: ubuntu-latest

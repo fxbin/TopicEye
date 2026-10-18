@@ -60,14 +60,19 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 `IntegrityError` 等异常类。
 
 **机器强制的边界**：`make layering`（等价于 `cd backend && uv run python
-scripts/check_layering.py`，CI 作业 `backend-layering`）只作用于 `app/api/v1/`，且只认两条：
-禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` / `sqlalchemy.exc` 除外），禁止直接写
-`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`。上表其余禁止项
-它查不出——`from app.models import <ORMModel>` 与 api 层合法要用的 Enum、依赖注入同模块，
-自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的入口层，不在机器检查范围内，
-按上表 api 行的纪律人工把关（当前只调 services 与 `DailyReportRepository`；OAuth
-provider 的业务编排在 `app/services/mcp_oauth_service.py`，同意页 REST 端点在
-`app/api/v1/mcp_oauth.py`）。
+scripts/check_layering.py`，CI 作业 `backend-layering`）作用于两个目录，共三条规则。
+`app/api/v1/` 认两条：禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` /
+`sqlalchemy.exc` 除外），禁止直接写 `select/insert/update/delete` 构造与
+`db.execute/db.add/db.scalars/db.scalar`。`app/repositories/` 认一条（#113）：
+禁止 import `app.services.*`（函数内局部 import 同样抓）；唯一存量豁免是
+`analysis_repo.py` 的两个评分编排 import（评分上移重构单 #122 清空，
+allowlist 只减不增）。跨层共享的口径常量（`scoring_caliber.py`、
+`tag_normalization.py`）已落 `app/core/`，repositories 从 core 取用是合法向下依赖。
+上表其余禁止项机器查不出——`from app.models import <ORMModel>` 与 api 层合法要用的
+Enum、依赖注入同模块，自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的
+入口层，不在机器检查范围内，按上表 api 行的纪律人工把关（当前只调 services 与
+`DailyReportRepository`；OAuth provider 的业务编排在
+`app/services/mcp_oauth_service.py`，同意页 REST 端点在 `app/api/v1/mcp_oauth.py`）。
 
 ### 2.3 迁移与高风险变更
 
@@ -105,10 +110,11 @@ make test-backend                         # 或直接跑全量
 - Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
 - Shell scripts: `bash -n <script>`
 - Layering: `make layering`
+- Scoring mirror: `cd backend && uv run python scripts/check_scoring_mirror.py`（前端镜像口径对比 CONFIG，CI 作业 `scoring-mirror`）
 - AGENTS.md 引用: `cd backend && uv run python scripts/check_agent_docs.py`（校验本文引用的路径与 make 目标，CI 作业 `agent-docs`）
 - Frontend type check: `cd frontend && npx tsc --noEmit`
 - Frontend tests: `cd frontend && npm run test:coverage`（含覆盖率门禁，对应 CI `frontend-tests`）
-- Full quality gate: `make lint`（ruff + 分层检查 + 前端类型检查）
+- Full quality gate: `make lint`（ruff + 分层检查 + 口径一致性 + 前端类型检查）
 
 ## 四、怎么交
 
@@ -161,7 +167,7 @@ docs: 跑测前必读补上 OAuth 隔离测试为什么必须 python -m
 
 ### 4.4 Verifier 契约
 
-CI 六项检查（types / tests / lint / layering / agent-docs / security-scan）是机器
+CI 七项检查（types / tests / lint / layering / scoring-mirror / agent-docs / security-scan）是机器
 Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 描述须附 Worker 证据（本地
 验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
 verdict 段落记录独立复核结论（复核者不得是同一实现过程）。

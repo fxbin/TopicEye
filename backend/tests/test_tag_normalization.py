@@ -1,8 +1,8 @@
-"""标签规范化（services/tag_normalization.py）单元测试。"""
+"""标签规范化（core/tag_normalization.py）单元测试。"""
 
 from __future__ import annotations
 
-from app.services.tag_normalization import normalize_tag_key, normalize_tag_list, split_compound_tags
+from app.core.tag_normalization import normalize_tag_key, normalize_tag_list, split_compound_tags
 
 
 def test_split_compound_tags_variants():

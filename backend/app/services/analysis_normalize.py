@@ -20,8 +20,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.core.tag_normalization import normalize_tag_list
 from app.services.recommendation_level import classify_recommendation_level
-from app.services.tag_normalization import normalize_tag_list
 
 
 def _detect_lang(title: str, content: str) -> str:

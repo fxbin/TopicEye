@@ -594,8 +594,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
 
         # ── 服务端推荐等级 / 标签筛选 ────────────────────────────────
+        from app.core.tag_normalization import normalize_tag_key
         from app.models.analysis import AiAnalysis
-        from app.services.tag_normalization import normalize_tag_key
 
         # 两者口径与前端展示保持一致：等级取最新一条分析；标签命中
         # content.tags 或任一分析的 tags（对应前端 getItemTags 的合并）。
@@ -866,8 +866,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         (``owner_user_id IS NULL``) or content owned by that user. ``None``
         means no visibility filter (batch/internal callers).
         """
+        from app.core.scoring_caliber import CONFIG as SCORING_CONFIG
         from app.models.analysis import AiAnalysis
-        from app.services.scoring_engine import CONFIG as SCORING_CONFIG
 
         cutoff = naive_utc_now() - timedelta(hours=hours)
         risk_threshold = float(SCORING_CONFIG["risk_threshold"])
@@ -908,8 +908,8 @@ class ContentRepo(BaseRepository[ContentItem]):
         口径与 today-picks / DuckDB query_today_picks 对齐：剔除事件附属内容
         与已忽略内容 (``exclude_ids``)。
         """
+        from app.core.scoring_caliber import CONFIG as SCORING_CONFIG
         from app.models.analysis import AiAnalysis
-        from app.services.scoring_engine import CONFIG as SCORING_CONFIG
 
         risk_threshold = float(SCORING_CONFIG["risk_threshold"])
         latest_analysis_id = self._latest_analysis_id_subquery(AiAnalysis)

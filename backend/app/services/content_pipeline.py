@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.tag_normalization import normalize_tag_list
 from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source, SourceStatus, SourceType
 
@@ -31,7 +32,6 @@ from app.services.dedup import build_hash
 from app.services.llm_pre_filter import apply_pre_filter
 from app.services.scraper_http import build_scraper_client_kwargs
 from app.services.scrapers import get_scraper_cls
-from app.services.tag_normalization import normalize_tag_list
 from app.utils.url_safety import UnsafeUrlError, ensure_public_hostname
 
 logger = logging.getLogger(__name__)

@@ -147,9 +147,7 @@ async def list_contents(
     tag: str | None = Query(None, description="按标签筛选（规范化键，大小写不敏感；命中 content 或任一分析的标签）"),
     include_trend_sources: bool = Query(False, description="Include榜单/趋势源 such as DouyinHot"),
     hours: int | None = Query(None, description="Time range in hours, e.g. 24, 48, 168"),
-    sort_by: str = Query(
-        "created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score)$"
-    ),
+    sort_by: str = Query("created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score)$"),
     sort_order: str = Query("desc", pattern=r"^(asc|desc)$"),
     admin_view: bool = Query(False, description="Return management fields; admin only"),
     current_user: User | None = Depends(get_optional_current_user),
@@ -416,9 +414,9 @@ async def content_tag_facets(
     from collections import Counter
     from datetime import timedelta
 
+    from app.core.tag_normalization import normalize_tag_list
     from app.repositories.ignored_repo import IgnoredRepo
     from app.services.json_cache import get_cached_json, set_cached_json
-    from app.services.tag_normalization import normalize_tag_list
 
     scope_q = (q or "").strip()
     cache_key = (

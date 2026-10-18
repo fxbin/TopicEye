@@ -39,14 +39,15 @@ function isDefaultScoreProfile(analysis: ContentAnalysis): boolean {
   return defaultLikeCount >= 5 && !hasCuration && !hasTextSignal;
 }
 
-// 与后端评分引擎对齐的门槛（backend/app/services/scoring_engine.py CONFIG）：
-// risk_threshold=82 硬排除；quality_gate_min=45 内容过薄下限。
+// 与后端评分口径对齐的门槛（唯一声明处 backend/app/core/scoring_caliber.py CONFIG）：
 // 规则顺序：先过统一的风险/质量/创作价值门槛，再判断推荐类型，
 // 避免「质量 10 + 创作价值 90」被判为强烈建议写、「风险 95 + 热度 90」
 // 被判为适合蹭热点这类后端根本不会收录的推荐口径。
-const RISK_HARD_EXCLUDE = 82;
-const RISK_HIGH = 75;
-const QUALITY_GATE_MIN = 45;
+// 两个镜像数字由 CI 门禁锁死漂移（backend/scripts/check_scoring_mirror.py，#112）：
+// 后端调口径而这里没跟，CI 即红。
+const RISK_HARD_EXCLUDE = 82; // = CONFIG.risk_threshold（镜像，CI 对比锁死）
+const RISK_HIGH = 75; // 前端自有展示档位：后端无对应数字（软起点 45 / 硬排除 82 之间），不参与口径对比
+const QUALITY_GATE_MIN = 45; // = CONFIG.quality_gate_min（镜像，CI 对比锁死）
 
 export function explainRecommendation(analysis: ContentAnalysis | null | undefined): RecommendationDecision {
   if (!analysis) {

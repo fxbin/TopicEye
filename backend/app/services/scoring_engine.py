@@ -19,16 +19,16 @@ import heapq
 import math
 from datetime import UTC, datetime
 
+from app.core.scoring_caliber import CONFIG
 from app.schemas.scoring import (
     ScoreBreakdownResponse,
     ScoreResultItem,
     ScoringRequestItem,
     ScoringResponse,
 )
-from app.services.scoring_caliber import CONFIG
 
 # ── Tunable configuration ────────────────────────────────────────────
-# 唯一声明处已迁至 app/services/scoring_caliber.py(#110):prompt 教学与
+# 唯一声明处为 app/core/scoring_caliber.py(#110,#113):prompt 教学与
 # picks 查询共享同一份口径,tests/test_scoring_caliber.py 锁死漂移。
 
 

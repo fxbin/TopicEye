@@ -10,8 +10,8 @@ from __future__ import annotations
 import importlib.util
 import os
 
+from app.core.scoring_caliber import dimension_anchor_section
 from app.services.llm.prompts.analysis import ANALYSIS_PROMPT, ANALYSIS_PROMPT_EN
-from app.services.scoring_caliber import dimension_anchor_section
 
 _SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

@@ -324,8 +324,8 @@ def _build_analysis_record(
     标签与推荐等级在此收口（幂等）：lite 级联与本地回退路径不经过
     _normalize_analysis_result，统一在构造处保证存储口径一致。
     """
+    from app.core.tag_normalization import normalize_tag_list
     from app.services.recommendation_level import classify_recommendation_level
-    from app.services.tag_normalization import normalize_tag_list
 
     scores = result.get("scores", {})
     curation = result.get("curation", {})

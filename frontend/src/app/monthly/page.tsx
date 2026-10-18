@@ -34,6 +34,8 @@ export default function MonthlyDigestPage() {
       actionTitle="下月创作行动清单"
       overviewTitle="本月概述"
       keywordTitle="本月关键词"
+      clusterTitle="本月话题聚类"
+      categoryTitle="各版温度"
       historyIcon={CalendarDays}
       api={{
         getCurrent: monthlyDigestApi.getCurrent,

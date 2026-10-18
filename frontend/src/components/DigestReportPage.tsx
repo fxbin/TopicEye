@@ -116,6 +116,12 @@ interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends D
   actionTitle: string;
   overviewTitle: string;
   keywordTitle: string;
+  /** R8 周刊化：话题聚类节的标题（周报传「本周脉络」） */
+  clusterTitle?: string;
+  /** R8 周刊化：聚类节是否前置到导语之后（周报=true） */
+  clusterFirst?: boolean;
+  /** R8 特刊化：分类概览节的标题（月报传「各版温度」） */
+  categoryTitle?: string;
   historyIcon?: LucideIcon;
   api: {
     getCurrent: () => Promise<TDigest>;
@@ -210,6 +216,9 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   actionTitle,
   overviewTitle,
   keywordTitle,
+  clusterTitle = '热门话题聚类',
+  clusterFirst = false,
+  categoryTitle = '分类概览',
   historyIcon: HistoryIcon = ClipboardList,
   api,
   getDigestKey,
@@ -229,6 +238,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   const [error, setError] = useState<string | null>(null);
   // 站内阅读：点选题标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
   const { openReader } = useAppContext();
+
 
   const loadPeriods = useCallback(async () => {
     try {
@@ -300,6 +310,38 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   const categorySummary = parseJson<Record<string, DigestCategoryInfo>>(digest?.category_summary, {});
   const platformTips = parseJson<Record<string, string[]>>(digest?.platform_tips, {});
   const topicClusters = parseJson<DigestCluster[]>(digest?.topic_clusters, []);
+
+  // R8 周刊化：聚类块（clusterFirst=true 时前置到导语后，周报=本周脉络）
+  const clustersSection = topicClusters.length > 0 ? (
+
+              <Panel className="mb-4.5 p-5">
+                <ReportSectionTitle icon={Flame} title={clusterTitle} />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {topicClusters.map((cluster, index) => (
+                    <div
+                      key={`${cluster.name}-${index}`}
+                      className={cx('rounded-sm border p-4', index === 0 ? 'border-primary-border bg-primary-light' : 'border-gray-200 bg-gray-50')}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-black text-gray-900">{cluster.name}</span>
+                        <span className={cx('shrink-0 rounded-full border px-2 py-0.5 font-mono text-[11px] font-black', index === 0 ? 'border-primary-border bg-white text-primary' : 'border-teal-border bg-teal-light text-teal')}>
+                          {cluster.count}篇
+                        </span>
+                      </div>
+                      <div className="text-xs leading-5 text-gray-500">代表: {cluster.representative_title}</div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-gray-100">
+                          <div className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" style={{ width: `${Math.min(cluster.heat, 100)}%` }} />
+                        </div>
+                        <span className="font-mono text-[10px] text-gray-400">{cluster.heat}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            
+  ) : null;
+
   const actionItems = parseJson<DigestActionItem[]>(digest?.action_items, []);
   const visiblePeriods = useMemo(() => periods, [periods]);
   const currentKey = digest ? getDigestKey(digest) : undefined;
@@ -432,6 +474,9 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
               </Panel>
             )}
 
+            {/* R8 周刊化：聚类节前置（周报=本周脉络，紧跟导语） */}
+            {clusterFirst && clustersSection}
+
             {keywords.length > 0 && (
               <Panel className="mb-4.5 p-5">
                 <ReportSectionTitle icon={KeyRound} title={keywordTitle} />
@@ -482,33 +527,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
               </Panel>
             )}
 
-            {topicClusters.length > 0 && (
-              <Panel className="mb-4.5 p-5">
-                <ReportSectionTitle icon={Flame} title="热门话题聚类" />
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {topicClusters.map((cluster, index) => (
-                    <div
-                      key={`${cluster.name}-${index}`}
-                      className={cx('rounded-sm border p-4', index === 0 ? 'border-primary-border bg-primary-light' : 'border-gray-200 bg-gray-50')}
-                    >
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-black text-gray-900">{cluster.name}</span>
-                        <span className={cx('shrink-0 rounded-full border px-2 py-0.5 font-mono text-[11px] font-black', index === 0 ? 'border-primary-border bg-white text-primary' : 'border-teal-border bg-teal-light text-teal')}>
-                          {cluster.count}篇
-                        </span>
-                      </div>
-                      <div className="text-xs leading-5 text-gray-500">代表: {cluster.representative_title}</div>
-                      <div className="mt-2 flex items-center gap-1.5">
-                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-gray-100">
-                          <div className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" style={{ width: `${Math.min(cluster.heat, 100)}%` }} />
-                        </div>
-                        <span className="font-mono text-[10px] text-gray-400">{cluster.heat}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-            )}
+            {!clusterFirst && clustersSection}
 
             {topPicks.length > 0 && (
               <Panel className="mb-4.5 p-5">
@@ -552,7 +571,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
 
             {Object.keys(categorySummary).length > 0 && (
               <Panel className="mb-4.5 p-5">
-                <ReportSectionTitle icon={BarChart3} title="分类概览" />
+                <ReportSectionTitle icon={BarChart3} title={categoryTitle} />
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {Object.entries(categorySummary).map(([category, info]) => (
                     <div key={category} className="rounded-sm border border-gray-200 bg-gray-50 p-4">

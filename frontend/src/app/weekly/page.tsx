@@ -36,6 +36,8 @@ export default function WeeklyDigestPage() {
         actionTitle="下周创作行动清单"
         overviewTitle="本周概述"
         keywordTitle="本周关键词"
+        clusterTitle="本周脉络"
+        clusterFirst
         historyIcon={ClipboardList}
         api={{
           getCurrent: weeklyDigestApi.getCurrent,

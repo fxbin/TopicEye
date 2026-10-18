@@ -15,10 +15,9 @@ import {
   Send,
   Smartphone,
   Target,
-  TrendingUp,
   KeyRound,
 } from 'lucide-react';
-import { Panel, cx } from '@/components/ui';
+import { cx } from '@/components/ui';
 import { useAppContext } from '@/components/ClientLayout';
 import { isAdmin } from '@/lib/navigation';
 import { dailyReportApi } from '@/lib/api';
@@ -33,7 +32,17 @@ import {
   ReportSectionTitle,
   ReportStatusPanel,
 } from '@/components/ReportLayout';
-import { PickCard, BriefPickRow } from './_components';
+import { BriefPickRow } from './_components';
+import {
+  Masthead,
+  LeadIn,
+  LeadPickCard,
+  SecondPickRow,
+  ColophonStrip,
+  TrendsOneLiner,
+  computeChangeMarkers,
+  useWritePick,
+} from './_frontpage';
 import {
   type DailyReportData,
   type DateSummary,
@@ -50,6 +59,7 @@ import {
   marksMapFromResp,
   groupByCategory,
 } from './_daily-utils';
+import type { YesterdayTrackingData } from '@/types';
 
 export default function DailyReportPage() {
   const [report, setReport] = useState<DailyReportData | null>(null);
@@ -74,6 +84,8 @@ export default function DailyReportPage() {
   // 生成轮询代际：新一轮生成或组件卸载时自增，使旧的 5s 轮询循环
   // 在下一次醒来后直接退出，避免卸载后持续请求 / 交错 setState
   const generateSeqRef = useRef(0);
+  // 昨日追踪数据（报头兑现行 + ▲↑↓ 变化标记共用）
+  const [yesterdayData, setYesterdayData] = useState<YesterdayTrackingData | null>(null);
 
   useEffect(() => () => {
     generateSeqRef.current += 1;
@@ -110,6 +122,21 @@ export default function DailyReportPage() {
   const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
   const [pickMarks, setPickMarks] = useState<Record<string, 'write' | 'watch' | 'skip'>>({});
 
+  // 昨日追踪：报头兑现行与 ▲↑↓ 的数据源（与 YesterdayTracking 组件同一端点，
+  // 页面持有一份供头版消费；错开主报告并发）
+  const fetchYesterday = useCallback((reportDate: string) => {
+    const fetcher =
+      reportScope === 'mine'
+        ? dailyReportApi.getMyYesterdayTracking
+        : dailyReportApi.getYesterdayTracking;
+    const timer = setTimeout(() => {
+      fetcher(reportDate)
+        .then(setYesterdayData)
+        .catch(() => setYesterdayData(null));
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [reportScope]);
+
   const fetchReport = useCallback(async (date?: string) => {
     try {
       setLoading(true);
@@ -119,6 +146,8 @@ export default function DailyReportPage() {
         : ((reportScope === 'mine' ? await dailyReportApi.getMyToday() : await dailyReportApi.getToday()) as unknown as DailyReportData);
       setReport(data);
       setSelectedDate(data.report_date);
+      setYesterdayData(null);
+      fetchYesterday(data.report_date);
 
       // 加载用户已标记的选题（恢复操作状态，刷新不丢失）
       // 标记键优先用 source_title（稳定）；历史日报无该字段时回退 title。
@@ -165,17 +194,18 @@ export default function DailyReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [reportScope]);
+  }, [reportScope, fetchYesterday]);
 
   useEffect(() => {
-    fetchReport();
+    // 支持 /daily?date=YYYY-MM-DD 直达历史期（往期深链）；无参默认今天
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get('date');
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && dateParam <= localDateString()) {
+      fetchReport(dateParam);
+    } else {
+      fetchReport();
+    }
   }, [fetchReport]);
-
-  // T2: 当 scope 切换时刷新主报告
-  useEffect(() => {
-    fetchReport();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportScope]);
 
   const handleDateSelect = useCallback((date: string) => {
     if (date === selectedDate) return;
@@ -223,7 +253,7 @@ export default function DailyReportPage() {
       }
       // 超时
       if (seq === generateSeqRef.current) {
-        setError('生成超时，请稍后刷新查看');
+        setError('生成超时，请稍候刷新查看');
       }
     } catch (err: unknown) {
       if (seq === generateSeqRef.current) {
@@ -287,16 +317,6 @@ export default function DailyReportPage() {
     [report, pickMarks],
   );
 
-  const handleCalendarDayClick = (day: CalendarDay) => {
-    setSelectedDate(day.report_date);
-    if (day.has_report) {
-      fetchReport(day.report_date);
-      return;
-    }
-    setReport(null);
-    setError(`${day.report_date} 暂无日报，可手动补生成`);
-  };
-
   const keywords = parseJson(report?.keywords);
   const trends = parseJson(report?.trends);
   const topPicks = parseJson(report?.top_picks);
@@ -327,6 +347,7 @@ export default function DailyReportPage() {
   const [markError, setMarkError] = useState<string | null>(null);
   // 站内阅读：点选题卡片标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
   const { openReader, currentUser } = useAppContext();
+  const writePick = useWritePick();
   // 手动推送日报到群
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
@@ -359,15 +380,50 @@ export default function DailyReportPage() {
     report?.status === 'DONE' ? report.id : undefined,
   );
 
-  const generatedDates = useMemo(() => dates.filter((d) => d.report_date !== todayStr), [dates, todayStr]);
   const recoveryDays = calendarDays.filter((day) => day.status === 'MISSING' || day.status === 'ERROR');
 
-  // 按 tier 分区，区内再按 category 分组。feature 优先展示（深度精讲），brief 次之（速览）。
-  // 兼容历史数据：无 tier 字段视为 feature。
-  const featureGroups = useMemo(() => groupByCategory(pickList, 'feature'), [pickList]);
+  // ── 晨报头版派生数据 ────────────────────────────────────────────────
+  // 期号 = 已出刊日报天数（listDates 含今日）
+  const issueNumber = useMemo(
+    () => (datesLoading ? undefined : dates.length || undefined),
+    [dates, datesLoading],
+  );
+
+  // 昨日兑现行 + ▲↑↓ 标记（同一份 yesterday 数据）
+  const yesterdaySummary = useMemo(() => {
+    if (!yesterdayData?.has_yesterday || yesterdayData.picks.length === 0) return null;
+    const s = { confirmed: 0, reversed: 0, persisted: 0, dropped: 0 };
+    for (const p of yesterdayData.picks) s[p.status] += 1;
+    return { ...s, recommended: yesterdayData.picks.length };
+  }, [yesterdayData]);
+
+  const yesterdayLine = yesterdaySummary
+    ? `昨日推荐 ${yesterdaySummary.recommended} 题 · 兑现 ${yesterdaySummary.confirmed} · 仍在榜 ${yesterdaySummary.persisted}`
+    : undefined;
+
+  const changeMarkers = useMemo(
+    () => computeChangeMarkers(pickList, yesterdayData?.picks),
+    [pickList, yesterdayData],
+  );
+
+  // 头版：头题 = feature 档分数最高的一条；二条 = 其余 feature（跨分类混排）
+  const { leadPick, secondPicks } = useMemo(() => {
+    const features = pickList
+      .filter((p) => !p.tier || p.tier === 'feature')
+      .slice()
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return { leadPick: features[0], secondPicks: features.slice(1) };
+  }, [pickList]);
+
   const briefGroups = useMemo(() => groupByCategory(pickList, 'brief'), [pickList]);
   const hasBrief = briefGroups.length > 0;
   const readMinutes = Math.max(1, Math.ceil(pickList.length * 0.8));
+
+  // 往期条：最近 5 期（不含当前期），复活 dates 数据
+  const recentDates = useMemo(() => {
+    const others = dates.filter((d) => d.report_date !== report?.report_date);
+    return others.slice(-5).reverse();
+  }, [dates, report?.report_date]);
 
   return (
     <div className="h-full w-full overflow-hidden">
@@ -412,7 +468,7 @@ export default function DailyReportPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 简洁日期选择器（替代 30 天日历） */}
+          {/* 简洁日期选择器 */}
           <button
             type="button"
             onClick={() => {
@@ -490,7 +546,7 @@ export default function DailyReportPage() {
         </div>
       </div>
 
-      {/* 主区域 */}
+      {/* 主区域（晨报版式：报头 → 导语 → 头版 → 内页分版） */}
       <div className="h-[calc(100%-40px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
         <div className="mx-auto max-w-[920px] px-4 py-4 sm:px-6">
           {loading ? (
@@ -528,185 +584,124 @@ export default function DailyReportPage() {
           ) : report?.status === 'GENERATING' ? (
             <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
-            <div className="space-y-3">
-              {/* 主编判断：先给出日报主线，再进入分层选题。 */}
-              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2 text-[11px] font-black text-gray-400">
-                      <span>{report.report_date} {report.weekday}</span>
-                      {/* 版本标签（复活死代码 EDITION_LABELS，区分午间快照/完整复盘） */}
-                      {report.edition && EDITION_LABELS[report.edition] && (
-                        <span className="rounded-xs border border-primary-border bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                          {EDITION_LABELS[report.edition]}
-                        </span>
-                      )}
-                      {generatedAt && <span>· 更新于 {generatedAt}</span>}
-                      <span>· {pickList.length} 个选题 · 约 {readMinutes} 分钟</span>
-                    </div>
-                    <p className="text-sm font-bold leading-6 text-gray-800">
-                      {report.takeaway || report.overview?.slice(0, 80) || '今日内容已完成分析。'}
-                    </p>
-                    {report.overview && (
-                      <div className="mt-2.5 border-l-2 border-primary pl-3 text-[13px] leading-6 text-gray-600">
-                        <span className="mr-1.5 text-[11px] font-black text-primary">主编判断</span>
-                        {report.overview}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            <div className="space-y-0">
+              {/* 报头（刊名/日期行/统计行：期号·昨日兑现·长度合同） */}
+              <div className="bg-white">
+                <Masthead
+                  reportDate={report.report_date}
+                  weekday={report.weekday}
+                  editionLabel={report.edition ? EDITION_LABELS[report.edition] : undefined}
+                  issueNumber={issueNumber}
+                  generatedAt={generatedAt || undefined}
+                  yesterdayLine={yesterdayLine}
+                  pickCount={pickList.length}
+                  readMinutes={readMinutes}
+                />
               </div>
 
-              {/* 昨日追踪卡（一期补连续性闭环）：昨日 top picks 的 24h 热度 delta + lifecycle 验证 */}
-              <YesterdayTracking scope={reportScope} reportDate={report.report_date} />
+              {/* 导语块（takeaway 衬线导语 + 主编判断） */}
+              <LeadIn takeaway={report.takeaway} overview={report.overview} />
 
-              {/* 今日看点 TOC（可点击跳转，仅深度精讲） */}
-              {featureGroups.length > 1 && (
-                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                  <div className="mb-2 text-[11px] font-black text-gray-400">今日看点</div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                    {featureGroups.map(([cat, picks]) => (
-                      <a
-                        key={`toc-${cat}`}
-                        href={`#cat-${cat}`}
-                        className="flex items-center gap-1.5 text-[12px] font-bold text-gray-500 hover:text-primary"
-                      >
-                        <span className="text-primary">{picks.length}</span>
-                        <span>{cat}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
+              {/* 头版：头题全展 + 二条窄栏（跨分类混排，带 ▲↑↓ 与还热） */}
+              {leadPick && (
+                <LeadPickCard
+                  pick={leadPick}
+                  sparklineData={sparklines[pickKey(leadPick)]}
+                  markAction={pickMarks[pickKey(leadPick)]}
+                  showOriginalLang={showOriginalLang}
+                  onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
+                  onMark={handleMark}
+                  onOpenReader={openReader}
+                  onWrite={writePick}
+                />
               )}
+              {secondPicks.map((pick, j) => {
+                const globalIdx = pickList.indexOf(pick);
+                const isExpanded = expandedPick === globalIdx;
+                const key = pickKey(pick);
+                return (
+                  <SecondPickRow
+                    key={`second-${j}`}
+                    pick={pick}
+                    rank={j + 2}
+                    marker={changeMarkers[key]}
+                    expanded={isExpanded}
+                    onToggle={() => setExpandedPick(isExpanded ? null : globalIdx)}
+                    markAction={pickMarks[key]}
+                    onMark={handleMark}
+                    onOpenReader={openReader}
+                    onWrite={writePick}
+                  />
+                );
+              })}
 
-              {/* 深度精讲（feature：全字段卡片） */}
-              {featureGroups.length > 0 && (
-                <div className="space-y-4">
-                  {featureGroups.map(([cat, picks], groupIdx) => (
-                    <div key={`group-${cat}`} id={`cat-${cat}`}>
-                      {/* 分组标题 */}
-                      <div className="mb-2 flex items-center gap-2 px-1">
-                      <span className="font-mono text-lg font-black text-primary">
-                        {String(groupIdx + 1).padStart(2, '0')}
-                      </span>
-                      <h2 className="text-sm font-black text-gray-900">{cat}</h2>
-                      {CATEGORY_EN[cat] && (
-                        <span className="text-[11px] font-bold text-gray-300">{CATEGORY_EN[cat]}</span>
-                      )}
-                      <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">{picks.length} 篇</span>
-                    </div>
+              {/* 中缝：昨日对账摘要 + 导流 */}
+              <ColophonStrip yesterdaySummary={yesterdaySummary} />
 
-                    {/* 组内选题列表 */}
-                    <div className="space-y-2">
-                      {picks.map((pick, j) => {
-                        const globalIdx = pickList.indexOf(pick);
-                        const isExpanded = expandedPick === globalIdx;
-                        const key = pickKey(pick);
-                        return (
-                          <PickCard
-                            key={`pick-${cat}-${j}`}
-                            pick={pick}
-                            globalIdx={globalIdx}
-                            isExpanded={isExpanded}
-                            onToggleExpand={() => setExpandedPick(isExpanded ? null : globalIdx)}
-                            sparklineData={sparklines[key]}
-                            markAction={pickMarks[key]}
-                            showOriginalLang={showOriginalLang}
-                            onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
-                            onMark={handleMark}
-                            onOpenReader={openReader}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                  ))}
+              {/* 昨日追踪明细（折叠态：R8 校准后的问责剂量——一行摘要 + 明细可展开） */}
+              <details className="bg-white">
+                <summary className="cursor-pointer px-5 py-2 text-[11px] font-bold text-gray-400 hover:text-gray-600">
+                  昨日追踪明细（24h 热度与兑现）
+                </summary>
+                <div className="px-5 pb-3">
+                  <YesterdayTracking scope={reportScope} reportDate={report.report_date} />
                 </div>
-              )}
+              </details>
+
+              {/* 内页分版：速览（brief 档按分类分版） */}
               {hasBrief && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
+                <div className="mt-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
                     <span className="font-mono text-lg font-black text-gray-400">→</span>
-                    <h2 className="text-sm font-black text-gray-700">速览</h2>
-                    <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                    <h2 className="text-sm font-black text-gray-700">速览 · 分版</h2>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
                       {briefGroups.reduce((n, [, ps]) => n + ps.length, 0)} 篇
                     </span>
                   </div>
-                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white shadow-sm">
-                    {briefGroups.map(([cat, picks]) => (
-                      picks.map((pick, j) => {
-                        const globalIdx = pickList.indexOf(pick);
-                        const isExpanded = expandedPick === globalIdx;
-                        const key = pickKey(pick);
-                        return (
-                          <BriefPickRow
-                            key={`brief-${cat}-${j}`}
-                            pick={pick}
-                            globalIdx={globalIdx}
-                            isExpanded={isExpanded}
-                            onToggleExpand={() => setExpandedPick(isExpanded ? null : globalIdx)}
-                            markAction={pickMarks[key]}
-                            showOriginalLang={showOriginalLang}
-                            onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
-                            onMark={handleMark}
-                            onOpenReader={openReader}
-                          />
-                        );
-                      })
-                    ))}
-                  </div>
+                  {briefGroups.map(([cat, picks], groupIdx) => (
+                    <div key={`brief-group-${cat}`} className="mb-3">
+                      <div className="mb-1.5 flex items-center gap-2 px-1">
+                        <span className="font-mono text-[13px] font-black text-gray-300">
+                          {String(groupIdx + 1).padStart(2, '0')}
+                        </span>
+                        <span className="text-[12px] font-black text-gray-600">{cat}</span>
+                        {CATEGORY_EN[cat] && (
+                          <span className="text-[10px] font-bold text-gray-300">{CATEGORY_EN[cat]}</span>
+                        )}
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-400">{picks.length} 篇</span>
+                      </div>
+                      <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
+                        {picks.map((pick, j) => {
+                          const globalIdx = pickList.indexOf(pick);
+                          const isExpanded = expandedPick === globalIdx;
+                          const key = pickKey(pick);
+                          return (
+                            <BriefPickRow
+                              key={`brief-${cat}-${j}`}
+                              pick={pick}
+                              globalIdx={globalIdx}
+                              isExpanded={isExpanded}
+                              onToggleExpand={() => setExpandedPick(isExpanded ? null : globalIdx)}
+                              markAction={pickMarks[key]}
+                              showOriginalLang={showOriginalLang}
+                              onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
+                              onMark={handleMark}
+                              onOpenReader={openReader}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* 背景层：趋势 + 关键词 + 平台建议 */}
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {/* 趋势 */}
-                {trendList.length > 0 && (
-                  <Panel className="p-4">
-                    <ReportSectionTitle icon={TrendingUp} title="趋势信号" />
-                    <div className="space-y-2">
-                      {trendList.map((trend, i) => (
-                        <div key={`trend-${i}`} className="flex items-start gap-2">
-                          <span className={cx(
-                            'mt-0.5 shrink-0 text-[11px] font-black',
-                            trend.momentum === 'up' ? 'text-teal' : trend.momentum === 'down' ? 'text-gray-400' : 'text-amber',
-                          )}>
-                            {trend.momentum === 'up' ? '↑' : trend.momentum === 'down' ? '↓' : '→'}
-                          </span>
-                          <div className="min-w-0">
-                            <span className="text-[13px] font-bold text-gray-800">{trend.title}</span>
-                            <span className="ml-1.5 text-[11px] text-gray-400">{trend.desc}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Panel>
-                )}
-
-                {/* 关键词 */}
-                {keywordList.length > 0 && (
-                  <Panel className="p-4">
-                    <ReportSectionTitle icon={KeyRound} title="高频关键词" />
-                    <div className="flex flex-wrap gap-1.5">
-                      {keywordList.map((kw, i) => (
-                        <span
-                          key={`kw-${i}`}
-                          className={cx(
-                            'rounded-full border px-2.5 py-1 text-xs font-bold',
-                            i === 0 ? 'border-primary-border bg-primary-light text-gray-700' : 'border-gray-200 bg-gray-50 text-gray-600',
-                          )}
-                        >
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </Panel>
-                )}
-              </div>
+              {/* 趋势一行（增刊归还：缩为一行跳 /trends） */}
+              <TrendsOneLiner trends={trendList} />
 
               {/* 平台建议（折叠态） */}
               {platformTipEntries.length > 0 && (
-                <details className="rounded-lg border border-gray-200 bg-white">
+                <details className="mt-3 bg-white">
                   <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-gray-600">
                     平台创作建议
                   </summary>
@@ -725,12 +720,38 @@ export default function DailyReportPage() {
                 </details>
               )}
 
-              {/* 底部统计 */}
-              <div className="flex flex-wrap gap-4 border-t border-gray-200 pt-3 text-[11px] text-gray-400">
+              {/* 往期条：最近 5 期（每天一格带当日导语） */}
+              {recentDates.length > 0 && (
+                <div className="mt-4 bg-white px-5 py-3">
+                  <div className="mb-2 text-[10px] font-black tracking-widest text-gray-400">往期 · 每天一格</div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentDates.map((d) => (
+                      <button
+                        key={d.report_date}
+                        type="button"
+                        onClick={() => handleDateSelect(d.report_date)}
+                        className="flex min-w-[170px] flex-1 flex-col gap-0.5 rounded-xs border border-gray-200 px-3 py-2 text-left hover:border-primary"
+                        title={d.takeaway || undefined}
+                      >
+                        <span className="font-mono text-[10px] font-bold text-gray-400">{d.report_date} {d.weekday}</span>
+                        <span className="truncate text-[11.5px] font-bold text-gray-700">
+                          {d.takeaway || '查看当日日报'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 底部统计 + 报脚 */}
+              <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-200 pt-3 text-[11px] text-gray-400">
                 <ReportFooterStat icon={BarChart3}>分析 {report.analyzed_count || 0} 条</ReportFooterStat>
                 <ReportFooterStat icon={Target}>推荐 {pickList.length} 个选题</ReportFooterStat>
                 {generatedAt && <ReportFooterStat icon={CalendarDays}>{generatedAt}</ReportFooterStat>}
               </div>
+              <footer className="mt-2 border-t border-gray-200 py-2.5 text-center text-[10px] tracking-wide text-gray-400">
+                版面编辑：TopicEye 编辑台 · 热点不认行业，角度认赛道 · 每条可溯原文{issueNumber ? ` · 总第 ${issueNumber} 期` : ''}
+              </footer>
             </div>
           ) : report ? (
             <ReportStatusPanel icon={Inbox}>

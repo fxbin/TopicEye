@@ -14,9 +14,7 @@ from __future__ import annotations
 import inspect
 import re
 
-from app.services import scoring_engine
-from app.services.llm.prompts import analysis as analysis_prompts
-from app.services.scoring_caliber import (
+from app.core.scoring_caliber import (
     ANCHOR_BANDS,
     CONFIG,
     DIMENSION_ANCHORS_EN,
@@ -26,6 +24,8 @@ from app.services.scoring_caliber import (
     dimension_anchor_lines,
     dimension_anchor_section,
 )
+from app.services import scoring_engine
+from app.services.llm.prompts import analysis as analysis_prompts
 
 SIX_DIM_KEYS = (
     "w_info_density",

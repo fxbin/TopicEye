@@ -4,11 +4,11 @@ Analysis prompts — extracted from app.services.analysis.
 Used by:
     - app.services.analysis.analyze_content
 
-评分口径(加权/门槛/风险扣分)一律从 app.services.scoring_caliber 渲染,
+评分口径(加权/门槛/风险扣分)一律从 app.core.scoring_caliber 渲染,
 本文件不得手写数字——tests/test_scoring_caliber.py 锁死漂移(#110)。
 """
 
-from app.services.scoring_caliber import (
+from app.core.scoring_caliber import (
     curation_threshold_text,
     curation_weights_text,
     dimension_anchor_section,

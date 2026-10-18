@@ -60,14 +60,19 @@ api/v1/ ──► services/ ──► repositories/ ──► models/ ──► 
 `IntegrityError` 等异常类。
 
 **机器强制的边界**：`make layering`（等价于 `cd backend && uv run python
-scripts/check_layering.py`，CI 作业 `backend-layering`）只作用于 `app/api/v1/`，且只认两条：
-禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` / `sqlalchemy.exc` 除外），禁止直接写
-`select/insert/update/delete` 构造与 `db.execute/db.add/db.scalars/db.scalar`。上表其余禁止项
-它查不出——`from app.models import <ORMModel>` 与 api 层合法要用的 Enum、依赖注入同模块，
-自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的入口层，不在机器检查范围内，
-按上表 api 行的纪律人工把关（当前只调 services 与 `DailyReportRepository`；OAuth
-provider 的业务编排在 `app/services/mcp_oauth_service.py`，同意页 REST 端点在
-`app/api/v1/mcp_oauth.py`）。
+scripts/check_layering.py`，CI 作业 `backend-layering`）作用于两个目录，共三条规则。
+`app/api/v1/` 认两条：禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` /
+`sqlalchemy.exc` 除外），禁止直接写 `select/insert/update/delete` 构造与
+`db.execute/db.add/db.scalars/db.scalar`。`app/repositories/` 认一条（#113）：
+禁止 import `app.services.*`（函数内局部 import 同样抓）；唯一存量豁免是
+`analysis_repo.py` 的两个评分编排 import（评分上移重构单 #122 清空，
+allowlist 只减不增）。跨层共享的口径常量（`scoring_caliber.py`、
+`tag_normalization.py`）已落 `app/core/`，repositories 从 core 取用是合法向下依赖。
+上表其余禁止项机器查不出——`from app.models import <ORMModel>` 与 api 层合法要用的
+Enum、依赖注入同模块，自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的
+入口层，不在机器检查范围内，按上表 api 行的纪律人工把关（当前只调 services 与
+`DailyReportRepository`；OAuth provider 的业务编排在
+`app/services/mcp_oauth_service.py`，同意页 REST 端点在 `app/api/v1/mcp_oauth.py`）。
 
 ### 2.3 迁移与高风险变更
 

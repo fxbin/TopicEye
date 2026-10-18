@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """分层纪律的机器强制检查（对应 AGENTS.md「Layering Discipline」）。
 
-只机器化 AGENTS.md 里*符号级、可无歧义判定*的两条禁止项，作用于 `app/api/v1/`：
+机器化 AGENTS.md 里*符号级、可无歧义判定*的禁止项，作用于两个目录：
+
+**app/api/v1/**（两条）：
 
 1. 禁止 import sqlalchemy —— 例外：`sqlalchemy.ext.asyncio`（AsyncSession 类型注解）
    与 `sqlalchemy.exc`（IntegrityError / OperationalError 等异常类，供 try/except）。
@@ -9,13 +11,20 @@
    以及 `db.execute(...) / db.add(...) / db.scalars(...) / db.scalar(...)`。
    这些必须下沉到 `repositories/`。
 
+**app/repositories/**（一条，#113）：
+
+3. 禁止 import `app.services.*` —— 依赖方向 repositories→services 逆向
+   （函数内局部 import 同样抓：#113 的违例全部藏在函数体内）。
+   已知存量豁免走 `REPO_SERVICES_IMPORT_ALLOWLIST`（按文件+模块粒度，
+   引用重构 issue，棘轮式收缩，只减不增）。
+
 **不检查**的项（因为是符号级且和允许项同模块，自动判定会大量误报）：
 `from app.models import <ORMModel>` 与 `<ORMModel>` 混在 Enum / User 依赖注入里的情况，
 仍靠 AGENTS.md 2.2 分层表「禁止」列的人工评审兜底。
 
 用法：
-    python scripts/check_layering.py            # 检查默认目录
-    python scripts/check_layering.py app/api/v1 # 指定目录
+    python scripts/check_layering.py            # 检查 api/v1 + repositories
+    python scripts/check_layering.py app/api/v1 # 只检查指定目录（api 规则）
 
 命中违规时打印文件:行 + 说明并以退出码 1 结束，供 CI 阻断。
 """
@@ -28,10 +37,19 @@ from pathlib import Path
 
 # 检查目标目录（相对 backend/）。
 API_DIR = Path("app/api/v1")
+REPO_DIR = Path("app/repositories")
 
 # 刻意豁免的文件名（分层的合法低层边界）。
 # _db_write.py 不再需要豁免——SQLite PRAGMA 调用已随 SQLite 分支移除。
 ALLOWLIST: set[str] = set()
+
+# repositories→services 禁令的存量豁免（#113 收口时遗留，#122 重构后清空）。
+# 键 = 文件名，值 = 允许 import 的 app.services 模块前缀集合；
+# 新增条目必须附带 issue 引号，且只允许删除、不允许新增（棘轮）。
+REPO_SERVICES_IMPORT_ALLOWLIST: dict[str, set[str]] = {
+    # analysis_repo 评分编排上移 services 的重构单：#122
+    "analysis_repo.py": {"app.services.feedback_signal", "app.services.scoring_engine"},
+}
 
 # 允许的 sqlalchemy 子模块前缀（值对象 / 类型注解 / 异常类）。
 ALLOWED_SQLALCHEMY_PREFIXES = ("sqlalchemy.ext.asyncio", "sqlalchemy.exc")
@@ -95,16 +113,54 @@ def check_file(path: Path) -> list[str]:
     return violations
 
 
+def check_repo_services_imports(path: Path) -> list[str]:
+    """repositories 层文件：禁止 import app.services.*（allowlist 内的前缀除外）。
+
+    ast.walk 覆盖模块级与函数体内的 import——#113 的违例全部藏在函数体里，
+    只查模块级会漏。
+    """
+    allowed_prefixes = REPO_SERVICES_IMPORT_ALLOWLIST.get(path.name, set())
+    violations: list[str] = []
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    def _violation(lineno: int, desc: str) -> None:
+        if any(desc == prefix or desc.startswith(prefix + ".") for prefix in allowed_prefixes):
+            return
+        violations.append(
+            f"{path}:{lineno}: 禁止 `{desc}`——repositories 层不得 import services"
+            f"（业务编排属于 service，口径常量在 app/core/；存量豁免只减不增）"
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "app.services" or module.startswith("app.services."):
+                _violation(node.lineno, module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "app.services" or alias.name.startswith("app.services."):
+                    _violation(node.lineno, alias.name)
+
+    return violations
+
+
 def main(argv: list[str]) -> int:
-    target = Path(argv[1]) if len(argv) > 1 else API_DIR
-    if not target.exists():
-        print(f"ERROR: 目录不存在: {target}（请在 backend/ 下运行）", file=sys.stderr)
-        return 2
+    # legacy 单目录模式只跑 api 规则（保持既有用法兼容）；默认双目录全查。
+    targets = [(Path(argv[1]), "api")] if len(argv) > 1 else [(API_DIR, "api"), (REPO_DIR, "repo")]
 
     all_violations: list[str] = []
-    files = sorted(p for p in target.glob("*.py") if p.name not in ALLOWLIST)
-    for path in files:
-        all_violations.extend(check_file(path))
+    file_count = 0
+    for target, kind in targets:
+        if not target.exists():
+            print(f"ERROR: 目录不存在: {target}（请在 backend/ 下运行）", file=sys.stderr)
+            return 2
+        files = sorted(p for p in target.glob("*.py") if p.name not in ALLOWLIST)
+        file_count += len(files)
+        for path in files:
+            if kind == "api":
+                all_violations.extend(check_file(path))
+            else:
+                all_violations.extend(check_repo_services_imports(path))
 
     if all_violations:
         print("分层违规（详见 AGENTS.md「Layering Discipline」）：", file=sys.stderr)
@@ -116,7 +172,8 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    print(f"分层检查通过：{len(files)} 个 api/v1 文件无直接 ORM 查询 / 禁用 import。")
+    scopes = " + ".join(str(t) for t, _ in targets)
+    print(f"分层检查通过：{scopes} 共 {file_count} 个文件，无禁用 import / 逆向依赖。")
     return 0
 
 

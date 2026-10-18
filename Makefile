@@ -43,7 +43,7 @@ lint: lint-backend layering lint-frontend  ## 完整质量门（ruff + 分层 + 
 lint-backend:  ## 后端 ruff 全量检查 + 格式检查（手动质量门）
 	cd backend && uv run ruff check . && uv run ruff format --check .
 
-layering:  ## 分层纪律检查：api/v1 禁止直接 ORM 查询 / 禁用 import
+layering:  ## 分层纪律检查：api/v1 禁 ORM 查询；repositories 禁 services 逆向 import
 	cd backend && uv run python scripts/check_layering.py
 
 lint-frontend:  ## 前端类型检查（AGENTS.md 首选，比 npm run lint 稳）

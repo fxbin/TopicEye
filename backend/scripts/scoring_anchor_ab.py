@@ -33,11 +33,11 @@ if _ROOT not in sys.path:
 from sqlalchemy import or_, select  # noqa: E402
 
 from app.core.database import async_session  # noqa: E402
+from app.core.scoring_caliber import CONFIG, dimension_anchor_section  # noqa: E402
 from app.models.content import ContentItem  # noqa: E402
 from app.services.analysis import _select_analysis_prompts  # noqa: E402
 from app.services.llm import call_llm_json  # noqa: E402
 from app.services.llm.prompts.analysis import ANALYSIS_PROMPT_EN  # noqa: E402
-from app.services.scoring_caliber import CONFIG, dimension_anchor_section  # noqa: E402
 from app.utils.prompt_safety import sanitize_prompt_input  # noqa: E402
 
 logger = logging.getLogger("scoring_anchor_ab")

@@ -92,12 +92,14 @@ export function AdminPageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2 text-[26px] font-black leading-tight text-gray-900">
-          {Icon && <Icon size={22} className="text-primary" strokeWidth={2.2} />}
+        {/* #121 规格：标题 18px/600（原 26px font-black 与卡片标题拉差过大，
+            扫读定位不了页面结构）；icon 18px 跟随字号降档。 */}
+        <h1 className="flex items-center gap-2 text-lg font-semibold leading-tight text-ink-900">
+          {Icon && <Icon size={18} className="text-admin-accent" strokeWidth={2.2} />}
           {title}
         </h1>
         {description && (
-          <p className="mt-1.5 text-sm leading-6 text-gray-500">{description}</p>
+          <p className="mt-1.5 text-[13px] leading-6 text-ink-500">{description}</p>
         )}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -188,17 +190,39 @@ export function AdminModal({
   children,
   onClose,
   maxWidth = 480,
+  isDirty = false,
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   maxWidth?: number;
+  /**
+   * 表单已脏时拦截关闭（#121 圆桌规范，H5 错误预防 / H3 紧急出口）：
+   * 遮罩点击与 Esc 先弹内联确认条，「放弃修改」才真正 onClose。
+   */
+  isDirty?: boolean;
 }) {
-  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
+  // 拦截链：requestClose → (isDirty ? 内联确认 : onClose)。useDialogFocus 的
+  // Esc 走 requestClose，焦点管理不受确认条影响。
+  const [confirming, setConfirming] = React.useState(false);
+  const requestClose = React.useCallback(() => {
+    if (isDirty) {
+      setConfirming(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  // 脏状态被外部清掉（如保存成功后父组件直接关闭）时同步撤掉确认条
+  React.useEffect(() => {
+    if (!isDirty && confirming) setConfirming(false);
+  }, [isDirty, confirming]);
+
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, requestClose);
   const titleId = React.useId();
   return (
     <>
-      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={requestClose} />
       <div
         ref={dialogRef}
         role="dialog"
@@ -211,6 +235,31 @@ export function AdminModal({
         <Panel className="pointer-events-auto max-h-[calc(100dvh-3rem)] w-full overflow-y-auto p-6 shadow-2xl" style={{ maxWidth }}>
           <h2 id={titleId} className="mb-5 text-lg font-black text-gray-900">{title}</h2>
           {children}
+          {confirming && (
+            <div
+              role="alertdialog"
+              aria-label="未保存的修改"
+              className="mt-5 rounded-sm border border-amber-border bg-amber-light px-4 py-3"
+            >
+              <p className="mb-3 text-[13px] font-medium text-amber">有未保存的修改，关闭后将丢失。</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  className="rounded-xs border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-300"
+                >
+                  继续编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xs border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                >
+                  放弃修改
+                </button>
+              </div>
+            </div>
+          )}
         </Panel>
       </div>
     </>

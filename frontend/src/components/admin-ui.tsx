@@ -233,7 +233,19 @@ export function AdminModal({
         className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
       >
         <Panel className="pointer-events-auto max-h-[calc(100dvh-3rem)] w-full overflow-y-auto p-6 shadow-2xl" style={{ maxWidth }}>
-          <h2 id={titleId} className="mb-5 text-lg font-black text-gray-900">{title}</h2>
+          {/* 头部：标题 + 右上 ×。× 与 Esc/遮罩同走 requestClose——脏表单
+              一律先过内联确认（页脚取消按钮曾绕过此拦截，#125 非阻塞遗留） */}
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <h2 id={titleId} className="text-lg font-black text-gray-900">{title}</h2>
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label="关闭弹窗"
+              className="-mr-1.5 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-ink-500 transition hover:bg-ink-100 hover:text-ink-900"
+            >
+              <X size={15} strokeWidth={2.2} />
+            </button>
+          </div>
           {children}
           {confirming && (
             <div
@@ -253,7 +265,7 @@ export function AdminModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-xs border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                  className="rounded-xs border border-red-light bg-white px-3 py-1.5 text-xs font-medium text-red transition hover:bg-red-light"
                 >
                   放弃修改
                 </button>

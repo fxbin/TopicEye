@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * Prompt 管理（只读注册表 + 调用统计）。
+ *
+ * 视觉口径（#125 v2 换壳，与 sources / feedback 定稿一致）：文字层级 ink 三档
+ * （900 标题 / 700 正文 / 500 次要），分隔与浅底 border-ink-200 / bg-ink-100，
+ * 语义色（amber / primary）一律走项目 token，数字用 font-mono / tabular-nums。
+ */
+
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ChevronLeft,
@@ -107,7 +115,7 @@ export default function PromptsAdminPage() {
               'rounded-full px-3 py-1 text-[12px] font-semibold transition',
               sceneFilter === s
                 ? 'bg-primary text-white'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+                : 'bg-ink-100 text-ink-500 hover:bg-ink-200',
             )}
           >
             {s ? SCENE_LABELS[s] || s : '全部'}
@@ -133,11 +141,11 @@ export default function PromptsAdminPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="font-mono text-sm font-bold text-gray-900">{item.name}</span>
+                    <span className="font-mono text-sm font-bold text-ink-900">{item.name}</span>
                     <Badge tone="neutral" className="rounded px-1.5 py-0.5 text-[10px]">{item.scene}</Badge>
                   </div>
-                  <div className="text-[12px] text-gray-500">{item.description}</div>
-                  <div className="mt-1 flex items-center gap-3 text-[11px] text-gray-400">
+                  <div className="text-[12px] text-ink-500">{item.description}</div>
+                  <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-500">
                     <span className="flex items-center gap-0.5">
                       <FileCode2 size={11} />
                       {item.source_file.split(':').pop()}
@@ -157,16 +165,16 @@ export default function PromptsAdminPage() {
                       <div className="font-mono text-lg font-black text-primary">
                         {item.stats_7d.call_count_7d}
                       </div>
-                      <div className="text-[10px] text-gray-400">7天调用</div>
+                      <div className="text-[10px] text-ink-500">7天调用</div>
                       {item.stats_7d.total_cost_7d > 0 && (
-                        <div className="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-gray-400">
+                        <div className="mt-0.5 flex items-center justify-end gap-0.5 font-mono text-[10px] text-ink-500">
                           <Coins size={10} />
                           ${item.stats_7d.total_cost_7d.toFixed(2)}
                         </div>
                       )}
                     </>
                   ) : (
-                    <div className="text-[11px] text-gray-300">无调用</div>
+                    <div className="text-[11px] text-ink-300">无调用</div>
                   )}
                 </div>
               </div>
@@ -187,28 +195,28 @@ export default function PromptsAdminPage() {
         >
           {detailLoading ? (
             <div className="py-8 text-center">
-              <Loader2 size={20} className="mx-auto mb-2 animate-spin text-gray-400" />
-              <span className="text-[13px] text-gray-400">加载中...</span>
+              <Loader2 size={20} className="mx-auto mb-2 animate-spin text-ink-500" />
+              <span className="text-[13px] text-ink-500">加载中...</span>
             </div>
           ) : detail ? (
             <div className="space-y-4">
               {/* Metadata */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-sm font-bold text-gray-900">{detail.name}</span>
+                <span className="font-mono text-sm font-bold text-ink-900">{detail.name}</span>
                 <Badge tone="primary" className="rounded px-2 py-0.5 text-[10px]">{detail.scene}</Badge>
-                <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                <span className="flex items-center gap-0.5 font-mono text-[11px] text-ink-500">
                   <Hash size={10} />
                   {detail.version_hash.slice(0, 12)}
                 </span>
               </div>
-              <p className="text-[12px] text-gray-500">{detail.description}</p>
-              <div className="flex items-center gap-1 text-[11px] text-gray-400">
+              <p className="text-[12px] text-ink-500">{detail.description}</p>
+              <div className="flex items-center gap-1 text-[11px] text-ink-500">
                 <FileCode2 size={11} />
-                <code className="rounded bg-gray-100 px-1.5 py-0.5">{detail.source_file}</code>
+                <code className="rounded bg-ink-100 px-1.5 py-0.5">{detail.source_file}</code>
               </div>
 
               {/* 30-day stats */}
-              <div className="grid grid-cols-4 gap-3 rounded-sm bg-gray-50 p-3">
+              <div className="grid grid-cols-4 gap-3 rounded-sm bg-ink-100 p-3">
                 <StatBox label="30天调用" value={String(detail.stats_30d.call_count)} />
                 <StatBox label="总费用" value={`$${detail.stats_30d.total_cost.toFixed(2)}`} />
                 <StatBox label="输入Token" value={detail.stats_30d.total_input_tokens.toLocaleString()} />
@@ -218,7 +226,7 @@ export default function PromptsAdminPage() {
               {/* Daily trend */}
               {detail.daily_trend.length > 0 && (
                 <div>
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">调用趋势</div>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500">调用趋势</div>
                   <div className="flex h-8 items-end gap-0.5">
                     {detail.daily_trend.map((d) => {
                       const maxCalls = Math.max(...detail.daily_trend.map((x) => x.calls), 1);
@@ -238,14 +246,14 @@ export default function PromptsAdminPage() {
 
               {/* Full content */}
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Prompt 全文</div>
-                <pre className="max-h-[300px] overflow-auto rounded-sm bg-gray-900 p-3 text-[12px] leading-relaxed text-gray-100">
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500">Prompt 全文</div>
+                <pre className="max-h-[300px] overflow-auto rounded-sm bg-ink-900 p-3 text-[12px] leading-relaxed text-ink-100">
                   {detail.full_content}
                 </pre>
               </div>
             </div>
           ) : (
-            <div className="py-8 text-center text-[13px] text-gray-400">加载失败</div>
+            <div className="py-8 text-center text-[13px] text-ink-500">加载失败</div>
           )}
         </AdminModal>
       )}
@@ -256,8 +264,8 @@ export default function PromptsAdminPage() {
 function StatBox({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
-      <div className="font-mono text-base font-black text-gray-900">{value}</div>
-      <div className="text-[10px] text-gray-400">{label}</div>
+      <div className="font-mono text-base font-black text-ink-900">{value}</div>
+      <div className="text-[10px] text-ink-500">{label}</div>
     </div>
   );
 }

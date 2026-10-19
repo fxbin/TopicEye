@@ -119,7 +119,7 @@ export default function WebhookLogsPage() {
           <button
             onClick={() => void fetchData()}
             disabled={loading}
-            className="flex items-center gap-1 rounded-sm border border-gray-200 bg-white px-2.5 py-1 text-[12px] font-bold text-gray-600 transition hover:border-gray-300 disabled:opacity-50"
+            className="flex items-center gap-1 rounded-sm border border-ink-200 bg-white px-2.5 py-1 text-[12px] font-bold text-ink-700 transition hover:border-ink-300 disabled:opacity-50"
           >
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             刷新
@@ -137,7 +137,7 @@ export default function WebhookLogsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {loading ? (
-            <span className="text-[12px] text-gray-400">加载中...</span>
+            <span className="text-[12px] text-ink-500">加载中...</span>
           ) : (
             <>
               {buildSummaryBadges(
@@ -156,14 +156,14 @@ export default function WebhookLogsPage() {
 
         {/* Event type filter */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-bold text-gray-500">事件类型</span>
+          <span className="text-[11px] font-bold text-ink-500">事件类型</span>
           <button
             onClick={() => handleFilterChange(undefined)}
             className={cx(
               'rounded-sm border px-2 py-0.5 text-[11px] font-bold transition',
               !eventType
                 ? 'border-primary bg-primary text-white'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
+                : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700',
             )}
           >
             全部
@@ -176,7 +176,7 @@ export default function WebhookLogsPage() {
                 'rounded-sm border px-2 py-0.5 text-[11px] font-bold transition',
                 eventType === key
                   ? 'border-primary bg-primary text-white'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
+                  : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700',
               )}
             >
               {label}
@@ -190,14 +190,14 @@ export default function WebhookLogsPage() {
         <LoadingState label="加载推送日志..." />
       ) : logs.length === 0 ? (
         <Panel className="p-8 text-center">
-          <Send size={32} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-[13px] text-gray-400">暂无 Webhook 推送日志</p>
+          <Send size={32} className="mx-auto mb-3 text-ink-300" />
+          <p className="text-[13px] text-ink-500">暂无 Webhook 推送日志</p>
         </Panel>
       ) : (
         <Panel className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[12px]">
-              <thead className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
+            <table className="w-full text-left text-[12px] tabular-nums">
+              <thead className="border-b border-ink-200 bg-ink-100 text-[11px] uppercase tracking-wide text-ink-500">
                 <tr>
                   <th className="px-3 py-2.5 font-bold">状态</th>
                   <th className="px-3 py-2.5 font-bold">事件</th>
@@ -207,7 +207,7 @@ export default function WebhookLogsPage() {
                   <th className="px-3 py-2.5 font-bold">时间</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ink-100">
                 {logs.map((log) => {
                   const expanded = expandedId === log.id;
                   const hasDetail = !!(log.error_message || log.response_preview);
@@ -215,21 +215,21 @@ export default function WebhookLogsPage() {
                     <React.Fragment key={log.id}>
                       <tr
                         className={cx(
-                          'transition hover:bg-gray-50',
+                          'transition hover:bg-ink-100/60',
                           hasDetail && 'cursor-pointer',
-                          !log.success && 'bg-red-50/30',
+                          !log.success && 'bg-red-light/40',
                         )}
                         onClick={() => hasDetail && setExpandedId(expanded ? null : log.id)}
                       >
                         <td className="px-3 py-2.5">
                           {log.success ? (
-                            <CheckCircle2 size={14} className="text-teal-500" />
+                            <CheckCircle2 size={14} className="text-teal" />
                           ) : (
-                            <XCircle size={14} className="text-red-500" />
+                            <XCircle size={14} className="text-red" />
                           )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5">
-                          <span className="font-medium text-gray-700">
+                          <span className="font-medium text-ink-700">
                             {EVENT_TYPE_LABELS[log.event_type] || log.event_type}
                           </span>
                           {log.severity && log.severity !== 'warning' && (
@@ -237,15 +237,15 @@ export default function WebhookLogsPage() {
                               className={cx(
                                 'ml-1 rounded px-1 text-[9px] font-bold',
                                 log.severity === 'critical'
-                                  ? 'bg-red-100 text-red-600'
-                                  : 'bg-blue-100 text-blue-600',
+                                  ? 'bg-red-light text-red'
+                                  : 'bg-primary-light text-primary-text',
                               )}
                             >
                               {SEVERITY_LABELS[log.severity] || log.severity}
                             </span>
                           )}
                         </td>
-                        <td className="max-w-[320px] truncate px-3 py-2.5 text-gray-600" title={log.title}>
+                        <td className="max-w-[320px] truncate px-3 py-2.5 text-ink-700" title={log.title}>
                           {log.title}
                         </td>
                         <td className="px-3 py-2.5">
@@ -254,54 +254,54 @@ export default function WebhookLogsPage() {
                               className={cx(
                                 'font-mono font-bold',
                                 log.status_code >= 200 && log.status_code < 300
-                                  ? 'text-teal-600'
+                                  ? 'text-teal'
                                   : log.status_code >= 400
-                                    ? 'text-red-600'
-                                    : 'text-gray-500',
+                                    ? 'text-red'
+                                    : 'text-ink-500',
                               )}
                             >
                               {log.status_code}
                             </span>
                           ) : (
-                            <span className="text-gray-300">—</span>
+                            <span className="text-ink-300">—</span>
                           )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5">
-                          <span className="flex items-center gap-0.5 font-mono text-gray-500">
+                          <span className="flex items-center gap-0.5 font-mono tabular-nums text-ink-500">
                             <Clock size={10} />
                             {formatDuration(log.duration_ms)}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-400">
+                        <td className="whitespace-nowrap px-3 py-2.5 font-mono tabular-nums text-ink-500">
                           {formatTime(log.created_at)}
                         </td>
                       </tr>
                       {expanded && hasDetail && (
-                        <tr className="bg-gray-50/50">
+                        <tr className="bg-ink-100/60">
                           <td colSpan={6} className="px-3 py-3">
                             <div className="space-y-2">
                               {log.error_message && (
                                 <div>
-                                  <div className="mb-0.5 flex items-center gap-1 text-[10px] font-bold text-red-500">
+                                  <div className="mb-0.5 flex items-center gap-1 text-[10px] font-bold text-red">
                                     <AlertCircle size={10} />
                                     错误信息
                                   </div>
-                                  <pre className="overflow-x-auto rounded-sm bg-red-50 p-2 text-[11px] text-red-700">
+                                  <pre className="overflow-x-auto rounded-sm bg-red-light p-2 text-[11px] text-red">
                                     {log.error_message}
                                   </pre>
                                 </div>
                               )}
                               {log.response_preview && (
                                 <div>
-                                  <div className="mb-0.5 text-[10px] font-bold text-gray-500">
+                                  <div className="mb-0.5 text-[10px] font-bold text-ink-500">
                                     响应预览
                                   </div>
-                                  <pre className="overflow-x-auto rounded-sm bg-gray-100 p-2 text-[11px] text-gray-600">
+                                  <pre className="overflow-x-auto rounded-sm bg-ink-100 p-2 text-[11px] text-ink-700">
                                     {log.response_preview}
                                   </pre>
                                 </div>
                               )}
-                              <div className="text-[10px] text-gray-400">
+                              <div className="text-[10px] text-ink-500">
                                 Webhook URL: {log.webhook_url_preview}
                               </div>
                             </div>
@@ -317,15 +317,15 @@ export default function WebhookLogsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-gray-200 px-3 py-2.5">
-              <span className="text-[11px] text-gray-400">
+            <div className="flex items-center justify-between border-t border-ink-200 px-3 py-2.5">
+              <span className="text-[11px] tabular-nums text-ink-500">
                 第 {currentPage}/{totalPages} 页 · 共 {total} 条
               </span>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                   disabled={!hasPrev}
-                  className="flex items-center gap-0.5 rounded-sm border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 transition hover:border-gray-300 disabled:opacity-40"
+                  className="flex items-center gap-0.5 rounded-sm border border-ink-200 px-2 py-1 text-[11px] font-bold text-ink-700 transition hover:border-ink-300 disabled:opacity-40"
                 >
                   <ChevronLeft size={12} />
                   上一页
@@ -333,7 +333,7 @@ export default function WebhookLogsPage() {
                 <button
                   onClick={() => setOffset(offset + PAGE_SIZE)}
                   disabled={!hasNext}
-                  className="flex items-center gap-0.5 rounded-sm border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 transition hover:border-gray-300 disabled:opacity-40"
+                  className="flex items-center gap-0.5 rounded-sm border border-ink-200 px-2 py-1 text-[11px] font-bold text-ink-700 transition hover:border-ink-300 disabled:opacity-40"
                 >
                   下一页
                   <ChevronRight size={12} />

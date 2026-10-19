@@ -1508,8 +1508,8 @@ export default function SourcesPage() {
             className={cx(
               'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
               statusFilter === tab.value
-                ? 'border-orange bg-orange text-white'
-                : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                ? 'border-primary-solid bg-primary-solid text-white'
+                : 'border-gray-200 bg-white text-gray-700 hover:border-primary-border',
             )}
           >
             {tab.label}

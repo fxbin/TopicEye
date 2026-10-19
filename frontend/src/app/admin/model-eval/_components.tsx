@@ -47,9 +47,9 @@ export function StatusPill({
 
 export function InfoCell({ label, value, muted = false }: { label: string; value: React.ReactNode; muted?: boolean }) {
   return (
-    <div className="min-w-0 rounded-xs border border-gray-200 bg-gray-50 px-2.5 py-2">
-      <div className="mb-1 truncate text-[10px] text-gray-400">{label}</div>
-      <div className={cx('truncate font-mono text-xs font-black', muted ? 'text-gray-400' : 'text-gray-800')}>{value}</div>
+    <div className="min-w-0 rounded-xs border border-ink-200 bg-ink-100 px-2.5 py-2">
+      <div className="mb-1 truncate text-[10px] text-ink-500">{label}</div>
+      <div className={cx('truncate font-mono text-xs font-black', muted ? 'text-ink-500' : 'text-ink-900')}>{value}</div>
     </div>
   );
 }

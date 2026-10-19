@@ -368,7 +368,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
 
   return (
     <AdminModal title={isEdit ? '编辑模型' : '添加模型'} onClose={handleClose} maxWidth={MODAL_MAX_WIDTH}>
-      <div className="-mt-3 mb-3 text-xs leading-5 text-gray-500">
+      <div className="-mt-3 mb-3 text-xs leading-5 text-ink-500">
         {isEdit ? '修改已有模型配置。API Key 留空时不会覆盖原密钥。' : '推荐先选预设，只填写 API Key；参数默认值已经内置。'}
       </div>
 
@@ -382,7 +382,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
         {!isEdit && (
           <div className="mb-4">
             {loadingCatalog ? (
-              <div className="flex min-h-[112px] items-center justify-center gap-2 rounded-sm border border-gray-200 bg-gray-50 text-sm font-bold text-gray-500">
+              <div className="flex min-h-[112px] items-center justify-center gap-2 rounded-sm border border-ink-200 bg-ink-100 text-sm font-bold text-ink-500">
                 <Loader2 size={15} className="animate-spin" />
                 正在加载模型预设
               </div>
@@ -398,24 +398,24 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                       aria-pressed={active}
                       className={cx(
                         'min-h-[126px] rounded-sm border bg-white p-3 text-left transition',
-                        active ? 'border-primary-border bg-primary-light' : 'border-gray-200 hover:border-primary-border',
+                        active ? 'border-primary-border bg-primary-light' : 'border-ink-200 hover:border-primary-border',
                       )}
                     >
                       <div className="mb-2 flex items-start justify-between gap-2">
-                        <div className={cx('text-sm font-black', active ? 'text-primary' : 'text-gray-900')}>{preset.label}</div>
+                        <div className={cx('text-sm font-black', active ? 'text-primary' : 'text-ink-900')}>{preset.label}</div>
                         {active && <CheckCircle2 size={16} className="shrink-0 text-primary" />}
                       </div>
-                      <div className="text-xs leading-5 text-gray-500">{preset.description}</div>
+                      <div className="text-xs leading-5 text-ink-500">{preset.description}</div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
                         {['temperature', 'max_tokens'].map((field) => (
-                          <span key={field} className="rounded-xs bg-white px-2 py-1 text-[10px] font-black text-gray-500">
+                          <span key={field} className="rounded-xs bg-white px-2 py-1 text-[10px] font-black text-ink-500">
                             {catalog?.parameter_help?.[field]?.label || field} {formatPresetValue(preset.defaults[field] ?? catalog?.defaults[field])}
                           </span>
                         ))}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {preset.recommended_for.slice(0, 3).map((item) => (
-                          <span key={item} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-gray-500">
+                          <span key={item} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-ink-500">
                             {item}
                           </span>
                         ))}
@@ -433,7 +433,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <FieldLabel htmlFor="model-api-key">API Key {isEdit ? '(留空不修改)' : ''}</FieldLabel>
             <TextInput id="model-api-key" type="password" value={form.api_key} onChange={(e) => patchForm({ api_key: e.target.value })} placeholder="粘贴供应商 API Key" autoComplete="off" />
             {(needsApiBase || presetKey === 'openai_compatible') && (
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">本地推理服务不校验 Key 时，可填 ollama 等任意占位值。</div>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">本地推理服务不校验 Key 时，可填 ollama 等任意占位值。</div>
             )}
           </div>
           <div>
@@ -464,9 +464,9 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                   （models.dev，费用与上下文窗口已预填，超出窗口的调用会自动跳过该路由）
                 </div>
               ) : catalogModels.length > 0 ? (
-                <div className="mt-1 text-[10px] leading-4 text-gray-400">可从下拉选择目录模型，或手填裸模型名 / 完整 LiteLLM 路由。</div>
+                <div className="mt-1 text-[10px] leading-4 text-ink-500">可从下拉选择目录模型，或手填裸模型名 / 完整 LiteLLM 路由。</div>
               ) : (
-                <div className="mt-1 text-[10px] leading-4 text-gray-400">可填裸模型名，也可直接填完整 LiteLLM 路由。</div>
+                <div className="mt-1 text-[10px] leading-4 text-ink-500">可填裸模型名，也可直接填完整 LiteLLM 路由。</div>
               )}
             </div>
           )}
@@ -490,15 +490,15 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                   检测到 localhost：后端跑在 Docker 内时 localhost 指向容器自身，调用时会自动转换为 host.docker.internal；若仍连不上，请直接填写 http://host.docker.internal:端口。
                 </div>
               )}
-              {currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-gray-400">内置默认：{currentPreset.baseUrl}</div>}
-              {!currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-gray-400">OpenAI 兼容网关通常填写 /v1 结尾的地址；本地推理服务（Ollama / LM Studio 等）用 http://host.docker.internal:端口/v1。</div>}
+              {currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-ink-500">内置默认：{currentPreset.baseUrl}</div>}
+              {!currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-ink-500">OpenAI 兼容网关通常填写 /v1 结尾的地址；本地推理服务（Ollama / LM Studio 等）用 http://host.docker.internal:端口/v1。</div>}
             </div>
           )}
           <div>
             <FieldLabel>描述</FieldLabel>
             <TextInput value={form.description} onChange={(e) => patchForm({ description: e.target.value })} placeholder="可选备注" />
           </div>
-          <div className="grid grid-cols-3 gap-2 rounded-xs border border-gray-200 bg-gray-50 p-2.5">
+          <div className="grid grid-cols-3 gap-2 rounded-xs border border-ink-200 bg-ink-100 p-2.5">
             <InfoCell label="稳定度" value={formatPresetValue(form.temperature)} />
             <InfoCell label="输出长度" value={formatPresetValue(form.max_tokens)} />
             <InfoCell label="请求/分" value={formatPresetValue(form.requests_per_minute)} />
@@ -509,7 +509,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
           <button
             type="button"
             onClick={() => setShowAdvanced((value) => !value)}
-            className="inline-flex items-center gap-1.5 rounded-sm border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 transition hover:border-primary-border hover:text-primary"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-ink-200 bg-white px-3 py-2 text-xs font-bold text-ink-700 transition hover:border-primary-border hover:text-primary"
           >
             <SlidersHorizontal size={14} />
             {showAdvanced ? '收起专家参数' : '专家参数'}
@@ -517,13 +517,13 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
           <button
             type="button"
             onClick={restoreRecommendedDefaults}
-            className="inline-flex items-center gap-1.5 rounded-sm border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 transition hover:border-primary-border hover:text-primary"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-ink-200 bg-white px-3 py-2 text-xs font-bold text-ink-700 transition hover:border-primary-border hover:text-primary"
           >
             <RefreshCw size={14} />
             恢复推荐默认
           </button>
           {selectedPreset?.help && !showAdvanced && (
-            <span className="ml-2 align-middle text-xs font-bold text-gray-500">{selectedPreset.help}</span>
+            <span className="ml-2 align-middle text-xs font-bold text-ink-500">{selectedPreset.help}</span>
           )}
           {!showAdvanced && (
             <span className="ml-2 align-middle text-xs font-bold text-teal">
@@ -548,8 +548,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                   </optgroup>
                 ))}
               </SelectInput>
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
-                当前 LiteLLM 路由前缀：<span className="font-bold text-gray-500">{form.provider || '未设置'}</span>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+                当前 LiteLLM 路由前缀：<span className="font-bold text-ink-700">{form.provider || '未设置'}</span>
                 ；OpenAI 兼容网关目录项会自动带出 API Base。
               </div>
             </div>
@@ -564,8 +564,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <div>
               <FieldLabel>失败冷却秒数</FieldLabel>
               <TextInput type="number" value={form.cooldown_seconds} onChange={(e) => patchForm({ cooldown_seconds: parseInt(e.target.value, 10) || 300 })} />
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
-                <span className="font-bold text-gray-500">{parameterMeta(catalog, 'cooldown_seconds')}</span>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'cooldown_seconds')}</span>
                 <br />
                 {catalog?.parameter_help?.cooldown_seconds?.plain || catalog?.help.cooldown_tip || '失败后暂停一段时间再重试。'}
                 {parameterChangeHint(catalog, 'cooldown_seconds') && (
@@ -587,8 +587,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <div>
               <FieldLabel>稳定度</FieldLabel>
               <TextInput type="number" step="0.1" value={form.temperature} onChange={(e) => patchForm({ temperature: parseFloat(e.target.value) || 0.3 })} />
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
-                <span className="font-bold text-gray-500">{parameterMeta(catalog, 'temperature')}</span>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'temperature')}</span>
                 <br />
                 {catalog?.parameter_help?.temperature?.plain || catalog?.help.temperature_tip || '越低越稳定，分析和摘要通常用 0.2-0.4。'}
                 {parameterChangeHint(catalog, 'temperature') && (
@@ -602,8 +602,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <div>
               <FieldLabel>输出长度</FieldLabel>
               <TextInput type="number" value={form.max_tokens} onChange={(e) => patchForm({ max_tokens: parseInt(e.target.value, 10) || 2000 })} />
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
-                <span className="font-bold text-gray-500">{parameterMeta(catalog, 'max_tokens')}</span>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'max_tokens')}</span>
                 <br />
                 {catalog?.parameter_help?.max_tokens?.plain || catalog?.help.max_tokens_tip || '控制单次输出长度。'}
                 {parameterChangeHint(catalog, 'max_tokens') && (
@@ -622,15 +622,15 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                 onChange={(e) => patchForm({ context_window: parseOptionalNumber(e.target.value) })}
                 placeholder="目录预填；留空不做调用前预检"
               />
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
                 配置后超出窗口的请求会自动跳过该路由并尝试下一候选；留空表示不预检。
               </div>
             </div>
             <div>
               <FieldLabel>每分钟请求数</FieldLabel>
               <TextInput type="number" value={form.requests_per_minute} onChange={(e) => patchForm({ requests_per_minute: parseInt(e.target.value, 10) || 30 })} />
-              <div className="mt-1 text-[10px] leading-4 text-gray-400">
-                <span className="font-bold text-gray-500">{parameterMeta(catalog, 'requests_per_minute')}</span>
+              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'requests_per_minute')}</span>
                 <br />
                 {catalog?.parameter_help?.requests_per_minute?.plain || catalog?.help.rpm_tip || '每分钟请求数。个人 Key 建议从 10-30 开始。'}
                 {parameterChangeHint(catalog, 'requests_per_minute') && (
@@ -654,7 +654,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               <TextInput type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
             </div>
             <div className="flex items-end">
-              <div className="w-full rounded-xs border border-gray-200 bg-gray-50 px-2.5 py-2 text-[11px] leading-4 text-gray-400">
+              <div className="w-full rounded-xs border border-ink-200 bg-ink-100 px-2.5 py-2 text-[11px] leading-4 text-ink-500">
                 费用估算按输入未命中价和输出价计算；留空时后端用模型目录价（USD）估算。
               </div>
             </div>
@@ -669,8 +669,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
       )}
 
       {confirmDiscard ? (
-        <div className="mt-5 flex items-center justify-between gap-3 rounded-xs border border-gray-200 bg-gray-50 px-3 py-2.5">
-          <span className="text-xs font-bold text-gray-600">已填写的内容尚未保存，确定放弃？</span>
+        <div className="mt-5 flex items-center justify-between gap-3 rounded-xs border border-ink-200 bg-ink-100 px-3 py-2.5">
+          <span className="text-xs font-bold text-ink-700">已填写的内容尚未保存，确定放弃？</span>
           <div className="flex shrink-0 gap-2">
             <Button type="button" variant="secondary" onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
             <Button type="button" variant="danger" onClick={() => onClose()}>放弃修改</Button>

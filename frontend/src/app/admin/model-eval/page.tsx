@@ -1,5 +1,14 @@
 'use client';
 
+/**
+ * AI 引擎工作台（模型配置 / A/B 测评 / 用量统计 / 测评历史 四 tab）。
+ *
+ * 视觉口径（#125 v2 换壳，与 sources / feedback 定稿一致）：文字层级 ink 三档
+ * （900 标题 / 700 正文 / 500 次要），卡片与分段控件 border-ink-200，浅底
+ * bg-ink-100；状态一律 Badge tone（StatusPill）或语义 token，指标数字
+ * font-mono / tabular-nums。输入类控件统一走 @/components/form 公共配方。
+ */
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
@@ -159,14 +168,14 @@ export default function ModelEvalPage() {
               onClick={() => setTab(item.key)}
               className={cx(
                 'rounded-md border p-3.5 text-left transition',
-                active ? 'border-primary-border bg-primary-light' : 'border-gray-200 bg-white hover:border-primary-border',
+                active ? 'border-primary-border bg-primary-light' : 'border-ink-200 bg-white hover:border-primary-border',
               )}
             >
               <div className="mb-1.5 flex items-center gap-2">
-                <Icon size={15} className={active ? 'text-primary' : 'text-gray-500'} strokeWidth={2.2} />
-                <span className={cx('text-[13px] font-black', active ? 'text-primary' : 'text-gray-800')}>{item.label}</span>
+                <Icon size={15} className={active ? 'text-primary' : 'text-ink-500'} strokeWidth={2.2} />
+                <span className={cx('text-[13px] font-black', active ? 'text-primary' : 'text-ink-900')}>{item.label}</span>
               </div>
-              <div className="text-[11px] leading-4 text-gray-500">{item.desc}</div>
+              <div className="text-[11px] leading-4 text-ink-500">{item.desc}</div>
             </button>
           );
         })}

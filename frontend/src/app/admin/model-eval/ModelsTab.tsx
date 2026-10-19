@@ -68,7 +68,7 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
     <div className="flex flex-col gap-3.5">
       <Surface title="模型配置" icon={Settings2} hint={`${models.length} 个模型 · ${enabledCount} 个启用 · ${keyedCount} 个可调用`}>
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-          <div className="text-[13px] leading-7 text-gray-500">
+          <div className="text-[13px] leading-7 text-ink-500">
             维护运行时路由链、渠道分组和可参与测评的候选模型。禁用模型不会参与自动任务和 A/B 测评。
           </div>
           <Button type="button" variant="primary" onClick={() => setShowAdd(true)} className="w-fit whitespace-nowrap">
@@ -114,8 +114,8 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
                   {!m.enabled && <StatusPill>已禁用</StatusPill>}
                   {!m.api_key_set && m.api_base && <StatusPill tone="amber"><KeyRound size={11} />缺 Key</StatusPill>}
                 </div>
-                <div className="text-base font-black leading-5 text-gray-900">{m.name}</div>
-                <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{m.model_id}</div>
+                <div className="text-base font-black leading-5 text-ink-900">{m.name}</div>
+                <div className="mt-1 truncate font-mono text-[11px] text-ink-500">{m.model_id}</div>
                 {m.resolved_model !== m.model_id && (
                   <div className="mt-1 truncate font-mono text-[11px] text-primary">
                     实际请求 {m.resolved_model}
@@ -149,12 +149,12 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
 
             {m.cost_per_1m_input_cache_hit !== null && m.cost_per_1m_input_cache_hit !== undefined && (
               <div className="flex items-center justify-between gap-3 rounded-xs border border-teal-border bg-teal-light px-2.5 py-2 text-[11px]">
-                <span className="font-black text-gray-500">输入缓存命中</span>
+                <span className="font-black text-ink-500">输入缓存命中</span>
                 <span className="font-mono font-black text-teal">{formatPerMillion(m.cost_per_1m_input_cache_hit)}</span>
               </div>
             )}
 
-            {m.description && <div className="text-xs leading-5 text-gray-500">{m.description}</div>}
+            {m.description && <div className="text-xs leading-5 text-ink-500">{m.description}</div>}
 
             {testResult[m.id] && (
               <div
@@ -172,7 +172,7 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
               </div>
             )}
 
-            <Toolbar className="border-t border-gray-100 pt-3">
+            <Toolbar className="border-t border-ink-100 pt-3">
               <Button type="button" variant="secondary" onClick={() => handleToggle(m)}>{m.enabled ? '禁用' : '启用'}</Button>
               <Button type="button" variant="secondary" onClick={() => handleTest(m.id)} disabled={testing === m.id} className="text-primary">
                 {testing === m.id ? '测试中...' : '测试'}

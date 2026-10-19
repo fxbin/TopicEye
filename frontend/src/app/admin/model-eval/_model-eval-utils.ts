@@ -71,7 +71,7 @@ export const toneClasses: Record<Tone, { text: string; border: string; bg: strin
   amber: { text: 'text-amber', border: 'border-amber-border', bg: 'bg-amber-light', metric: 'text-amber' },
   purple: { text: 'text-purple', border: 'border-purple-border', bg: 'bg-purple-light', metric: 'text-purple' },
   red: { text: 'text-red', border: 'border-red-light', bg: 'bg-red-light', metric: 'text-red' },
-  neutral: { text: 'text-gray-600', border: 'border-gray-200', bg: 'bg-gray-50', metric: 'text-gray-900' },
+  neutral: { text: 'text-ink-700', border: 'border-ink-200', bg: 'bg-ink-100', metric: 'text-ink-900' },
 };
 
 export function formatNumber(value: number): string {

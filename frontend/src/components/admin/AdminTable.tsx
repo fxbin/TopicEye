@@ -128,8 +128,8 @@ export function AdminTable<T>({
           <AdminTableSkeleton columns={columns.length} />
         ) : error ? (
           <div className="flex flex-col items-center justify-center px-6 py-10 text-center">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
-              <AlertTriangle size={18} className="text-red-500" strokeWidth={1.8} />
+            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-red-light">
+              <AlertTriangle size={18} className="text-red" strokeWidth={1.8} />
             </div>
             <div className="text-sm font-medium text-ink-700">加载失败</div>
             <p className="mt-1 max-w-[360px] break-all text-xs leading-5 text-ink-500">{error}</p>

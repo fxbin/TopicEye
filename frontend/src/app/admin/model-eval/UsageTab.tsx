@@ -94,15 +94,15 @@ export function UsageTab({
                 <Panel key={item.model_id ?? item.model_name} className="p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-black text-gray-900">{item.model_name}</div>
-                      <div className="mt-1 text-[11px] text-gray-400">{item.provider || 'unknown'} · {item.calls} 次调用 · 平均 {item.avg_duration_ms}ms</div>
+                      <div className="truncate text-[13px] font-black text-ink-900">{item.model_name}</div>
+                      <div className="mt-1 text-[11px] tabular-nums text-ink-500">{item.provider || 'unknown'} · {item.calls} 次调用 · 平均 {item.avg_duration_ms}ms</div>
                     </div>
                     <div className="shrink-0 text-right">
                       <div className="font-mono text-[13px] font-black text-primary">{formatCurrency(item.estimated_cost)}</div>
-                      <div className="mt-1 text-[10px] text-gray-400">{formatTokens(totalTokens)} tokens</div>
+                      <div className="mt-1 text-[10px] text-ink-500">{formatTokens(totalTokens)} tokens</div>
                     </div>
                   </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-ink-100">
                     <div className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" style={{ width: `${width}%` }} />
                   </div>
                   <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -123,15 +123,15 @@ export function UsageTab({
             {usage.by_prompt.map((item) => {
               const width = Math.max(4, Math.round((item.estimated_cost / maxPromptCost) * 100));
               return (
-                <div key={item.prompt_type} className="border-b border-gray-100 pb-2.5 last:border-b-0">
+                <div key={item.prompt_type} className="border-b border-ink-100 pb-2.5 last:border-b-0">
                   <div className="flex justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-black text-gray-900">{promptTypeLabel[item.prompt_type] || item.prompt_type}</div>
-                      <div className="mt-1 text-[11px] text-gray-400">{item.calls} 次 · {formatTokens(item.tokens_input + item.tokens_output)} tokens</div>
+                      <div className="truncate text-[13px] font-black text-ink-900">{promptTypeLabel[item.prompt_type] || item.prompt_type}</div>
+                      <div className="mt-1 text-[11px] tabular-nums text-ink-500">{item.calls} 次 · {formatTokens(item.tokens_input + item.tokens_output)} tokens</div>
                     </div>
                     <div className="shrink-0 font-mono text-[13px] font-black text-primary">{formatCurrency(item.estimated_cost)}</div>
                   </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink-100">
                     <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
                   </div>
                 </div>

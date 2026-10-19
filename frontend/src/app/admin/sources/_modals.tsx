@@ -50,15 +50,14 @@ export function AddSourceModal({
   onCreate: () => void;
   onClose: () => void;
 }) {
-  // #121：表单脏时 ESC/遮罩关闭先过 AdminModal 内联确认，防误丢输入
+  // #121：表单脏时 ESC/遮罩/× 关闭都过 AdminModal 内联确认。
+  // 页脚不再放「取消」——它直连 onClose 会绕过脏确认（#125 非阻塞遗留），
+  // 关闭路径统一收敛到右上 × / Esc / 点遮罩。
   const isDirty = useFormDirty(form, emptyForm);
   return (
     <AdminModal title="添加信源" onClose={onClose} isDirty={isDirty}>
       <SourceForm form={form} setForm={setForm} />
       <AdminModalFooter>
-        <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
-          取消
-        </Button>
         <Button type="button" variant="primary" onClick={onCreate} disabled={submitting || !form.name.trim()} className="px-5">
           {submitting ? '提交中…' : '添加'}
         </Button>
@@ -212,15 +211,13 @@ export function EditSourceModal({
   onUpdate: () => void;
   onClose: () => void;
 }) {
-  // #121：编辑表单脏时 ESC/遮罩关闭先过内联确认（H5 错误预防）
+  // #121：编辑表单脏时 ESC/遮罩/× 关闭都过内联确认（H5）；页脚不放
+  // 「取消」，关闭路径统一到右上 ×（否则取消会绕过脏确认，#125 遗留）
   const isDirty = useFormDirty(form);
   return (
     <AdminModal title="编辑信源" onClose={onClose} isDirty={isDirty}>
       <SourceForm form={form} setForm={setForm} />
       <AdminModalFooter>
-        <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
-          取消
-        </Button>
         <Button type="button" variant="primary" onClick={onUpdate} disabled={submitting || !form.name.trim()} className="px-5">
           {submitting ? '保存中…' : '保存'}
         </Button>

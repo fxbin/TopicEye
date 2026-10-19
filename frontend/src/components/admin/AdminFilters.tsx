@@ -6,7 +6,8 @@ import { cx } from '@/components/ui';
 
 /**
  * 后台统一筛选行（#121 圆桌规范）：
- * - 搜索 300ms 防抖后提交（onSearchChange 收到的是防抖后的值）
+ * - 搜索 300ms 防抖后提交（onSearchChange 收到的是防抖后的值）；无搜索语义的
+ *   页面（API 不支持关键词）可不传搜索 props，只当筛选行容器用
  * - 下拉等筛选控件由 children 传入，保持各页自由度
  * - 已选条件用 chips 呈现（H1 当前过滤状态可见），单 chip 可移除（H6 不靠回忆），
  *   末尾常显「清空全部」（H3 紧急出口）
@@ -24,8 +25,9 @@ export function AdminFilters({
   className,
 }: {
   searchPlaceholder?: string;
-  searchValue: string;
-  onSearchChange: (value: string) => void;
+  /** 与 onSearchChange 同时传入才渲染搜索框。 */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
   debounceMs?: number;
   searchClassName?: string;
   /** 筛选下拉等控件。 */
@@ -36,11 +38,12 @@ export function AdminFilters({
 }) {
   const [local, setLocal] = useState(searchValue);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasSearch = searchValue !== undefined && onSearchChange !== undefined;
 
   // 外部清空（如「清空全部」）时同步输入框
   useEffect(() => {
-    setLocal(searchValue);
-  }, [searchValue]);
+    if (hasSearch) setLocal(searchValue ?? '');
+  }, [searchValue, hasSearch]);
 
   useEffect(() => {
     return () => {
@@ -50,28 +53,31 @@ export function AdminFilters({
 
   const handleInput = (value: string) => {
     setLocal(value);
+    if (!onSearchChange) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => onSearchChange(value), debounceMs);
   };
 
   return (
     <div className={cx('flex flex-wrap items-center gap-2', className)}>
-      <div className={cx('relative', searchClassName)}>
-        <Search
-          size={14}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-        <input
-          type="search"
-          value={local}
-          onChange={(e) => handleInput(e.target.value)}
-          placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder ?? '搜索'}
-          className="h-9 w-56 rounded-xs border border-ink-200 bg-white pl-8 pr-3 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
-        />
-      </div>
+      {hasSearch && (
+        <div className={cx('relative', searchClassName)}>
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={local}
+            onChange={(e) => handleInput(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder ?? '搜索'}
+            className="h-9 w-56 rounded-xs border border-ink-200 bg-white pl-8 pr-3 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
+          />
+        </div>
+      )}
       {children}
       {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
     </div>

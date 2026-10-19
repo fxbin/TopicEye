@@ -91,7 +91,7 @@ export default function AdminTopBar() {
                   type="button"
                   role="menuitem"
                   onClick={handleLogout}
-                  className="flex w-full items-center gap-2 rounded-xs px-2.5 py-2 text-left text-xs font-medium text-red-600 transition hover:bg-red-50"
+                  className="flex w-full items-center gap-2 rounded-xs px-2.5 py-2 text-left text-xs font-medium text-red transition hover:bg-red-light"
                 >
                   <LogOut size={13} strokeWidth={2} aria-hidden="true" />
                   退出登录

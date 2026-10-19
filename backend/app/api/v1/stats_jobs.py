@@ -3,6 +3,10 @@
 
 不走 DuckDB —— job_execution_logs 在 OLTP DB（PG/SQLite），
 和 stats.py 的 DuckDB 分析路径独立。复用 json_cache 做轻量缓存。
+
+2026-10-19（#121）：admin-only。流水线健康是运维信息，消费端已迁至
+管理后台 /admin/jobs（前端迁移见同 issue）；此前挂在用户侧 /stats/jobs
+只是历史摆位，用户侧并无入口。router 级守卫与 users.py 同模式。
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_admin_user
 from app.core.config import settings
 from app.core.database import async_session
 from app.repositories.job_execution_log_repo import JobExecutionLogRepository
@@ -21,7 +25,7 @@ from app.services.json_cache import get_cached_json, set_cached_json
 router = APIRouter(
     prefix="/stats/jobs",
     tags=["stats"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_admin_user)],
 )
 
 

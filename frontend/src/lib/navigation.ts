@@ -106,6 +106,7 @@ const EXTRA_ADMIN_ONLY_PATHS = [
   '/admin/feedback',
   '/admin/settings',
   '/admin/users',
+  '/admin/jobs',
 ];
 
 // 显式声明的公开路径（未登录可访问）。OAuth 回调页与 MCP 授权同意页

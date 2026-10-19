@@ -68,14 +68,14 @@ export default function AdminDashboardPage() {
               onClick={() => router.push(card.href)}
               className="group text-left"
             >
-              <Panel className="h-full p-4 transition hover:border-amber-300 hover:shadow-[0_4px_16px_rgba(217,119,6,0.08)]">
+              <Panel className="h-full p-4 transition hover:border-primary-border hover:shadow-[0_4px_16px_rgba(255,107,53,0.08)]">
                 <div className="mb-2.5 flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-amber-50 text-amber-600 transition group-hover:bg-amber-100">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-ink-100 text-ink-700 transition group-hover:bg-primary-light group-hover:text-primary-text">
                     <Icon size={18} strokeWidth={2} />
                   </div>
-                  <span className="text-[15px] font-bold text-gray-900">{card.label}</span>
+                  <span className="text-sm font-semibold text-ink-900">{card.label}</span>
                 </div>
-                <p className="text-[12px] leading-5 text-gray-500">
+                <p className="text-xs leading-5 text-ink-500">
                   {card.description}
                 </p>
               </Panel>

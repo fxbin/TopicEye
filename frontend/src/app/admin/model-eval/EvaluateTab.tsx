@@ -115,7 +115,7 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
                 title={runnable ? undefined : '该模型缺少 API Key，暂不能参与测评'}
                 className={cx(
                   'rounded-sm border px-3 py-2 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50',
-                  active ? 'border-primary bg-primary-light text-primary' : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border',
+                  active ? 'border-primary bg-primary-light text-primary' : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
                 )}
               >
                 {m.name}
@@ -136,7 +136,7 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
               onClick={() => setPromptType(pt.value)}
               className={cx(
                 'rounded-xs border px-3 py-1.5 text-[13px] font-bold transition',
-                promptType === pt.value ? 'border-primary bg-primary-light text-primary' : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border',
+                promptType === pt.value ? 'border-primary bg-primary-light text-primary' : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
               )}
             >
               {pt.label}
@@ -156,25 +156,25 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
             {result.results.map((r) => (
               <Panel key={r.id} className={cx('flex flex-col gap-2 p-4', r.status === 'DONE' ? 'border-teal-border' : 'border-red-light')}>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="truncate text-sm font-black text-gray-900">{r.model_name}</div>
+                  <div className="truncate text-sm font-black text-ink-900">{r.model_name}</div>
                   <StatusPill tone={r.status === 'DONE' ? 'teal' : 'red'}>{r.status === 'DONE' ? '完成' : '失败'}</StatusPill>
                 </div>
-                <div className="text-xs text-gray-500">{r.status === 'DONE' ? `${r.duration_ms}ms` : r.error_message?.slice(0, 60)}</div>
+                <div className="text-xs tabular-nums text-ink-500">{r.status === 'DONE' ? `${r.duration_ms}ms` : r.error_message?.slice(0, 60)}</div>
                 {r.tokens_input !== null && (
-                  <div className="inline-flex items-center gap-1.5 text-[11px] text-gray-400">
+                  <div className="inline-flex items-center gap-1.5 text-[11px] tabular-nums text-ink-500">
                     Token: {r.tokens_input}
                     <ArrowRight size={12} strokeWidth={2} />
                     {r.tokens_output}
                   </div>
                 )}
                 {r.response_text && (
-                  <div className="max-h-[200px] overflow-auto whitespace-pre-wrap rounded-xs bg-gray-50 p-2.5 text-xs leading-5 text-gray-700">
+                  <div className="max-h-[200px] overflow-auto whitespace-pre-wrap rounded-xs bg-ink-100 p-2.5 text-xs leading-5 text-ink-700">
                     {r.response_text}
                   </div>
                 )}
-                {r.auto_score !== null && <div className="text-[11px] text-gray-500">自动评分: {r.auto_score}/5</div>}
+                {r.auto_score !== null && <div className="text-[11px] tabular-nums text-ink-500">自动评分: {r.auto_score}/5</div>}
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-gray-500">人工评分:</span>
+                  <span className="text-[11px] text-ink-500">人工评分:</span>
                   {[1, 2, 3, 4, 5].map((s) => (
                     <button
                       key={s}
@@ -182,8 +182,8 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
                       onClick={() => handleScore(r.id, s)}
                       disabled={scoringId === r.id}
                       className={cx(
-                        'h-7 w-7 rounded-xs border text-sm transition disabled:cursor-wait disabled:opacity-60',
-                        r.quality_score === s ? 'border-primary bg-primary-light text-primary' : 'border-gray-200 bg-white text-gray-500 hover:border-primary-border',
+                        'h-7 w-7 rounded-xs border text-sm tabular-nums transition disabled:cursor-wait disabled:opacity-60',
+                        r.quality_score === s ? 'border-primary bg-primary-light text-primary' : 'border-ink-200 bg-white text-ink-500 hover:border-primary-border',
                       )}
                     >
                       {s}

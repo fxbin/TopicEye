@@ -249,7 +249,7 @@ export default function AdminUpdatesPage() {
 
         {(items || []).length === 0 ? (
           <Panel className="p-8 text-center">
-            <p className="text-[14px] text-gray-500">还没有发版记录，点右上角「新建发版」开始。</p>
+            <p className="text-[14px] text-ink-500">还没有发版记录，点右上角「新建发版」开始。</p>
           </Panel>
         ) : (
           <>
@@ -260,7 +260,8 @@ export default function AdminUpdatesPage() {
                 value={versionQuery}
                 onChange={(e) => setVersionQuery(e.target.value)}
                 placeholder="按版本号搜索"
-                className="flex-1 min-w-[180px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
+                aria-label="按版本号搜索"
+                className="flex-1 min-w-[180px] rounded-sm border border-ink-200 bg-white px-3 py-1 text-[12px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
               />
               {([
                 { value: 'all', label: '全部', count: (items || []).length },
@@ -272,17 +273,18 @@ export default function AdminUpdatesPage() {
                   key={tab.value}
                   type="button"
                   onClick={() => setStatusFilter(tab.value as 'all' | ProductUpdateStatus)}
+                  aria-pressed={statusFilter === tab.value}
                   className={cx(
                     'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
                     statusFilter === tab.value
-                      ? 'border-orange bg-orange text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                      ? 'border-primary-solid bg-primary-solid text-white'
+                      : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
                   )}
                 >
                   {tab.label}
                   <span className={cx(
-                    'rounded-full px-1.5 text-[10px]',
-                    statusFilter === tab.value ? 'bg-white/20' : 'bg-gray-100',
+                    'rounded-full px-1.5 text-[10px] tabular-nums',
+                    statusFilter === tab.value ? 'bg-white/20' : 'bg-ink-100',
                   )}>
                     {tab.count}
                   </span>
@@ -298,7 +300,7 @@ export default function AdminUpdatesPage() {
               if (filtered.length === 0) {
                 return (
                   <Panel className="p-6 text-center">
-                    <p className="text-[13px] text-gray-500">
+                    <p className="text-[13px] text-ink-500">
                       {versionQuery.trim()
                         ? `没有匹配「${versionQuery}」的发版记录`
                         : statusFilter === 'all'
@@ -344,10 +346,10 @@ export default function AdminUpdatesPage() {
 
 function StatTile({ label, value, tone }: { label: string; value: number; tone: Tone }) {
   return (
-    <div className="rounded-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
-      <div className="mb-1 text-[12px] text-gray-500">{label}</div>
+    <div className="rounded-sm border border-ink-200 bg-white px-4 py-3 shadow-sm">
+      <div className="mb-1 text-[12px] text-ink-500">{label}</div>
       <div className="flex items-end gap-2">
-        <span className="font-mono text-2xl font-semibold text-gray-900">{value}</span>
+        <span className="font-mono text-2xl font-semibold tabular-nums text-ink-900">{value}</span>
         <Badge tone={tone} className="mb-0.5">条</Badge>
       </div>
     </div>
@@ -360,14 +362,14 @@ function UpdateAdminRow({ item, onEdit, onDelete }: { item: ProductUpdateItem; o
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <span className="font-mono text-[15px] font-black text-gray-900">{item.version}</span>
+            <span className="font-mono text-[15px] font-black text-ink-900">{item.version}</span>
             <Badge tone={STATUS_TONES[item.status]}>{STATUS_LABELS[item.status]}</Badge>
-            <span className="text-[12px] text-gray-500">
+            <span className="text-[12px] tabular-nums text-ink-500">
               {item.shipped_at ? `发布于 ${item.shipped_at.slice(0, 10)}` :
                 item.target_date ? `计划 ${item.target_date}` : '近期规划'}
             </span>
           </div>
-          <p className="text-[12px] text-gray-500">
+          <p className="text-[12px] tabular-nums text-ink-500">
             {item.items.length} 个更新项
           </p>
         </div>
@@ -412,8 +414,8 @@ function UpdateEditor({
         className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center p-4 sm:p-6"
       >
       <div className="pointer-events-auto flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl">
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
-          <h2 id="update-editor-title" className="text-base font-semibold text-gray-900">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-ink-200 px-5 py-3.5">
+          <h2 id="update-editor-title" className="text-base font-semibold text-ink-900">
             {editing ? `编辑 v${editing.version}` : '新建发版'}
           </h2>
           <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1" aria-label="关闭发版编辑器">
@@ -428,28 +430,29 @@ function UpdateEditor({
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-gray-700">版本号 *</label>
+              <label className="mb-1 block text-[12px] font-medium text-ink-700">版本号 *</label>
               <input
                 type="text"
                 value={draft.version}
                 onChange={(e) => onChange({ ...draft, version: e.target.value })}
                 placeholder="如 v0.2.0"
-                className="w-full rounded-sm border border-gray-200 bg-white px-3 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                className="w-full rounded-sm border border-ink-200 bg-white px-3 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-gray-700">状态</label>
+              <label className="mb-1 block text-[12px] font-medium text-ink-700">状态</label>
               <div className="flex gap-1.5">
                 {STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
                     onClick={() => onChange({ ...draft, status: opt.value })}
+                    aria-pressed={draft.status === opt.value}
                     className={cx(
                       'rounded-sm border px-3 py-1 text-[12px] transition',
                       draft.status === opt.value
-                        ? 'border-orange bg-orange text-white'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                        ? 'border-primary-solid bg-primary-solid text-white'
+                        : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
                     )}
                   >
                     {opt.label}
@@ -458,51 +461,52 @@ function UpdateEditor({
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-gray-700">计划日期</label>
+              <label className="mb-1 block text-[12px] font-medium text-ink-700">计划日期</label>
               <input
                 type="date"
                 value={draft.target_date}
                 onChange={(e) => onChange({ ...draft, target_date: e.target.value })}
-                className="w-full rounded-sm border border-gray-200 bg-white px-3 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                className="w-full rounded-sm border border-ink-200 bg-white px-3 py-1.5 text-[13px] text-ink-900 focus:border-admin-accent focus:outline-none"
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-gray-700">发布日期</label>
+              <label className="mb-1 block text-[12px] font-medium text-ink-700">发布日期</label>
               <input
                 type="date"
                 value={draft.shipped_at}
                 onChange={(e) => onChange({ ...draft, shipped_at: e.target.value })}
-                className="w-full rounded-sm border border-gray-200 bg-white px-3 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                className="w-full rounded-sm border border-ink-200 bg-white px-3 py-1.5 text-[13px] text-ink-900 focus:border-admin-accent focus:outline-none"
               />
             </div>
           </div>
 
           <div className="mt-5">
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-[13px] font-semibold text-gray-900">更新项 *</h3>
+              <h3 className="text-[13px] font-semibold text-ink-900">更新项 *</h3>
               <Button type="button" variant="secondary" onClick={onAddItem} className="!px-2.5 !py-1 text-[12px]">
                 <Plus size={12} />添加一项
               </Button>
             </div>
             {draft.items.length === 0 ? (
-              <p className="rounded-sm bg-gray-50 px-3 py-3 text-center text-[12px] text-gray-500">
+              <p className="rounded-sm bg-ink-100 px-3 py-3 text-center text-[12px] text-ink-500">
                 还没有更新项
               </p>
             ) : (
               <ul className="space-y-2">
                 {draft.items.map((it, idx) => (
-                  <li key={idx} className="rounded-sm border border-gray-200 bg-white p-2.5">
+                  <li key={idx} className="rounded-sm border border-ink-200 bg-white p-2.5">
                     <div className="mb-1.5 flex items-center gap-1.5">
                       {KIND_OPTIONS.map((opt) => (
                         <button
                           key={opt.value}
                           type="button"
                           onClick={() => onUpdateItem(idx, { kind: opt.value })}
+                          aria-pressed={it.kind === opt.value}
                           className={cx(
                             'rounded-sm border px-2 py-0.5 text-[11px] transition',
                             it.kind === opt.value
-                              ? 'border-orange bg-orange text-white'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
+                              ? 'border-primary-solid bg-primary-solid text-white'
+                              : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
                           )}
                         >
                           {opt.label}
@@ -523,7 +527,7 @@ function UpdateEditor({
                     onChange={(e) => onUpdateItem(idx, { title: e.target.value })}
                     maxLength={200}
                     placeholder="更新项标题"
-                    className="mb-2 w-full rounded-sm border border-gray-200 bg-white px-2.5 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                    className="mb-2 w-full rounded-sm border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
                   />
                   <textarea
                       value={it.description}
@@ -531,7 +535,7 @@ function UpdateEditor({
                       rows={2}
                       maxLength={500}
                       placeholder="描述这次更新（用户看到的文案）"
-                      className="w-full rounded-sm border border-gray-200 bg-white px-2.5 py-1.5 text-[13px] focus:border-orange focus:outline-none"
+                      className="w-full rounded-sm border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
                     />
                   </li>
                 ))}
@@ -539,7 +543,7 @@ function UpdateEditor({
             )}
           </div>
         </div>
-        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-ink-200 px-5 py-3">
           <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
           <Button type="button" onClick={onSave} disabled={saving}>
             {saving && <Loader2 size={14} className="animate-spin" />}

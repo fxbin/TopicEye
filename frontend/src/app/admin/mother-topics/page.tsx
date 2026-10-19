@@ -4,13 +4,25 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Settings } from 'lucide-react';
 import { motherTopicsApi, type MotherTopic } from '@/lib/api';
-import { Badge, Button, Panel, Toolbar } from '@/components/ui';
+import { Badge, Button, Panel, Toolbar, type Tone } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { FieldLabel } from '@/components/form';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 
 /* ── helpers ── */
+
+// 内容类型标签色：原为散落的 hex 手写色，现按色系就近映射到 Badge tone
+// （「观点」原值 #8B5CF6 与项目 purple token 同值；「教程」原 sky 蓝无对应
+// token，落 neutral 保持安静），未知类型一律回 neutral。
+const CONTENT_TYPE_TONE: Record<string, Tone> = {
+  '工具评测': 'primary',
+  '方法论': 'teal',
+  '观察': 'amber',
+  '随笔': 'red',
+  '教程': 'neutral',
+  '观点': 'purple',
+};
 
 function TopicCard({
   topic,
@@ -51,39 +63,25 @@ function TopicCard({
     setEditing(false);
   };
 
-  const contentTypeColor: Record<string, string> = {
-    '工具评测': '#6366f1',
-    '方法论': '#10b981',
-    '观察': '#f59e0b',
-    '随笔': '#ec4899',
-    '教程': '#0ea5e9',
-    '观点': '#8b5cf6',
-  };
-
   return (
     <Panel className="mb-4 p-5">
       {/* card header */}
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <h3 className="m-0 text-base font-bold text-gray-900">{topic.name}</h3>
+            <h3 className="m-0 text-base font-bold text-ink-900">{topic.name}</h3>
             {topic.content_type && (
-              <span style={{
-                background: `${contentTypeColor[topic.content_type] || '#6366f1'}15`,
-                color: contentTypeColor[topic.content_type] || '#6366f1',
-              }} className="rounded-sm px-2 py-0.5 text-[11px] font-medium">
-                {topic.content_type}
-              </span>
+              <Badge tone={CONTENT_TYPE_TONE[topic.content_type] ?? 'neutral'}>{topic.content_type}</Badge>
             )}
           </div>
           {topic.description && (
-            <p className="m-0 mt-0.5 text-xs leading-5 text-gray-500">
+            <p className="m-0 mt-0.5 text-xs leading-5 text-ink-500">
               {topic.description}
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">权重 {topic.weight}</span>
+          <span className="text-xs tabular-nums text-ink-500">权重 {topic.weight}</span>
           {!topic.is_active && (
             <Badge tone="red" className="rounded-sm px-2 py-0.5 text-[11px]">已停用</Badge>
           )}
@@ -98,7 +96,7 @@ function TopicCard({
             <input
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
+              className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
             />
           </div>
           <div>
@@ -106,7 +104,7 @@ function TopicCard({
             <input
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
-              className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
+              className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
             />
           </div>
           <div>
@@ -115,9 +113,9 @@ function TopicCard({
               value={form.keywords}
               onChange={e => setForm({ ...form, keywords: e.target.value })}
               rows={4}
-              className="w-full resize-y rounded-xs border border-gray-300 px-2.5 py-1.5 font-mono text-xs outline-none focus:border-primary"
+              className="w-full resize-y rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 font-mono text-xs text-ink-900 outline-none focus:border-admin-accent"
             />
-            <div className="mt-1 text-[11px] text-gray-400">
+            <div className="mt-1 text-[11px] tabular-nums text-ink-500">
               当前 {form.keywords.split(',').filter(k => k.trim()).length} 个关键词
             </div>
           </div>
@@ -131,7 +129,7 @@ function TopicCard({
                 max="3"
                 value={form.weight}
                 onChange={e => setForm({ ...form, weight: parseFloat(e.target.value) })}
-                className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
+                className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
               />
             </div>
             <div className="flex-1">
@@ -139,7 +137,7 @@ function TopicCard({
               <input
                 value={form.target_reader}
                 onChange={e => setForm({ ...form, target_reader: e.target.value })}
-                className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
+                className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
               />
             </div>
           </div>
@@ -168,7 +166,7 @@ function TopicCard({
         <>
           {/* keywords display */}
           <div className="mb-3">
-            <div className="mb-1.5 text-xs font-semibold text-gray-700">
+            <div className="mb-1.5 text-xs font-semibold tabular-nums text-ink-700">
               关键词 ({topic.keywords.length})
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -176,7 +174,7 @@ function TopicCard({
                 <Badge key={kw} tone="neutral" className="rounded-full px-2.5 py-1 text-xs">{kw}</Badge>
               ))}
               {topic.keywords.length > 20 && (
-                <span className="px-2 py-1 text-xs text-gray-400">
+                <span className="px-2 py-1 text-xs tabular-nums text-ink-500">
                   +{topic.keywords.length - 20} 更多
                 </span>
               )}
@@ -185,13 +183,13 @@ function TopicCard({
 
           {/* target reader */}
           {topic.target_reader && (
-            <div className="mb-3 text-xs text-gray-500">
+            <div className="mb-3 text-xs text-ink-500">
               <b>目标读者:</b> {topic.target_reader}
             </div>
           )}
 
           {/* actions */}
-          <Toolbar className="mt-3 border-t border-gray-100 pt-3">
+          <Toolbar className="mt-3 border-t border-ink-100 pt-3">
             <Button
               type="button"
               onClick={() => setEditing(true)}
@@ -297,8 +295,8 @@ export default function MotherTopicsConfigPage() {
       )}
 
       {/* Scoring explanation */}
-      <Panel className="mt-8 bg-gray-50 p-4">
-        <h3 className="mb-3 text-sm font-bold text-gray-700">打分公式详解</h3>
+      <Panel className="mt-8 bg-ink-100 p-4">
+        <h3 className="mb-3 text-sm font-bold text-ink-700">打分公式详解</h3>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2">
           {[
             ['母题匹配', '0.0~1.0（匹配1个=0.3，2个=0.6，3个+=1.0）'],
@@ -307,8 +305,8 @@ export default function MotherTopicsConfigPage() {
             ['最终得分', 'keyword_score × weight + freshness × 0.1'],
           ].map(([label, desc]) => (
             <div key={label} className="flex gap-2 text-xs">
-              <span className="min-w-[60px] font-semibold text-gray-700">{label}</span>
-              <span className="text-gray-500">{desc}</span>
+              <span className="min-w-[60px] font-semibold text-ink-700">{label}</span>
+              <span className="text-ink-500">{desc}</span>
             </div>
           ))}
         </div>

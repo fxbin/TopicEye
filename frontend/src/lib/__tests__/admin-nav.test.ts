@@ -38,26 +38,31 @@ describe('ADMIN_NAV_ITEMS 结构不变式', () => {
   /**
    * 独立复核 M7：结构性不变量（唯一性/派生一致）锁不住**字面值**——
    * 把 `updates` 的 label+href 同时改掉，179 条测试无一报警。
-   * 这里把 15 项逐字锁死：改导航必须是有意识的动作，并同步改这条期望。
+   * 这里把全部导航项逐字锁死：改导航必须是有意识的动作，并同步改这条期望。
+   *
+   * 2026-10-18（#121 后台改版）：新增 group 字段（四组领域分组）；
+   * 「内容事件治理」→「事件治理」、「系统母题模板库」→「母题库」缩名。
+   * 2026-10-19（owner 验收反馈定稿）：任务统计从用户侧 /stats/jobs 迁入
+   * 后台壳（/admin/jobs「任务监控」，系统组），旧路径留服务端跳转桩。
    */
   it('15 项字面值逐项锁死（改导航必须同步改本表）', () => {
-    const actual = ADMIN_NAV_ITEMS.map((i) => [i.id, i.label, i.href, i.inShell]);
+    const actual = ADMIN_NAV_ITEMS.map((i) => [i.id, i.label, i.href, i.inShell, i.group ?? null]);
     expect(actual).toEqual([
-      ['dashboard', '概览', '/admin', true],
-      ['monitor', '监控大盘', '/dashboard', false],
-      ['sources', '信源管理', '/admin/sources', true],
-      ['contents', '内容管理', '/admin/contents', true],
-      ['content-events', '内容事件治理', '/admin/content-events', true],
-      ['users', '用户管理', '/admin/users', true],
-      ['model-eval', 'AI 引擎', '/admin/model-eval', true],
-      ['mother-topics', '系统母题模板库', '/admin/mother-topics', true],
-      ['updates', '发版记录', '/admin/updates', true],
-      ['prompts', 'Prompt 管理', '/admin/prompts', true],
-      ['scoring-dashboard', '评分看板', '/admin/scoring-dashboard', true],
-      ['evidence', '可信线索', '/admin/evidence', true],
-      ['feedback', '反馈工作台', '/admin/feedback', true],
-      ['webhook-logs', 'Webhook 日志', '/admin/webhook-logs', true],
-      ['settings', '系统设置', '/admin/settings', true],
+      ['dashboard', '概览', '/admin', true, null],
+      ['sources', '信源管理', '/admin/sources', true, 'content'],
+      ['contents', '内容管理', '/admin/contents', true, 'content'],
+      ['content-events', '事件治理', '/admin/content-events', true, 'content'],
+      ['mother-topics', '母题库', '/admin/mother-topics', true, 'content'],
+      ['model-eval', 'AI 引擎', '/admin/model-eval', true, 'eval'],
+      ['scoring-dashboard', '评分看板', '/admin/scoring-dashboard', true, 'eval'],
+      ['evidence', '可信线索', '/admin/evidence', true, 'eval'],
+      ['users', '用户管理', '/admin/users', true, 'users'],
+      ['feedback', '反馈工作台', '/admin/feedback', true, 'users'],
+      ['updates', '发版记录', '/admin/updates', true, 'users'],
+      ['monitor', '任务监控', '/admin/jobs', true, 'system'],
+      ['prompts', 'Prompt 管理', '/admin/prompts', true, 'system'],
+      ['webhook-logs', 'Webhook 日志', '/admin/webhook-logs', true, 'system'],
+      ['settings', '系统设置', '/admin/settings', true, 'system'],
     ]);
   });
 });
@@ -68,14 +73,14 @@ describe('面包屑映射与清单一致（#88 核心不变量）', () => {
     expect(missing).toEqual([]);
   });
 
-  it('映射表不含任何壳外路径（监控大盘由 window.open 单独打开）', () => {
+  it('映射表不含任何壳外路径（清单全壳内，防回归）', () => {
     expect(ADMIN_PAGE_LABELS['/dashboard']).toBeUndefined();
   });
 
-  it('壳内 14 项、壳外 1 项（/dashboard 监控大盘）', () => {
-    expect(ADMIN_IN_SHELL_PATHS).toHaveLength(14);
+  it('壳内 15 项、壳外 0 项（任务监控已迁入壳内 /admin/jobs）', () => {
+    expect(ADMIN_IN_SHELL_PATHS).toHaveLength(15);
     expect(ADMIN_NAV_ITEMS).toHaveLength(15);
-    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell).map((i) => i.href)).toEqual(['/dashboard']);
+    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell)).toEqual([]);
   });
 
   it('#88 修复的四个页面都有真实页面名，不再回退到「管理」', () => {
@@ -114,7 +119,7 @@ describe('findAdminPageLabel', () => {
     expect(findAdminPageLabel('/totally/unknown')).toBe(ADMIN_FALLBACK_LABEL);
   });
 
-  it('壳外路径（监控大盘）不在壳内时也走兜底', () => {
-    expect(findAdminPageLabel('/dashboard')).toBe(ADMIN_FALLBACK_LABEL);
+  it('用户侧路径不在壳内清单，走兜底', () => {
+    expect(findAdminPageLabel('/stats/jobs')).toBe(ADMIN_FALLBACK_LABEL);
   });
 });

@@ -23,28 +23,43 @@ export interface AdminNavEntry {
   href: string;
   /**
    * 是否在 admin 壳内渲染并出现在面包屑里。
-   * `/dashboard`（监控大盘）由侧边栏 `window.open` 在新标签页打开，
-   * 脱离本壳，因此不参与面包屑映射。
+   *
+   * 2026-10-19（owner 验收反馈定稿）：「任务监控」从用户侧 /stats/jobs
+   * 迁入本壳（/admin/jobs）——流水线健康信息本就属于后台；旧路径保留
+   * 服务端跳转桩。清单自此前不再有壳外项。
    */
   inShell: boolean;
+  /**
+   * 导航分组（圆桌 2026-10-18，issue #121）：领域名词做组名（可猜中，
+   * Nielsen 6「识别而非回忆」），组间顺序按操作频率排、组内按管道序。
+   * 概览不归组，独立置顶。
+   */
+  group?: 'content' | 'eval' | 'users' | 'system';
 }
+
+export const ADMIN_NAV_GROUP_LABELS: Readonly<Record<NonNullable<AdminNavEntry['group']>, string>> = Object.freeze({
+  content: '内容',
+  eval: '评测',
+  users: '用户',
+  system: '系统',
+});
 
 export const ADMIN_NAV_ITEMS: readonly AdminNavEntry[] = [
   { id: 'dashboard', label: '概览', href: '/admin', inShell: true },
-  { id: 'monitor', label: '监控大盘', href: '/dashboard', inShell: false },
-  { id: 'sources', label: '信源管理', href: '/admin/sources', inShell: true },
-  { id: 'contents', label: '内容管理', href: '/admin/contents', inShell: true },
-  { id: 'content-events', label: '内容事件治理', href: '/admin/content-events', inShell: true },
-  { id: 'users', label: '用户管理', href: '/admin/users', inShell: true },
-  { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', inShell: true },
-  { id: 'mother-topics', label: '系统母题模板库', href: '/admin/mother-topics', inShell: true },
-  { id: 'updates', label: '发版记录', href: '/admin/updates', inShell: true },
-  { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', inShell: true },
-  { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', inShell: true },
-  { id: 'evidence', label: '可信线索', href: '/admin/evidence', inShell: true },
-  { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', inShell: true },
-  { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', inShell: true },
-  { id: 'settings', label: '系统设置', href: '/admin/settings', inShell: true },
+  { id: 'sources', label: '信源管理', href: '/admin/sources', inShell: true, group: 'content' },
+  { id: 'contents', label: '内容管理', href: '/admin/contents', inShell: true, group: 'content' },
+  { id: 'content-events', label: '事件治理', href: '/admin/content-events', inShell: true, group: 'content' },
+  { id: 'mother-topics', label: '母题库', href: '/admin/mother-topics', inShell: true, group: 'content' },
+  { id: 'model-eval', label: 'AI 引擎', href: '/admin/model-eval', inShell: true, group: 'eval' },
+  { id: 'scoring-dashboard', label: '评分看板', href: '/admin/scoring-dashboard', inShell: true, group: 'eval' },
+  { id: 'evidence', label: '可信线索', href: '/admin/evidence', inShell: true, group: 'eval' },
+  { id: 'users', label: '用户管理', href: '/admin/users', inShell: true, group: 'users' },
+  { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', inShell: true, group: 'users' },
+  { id: 'updates', label: '发版记录', href: '/admin/updates', inShell: true, group: 'users' },
+  { id: 'monitor', label: '任务监控', href: '/admin/jobs', inShell: true, group: 'system' },
+  { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', inShell: true, group: 'system' },
+  { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', inShell: true, group: 'system' },
+  { id: 'settings', label: '系统设置', href: '/admin/settings', inShell: true, group: 'system' },
 ];
 
 /** 壳内路由 → 页面名。由清单派生，不手写第二份。 */

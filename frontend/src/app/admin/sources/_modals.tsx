@@ -18,11 +18,24 @@ import React from 'react';
 import { Upload } from 'lucide-react';
 import { Badge, Button, Panel } from '@/components/ui';
 import { AdminModal, AdminModalFooter } from '@/components/admin-ui';
-import SourceForm, { type FormState } from '@/components/SourceForm';
+import SourceForm, { emptyForm, type FormState } from '@/components/SourceForm';
 import type { BackendSource } from '@/components/SourceRow';
 import { sourceTypeLabel } from '@/lib/source-sync-board';
 import type { SourceBatchImportItem } from '@/lib/api';
 import { useDialogFocus } from '@/components/useDialogFocus';
+
+/**
+ * 脏检测：与挂载时快照比较（两个模态都是条件挂载，每次打开重新取基线）。
+ * 添加态再叠加「与空表单比较」——add 关闭不重置 form，重开时残留值仍算脏。
+ */
+function useFormDirty(form: FormState, extraCleanBaseline?: FormState) {
+  const mountBaseline = React.useRef(form);
+  return React.useMemo(() => {
+    if (JSON.stringify(form) === JSON.stringify(mountBaseline.current)) return false;
+    if (extraCleanBaseline && JSON.stringify(form) === JSON.stringify(extraCleanBaseline)) return false;
+    return true;
+  }, [form, extraCleanBaseline]);
+}
 
 export function AddSourceModal({
   form,
@@ -37,8 +50,10 @@ export function AddSourceModal({
   onCreate: () => void;
   onClose: () => void;
 }) {
+  // #121：表单脏时 ESC/遮罩关闭先过 AdminModal 内联确认，防误丢输入
+  const isDirty = useFormDirty(form, emptyForm);
   return (
-    <AdminModal title="添加信源" onClose={onClose}>
+    <AdminModal title="添加信源" onClose={onClose} isDirty={isDirty}>
       <SourceForm form={form} setForm={setForm} />
       <AdminModalFooter>
         <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
@@ -197,8 +212,10 @@ export function EditSourceModal({
   onUpdate: () => void;
   onClose: () => void;
 }) {
+  // #121：编辑表单脏时 ESC/遮罩关闭先过内联确认（H5 错误预防）
+  const isDirty = useFormDirty(form);
   return (
-    <AdminModal title="编辑信源" onClose={onClose}>
+    <AdminModal title="编辑信源" onClose={onClose} isDirty={isDirty}>
       <SourceForm form={form} setForm={setForm} />
       <AdminModalFooter>
         <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">

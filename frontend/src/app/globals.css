@@ -41,6 +41,29 @@
   --color-page: #F7F7F8;
   --color-text: #1A1A2E;
 
+  /* ── 管理后台（工具面）token —— 只加不改，前台不受影响 ──
+   * 圆桌 2026-10-18（issue #121）：后台走工具面路线——ink 纯墨深侧边栏、
+   * 品牌橙为唯一点缀；语义色（danger/warn）与品牌色双通道隔离不互借。
+   * ink 三档 + 200/100 浅档供浅底分隔与表头使用。
+   */
+  --color-ink-900: #1D1D20;
+  --color-ink-800: #2A2A2E;
+  --color-ink-700: #3F3F46;
+  --color-ink-500: #71717A;
+  --color-ink-300: #D4D4D8;
+  --color-ink-200: #E4E4E7;
+  --color-ink-100: #F4F4F5;
+
+  /* 后台点缀色：指向品牌橙，语义上只承担「导航激活 / 主操作」。 */
+  --color-admin-accent: #FF6B35;
+
+  /* 深底徽章/警示：文字用 300 系亮色保证对 ink-900 的 4.5:1 对比度，
+   * 底为同色 12% 透明。与浅底语义色（red/amber 系）分属两个使用面。 */
+  --color-admin-danger-text: #FCA5A5;
+  --color-admin-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-admin-warn-text: #FCD34D;
+  --color-admin-warn-bg: rgba(217, 119, 6, 0.12);
+
   --font-sans: var(--font-dm-sans), -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
   --font-serif-display: var(--font-display), "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
@@ -163,6 +186,35 @@ svg {
   background: #94A3B8;
   border: 2px solid transparent;
   background-clip: content-box;
+}
+
+/* 骨架屏 shimmer：1.6s 循环；reduced-motion 时降级为静态块（见下方媒体查询） */
+@keyframes admin-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.admin-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    rgba(29, 29, 32, 0.06) 25%,
+    rgba(29, 29, 32, 0.1) 50%,
+    rgba(29, 29, 32, 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shimmer {
+    animation: none;
+    background-image: none;
+    background-color: rgba(29, 29, 32, 0.06);
+  }
 }
 
 /* Radar ping animation */

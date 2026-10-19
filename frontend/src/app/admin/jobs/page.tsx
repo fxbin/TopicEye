@@ -145,7 +145,7 @@ export default function JobStatsPage() {
           tone={successTone(totals?.success_rate ?? 1)}
         />
         <KpiCard
-          icon={<Timer className="h-5 w-5 text-amber-600" />}
+          icon={<Timer className="h-5 w-5 text-amber" />}
           label="平均耗时"
           value={formatDuration(totals?.avg_duration_ms)}
           hint={totals ? `最长 ${formatDuration(totals.max_duration_ms)}` : ''}
@@ -202,7 +202,7 @@ export default function JobStatsPage() {
             <button
               type="button"
               onClick={() => setSelectedJobKey(null)}
-              className="text-[12px] text-orange hover:underline"
+              className="text-[12px] text-primary-text hover:underline"
             >
               清除筛选
             </button>

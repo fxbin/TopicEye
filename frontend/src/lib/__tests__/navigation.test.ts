@@ -116,6 +116,9 @@ describe('派生路径集合', () => {
   it('ADMIN_ONLY_PATHS / USER_ONLY_PATHS 覆盖关键路径', () => {
     expect(ADMIN_ONLY_PATHS).toContain('/admin/contents');
     expect(ADMIN_ONLY_PATHS).toContain('/admin/model-eval');
+    // #121：任务统计从用户侧迁入后台，权限随之收紧
+    expect(ADMIN_ONLY_PATHS).toContain('/admin/jobs');
+    expect(requiredAccessForPath('/admin/jobs')).toBe('admin');
     expect(USER_ONLY_PATHS).toContain('/profile');
     expect(USER_ONLY_PATHS).toContain('/daily');
   });

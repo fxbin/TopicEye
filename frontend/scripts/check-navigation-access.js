@@ -85,7 +85,7 @@ for (const pathName of ['/daily', '/weekly', '/monthly', '/stats', '/my-topics',
   assert.strictEqual(canAccessPath(pathName, user, enabledFeatures), true, `${pathName} should allow user`);
 }
 
-for (const pathName of ['/admin', '/admin/sources', '/admin/model-eval', '/admin/contents', '/admin/mother-topics']) {
+for (const pathName of ['/admin', '/admin/sources', '/admin/model-eval', '/admin/contents', '/admin/mother-topics', '/admin/jobs']) {
   assert(ADMIN_ONLY_PATHS.includes(pathName), `ADMIN_ONLY_PATHS should include ${pathName}`);
   assert.strictEqual(requiredAccessForPath(pathName), 'admin');
   assert.strictEqual(canAccessPath(pathName, null), false, `${pathName} should require admin login`);

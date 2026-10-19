@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { CheckCircle2, KeyRound, Loader2, LogIn, Mail, Plus, Server, Settings, Trash2, Webhook } from 'lucide-react';
-import { useAppContext } from '@/components/ClientLayout';
 import { settingsApi } from '@/lib/api';
 import type { EmailProviderConfig, NotificationWebhookConfig, OAuthProviderItem, WebhookItem, WebhookItemUpdate } from '@/lib/api/_analytics';
 import { NOTIFICATION_EVENT_TYPES } from '@/lib/api/_analytics';
-import { Badge, Button, Panel } from '@/components/ui';
+import { Badge, Button, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
-import { LoadingState } from '@/components/StateView';
+import { AdminBlockSkeleton, AdminEmptyState, toast } from '@/components/admin';
 
 const DEFAULT_FROM_NAME = 'TopicEye';
 
@@ -26,8 +26,95 @@ const SMTP_NOTES: string[] = [
   '部分邮箱（如 QQ、163）需使用授权码而非登录密码',
 ];
 
+/** 通知推送说明项（原独立说明 Panel 合并进分组卡脚注） */
+const WEBHOOK_NOTES: React.ReactNode[] = [
+  '支持配置多个 webhook，每个独立配置推送事件类型',
+  '支持飞书 / 钉钉 / Slack 群机器人 incoming webhook',
+  'webhook URL 含 token，以加密方式存储，不会明文保存',
+  '推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 今日精选推送 / 测试发送',
+  <>
+    环境变量 <code className="rounded-xs bg-ink-100 px-1 py-0.5 font-mono text-[11px]">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，不参与事件过滤）
+  </>,
+];
+
+/** 分组锚点导航：id 与下方分组卡 Panel 的 id 一一对应 */
+const SECTION_LINKS = [
+  { id: 'settings-email', label: '邮件服务' },
+  { id: 'settings-oauth', label: '第三方登录' },
+  { id: 'settings-webhook', label: '通知推送' },
+] as const;
+
+// ── 表单基样式（#121 新原语：ink token + admin-accent 聚焦，替代散落的 gray/primary 旧写法） ──
+const FIELD_LABEL_CLASS = 'mb-1.5 block text-xs font-medium text-ink-500';
+const INPUT_CLASS =
+  'h-9 w-full rounded-xs border border-ink-200 bg-white px-3 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none';
+const INPUT_ICON_WRAPPER_CLASS =
+  'flex items-center rounded-xs border border-ink-200 bg-white px-3 focus-within:border-admin-accent focus-within:outline-none';
+
+/** 分组卡：带锚点 id 的 Panel，统一「图标 + 标题 + 右侧状态/操作」头部 */
+function SettingsSection({
+  id,
+  icon: Icon,
+  title,
+  actions,
+  description,
+  children,
+}: {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  actions?: React.ReactNode;
+  description?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Panel id={id} className="p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon size={15} className="shrink-0 text-ink-500" strokeWidth={2.2} />
+          <h2 className="text-sm font-black text-ink-900">{title}</h2>
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+      {description && <p className="mb-4 text-xs leading-5 text-ink-500">{description}</p>}
+      {children}
+    </Panel>
+  );
+}
+
+/** 表单字段：统一 label + 控件结构 */
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={cx('block', className)}>
+      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** 卡内说明脚注：合并原独立「配置说明」Panel */
+function SectionNotes({ title, items }: { title: string; items: readonly React.ReactNode[] }) {
+  return (
+    <div className="mt-5 border-t border-ink-100 pt-4">
+      <h3 className="mb-2 text-xs font-bold text-ink-700">{title}</h3>
+      <ul className="list-disc space-y-1.5 pl-4 text-xs leading-5 text-ink-500">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function AdminSettingsPage() {
-  const { currentUser } = useAppContext();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState<EmailProviderConfig | null>(null);
@@ -38,7 +125,6 @@ export default function AdminSettingsPage() {
   const [smtpUsername, setSmtpUsername] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
   const [smtpUseSsl, setSmtpUseSsl] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 通知推送 webhook 状态（多 webhook 列表）
@@ -47,15 +133,16 @@ export default function AdminSettingsPage() {
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookTesting, setWebhookTesting] = useState(false);
   const [webhookTestResult, setWebhookTestResult] = useState<string | null>(null);
-  const [webhookNotice, setWebhookNotice] = useState<string | null>(null);
   const [webhookError, setWebhookError] = useState<string | null>(null);
 
   // 第三方登录（OAuth）provider 配置状态
   const [oauthProviders, setOauthProviders] = useState<OAuthProviderItem[]>([]);
   const [oauthForms, setOauthForms] = useState<Record<string, { client_id: string; client_secret: string; enabled: boolean }>>({});
   const [oauthSaving, setOauthSaving] = useState<string | null>(null);
-  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // 锚点导航当前高亮分组
+  const [activeSection, setActiveSection] = useState<string>(SECTION_LINKS[0].id);
 
   const syncOauthForms = (providers: OAuthProviderItem[]) => {
     setOauthProviders(providers);
@@ -98,6 +185,33 @@ export default function AdminSettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // 锚点导航高亮：分组卡进入视口上部激活带即点亮。
+  // 用 IntersectionObserver 而非 window scroll——本页滚动发生在 AdminPageShell
+  // 内部滚动容器里，scroll 事件不会冒泡到 window。
+  useEffect(() => {
+    const sections = SECTION_LINKS
+      .map(({ id }) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    if (sections.length === 0) return;
+
+    const visible = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
+        }
+        // 激活带内可见的组取文档序最后一组：下滑时新组一进带即点亮
+        const next = [...SECTION_LINKS].reverse().find(({ id }) => visible.has(id));
+        if (next) setActiveSection(next.id);
+      },
+      // 激活带 = 视口上部约 1/3，其余留给阅读区
+      { rootMargin: '0px 0px -66% 0px' },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
+
   // 切换 SSL 时联动常用端口
   const handleSslToggle = (checked: boolean) => {
     setSmtpUseSsl(checked);
@@ -108,7 +222,6 @@ export default function AdminSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    setNotice(null);
     try {
       await settingsApi.updateEmailProvider({
         provider: 'smtp',
@@ -121,7 +234,7 @@ export default function AdminSettingsPage() {
         smtp_use_ssl: smtpUseSsl,
       });
       setSmtpPassword('');
-      setNotice('保存成功');
+      toast.success('已保存');
       const fresh = await settingsApi.getEmailProvider();
       setConfig(fresh);
     } catch (err) {
@@ -134,10 +247,9 @@ export default function AdminSettingsPage() {
   const handleSaveWebhook = async () => {
     setWebhookSaving(true);
     setWebhookError(null);
-    setWebhookNotice(null);
     try {
       await settingsApi.updateNotificationWebhook({ webhooks });
-      setWebhookNotice('保存成功');
+      toast.success('已保存');
       const fresh = await settingsApi.getNotificationWebhook();
       setWebhookConfig(fresh);
       setWebhooks(
@@ -166,14 +278,13 @@ export default function AdminSettingsPage() {
     if (!form) return;
     setOauthSaving(provider);
     setOauthError(null);
-    setOauthNotice(null);
     try {
       await settingsApi.updateOAuthProvider(provider, {
         client_id: form.client_id,
         client_secret: form.client_secret,
         enabled: form.enabled,
       });
-      setOauthNotice(`${OAUTH_PROVIDER_LABELS[provider] || provider} 已保存`);
+      toast.success('已保存');
       const fresh = await settingsApi.getOAuthProviders();
       syncOauthForms(fresh.providers);
     } catch (err) {
@@ -232,410 +343,429 @@ export default function AdminSettingsPage() {
     }
   };
 
-  // admin 守卫已收敛到 app/admin/layout.tsx
-
-  if (loading) {
-    return (
-      <AdminPageShell maxWidth={860}>
-        <LoadingState label="加载中…" minHeight="200px" panel />
-      </AdminPageShell>
-    );
-  }
+  // admin 守卫已收敛到 app/admin/layout.tsx；本页 loading 期间保持
+  // 分组卡结构渲染骨架（布局稳定防跳变），不做全屏 spinner 早退。
 
   return (
-    <AdminPageShell maxWidth={860}>
+    <AdminPageShell maxWidth={1280}>
       <AdminPageHeader
         title="系统设置"
         icon={Settings}
-        description="配置系统级邮件服务，用于注册验证码等事务邮件发送"
+        description="邮件服务、第三方登录与通知推送的系统级配置，按分组独立保存"
       />
 
-        <Panel className="p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-base font-black text-gray-900">邮件服务</h2>
-            {config?.smtp_password_configured ? (
+      <div className="flex items-start gap-6">
+        {/* 分组卡主列 */}
+        <div className="min-w-0 flex-1 space-y-5">
+          {error && (
+            <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
+          )}
+
+          {/* ── 邮件服务 ── */}
+          <SettingsSection
+            id="settings-email"
+            icon={Mail}
+            title="邮件服务"
+            actions={!loading && (config?.smtp_password_configured ? (
               <Badge tone="teal">
                 <CheckCircle2 size={12} className="mr-1" />
                 已配置
               </Badge>
             ) : (
               <Badge tone="amber">未配置</Badge>
-            )}
-          </div>
-
-          {/* 通用字段：发件人 */}
-          <label className="mt-4 block">
-            <span className="mb-1.5 block text-xs font-black text-gray-500">发件人邮箱</span>
-            <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
-              <Mail size={15} className="shrink-0 text-gray-400" />
-              <input
-                value={fromEmail}
-                onChange={(e) => setFromEmail(e.target.value)}
-                type="email"
-                placeholder="noreply@yourdomain.com"
-                className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-              />
-            </div>
-          </label>
-
-          <label className="mt-4 block">
-            <span className="mb-1.5 block text-xs font-black text-gray-500">发件人名称</span>
-            <input
-              value={fromName}
-              onChange={(e) => setFromName(e.target.value)}
-              className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-            />
-          </label>
-
-          {/* SMTP 配置 */}
-              <label className="mt-4 block">
-                <span className="mb-1.5 block text-xs font-black text-gray-500">SMTP 服务器</span>
-                <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
-                  <Server size={15} className="shrink-0 text-gray-400" />
-                  <input
-                    value={smtpHost}
-                    onChange={(e) => setSmtpHost(e.target.value)}
-                    placeholder="smtp.qq.com"
-                    className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-                  />
-                </div>
-              </label>
-
-              <div className="mt-4 flex gap-3">
-                <label className="block flex-1">
-                  <span className="mb-1.5 block text-xs font-black text-gray-500">端口</span>
-                  <input
-                    value={smtpPort}
-                    onChange={(e) => setSmtpPort(Number(e.target.value) || 587)}
-                    type="number"
-                    className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-                  />
-                </label>
-                <div className="flex w-32 items-end pb-2.5">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs font-black text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={smtpUseSsl}
-                      onChange={(e) => handleSslToggle(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    SSL 直连
-                  </label>
-                </div>
-              </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                勾选 SSL 通常用 465；不勾选则用 STARTTLS（587）。会自动联动端口。
-              </p>
-
-              <label className="mt-4 block">
-                <span className="mb-1.5 block text-xs font-black text-gray-500">SMTP 用户名</span>
-                <input
-                  value={smtpUsername}
-                  onChange={(e) => setSmtpUsername(e.target.value)}
-                  placeholder="通常为发件人邮箱"
-                  className="h-10 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-                />
-              </label>
-
-              <label className="mt-4 block">
-                <span className="mb-1.5 block text-xs font-black text-gray-500">SMTP 密码 / 授权码</span>
-                <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
-                  <KeyRound size={15} className="shrink-0 text-gray-400" />
-                  <input
-                    value={smtpPassword}
-                    onChange={(e) => setSmtpPassword(e.target.value)}
-                    type="password"
-                    placeholder={
-                      config?.smtp_password_configured
-                        ? `已配置（${config.smtp_password_preview}****）留空不修改`
-                        : '输入密码或授权码'
-                    }
-                    className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-                  />
-                </div>
-              </label>
-          {error && (
-            <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>
-          )}
-          {notice && (
-            <AdminNoticeBanner tone="teal" onClose={() => setNotice(null)}>{notice}</AdminNoticeBanner>
-          )}
-
-          <div className="mt-5 flex justify-end">
-            <Button variant="primary" onClick={handleSave} disabled={saving || !fromEmail.trim()}>
-              {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {saving ? '保存中...' : '保存配置'}
-            </Button>
-          </div>
-        </Panel>
-
-        <Panel className="p-5">
-          <h3 className="mb-2 text-sm font-black text-gray-700">配置说明</h3>
-          <ul className="space-y-1.5 text-xs text-gray-500">
-            {SMTP_NOTES.map((note) => (
-              <li key={note}>{note}</li>
             ))}
-          </ul>
-        </Panel>
+          >
+            {loading ? (
+              <AdminBlockSkeleton lines={7} />
+            ) : (
+              <>
+                <Field label="发件人邮箱" className="mt-1">
+                  <div className={INPUT_ICON_WRAPPER_CLASS}>
+                    <Mail size={14} className="shrink-0 text-ink-500" />
+                    <input
+                      value={fromEmail}
+                      onChange={(e) => setFromEmail(e.target.value)}
+                      type="email"
+                      placeholder="noreply@yourdomain.com"
+                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                    />
+                  </div>
+                </Field>
 
-        {/* ── 第三方登录（OAuth provider 凭据，DB 单一事实源 #94） ── */}
-        <Panel className="p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <LogIn size={16} className="text-gray-500" />
-              <h2 className="text-base font-black text-gray-900">第三方登录</h2>
-            </div>
-            {oauthProviders.some((p) => p.enabled && p.client_secret_configured) ? (
+                <Field label="发件人名称" className="mt-4">
+                  <input
+                    value={fromName}
+                    onChange={(e) => setFromName(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </Field>
+
+                <Field label="SMTP 服务器" className="mt-4">
+                  <div className={INPUT_ICON_WRAPPER_CLASS}>
+                    <Server size={14} className="shrink-0 text-ink-500" />
+                    <input
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      placeholder="smtp.qq.com"
+                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                    />
+                  </div>
+                </Field>
+
+                <div className="mt-4 flex gap-3">
+                  <Field label="端口" className="min-w-0 flex-1">
+                    <input
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(Number(e.target.value) || 587)}
+                      type="number"
+                      className={INPUT_CLASS}
+                    />
+                  </Field>
+                  <div className="flex w-32 items-end pb-2.5">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-ink-700">
+                      <input
+                        type="checkbox"
+                        checked={smtpUseSsl}
+                        onChange={(e) => handleSslToggle(e.target.checked)}
+                        className="h-4 w-4 rounded border-ink-300 accent-ink-900"
+                      />
+                      SSL 直连
+                    </label>
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-ink-500">
+                  勾选 SSL 通常用 465；不勾选则用 STARTTLS（587）。会自动联动端口。
+                </p>
+
+                <Field label="SMTP 用户名" className="mt-4">
+                  <input
+                    value={smtpUsername}
+                    onChange={(e) => setSmtpUsername(e.target.value)}
+                    placeholder="通常为发件人邮箱"
+                    className={INPUT_CLASS}
+                  />
+                </Field>
+
+                <Field label="SMTP 密码 / 授权码" className="mt-4">
+                  <div className={INPUT_ICON_WRAPPER_CLASS}>
+                    <KeyRound size={14} className="shrink-0 text-ink-500" />
+                    <input
+                      value={smtpPassword}
+                      onChange={(e) => setSmtpPassword(e.target.value)}
+                      type="password"
+                      placeholder={
+                        config?.smtp_password_configured
+                          ? `已配置（${config.smtp_password_preview}****）留空不修改`
+                          : '输入密码或授权码'
+                      }
+                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                    />
+                  </div>
+                </Field>
+
+                <div className="mt-5 flex justify-end">
+                  <Button type="button" variant="primary" onClick={handleSave} disabled={saving || !fromEmail.trim()}>
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                    {saving ? '保存中...' : '保存配置'}
+                  </Button>
+                </div>
+
+                <SectionNotes title="配置说明" items={SMTP_NOTES} />
+              </>
+            )}
+          </SettingsSection>
+
+          {/* ── 第三方登录（OAuth provider 凭据，DB 单一事实源 #94） ── */}
+          <SettingsSection
+            id="settings-oauth"
+            icon={LogIn}
+            title="第三方登录"
+            description="配置 Google / GitHub 登录凭据，保存后即时生效（无需重启）。client_secret 加密存储，永不回传。"
+            actions={!loading && (oauthProviders.some((p) => p.enabled && p.client_secret_configured) ? (
               <Badge tone="teal">
                 <CheckCircle2 size={12} className="mr-1" />
                 {oauthProviders.filter((p) => p.enabled && p.client_secret_configured).length} 个已启用
               </Badge>
             ) : (
               <Badge tone="amber">未启用</Badge>
-            )}
-          </div>
+            ))}
+          >
+            {loading ? (
+              <AdminBlockSkeleton lines={6} />
+            ) : oauthProviders.length === 0 ? (
+              <AdminEmptyState
+                icon={LogIn}
+                title="暂无可配置的登录方式"
+                description="服务端未注册任何 OAuth provider"
+                compact
+              />
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {oauthProviders.map((p) => {
+                    const form = oauthForms[p.provider] || { client_id: '', client_secret: '', enabled: false };
+                    const configured = p.client_secret_configured && !!p.client_id;
+                    return (
+                      <div key={p.provider} className="rounded-xs border border-ink-200 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={form.enabled}
+                              onChange={(e) => handleUpdateOauthForm(p.provider, { enabled: e.target.checked })}
+                              className="h-4 w-4 rounded border-ink-300 accent-ink-900"
+                            />
+                            <span className="text-sm font-bold text-ink-900">{OAUTH_PROVIDER_LABELS[p.provider] || p.provider}</span>
+                            {configured ? (
+                              <Badge tone={p.enabled ? 'teal' : 'neutral'}>{p.enabled ? '已启用' : '已配置未启用'}</Badge>
+                            ) : (
+                              <Badge tone="amber">未配置</Badge>
+                            )}
+                          </div>
+                        </div>
 
-          <p className="mb-4 text-xs text-gray-500">
-            配置 Google / GitHub 登录凭据，保存后即时生效（无需重启）。client_secret 加密存储，永不回传。
-          </p>
+                        <Field label="Client ID">
+                          <input
+                            value={form.client_id}
+                            onChange={(e) => handleUpdateOauthForm(p.provider, { client_id: e.target.value })}
+                            placeholder={p.provider === 'google' ? 'xxxx.apps.googleusercontent.com' : 'Ov23liXXXXXXXXXXXXXX'}
+                            className={INPUT_CLASS}
+                          />
+                        </Field>
 
-          <div className="space-y-4">
-            {oauthProviders.map((p) => {
-              const form = oauthForms[p.provider] || { client_id: '', client_secret: '', enabled: false };
-              const configured = p.client_secret_configured && !!p.client_id;
-              return (
-                <div key={p.provider} className="rounded-sm border border-gray-200 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={form.enabled}
-                        onChange={(e) => handleUpdateOauthForm(p.provider, { enabled: e.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      <span className="text-sm font-black text-gray-700">{OAUTH_PROVIDER_LABELS[p.provider] || p.provider}</span>
-                      {configured ? (
-                        <Badge tone={p.enabled ? 'teal' : 'neutral'}>{p.enabled ? '已启用' : '已配置未启用'}</Badge>
-                      ) : (
-                        <Badge tone="amber">未配置</Badge>
-                      )}
-                    </div>
-                  </div>
+                        <Field label="Client Secret" className="mt-3">
+                          <div className={INPUT_ICON_WRAPPER_CLASS}>
+                            <KeyRound size={14} className="shrink-0 text-ink-500" />
+                            <input
+                              value={form.client_secret}
+                              onChange={(e) => handleUpdateOauthForm(p.provider, { client_secret: e.target.value })}
+                              type="password"
+                              placeholder={p.client_secret_configured ? '已配置（加密存储）留空不修改' : '输入 Client Secret'}
+                              className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                            />
+                          </div>
+                        </Field>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-black text-gray-500">Client ID</span>
-                    <input
-                      value={form.client_id}
-                      onChange={(e) => handleUpdateOauthForm(p.provider, { client_id: e.target.value })}
-                      placeholder={p.provider === 'google' ? 'xxxx.apps.googleusercontent.com' : 'Ov23liXXXXXXXXXXXXXX'}
-                      className="h-9 w-full rounded-sm border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary-border focus:ring-2 focus:ring-primary-light"
-                    />
-                  </label>
-
-                  <label className="mt-3 block">
-                    <span className="mb-1.5 block text-xs font-black text-gray-500">Client Secret</span>
-                    <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus:ring-primary-light">
-                      <KeyRound size={14} className="shrink-0 text-gray-400" />
-                      <input
-                        value={form.client_secret}
-                        onChange={(e) => handleUpdateOauthForm(p.provider, { client_secret: e.target.value })}
-                        type="password"
-                        placeholder={p.client_secret_configured ? '已配置（加密存储）留空不修改' : '输入 Client Secret'}
-                        className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-                      />
-                    </div>
-                  </label>
-
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      variant="primary"
-                      onClick={() => handleSaveOauth(p.provider)}
-                      disabled={oauthSaving === p.provider || (form.enabled && (!form.client_id.trim() || (!form.client_secret.trim() && !p.client_secret_configured)))}
-                    >
-                      {oauthSaving === p.provider ? <Loader2 size={14} className="animate-spin" /> : null}
-                      {oauthSaving === p.provider ? '保存中...' : '保存'}
-                    </Button>
-                  </div>
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="primary"
+                            onClick={() => handleSaveOauth(p.provider)}
+                            disabled={oauthSaving === p.provider || (form.enabled && (!form.client_id.trim() || (!form.client_secret.trim() && !p.client_secret_configured)))}
+                          >
+                            {oauthSaving === p.provider ? <Loader2 size={14} className="animate-spin" /> : null}
+                            {oauthSaving === p.provider ? '保存中...' : '保存'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+
+                {oauthError && (
+                  <AdminNoticeBanner tone="red" className="mt-4" onClose={() => setOauthError(null)}>{oauthError}</AdminNoticeBanner>
+                )}
+              </>
+            )}
+          </SettingsSection>
+
+          {/* ── 通知推送 webhook（多 webhook 列表） ── */}
+          <SettingsSection
+            id="settings-webhook"
+            icon={Webhook}
+            title="通知推送"
+            description="将运营通知推送到飞书 / 钉钉 / Slack 群机器人。每个 webhook 可独立配置推送事件类型。webhook URL 加密存储。"
+            actions={
+              <>
+                {!loading && (webhookConfig?.webhooks.some((w) => w.enabled && w.webhook_url_configured) ? (
+                  <Badge tone="teal">
+                    <CheckCircle2 size={12} className="mr-1" />
+                    {webhookConfig.webhooks.filter((w) => w.enabled && w.webhook_url_configured).length} 个已启用
+                  </Badge>
+                ) : (
+                  <Badge tone="amber">未配置</Badge>
+                ))}
+                <Button type="button" variant="ghost" onClick={handleAddWebhook} disabled={loading} className="!px-2 !py-1 text-xs">
+                  <Plus size={12} className="mr-1" />
+                  添加
+                </Button>
+              </>
+            }
+          >
+            {loading ? (
+              <AdminBlockSkeleton lines={8} />
+            ) : webhooks.length === 0 ? (
+              <AdminEmptyState
+                icon={Webhook}
+                title="暂无 webhook 配置"
+                description="添加一个 webhook，把信源失败告警与日报推送送到群里"
+                compact
+                action={
+                  <Button type="button" variant="secondary" onClick={handleAddWebhook}>
+                    <Plus size={12} className="mr-1" />
+                    添加 webhook
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {webhooks.map((wh, index) => {
+                    const original = webhookConfig?.webhooks[index];
+                    const urlConfigured = original?.webhook_url_configured;
+                    const urlPreview = original?.webhook_url_preview || '';
+                    return (
+                      <div key={index} className="rounded-xs border border-ink-200 p-4">
+                        {/* 行 1：名称 + 启用 + 删除 */}
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={wh.enabled}
+                              onChange={(e) => handleUpdateWebhook(index, { enabled: e.target.checked })}
+                              className="h-4 w-4 rounded border-ink-300 accent-ink-900"
+                            />
+                            <input
+                              value={wh.name}
+                              onChange={(e) => handleUpdateWebhook(index, { name: e.target.value })}
+                              placeholder={`Webhook ${index + 1}（如：运营群）`}
+                              className="h-8 w-48 rounded-xs border border-ink-200 bg-white px-2 text-[13px] font-bold text-ink-900 outline-none placeholder:font-normal placeholder:text-ink-500 focus:border-admin-accent"
+                            />
+                            {urlConfigured ? (
+                              <Badge tone={wh.enabled ? 'teal' : 'neutral'}>
+                                {wh.enabled ? '已启用' : '未启用'}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWebhook(index)}
+                            className="shrink-0 text-ink-300 transition hover:text-red-500"
+                            title="删除"
+                            aria-label={`删除 Webhook ${index + 1}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        {/* Webhook URL */}
+                        <Field label="Webhook URL">
+                          <div className={INPUT_ICON_WRAPPER_CLASS}>
+                            <Webhook size={14} className="shrink-0 text-ink-500" />
+                            <input
+                              value={wh.webhook_url}
+                              onChange={(e) => handleUpdateWebhook(index, { webhook_url: e.target.value })}
+                              type="password"
+                              placeholder={
+                                urlConfigured
+                                  ? `已配置（${urlPreview}****）留空不修改`
+                                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
+                              }
+                              className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                            />
+                          </div>
+                        </Field>
+
+                        {/* 推送事件类型 */}
+                        <div className="mt-3">
+                          <span className={FIELD_LABEL_CLASS}>推送事件类型</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {NOTIFICATION_EVENT_TYPES.map((et) => {
+                              const checked = wh.event_types.includes(et.value);
+                              return (
+                                <label
+                                  key={et.value}
+                                  className={cx(
+                                    'flex cursor-pointer items-center gap-1 rounded-xs border px-2 py-1 text-xs transition',
+                                    checked
+                                      ? 'border-admin-accent bg-admin-accent/10 text-ink-900'
+                                      : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300',
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => handleToggleEventType(index, et.value, e.target.checked)}
+                                    className="h-3 w-3 rounded border-ink-300 accent-ink-900"
+                                  />
+                                  {et.label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 备注 */}
+                        <Field label="备注（可选）" className="mt-3">
+                          <input
+                            value={wh.note}
+                            onChange={(e) => handleUpdateWebhook(index, { note: e.target.value })}
+                            placeholder="如：飞书运营群"
+                            className={INPUT_CLASS}
+                          />
+                        </Field>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {webhookError && (
+                  <AdminNoticeBanner tone="red" className="mt-4" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>
+                )}
+                {webhookTestResult && (
+                  <AdminNoticeBanner tone="teal" className="mt-4" onClose={() => setWebhookTestResult(null)}>
+                    <pre className="whitespace-pre-wrap font-sans text-xs">{webhookTestResult}</pre>
+                  </AdminNoticeBanner>
+                )}
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleTestWebhook}
+                    disabled={webhookTesting || !webhookConfig?.webhooks.some((w) => w.webhook_url_configured)}
+                  >
+                    {webhookTesting ? <Loader2 size={14} className="animate-spin" /> : null}
+                    {webhookTesting ? '发送中...' : '发送测试（全部）'}
+                  </Button>
+                  <Button type="button" variant="primary" onClick={handleSaveWebhook} disabled={webhookSaving}>
+                    {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+                    {webhookSaving ? '保存中...' : '保存配置'}
+                  </Button>
+                </div>
+
+                <SectionNotes title="推送说明" items={WEBHOOK_NOTES} />
+              </>
+            )}
+          </SettingsSection>
+        </div>
+
+        {/* 分组锚点导航：sticky 于滚动容器顶部，滚动/点击高亮当前组 */}
+        <nav aria-label="设置分组导航" className="sticky top-5 hidden w-44 shrink-0 lg:block">
+          <ul className="space-y-0.5 border-l border-ink-200">
+            {SECTION_LINKS.map(({ id, label }) => {
+              const active = activeSection === id;
+              return (
+                <li key={id}>
+                  <a
+                    href={`#${id}`}
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setActiveSection(id)}
+                    className={cx(
+                      '-ml-px block border-l-2 py-1.5 pl-3 text-[13px] transition',
+                      active
+                        ? 'border-admin-accent font-medium text-ink-900'
+                        : 'border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-700',
+                    )}
+                  >
+                    {label}
+                  </a>
+                </li>
               );
             })}
-          </div>
-
-          {oauthError && (
-            <AdminNoticeBanner tone="red" onClose={() => setOauthError(null)}>{oauthError}</AdminNoticeBanner>
-          )}
-          {oauthNotice && (
-            <AdminNoticeBanner tone="teal" onClose={() => setOauthNotice(null)}>{oauthNotice}</AdminNoticeBanner>
-          )}
-        </Panel>
-
-        {/* ── 通知推送 webhook（多 webhook 列表） ── */}
-        <Panel className="p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Webhook size={16} className="text-gray-500" />
-              <h2 className="text-base font-black text-gray-900">通知推送</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              {webhookConfig?.webhooks.some((w) => w.enabled && w.webhook_url_configured) ? (
-                <Badge tone="teal">
-                  <CheckCircle2 size={12} className="mr-1" />
-                  {webhookConfig.webhooks.filter((w) => w.enabled && w.webhook_url_configured).length} 个已启用
-                </Badge>
-              ) : (
-                <Badge tone="amber">未配置</Badge>
-              )}
-              <Button variant="ghost" onClick={handleAddWebhook} className="!px-2 !py-1 text-xs">
-                <Plus size={12} className="mr-1" />
-                添加
-              </Button>
-            </div>
-          </div>
-
-          <p className="mb-4 text-xs text-gray-500">
-            将运营通知推送到飞书 / 钉钉 / Slack 群机器人。每个 webhook 可独立配置推送事件类型。webhook URL 加密存储。
-          </p>
-
-          {/* webhook 列表 */}
-          {webhooks.length === 0 ? (
-            <div className="rounded-sm border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
-              暂无 webhook 配置，点击右上角「添加」按钮新增
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {webhooks.map((wh, index) => {
-                const original = webhookConfig?.webhooks[index];
-                const urlConfigured = original?.webhook_url_configured;
-                const urlPreview = original?.webhook_url_preview || '';
-                return (
-                  <div key={index} className="rounded-sm border border-gray-200 p-4">
-                    {/* 行 1：名称 + 启用 + 删除 */}
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={wh.enabled}
-                          onChange={(e) => handleUpdateWebhook(index, { enabled: e.target.checked })}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        <input
-                          value={wh.name}
-                          onChange={(e) => handleUpdateWebhook(index, { name: e.target.value })}
-                          placeholder={`Webhook ${index + 1}（如：运营群）`}
-                          className="h-8 w-48 rounded-sm border border-gray-200 px-2 text-sm font-black outline-none focus:border-primary-border"
-                        />
-                        {urlConfigured ? (
-                          <Badge tone={wh.enabled ? 'teal' : 'neutral'}>
-                            {wh.enabled ? '已启用' : '未启用'}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <button
-                        onClick={() => handleRemoveWebhook(index)}
-                        className="text-gray-400 hover:text-red-500"
-                        title="删除"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-
-                    {/* Webhook URL */}
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-black text-gray-500">Webhook URL</span>
-                      <div className="flex items-center rounded-sm border border-gray-200 bg-white px-3 focus-within:border-primary-border focus-within:ring-2 focus-within:ring-primary-light">
-                        <Webhook size={14} className="shrink-0 text-gray-400" />
-                        <input
-                          value={wh.webhook_url}
-                          onChange={(e) => handleUpdateWebhook(index, { webhook_url: e.target.value })}
-                          type="password"
-                          placeholder={
-                            urlConfigured
-                              ? `已配置（${urlPreview}****）留空不修改`
-                              : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
-                          }
-                          className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none"
-                        />
-                      </div>
-                    </label>
-
-                    {/* 推送事件类型 */}
-                    <div className="mt-3">
-                      <span className="mb-1.5 block text-xs font-black text-gray-500">推送事件类型</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {NOTIFICATION_EVENT_TYPES.map((et) => {
-                          const checked = wh.event_types.includes(et.value);
-                          return (
-                            <label
-                              key={et.value}
-                              className={`flex cursor-pointer items-center gap-1 rounded-sm border px-2 py-1 text-xs ${checked ? 'border-primary-border bg-primary-light/20 text-gray-700' : 'border-gray-200 text-gray-500'}`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => handleToggleEventType(index, et.value, e.target.checked)}
-                                className="h-3 w-3 rounded border-gray-300"
-                              />
-                              {et.label}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* 备注 */}
-                    <label className="mt-3 block">
-                      <span className="mb-1 block text-xs font-black text-gray-500">备注（可选）</span>
-                      <input
-                        value={wh.note}
-                        onChange={(e) => handleUpdateWebhook(index, { note: e.target.value })}
-                        placeholder="如：飞书运营群"
-                        className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary-border"
-                      />
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {webhookError && (
-            <AdminNoticeBanner tone="red" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>
-          )}
-          {webhookNotice && (
-            <AdminNoticeBanner tone="teal" onClose={() => setWebhookNotice(null)}>{webhookNotice}</AdminNoticeBanner>
-          )}
-          {webhookTestResult && (
-            <AdminNoticeBanner tone="teal" onClose={() => setWebhookTestResult(null)}>
-              <pre className="whitespace-pre-wrap font-sans text-xs">{webhookTestResult}</pre>
-            </AdminNoticeBanner>
-          )}
-
-          <div className="mt-5 flex items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              onClick={handleTestWebhook}
-              disabled={webhookTesting || !webhookConfig?.webhooks.some((w) => w.webhook_url_configured)}
-            >
-              {webhookTesting ? <Loader2 size={14} className="animate-spin" /> : null}
-              {webhookTesting ? '发送中...' : '发送测试（全部）'}
-            </Button>
-            <Button variant="primary" onClick={handleSaveWebhook} disabled={webhookSaving}>
-              {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {webhookSaving ? '保存中...' : '保存配置'}
-            </Button>
-          </div>
-        </Panel>
-
-        <Panel className="p-5">
-          <h3 className="mb-2 text-sm font-black text-gray-700">通知推送说明</h3>
-          <ul className="space-y-1.5 text-xs text-gray-500">
-            <li>支持配置多个 webhook，每个独立配置推送事件类型</li>
-            <li>支持飞书 / 钉钉 / Slack 群机器人 incoming webhook</li>
-            <li>webhook URL 含 token，以加密方式存储，不会明文保存</li>
-            <li>推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 今日精选推送 / 测试发送</li>
-            <li>环境变量 <code className="rounded bg-gray-100 px-1">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，不参与事件过滤）</li>
           </ul>
-        </Panel>
+        </nav>
+      </div>
     </AdminPageShell>
   );
 }

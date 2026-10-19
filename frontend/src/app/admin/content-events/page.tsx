@@ -1,9 +1,23 @@
 'use client';
 
+/**
+ * 内容事件治理（#125 v2 第二片：吃满数据密集页原语）。
+ *
+ * 审核队列由手写 table 迁移到 AdminTable（三态内建：骨架 / 内联错误+重试 /
+ * 按审核状态区分文案的空态），操作列右侧粘性；接受 / 拒绝是本页仅有的两个
+ * 行内动作（≤2 全部直显，无需「···」折叠菜单，与 contents 页同口径），
+ * 拒绝属不可逆动作，先过 AdminModal 二次确认再提交。
+ * 审核状态 / 页码 / 每页条数与 URL query 双向同步（两段式恢复）；
+ * 分页换升级版 Pagination（后端 page_size 支持 1–200，档位 10/20/50）。
+ * 审核成功走 toast，系统级错误（OCC 冲突 / 校验失败）与归一化结果摘要
+ * 留 AdminNoticeBanner 持久可见。
+ */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   GitMerge,
+  ListChecks,
   Play,
   RefreshCw,
   ShieldAlert,
@@ -18,6 +32,9 @@ import {
   AdminPageShell,
 } from '@/components/admin-ui';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { AdminEmptyState, AdminTable, toast } from '@/components/admin';
+import type { AdminTableColumn } from '@/components/admin';
+import { Pagination } from '@/components/Pagination';
 import { LoadingState } from '@/components/StateView';
 import { formatDateTime } from '@/lib/datetime';
 import { contentEventsAdminApi } from '@/lib/api';
@@ -30,7 +47,8 @@ import type {
   ContentEventReviewStatus,
 } from '@/lib/api';
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 const REVIEW_TABS: Array<{
   value: ContentEventReviewStatus;
@@ -67,6 +85,61 @@ const RELATION_LABELS: Record<ContentEventRelation, string> = {
   update: '后续进展',
 };
 
+// 空态文案按审核状态区分：pending 是队列视角（清空即好消息），其余状态
+// 是归档视角（说明记录从哪来，主动作引导回待审队列）。
+const EMPTY_STATE_BY_STATUS: Record<
+  ContentEventReviewStatus,
+  { title: string; description: string }
+> = {
+  pending: {
+    title: '待审核队列已清空',
+    description: '当前没有等待人工确认的事件关系，可刷新队列，或先执行一次影子归一化。',
+  },
+  auto: {
+    title: '暂无自动通过的记录',
+    description: '归一化引擎自动通过的关系会出现在这里。',
+  },
+  confirmed: {
+    title: '暂无人工确认的记录',
+    description: '接受过的关系会出现在这里。',
+  },
+  rejected: {
+    title: '暂无已拒绝的记录',
+    description: '拒绝过的关系会出现在这里。',
+  },
+};
+
+// ─── URL query 同步（#125 与 sources / contents 页同口径）──
+// 挂载时从 location.search 恢复初始状态；此后审核状态/页码/每页条数变化用
+// history.replaceState 覆写 query——不产生历史记录、不触发导航，
+// 刻意不用 useSearchParams 以避开 Suspense 边界。
+// 默认值（待审核、第 1 页、每页 20）不写入 query，保持 URL 干净。
+
+type ContentEventsQueryState = {
+  page: number;
+  pageSize: number;
+  status: ContentEventReviewStatus;
+};
+
+function defaultContentEventsQueryState(): ContentEventsQueryState {
+  return { page: 1, pageSize: DEFAULT_PAGE_SIZE, status: 'pending' };
+}
+
+function readInitialStateFromLocation(): ContentEventsQueryState {
+  const defaults = defaultContentEventsQueryState();
+  const sp = new URLSearchParams(window.location.search);
+  const page = Math.max(1, Number.parseInt(sp.get('page') ?? '', 10) || 1);
+  const rawPageSize = Number.parseInt(sp.get('page_size') ?? '', 10);
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPageSize)
+    ? rawPageSize
+    : DEFAULT_PAGE_SIZE;
+  const rawStatus = sp.get('status') ?? 'pending';
+  const status = REVIEW_TABS.some((tab) => tab.value === rawStatus)
+    ? (rawStatus as ContentEventReviewStatus)
+    : defaults.status;
+  return { page, pageSize, status };
+}
+
 interface ReviewDraft {
   relation: ContentEventRelation;
   reason: string;
@@ -86,19 +159,37 @@ function resultSummary(response: ContentEventNormalizeResponse): string {
   return entries.length > 0 ? entries.join('，') : '任务已受理';
 }
 
+// ─── 破坏性动作二次确认 ───
+// 拒绝（不可逆）统一收口到这一个确认弹窗；接受不拦截。
+
+interface ConfirmState {
+  title: string;
+  message: React.ReactNode;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+}
+
 export default function ContentEventsAdminPage() {
   const { currentUser, authLoading } = useAppContext();
+  // 两段式恢复：SSR 与首帧一律用默认值（防 hydration mismatch——惰性读
+  // location 会在带参数直达时让服务端/客户端首帧不一致），挂载后再从 URL
+  // 恢复一次；didRestore 门让首拉只发一次且 URL 不被默认值覆写清掉。
+  const [initial] = useState(defaultContentEventsQueryState);
   const [reviewStatus, setReviewStatus] =
-    useState<ContentEventReviewStatus>('pending');
+    useState<ContentEventReviewStatus>(initial.status);
   const [reviews, setReviews] = useState<ContentEventReviewItem[]>([]);
   const [drafts, setDrafts] = useState<Record<number, ReviewDraft>>({});
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initial.page);
+  const [pageSize, setPageSize] = useState(initial.pageSize);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // 列表加载失败 → AdminTable 内联错误 + 重试；审核动作类错误（OCC 冲突等）
+  // 仍走 AdminNoticeBanner 持久可见
+  const [listError, setListError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const [didRestore, setDidRestore] = useState(false);
 
   const [hours, setHours] = useState(24);
   const [scope, setScope] =
@@ -113,19 +204,19 @@ export default function ContentEventsAdminPage() {
     null,
   );
   const [showWriteConfirmation, setShowWriteConfirmation] = useState(false);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const pageStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(page * PAGE_SIZE, total);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const loadReviews = useCallback(async () => {
     const sequence = ++requestSequence.current;
     setLoading(true);
-    setError(null);
+    setListError(null);
     try {
       const response = await contentEventsAdminApi.listReviews({
         page,
-        page_size: PAGE_SIZE,
+        page_size: pageSize,
         review_status: reviewStatus,
       });
       if (sequence !== requestSequence.current) return;
@@ -141,76 +232,48 @@ export default function ContentEventsAdminPage() {
       );
     } catch (requestError) {
       if (sequence !== requestSequence.current) return;
-      setError(errorMessage(requestError, '审核队列加载失败'));
+      setListError(errorMessage(requestError, '审核队列加载失败'));
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [page, reviewStatus]);
+  }, [page, pageSize, reviewStatus]);
 
+  // 挂载后恢复 URL 状态（两段式的第二段），随后放行首拉
   useEffect(() => {
+    const restored = readInitialStateFromLocation();
+    if (restored.page !== initial.page) setPage(restored.page);
+    if (restored.pageSize !== initial.pageSize) setPageSize(restored.pageSize);
+    if (restored.status !== initial.status) setReviewStatus(restored.status);
+    setDidRestore(true);
+    // 仅挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 首拉与筛选/页码/每页条数变化的重拉；恢复完成前不拉，
+  // 避免默认值先打一发再被 URL 值重打的 double fetch
+  useEffect(() => {
+    if (!didRestore) return;
     if (!authLoading && currentUser?.role === 'admin') {
       void loadReviews();
     }
-  }, [authLoading, currentUser, loadReviews]);
+  }, [didRestore, authLoading, currentUser, loadReviews]);
 
-  const patchDraft = (
-    memberId: number,
-    patch: Partial<ReviewDraft>,
-  ): void => {
-    setDrafts((current) => ({
-      ...current,
-      [memberId]: {
-        relation: current[memberId]?.relation ?? 'duplicate',
-        reason: current[memberId]?.reason ?? '',
-        ...patch,
-      },
-    }));
-  };
+  // URL query 覆写：与恢复逻辑对称，非默认值才落 query（恢复完成前不写，
+  // 防止把直达 URL 清成默认态）
+  useEffect(() => {
+    if (!didRestore) return;
+    const sp = new URLSearchParams();
+    if (reviewStatus !== 'pending') sp.set('status', reviewStatus);
+    if (page > 1) sp.set('page', String(page));
+    if (pageSize !== DEFAULT_PAGE_SIZE) sp.set('page_size', String(pageSize));
+    const qs = sp.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [didRestore, reviewStatus, page, pageSize]);
 
-  const reviewMember = async (
-    item: ContentEventReviewItem,
-    decision: 'accept' | 'reject',
-  ): Promise<void> => {
-    const draft = drafts[item.id];
-    const reason = draft?.reason.trim() ?? '';
-    if (!reason) {
-      setError('请先填写审核理由。');
-      return;
-    }
-
-    setRowBusyId(item.id);
-    setError(null);
-    setNotice(null);
-    try {
-      await contentEventsAdminApi.reviewMember(item.id, {
-        decision,
-        ...(decision === 'accept'
-          ? { relation_type: draft?.relation ?? item.relation_type }
-          : {}),
-        reason,
-        expected_version: item.event_version,
-      });
-      setNotice(
-        decision === 'accept'
-          ? `已确认「${item.title}」的事件关系。`
-          : `已拒绝「${item.title}」的事件关系。`,
-      );
-      if (reviews.length === 1 && page > 1) {
-        setPage((current) => current - 1);
-      } else {
-        await loadReviews();
-      }
-    } catch (requestError) {
-      const apiError = requestError as ApiError;
-      if (apiError.status === 409) {
-        setError('事件版本已被其他任务或管理员更新，请刷新队列后重新审核。');
-      } else {
-        setError(errorMessage(requestError, '审核操作失败'));
-      }
-    } finally {
-      setRowBusyId(null);
-    }
-  };
+  // 恢复的页码可能越过当前筛选下的总页数（书签里存着 page=99），收回最后一页
+  useEffect(() => {
+    if (!loading && page > totalPages) setPage(totalPages);
+  }, [loading, page, totalPages]);
 
   const normalizationPayload = useMemo(() => {
     const ownerId = Number(ownerUserId);
@@ -252,6 +315,7 @@ export default function ContentEventsAdminPage() {
         normalizationPayload,
         crypto.randomUUID(),
       );
+      // 归一化结果摘要可能含部分失败明细，留横幅持久可见，不走转瞬即逝的 toast
       setNormalizationNotice(
         `${response.mode === 'shadow' ? '影子运行' : '写入运行'}已完成：${resultSummary(response)}`,
       );
@@ -284,6 +348,113 @@ export default function ContentEventsAdminPage() {
     void runNormalization();
   };
 
+  const patchDraft = (
+    memberId: number,
+    patch: Partial<ReviewDraft>,
+  ): void => {
+    setDrafts((current) => ({
+      ...current,
+      [memberId]: {
+        relation: current[memberId]?.relation ?? 'duplicate',
+        reason: current[memberId]?.reason ?? '',
+        ...patch,
+      },
+    }));
+  };
+
+  const reviewMember = async (
+    item: ContentEventReviewItem,
+    decision: 'accept' | 'reject',
+  ): Promise<void> => {
+    const draft = drafts[item.id];
+    const reason = draft?.reason.trim() ?? '';
+    if (!reason) {
+      // 按钮在理由为空时已禁用，这里是兜底（防其它入口绕过）
+      setActionError('请先填写审核理由。');
+      return;
+    }
+
+    setRowBusyId(item.id);
+    setActionError(null);
+    try {
+      await contentEventsAdminApi.reviewMember(item.id, {
+        decision,
+        ...(decision === 'accept'
+          ? { relation_type: draft?.relation ?? item.relation_type }
+          : {}),
+        reason,
+        expected_version: item.event_version,
+      });
+      toast.success(
+        decision === 'accept'
+          ? `已确认「${item.title}」的事件关系`
+          : `已拒绝「${item.title}」的事件关系`,
+      );
+      if (reviews.length === 1 && page > 1) {
+        setPage((current) => current - 1);
+      } else {
+        await loadReviews();
+      }
+    } catch (requestError) {
+      const apiError = requestError as ApiError;
+      if (apiError.status === 409) {
+        setActionError('事件版本已被其他任务或管理员更新，请刷新队列后重新审核。');
+      } else {
+        setActionError(errorMessage(requestError, '审核操作失败'));
+      }
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  // 拒绝属不可逆动作：先过 AdminModal 二次确认，确认后才提交
+  const requestRejectReview = (item: ContentEventReviewItem): void => {
+    const reason = drafts[item.id]?.reason.trim() ?? '';
+    if (!reason) {
+      setActionError('请先填写审核理由。');
+      return;
+    }
+    setConfirmState({
+      title: '拒绝事件关系',
+      message: (
+        <>
+          将拒绝「<b>{item.title}</b>」与事件{' '}
+          <span className="font-mono">#{item.event_id}</span>{' '}
+          的关系判定，提交后移入「已拒绝」且不可撤销。
+          <span className="mt-1 block break-all text-ink-500">
+            审核理由：{reason}
+          </span>
+        </>
+      ),
+      confirmLabel: '确认拒绝',
+      onConfirm: () => reviewMember(item, 'reject'),
+    });
+  };
+
+  // ─── 确认弹窗执行 ───
+  const runConfirm = async () => {
+    if (!confirmState || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      await confirmState.onConfirm();
+      setConfirmState(null);
+    } catch {
+      // 各 onConfirm 自带错误上报（AdminNoticeBanner），这里只防止确认框卡死
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
+  const handlePageSizeChange = (size: number): void => {
+    setPageSize(size);
+    setPage(1);
+  };
+
+  const switchReviewStatus = (status: ContentEventReviewStatus): void => {
+    setReviewStatus(status);
+    setPage(1);
+  };
+
   if (authLoading) return <LoadingState label="正在验证管理员权限…" />;
   if (currentUser?.role !== 'admin') {
     return (
@@ -292,6 +463,198 @@ export default function ContentEventsAdminPage() {
       </AdminPageShell>
     );
   }
+
+  // ─── 列定义（操作列右侧粘性）──
+  // 审核意见列承载行内关系下拉 + 理由输入（保留逐条快审的流）；
+  // 操作列只放接受 / 拒绝两个高频动作。
+
+  const columns: AdminTableColumn<ContentEventReviewItem>[] = [
+    {
+      key: 'title',
+      header: '内容',
+      render: (item) => (
+        <div className="min-w-0 max-w-[280px]">
+          <span className="block truncate text-[13px] font-bold text-ink-900" title={item.title}>
+            {item.title}
+          </span>
+          <span className="mt-0.5 block truncate font-mono text-[10px] text-ink-500">
+            content #{item.content_id} · event #{item.event_id}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'source',
+      header: '来源',
+      width: 130,
+      render: (item) => (
+        <div className="min-w-0">
+          <span
+            className="block truncate text-xs font-bold text-ink-700"
+            title={item.source_name ?? undefined}
+          >
+            {item.source_name || '未知来源'}
+          </span>
+          <span className="mt-0.5 block truncate text-[10px] text-ink-500">
+            {item.source_type || '-'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'relation',
+      header: '当前关系',
+      width: 132,
+      render: (item) => {
+        const statusMeta = REVIEW_STATUS_META[item.review_status];
+        return (
+          <div className="min-w-0">
+            <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+            <div className="mt-1 text-xs font-bold text-ink-700">
+              {RELATION_LABELS[item.relation_type]}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'confidence',
+      header: '置信度',
+      width: 96,
+      render: (item) => (
+        <div className="min-w-0">
+          <span className="font-mono text-[13px] font-black text-ink-900">
+            {(item.confidence * 100).toFixed(1)}%
+          </span>
+          {item.match_method && (
+            <span
+              className="mt-0.5 block truncate text-[10px] text-ink-500"
+              title={item.match_method}
+            >
+              {item.match_method}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'reason',
+      header: '判断理由',
+      width: 200,
+      render: (item) => (
+        <span
+          className="block max-w-[200px] text-xs leading-5 text-ink-700"
+          title={item.reason ?? undefined}
+        >
+          {item.reason || '暂无模型理由'}
+        </span>
+      ),
+    },
+    {
+      key: 'matched_at',
+      header: '匹配时间',
+      width: 118,
+      render: (item) => (
+        <span className="whitespace-nowrap text-xs text-ink-500">
+          {formatDateTime(item.matched_at, true)}
+        </span>
+      ),
+    },
+    {
+      key: 'version',
+      header: '版本',
+      width: 64,
+      render: (item) => <Badge tone="neutral">v{item.event_version}</Badge>,
+    },
+    {
+      key: 'draft',
+      header: '审核意见',
+      width: 330,
+      render: (item) => {
+        const draft = drafts[item.id] ?? {
+          relation: item.relation_type,
+          reason: '',
+        };
+        return (
+          <div className="grid w-full grid-cols-[118px_minmax(0,1fr)] gap-1.5">
+            <select
+              value={draft.relation}
+              onChange={(event) =>
+                patchDraft(item.id, {
+                  relation: event.target.value as ContentEventRelation,
+                })
+              }
+              disabled={rowBusyId !== null}
+              aria-label={`选择「${item.title}」的事件关系`}
+              className="h-8 cursor-pointer rounded-xs border border-ink-200 bg-white px-1.5 text-xs text-ink-700 focus:border-admin-accent focus:outline-none disabled:bg-ink-100 disabled:text-ink-400"
+            >
+              {RELATION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={draft.reason}
+              onChange={(event) =>
+                patchDraft(item.id, { reason: event.target.value })
+              }
+              disabled={rowBusyId !== null}
+              maxLength={2000}
+              aria-label={`填写「${item.title}」的审核理由`}
+              placeholder="审核理由（必填）"
+              className="h-8 min-w-0 rounded-xs border border-ink-200 bg-white px-2 text-xs text-ink-700 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none disabled:bg-ink-100 disabled:text-ink-400"
+            />
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: '操作',
+      width: 156,
+      sticky: 'right',
+      // 本页核心动作就接受 / 拒绝两个（≤2 全部直显，无需「···」折叠菜单，
+      // 与 contents 页同口径）；拒绝点开后先过 AdminModal 二次确认。
+      render: (item) => {
+        const draft = drafts[item.id] ?? {
+          relation: item.relation_type,
+          reason: '',
+        };
+        const busy = rowBusyId === item.id;
+        const inputsReady = draft.reason.trim().length > 0;
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => requestRejectReview(item)}
+              disabled={rowBusyId !== null || !inputsReady}
+              aria-label={`拒绝「${item.title}」的事件关系`}
+              className="min-h-8 px-2.5 py-1 text-[11px]"
+            >
+              <X size={13} />
+              拒绝
+            </Button>
+            <Button
+              type="button"
+              variant="success"
+              onClick={() => void reviewMember(item, 'accept')}
+              disabled={rowBusyId !== null || !inputsReady}
+              aria-label={`接受「${item.title}」的事件关系`}
+              className="min-h-8 px-2.5 py-1 text-[11px]"
+            >
+              <Check size={13} />
+              {busy ? '提交中…' : '接受'}
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  const emptyMeta = EMPTY_STATE_BY_STATUS[reviewStatus];
 
   return (
     <AdminPageShell maxWidth={1480}>
@@ -419,232 +782,145 @@ export default function ContentEventsAdminPage() {
         )}
       </Panel>
 
-      <Panel className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-black text-gray-900">关系审核队列</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
-              服务端筛选与分页；每次提交均校验事件版本。
-            </p>
-          </div>
-          <div
-            role="tablist"
-            aria-label="按审核状态筛选"
-            className="flex flex-wrap gap-1 rounded-sm bg-gray-100 p-1"
-          >
-            {REVIEW_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                role="tab"
-                aria-selected={reviewStatus === tab.value}
-                onClick={() => {
-                  setReviewStatus(tab.value);
-                  setPage(1);
-                  setNotice(null);
-                }}
-                className={cx(
-                  'rounded-xs px-3 py-1.5 text-xs font-bold transition',
-                  reviewStatus === tab.value
-                    ? 'bg-white text-primary shadow-sm'
-                    : 'text-gray-500 hover:text-gray-800',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      {/* 审核队列头部：标题 + 审核状态分段控件（tab 语义），与 URL query 同步 */}
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-black text-gray-900">关系审核队列</h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            服务端筛选与分页；每次提交均校验事件版本。
+          </p>
         </div>
-
-        {error && (
-          <div className="px-4 pt-4">
-            <AdminNoticeBanner tone="red" onClose={() => setError(null)}>
-              {error}
-            </AdminNoticeBanner>
-          </div>
-        )}
-        {notice && (
-          <div className="px-4 pt-4">
-            <AdminNoticeBanner tone="teal" onClose={() => setNotice(null)}>
-              {notice}
-            </AdminNoticeBanner>
-          </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-[1240px] w-full border-collapse text-left">
-            <thead className="bg-gray-50 text-[11px] font-black uppercase tracking-wide text-gray-500">
-              <tr>
-                <th scope="col" className="px-4 py-3">内容</th>
-                <th scope="col" className="px-3 py-3">来源</th>
-                <th scope="col" className="px-3 py-3">当前关系</th>
-                <th scope="col" className="px-3 py-3">置信度</th>
-                <th scope="col" className="px-3 py-3">判断理由</th>
-                <th scope="col" className="px-3 py-3">匹配时间</th>
-                <th scope="col" className="px-3 py-3">版本</th>
-                <th scope="col" className="px-4 py-3">审核操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && reviews.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-500">
-                    正在加载审核队列…
-                  </td>
-                </tr>
-              ) : reviews.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <div className="font-bold text-gray-700">当前筛选下没有数据</div>
-                    <div className="mt-1 text-xs text-gray-400">
-                      可切换审核状态，或先执行一次影子归一化。
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                reviews.map((item) => {
-                  const draft = drafts[item.id] ?? {
-                    relation: item.relation_type,
-                    reason: '',
-                  };
-                  const busy = rowBusyId === item.id;
-                  const statusMeta = REVIEW_STATUS_META[item.review_status];
-                  return (
-                    <tr key={item.id} className="align-top hover:bg-gray-50/70">
-                      <td className="max-w-[260px] px-4 py-3">
-                        <div className="line-clamp-2 text-sm font-bold leading-5 text-gray-900">
-                          {item.title}
-                        </div>
-                        <div className="mt-1 font-mono text-[10px] text-gray-400">
-                          content #{item.content_id} · event #{item.event_id}
-                        </div>
-                      </td>
-                      <td className="max-w-[140px] px-3 py-3">
-                        <div className="truncate text-xs font-bold text-gray-700">
-                          {item.source_name || '未知来源'}
-                        </div>
-                        <div className="mt-1 text-[10px] text-gray-400">
-                          {item.source_type || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                        <div className="mt-1.5 text-xs font-bold text-gray-700">
-                          {RELATION_LABELS[item.relation_type]}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="font-mono text-sm font-black text-gray-800">
-                          {(item.confidence * 100).toFixed(1)}%
-                        </span>
-                        <div className="mt-1 text-[10px] text-gray-400">
-                          {item.match_method || '-'}
-                        </div>
-                      </td>
-                      <td className="max-w-[220px] px-3 py-3 text-xs leading-5 text-gray-600">
-                        {item.reason || '暂无模型理由'}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-gray-500">
-                        {formatDateTime(item.matched_at, true)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge tone="neutral">v{item.event_version}</Badge>
-                      </td>
-                      <td className="w-[340px] px-4 py-3">
-                        <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
-                          <select
-                            value={draft.relation}
-                            onChange={(event) =>
-                              patchDraft(item.id, {
-                                relation: event.target.value as ContentEventRelation,
-                              })
-                            }
-                            disabled={busy || rowBusyId !== null}
-                            aria-label={`选择「${item.title}」的事件关系`}
-                            className="h-9 rounded-sm border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-primary disabled:bg-gray-50"
-                          >
-                            {RELATION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            value={draft.reason}
-                            onChange={(event) =>
-                              patchDraft(item.id, { reason: event.target.value })
-                            }
-                            disabled={busy || rowBusyId !== null}
-                            maxLength={2000}
-                            aria-label={`填写「${item.title}」的审核理由`}
-                            placeholder="填写审核理由（必填）"
-                            className="h-9 min-w-0 rounded-sm border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-primary disabled:bg-gray-50"
-                          />
-                        </div>
-                        <div className="mt-2 flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="danger"
-                            onClick={() => void reviewMember(item, 'reject')}
-                            disabled={rowBusyId !== null || !draft.reason.trim()}
-                            aria-label={`拒绝「${item.title}」的事件关系`}
-                            className="min-h-8 py-1.5"
-                          >
-                            <X size={13} />
-                            拒绝
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="success"
-                            onClick={() => void reviewMember(item, 'accept')}
-                            disabled={rowBusyId !== null || !draft.reason.trim()}
-                            aria-label={`接受「${item.title}」的事件关系`}
-                            className="min-h-8 py-1.5"
-                          >
-                            <Check size={13} />
-                            {busy ? '提交中…' : '接受'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+        <div
+          role="tablist"
+          aria-label="按审核状态筛选"
+          className="flex flex-wrap gap-1 rounded-sm bg-gray-100 p-1"
+        >
+          {REVIEW_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={reviewStatus === tab.value}
+              onClick={() => switchReviewStatus(tab.value)}
+              className={cx(
+                'rounded-xs px-3 py-1.5 text-xs font-bold transition',
+                reviewStatus === tab.value
+                  ? 'bg-white text-primary shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800',
               )}
-            </tbody>
-          </table>
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3">
-          <div className="text-xs text-gray-500">
-            {total === 0 ? '共 0 条' : `显示 ${pageStart}–${pageEnd}，共 ${total} 条`}
-          </div>
-          <div className="flex items-center gap-2">
+      {/* 审核动作类错误（OCC 冲突 / 校验失败）：系统级消息留横幅持久可见 */}
+      {actionError && (
+        <AdminNoticeBanner
+          tone="red"
+          className="mt-3"
+          onClose={() => setActionError(null)}
+        >
+          {actionError}
+        </AdminNoticeBanner>
+      )}
+
+      {/* 三态（骨架 / 内联错误+重试 / 空态）由 AdminTable 内建，页面层不自造 */}
+      <AdminTable
+        columns={columns}
+        rows={reviews}
+        rowKey={(item) => item.id}
+        loading={loading}
+        error={listError}
+        onRetry={() => void loadReviews()}
+        empty={
+          <AdminEmptyState
+            compact
+            icon={ListChecks}
+            title={emptyMeta.title}
+            description={emptyMeta.description}
+            action={
+              reviewStatus === 'pending' ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void loadReviews()}
+                  disabled={loading}
+                >
+                  刷新队列
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => switchReviewStatus('pending')}
+                >
+                  查看待审核
+                </Button>
+              )
+            }
+          />
+        }
+        minWidth={1360}
+      />
+
+      {/* 分页：后端 /admin/content-events/reviews 支持 page_size（1–200），
+          每页条数选择器（10/20/50，默认 20）随之落地 */}
+      {!loading && total > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPage={setPage}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageSizeChange={handlePageSizeChange}
+          summary={
+            <>
+              第{' '}
+              <b className="font-mono">
+                {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)}
+              </b>{' '}
+              条，共 {total} 条
+            </>
+          }
+        />
+      )}
+
+      {/* 拒绝（不可逆）二次确认弹窗 */}
+      {confirmState && (
+        <AdminModal
+          title={confirmState.title}
+          onClose={() => {
+            if (!confirmBusy) setConfirmState(null);
+          }}
+          maxWidth={520}
+        >
+          <p className="text-[13px] leading-6 text-ink-700">{confirmState.message}</p>
+          <AdminModalFooter>
             <Button
               type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={loading || page <= 1}
-              aria-label="上一页审核数据"
+              variant="secondary"
+              onClick={() => setConfirmState(null)}
+              disabled={confirmBusy}
+              className="px-5"
             >
-              上一页
+              取消
             </Button>
-            <span className="min-w-20 text-center text-xs font-bold text-gray-600">
-              {page} / {totalPages}
-            </span>
             <Button
               type="button"
-              onClick={() =>
-                setPage((current) => Math.min(totalPages, current + 1))
-              }
-              disabled={loading || page >= totalPages}
-              aria-label="下一页审核数据"
+              variant="danger"
+              onClick={() => void runConfirm()}
+              disabled={confirmBusy}
+              className="px-5"
             >
-              下一页
+              {confirmBusy ? '处理中…' : confirmState.confirmLabel}
             </Button>
-          </div>
-        </div>
-      </Panel>
+          </AdminModalFooter>
+        </AdminModal>
+      )}
 
+      {/* 写入确认弹窗：纯确认无输入项，isDirty 不适用 */}
       {showWriteConfirmation && (
         <AdminModal
           title="确认写入内容事件真源？"

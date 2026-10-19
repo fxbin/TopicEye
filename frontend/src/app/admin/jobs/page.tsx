@@ -14,6 +14,7 @@ import {
 
 import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
 import { AdminPageHeader, AdminPageShell } from '@/components/admin-ui';
+import { AdminEmptyState } from '@/components/admin';
 import { ErrorState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { statsJobsApi, type JobStatsByJobKey, type JobStatsResponse } from '@/lib/api';
@@ -132,13 +133,13 @@ export default function JobStatsPage() {
       {/* ── KPI 卡片 ── */}
       <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard
-          icon={<ListChecks className="h-5 w-5 text-blue-600" />}
+          icon={<ListChecks className="h-5 w-5 text-ink-500" />}
           label="总运行数"
           value={totals ? totals.total_runs.toLocaleString() : '-'}
           hint={data ? `${data.period.days} 天内` : ''}
         />
         <KpiCard
-          icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+          icon={<CheckCircle2 className="h-5 w-5 text-teal" />}
           label="成功率"
           value={totals ? `${(totals.success_rate * 100).toFixed(1)}%` : '-'}
           hint={totals ? `${totals.success_count} 成功 / ${totals.failed_count + totals.timeout_count} 失败` : ''}
@@ -151,7 +152,7 @@ export default function JobStatsPage() {
           hint={totals ? `最长 ${formatDuration(totals.max_duration_ms)}` : ''}
         />
         <KpiCard
-          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
+          icon={<AlertTriangle className="h-5 w-5 text-red" />}
           label="最近失败"
           value={data ? data.recent_failures.length.toString() : '-'}
           hint={totals ? `${totals.failed_count + totals.timeout_count} 次` : '近 10 条'}
@@ -187,7 +188,7 @@ export default function JobStatsPage() {
             ))}
           </div>
         ) : (
-          <p className="py-6 text-center text-[13px] text-gray-500">暂无数据</p>
+          <AdminEmptyState compact icon={ListChecks} title="该窗口内没有运行记录" description="换个时间窗口试试，或点右上角刷新" />
         )}
       </Panel>
 
@@ -238,7 +239,7 @@ export default function JobStatsPage() {
             </table>
           </div>
         ) : (
-          <p className="py-6 text-center text-[13px] text-gray-500">暂无数据</p>
+          <AdminEmptyState compact icon={ListChecks} title="没有匹配的任务" description="调整时间窗口，或清除 job 筛选后重试" />
         )}
       </Panel>
 

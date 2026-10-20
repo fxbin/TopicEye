@@ -35,12 +35,15 @@ const JOB_STATUS_TONE: Record<string, Tone> = {
   RUNNING: 'primary',
 };
 
+// 状态条颜色走 token CSS 变量（与 JOB_STATUS_TONE Badge 同语义通道：
+// 成功 teal / 失败 red / 超时 amber / 跳过中性 / 运行中 primary），
+// 不再手写 hex——#130 残余装饰债清理。
 const STATUS_BAR_COLOR: Record<string, string> = {
-  SUCCESS: '#10b981',
-  FAILED: '#ef4444',
-  TIMEOUT: '#f59e0b',
-  SKIPPED: '#94a3b8',
-  RUNNING: '#3b82f6',
+  SUCCESS: 'var(--color-teal)',
+  FAILED: 'var(--color-red)',
+  TIMEOUT: 'var(--color-amber)',
+  SKIPPED: 'var(--color-ink-300)',
+  RUNNING: 'var(--color-primary)',
 };
 
 function formatDuration(ms: number | null | undefined): string {
@@ -161,27 +164,27 @@ export default function JobStatsPage() {
 
       {/* ── 状态分布 ── */}
       <Panel className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-          <Activity className="h-4 w-4 text-gray-500" />
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900">
+          <Activity className="h-4 w-4 text-ink-500" />
           状态分布
         </h2>
         {data && data.by_status.length > 0 ? (
           <div className="space-y-2">
             {data.by_status.map((row) => (
               <div key={row.status} className="flex items-center gap-3">
-                <span className="w-20 text-[12px] text-gray-600">
+                <span className="w-20 text-[12px] text-ink-700">
                   <Badge tone={JOB_STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
                 </span>
-                <div className="h-5 flex-1 overflow-hidden rounded-sm bg-gray-100">
+                <div className="h-5 flex-1 overflow-hidden rounded-sm bg-ink-100">
                   <div
                     className="h-full transition-all"
                     style={{
                       width: `${(row.count / byStatusMax) * 100}%`,
-                      backgroundColor: STATUS_BAR_COLOR[row.status] || '#94a3b8',
+                      backgroundColor: STATUS_BAR_COLOR[row.status] || 'var(--color-ink-300)',
                     }}
                   />
                 </div>
-                <span className="w-20 text-right font-mono text-[12px] text-gray-700">
+                <span className="w-20 text-right font-mono text-[12px] text-ink-700">
                   {row.count.toLocaleString()}
                 </span>
               </div>
@@ -195,8 +198,8 @@ export default function JobStatsPage() {
       {/* ── Per-job_key 表格 ── */}
       <Panel className="mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <ListChecks className="h-4 w-4 text-gray-500" />
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+            <ListChecks className="h-4 w-4 text-ink-500" />
             各任务运行情况
           </h2>
           {selectedJobKey && (
@@ -213,7 +216,7 @@ export default function JobStatsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-[12px] uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-ink-200 text-left text-[12px] uppercase tracking-wide text-ink-500">
                   <th className="px-2 py-2">任务</th>
                   <th className="px-2 py-2 text-right">运行</th>
                   <th className="px-2 py-2">成功率</th>
@@ -245,10 +248,10 @@ export default function JobStatsPage() {
 
       {/* ── 最近失败 ── */}
       <Panel>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900">
           <XCircle className="h-4 w-4 text-red-500" />
           最近失败 / 超时
-          <span className="text-[12px] font-normal text-gray-500">
+          <span className="text-[12px] font-normal text-ink-500">
             (最多 10 条)
           </span>
         </h2>
@@ -260,8 +263,8 @@ export default function JobStatsPage() {
                 className="rounded-sm border border-red-light bg-red-light/30 px-3 py-2"
               >
                 <div className="mb-1 flex items-center justify-between text-[12px]">
-                  <span className="font-mono text-gray-700">{row.job_key}</span>
-                  <span className="flex items-center gap-2 text-gray-500">
+                  <span className="font-mono text-ink-700">{row.job_key}</span>
+                  <span className="flex items-center gap-2 text-ink-500">
                     <Badge tone={JOB_STATUS_TONE[row.status] || 'neutral'}>{row.status}</Badge>
                     <Clock className="h-3 w-3" />
                     {formatRelativeTime(row.started_at)}
@@ -277,7 +280,7 @@ export default function JobStatsPage() {
             ))}
           </ul>
         ) : (
-          <p className="py-6 text-center text-[13px] text-gray-500">
+          <p className="py-6 text-center text-[13px] text-ink-500">
             {data ? '🎉 该时间窗口内无失败记录' : ''}
           </p>
         )}
@@ -300,12 +303,12 @@ function KpiCard({
   tone?: Tone;
 }) {
   return (
-    <div className="rounded-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
-      <div className="mb-1 flex items-center gap-2 text-[12px] text-gray-500">
+    <div className="rounded-sm border border-ink-200 bg-white px-4 py-3 shadow-sm">
+      <div className="mb-1 flex items-center gap-2 text-[12px] text-ink-500">
         {icon}
         {label}
       </div>
-      <div className="font-mono text-2xl font-semibold text-gray-900">
+      <div className="font-mono text-2xl font-semibold text-ink-900">
         {value}
       </div>
       {hint && (
@@ -330,14 +333,14 @@ function JobKeyRow({
     <tr
       onClick={onClick}
       className={cx(
-        'cursor-pointer border-b border-gray-100 transition hover:bg-gray-50',
+        'cursor-pointer border-b border-ink-100 transition hover:bg-ink-100',
         isSelected && 'bg-primary/5',
       )}
     >
-      <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
+      <td className="px-2 py-2 font-mono text-[12px] text-ink-700">
         {row.job_key}
       </td>
-      <td className="px-2 py-2 text-right font-mono text-[12px] text-gray-700">
+      <td className="px-2 py-2 text-right font-mono text-[12px] text-ink-700">
         {row.runs}
       </td>
       <td className="px-2 py-2">
@@ -345,7 +348,7 @@ function JobKeyRow({
           {(row.success_rate * 100).toFixed(1)}%
         </Badge>
       </td>
-      <td className="px-2 py-2 text-right font-mono text-[12px] text-gray-700">
+      <td className="px-2 py-2 text-right font-mono text-[12px] text-ink-700">
         {formatDuration(row.avg_duration_ms)}
       </td>
       <td className="px-2 py-2">
@@ -353,7 +356,7 @@ function JobKeyRow({
           {row.last_status || '-'}
         </Badge>
       </td>
-      <td className="px-2 py-2 text-[12px] text-gray-500">
+      <td className="px-2 py-2 text-[12px] text-ink-500">
         {formatRelativeTime(row.last_run_at)}
       </td>
     </tr>

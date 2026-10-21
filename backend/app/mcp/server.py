@@ -39,6 +39,7 @@ from starlette.routing import Route
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.edition_naming import EDITION_LABELS
 from app.mcp.auth import TopicEyeTokenVerifier
 from app.mcp.authorize_route import make_authorize_route
 from app.mcp.oauth_provider import TopicEyeOAuthProvider
@@ -92,10 +93,10 @@ _base = _base_url()
 mcp_server = MCPServer(
     name="TopicEye",
     title="TopicEye 选题雷达",
-    description="查询今天值得写的选题：精选 picks、日报、话题趋势，并对内容条目跑六维打分。",
+    description=f"查询今天值得写的选题：精选 picks、{EDITION_LABELS['daily_neutral']}、话题趋势，并对内容条目跑六维打分。",
     instructions=(
         "这是 TopicEye 选题雷达的 MCP 入口。典型用法：先 get_today_picks 看今天精选，"
-        "再用 get_trends 看近期话题走势，get_daily_report 拿编辑好的日报综述，"
+        f"再用 get_trends 看近期话题走势，get_daily_report 拿编辑好的{EDITION_LABELS['daily_neutral']}综述，"
         "score_items 可对自己的候选选题批量打分排序。"
     ),
     version="0.1.0",
@@ -217,10 +218,10 @@ async def get_today_picks(
 
 @mcp_server.tool(
     name="get_daily_report",
-    title="选题日报",
+    title=EDITION_LABELS["daily_neutral"],
     description=(
-        "返回指定日期的选题日报（overview 综述 / top_picks / keywords / trends）；"
-        "不传 date 返回今天的最新日报（无则自动生成快照）。日报按 token 所属用户读取。"
+        f"返回指定日期的{EDITION_LABELS['daily_neutral']}（overview 综述 / top_picks / keywords / trends）；"
+        f"不传 date 返回今天的最新{EDITION_LABELS['daily_neutral']}（无则自动生成快照）。内容按 token 所属用户读取。"
     ),
 )
 async def get_daily_report(

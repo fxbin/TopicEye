@@ -176,7 +176,7 @@ All tools mirror the REST agent endpoints. Note `get_daily_report` without `date
 | Tool | What it does | Mirrors |
 |---|---|---|
 | `get_today_picks(hours, limit, category)` | 精选选题（含评分明细） | `GET /api/v1/skill/today-picks` |
-| `get_daily_report(date?)` | 选题日报（按 token 所属用户） | `GET /api/v1/skill/daily-report` |
+| `get_daily_report(date?)` | 每日情报（按 token 所属用户） | `GET /api/v1/skill/daily-report` |
 | `get_trends(days, limit)` | 话题趋势 + 关键词词频 | `GET /api/v1/skill/trends` |
 | `score_items(items)` | 候选内容跑六维打分（`content_id` 为整数，1-50 条） | `POST /api/v1/scoring/score` |
 

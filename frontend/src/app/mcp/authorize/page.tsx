@@ -7,6 +7,7 @@ import { useAppContext } from '@/components/ClientLayout';
 import { mcpOAuthApi } from '@/lib/api';
 import type { McpAuthorizeInfo } from '@/lib/api';
 import { Badge, Button, Panel } from '@/components/ui';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 type Status = 'loading' | 'ready' | 'error' | 'acting';
 
@@ -127,7 +128,7 @@ export default function McpAuthorizePage() {
               <ul className="space-y-1.5">
                 <li className="flex items-start gap-2">
                   <Badge tone="teal">读</Badge>
-                  <span>读取今日精选选题、选题日报（缺失时会自动生成当日快照）、话题趋势与关键词</span>
+                  <span>{`读取今日精选选题、${EDITION_LABELS.daily_neutral}（缺失时会自动生成当日快照）、话题趋势与关键词`}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Badge tone="primary">算</Badge>

@@ -20,16 +20,16 @@ export default function MonthlyDigestPage() {
   return (
     <DigestReportPage<MonthlyDigest, MonthlyDigestMonthSummary>
       title={EDITION_LABELS.monthly}
-      badge="MONTHLY REVIEW"
+      badge="MONTHLY INTELLIGENCE"
       heroLabel="TOPIC RADAR MONTHLY"
       heroTitle={<>选题雷达<br />{EDITION_LABELS.monthly}</>}
-      sidebarTitle="历史月刊"
-      emptyHistoryText="暂无历史月刊"
-      emptyText="暂无月刊数据"
-      loadingText="正在加载月刊..."
-      generatingText="月刊生成中，请稍候..."
-      latestButtonLabel="最新月刊"
-      periodName="月刊"
+      sidebarTitle={`历史${EDITION_LABELS.monthly}`}
+      emptyHistoryText={`暂无历史${EDITION_LABELS.monthly}`}
+      emptyText={`暂无${EDITION_LABELS.monthly}数据`}
+      loadingText={`正在加载${EDITION_LABELS.monthly}...`}
+      generatingText={`${EDITION_LABELS.monthly}生成中，请稍候...`}
+      latestButtonLabel={`最新${EDITION_LABELS.monthly}`}
+      periodName={EDITION_LABELS.monthly}
       periodCodeLabel="MONTH"
       topPicksTitle="月度精选选题"
       actionTitle="下月创作行动清单"

@@ -6,6 +6,7 @@ import { CATEGORIES, SOURCE_TYPE_COLOR_MAP } from '@/lib/design-tokens';
 import { contentsApi } from '@/lib/api';
 import { Badge, Button } from '@/components/ui';
 import { Pagination } from '@/components/Pagination';
+import { buildContentsCsv } from './_csv-utils';
 import { useFetch } from '@/hooks/useFetch';
 import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { AdminEmptyState, AdminFilterChips, AdminFilters, AdminTable, toast } from '@/components/admin';
@@ -58,12 +59,6 @@ function readInitialStateFromLocation(): ContentsQueryState {
 /* ─── Page Component ── */
 
 function exportContentsAsCSV(items: ContentItem[]): void {
-  // CSV 安全转义：双引号包裹 + 内部双引号转义
-  const esc = (v: any) => {
-    if (v === null || v === undefined) return '';
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
   const headers = ['ID', '标题', '来源', '分类', '标签', '作者', '发布时间', '状态', 'URL'];
   const rows = items.map((it) => [
     it.id,
@@ -76,11 +71,9 @@ function exportContentsAsCSV(items: ContentItem[]): void {
     it.status || '',
     it.url || '',
   ]);
-  // 加 BOM 让 Excel 正确识别 UTF-8
-  const BOM = '\\uFEFF';
-  const csv = BOM + [headers, ...rows]
-    .map((r) => r.map(esc).join(','))
-    .join('\\n');
+  // #124：BOM 与换行此前写成双反斜杠字面量（Excel 打开是一整行），
+  // 生成逻辑抽到 _csv-utils.ts 纯函数并有回归测试
+  const csv = buildContentsCsv(headers, rows);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -22,16 +22,16 @@ export default function WeeklyDigestPage() {
     <>
       <DigestReportPage<WeeklyDigest, WeeklyDigestWeekSummary>
         title={EDITION_LABELS.weekly}
-        badge="WEEKLY REVIEW"
+        badge="WEEKLY INTELLIGENCE"
         heroLabel="TOPIC RADAR WEEKLY"
         heroTitle={<>选题雷达<br />{EDITION_LABELS.weekly}</>}
-        sidebarTitle="历史周刊"
-        emptyHistoryText="暂无历史周刊"
-        emptyText="暂无周刊数据"
-        loadingText="正在加载周刊..."
-        generatingText="周刊生成中，请稍候..."
-        latestButtonLabel="最新周刊"
-        periodName="周刊"
+        sidebarTitle={`历史${EDITION_LABELS.weekly}`}
+        emptyHistoryText={`暂无历史${EDITION_LABELS.weekly}`}
+        emptyText={`暂无${EDITION_LABELS.weekly}数据`}
+        loadingText={`正在加载${EDITION_LABELS.weekly}...`}
+        generatingText={`${EDITION_LABELS.weekly}生成中，请稍候...`}
+        latestButtonLabel={`最新${EDITION_LABELS.weekly}`}
+        periodName={EDITION_LABELS.weekly}
         periodCodeLabel="WEEK"
         topPicksTitle="精选选题 TOP 5"
         actionTitle="下周创作行动清单"

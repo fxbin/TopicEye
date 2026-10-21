@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.edition_naming import (
+    EDITION_LABELS,
     daily_edition_title,
     daily_generation_notice,
 )
@@ -112,7 +113,7 @@ def _edition_label(edition: str) -> str:
         "final": "完整复盘",
         "manual": "手动快照",
         "snapshot": "实时快照",
-        "legacy": "历史日报",
+        "legacy": "历史情报",
     }.get(edition, edition)
 
 
@@ -422,7 +423,7 @@ def build_daily_report_card(
     if len(picks) > show_count:
         feishu_elements.append({"tag": "hr"})
         feishu_elements.append(
-            {"tag": "div", "text": {"tag": "lark_md", "content": f"…共 {report.topic_count} 个选题，点击查看完整日报"}}
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"…共 {report.topic_count} 个选题，点击查看完整情报"}}
         )
 
     # 降级 markdown content（不支持卡片的平台用）
@@ -461,7 +462,7 @@ def build_daily_report_card(
         "content": card_content,
         "link": card_link,
         "elements": feishu_elements,
-        "button_text": "查看完整日报",
+        "button_text": "查看完整情报",
     }
 
 
@@ -535,7 +536,7 @@ async def _push_daily_report_failure(exc: Exception) -> None:
     try:
         from app.services.notification_service import push_notification
 
-        await push_notification("error", "daily_report", "日报生成失败", str(exc)[:200])
+        await push_notification("error", "daily_report", f"{EDITION_LABELS['daily_neutral']}生成失败", str(exc)[:200])
     except Exception:
         logger.warning("daily_report failure notification failed", exc_info=True)
 
@@ -644,7 +645,7 @@ async def generate_daily_report(
     # 不能在精选为空时补位成日报推荐；否则会让“日报精选”的边界失真。
     if not curated_items:
         report.status = "DONE"
-        report.overview = "今日暂未形成可推荐精选。已分析素材会继续参与后续评分，达到精选门槛后再进入日报。"
+        report.overview = "今日暂未形成可推荐精选。已分析素材会继续参与后续评分，达到精选门槛后再进入情报。"
         report.takeaway = "今日暂无达到精选门槛的选题"
         report.keywords = json.dumps([], ensure_ascii=False)
         report.trends = json.dumps([], ensure_ascii=False)

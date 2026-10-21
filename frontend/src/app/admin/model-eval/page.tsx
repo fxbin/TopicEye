@@ -77,6 +77,7 @@ import { ModelsTab } from './ModelsTab';
 import { EvaluateTab } from './EvaluateTab';
 import { UsageTab } from './UsageTab';
 import { HistoryTab } from './HistoryTab';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 export default function ModelEvalPage() {
   const [tab, setTab] = useState<Tab>('models');
@@ -138,7 +139,7 @@ export default function ModelEvalPage() {
             <AdminPageHeader
               title="AI 引擎工作台"
               icon={BrainCircuit}
-              description="管理内容分析、日报、周刊和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。"
+              description={`管理内容分析、${EDITION_LABELS.daily}、${EDITION_LABELS.weekly}和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。`}
             />
           </div>
           <Button type="button" variant="secondary" onClick={refreshAll} className="w-fit whitespace-nowrap">

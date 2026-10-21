@@ -251,7 +251,7 @@ async def generate_weekly_digest(
 
             await send_alert(
                 title=f"📚 {edition_title('weekly')} · {week_label}",
-                message=f"周报生成完成：{week_label}",
+                message=f"{EDITION_LABELS['weekly']}生成完成：{week_label}",
                 alert_key=f"weekly_digest:{week_key}",
                 severity="info",
                 event_type="weekly_digest",
@@ -259,12 +259,12 @@ async def generate_weekly_digest(
                     "content": card_content,
                     "link": card_link,
                     "elements": feishu_elements,
-                    "button_text": "查看完整周刊",
+                    "button_text": "查看完整情报",
                 },
             )
         except Exception:
             logger.warning("weekly_digest webhook push failed (non-fatal)", exc_info=True)
     except Exception as e:
-        await commit_digest_error(digest, e, "周刊", week_key, db)
+        await commit_digest_error(digest, e, EDITION_LABELS["weekly"], week_key, db)
 
     return digest

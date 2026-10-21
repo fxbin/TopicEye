@@ -1,4 +1,5 @@
 'use client';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 /**
  * Evaluate tab（模型 A/B 测评运行 + 人工评分）。
@@ -94,8 +95,8 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
 
   const promptTypes = [
     { value: 'analysis', label: '选题分析' },
-    { value: 'daily_report', label: 'AI 日报' },
-    { value: 'weekly_digest', label: 'AI 周刊' },
+    { value: 'daily_report', label: EDITION_LABELS.daily },
+    { value: 'weekly_digest', label: EDITION_LABELS.weekly },
     { value: 'classification', label: '内容分类' },
   ];
 

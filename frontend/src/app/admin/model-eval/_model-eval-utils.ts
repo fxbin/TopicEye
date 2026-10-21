@@ -15,6 +15,7 @@
  * UI 原子组件（Surface / StatTile / StatusPill / FieldLabel / TextInput /
  * SelectInput / InfoCell）在 _components.tsx 中定义。
  */
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 import type { LlmModelPresetCatalog, LlmModelPresetItem } from '@/lib/api';
 import type { Tone } from '@/components/ui';
@@ -59,8 +60,8 @@ export const PROVIDER_PRESETS: Record<string, ProviderPreset> = {
 
 export const promptTypeLabel: Record<string, string> = {
   analysis: '选题分析',
-  daily_report: 'AI 日报',
-  weekly_digest: 'AI 周刊',
+  daily_report: EDITION_LABELS.daily,
+  weekly_digest: EDITION_LABELS.weekly,
   classification: '内容分类',
   custom: '自定义',
 };

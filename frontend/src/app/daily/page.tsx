@@ -49,7 +49,7 @@ import {
   type CalendarDay,
   type MarkAction,
   type DailyPick,
-  EDITION_LABELS,
+  SNAPSHOT_EDITION_LABELS,
   CATEGORY_ORDER,
   CATEGORY_EN,
   localDateString,
@@ -590,7 +590,7 @@ export default function DailyReportPage() {
                 <Masthead
                   reportDate={report.report_date}
                   weekday={report.weekday}
-                  editionLabel={report.edition ? EDITION_LABELS[report.edition] : undefined}
+                  editionLabel={report.edition ? SNAPSHOT_EDITION_LABELS[report.edition] : undefined}
                   issueNumber={issueNumber}
                   generatedAt={generatedAt || undefined}
                   yesterdayLine={yesterdayLine}

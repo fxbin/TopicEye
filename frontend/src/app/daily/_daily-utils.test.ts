@@ -8,7 +8,7 @@ import {
   displaySourceTitle,
   marksMapFromResp,
   groupByCategory,
-  EDITION_LABELS,
+  SNAPSHOT_EDITION_LABELS,
   CATEGORY_ORDER,
   type DailyPick,
 } from './_daily-utils';
@@ -179,11 +179,11 @@ describe('groupByCategory', () => {
   });
 });
 
-describe('EDITION_LABELS', () => {
+describe('SNAPSHOT_EDITION_LABELS', () => {
   it('包含所有预期版本', () => {
-    expect(EDITION_LABELS.noon).toBe('午间快照');
-    expect(EDITION_LABELS.evening).toBe('晚间快照');
-    expect(EDITION_LABELS.final).toBe('完整复盘');
+    expect(SNAPSHOT_EDITION_LABELS.noon).toBe('午间快照');
+    expect(SNAPSHOT_EDITION_LABELS.evening).toBe('晚间快照');
+    expect(SNAPSHOT_EDITION_LABELS.final).toBe('完整复盘');
   });
 });
 

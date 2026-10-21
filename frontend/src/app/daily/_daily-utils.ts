@@ -98,7 +98,9 @@ export interface DailyPick {
 
 // ── Constants ────────────────────────────────────────────────────────
 
-export const EDITION_LABELS: Record<string, string> = {
+// #132 改名让位：种属词族「今日情报/每周情报…」住在 @/lib/edition-naming 的
+// EDITION_LABELS；本表是日报快照的生命周期轴，语义不同，勿混用。
+export const SNAPSHOT_EDITION_LABELS: Record<string, string> = {
   noon: '午间快照',
   evening: '晚间快照',
   snapshot: '实时快照',

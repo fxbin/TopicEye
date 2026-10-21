@@ -35,6 +35,7 @@ from app._post_sync_pipeline import (
 )
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.edition_naming import EDITION_LABELS
 from app.repositories.content_repo import ContentRepo
 from app.repositories.source_repo import SourceRepository
 from app.services.analysis import (
@@ -594,10 +595,15 @@ async def _post_sync_trends() -> None:
         logger.exception("Scheduler: post-sync trend snapshot failed")
 
 
-# ── NEW: AI 日报 & 周刊定时任务 ──────────────────────────────────────
+# ── 日报 & 周刊定时任务（情报正族口径，#132）──────────────────────────────────────
 
 
-@track_job("daily_report", name="AI日报生成", timeout=300, description="按时间窗口生成日报快照/最终版，基于精选内容")
+@track_job(
+    "daily_report",
+    name=f"{EDITION_LABELS['daily']}生成",
+    timeout=300,
+    description="按时间窗口生成日报快照/最终版，基于精选内容",
+)
 async def _generate_daily_report() -> None:
     """Generate current-day daily report snapshot."""
     logger.info("Scheduler: daily report generation started")
@@ -612,7 +618,12 @@ async def _generate_daily_report() -> None:
         logger.exception("Scheduler: daily report generation failed")
 
 
-@track_job("daily_report_final", name="AI日报完整复盘", timeout=300, description="每日凌晨生成前一天完整日报")
+@track_job(
+    "daily_report_final",
+    name=f"{EDITION_LABELS['daily']}完整复盘",
+    timeout=300,
+    description="每日凌晨生成前一天完整日报",
+)
 async def _generate_daily_report_final() -> None:
     """Generate previous day's full final daily report."""
     logger.info("Scheduler: daily final report generation started")
@@ -627,7 +638,12 @@ async def _generate_daily_report_final() -> None:
         logger.exception("Scheduler: daily final report generation failed")
 
 
-@track_job("weekly_digest", name="AI周刊生成", timeout=300, description="每周一早9点生成AI周刊，基于本周已分析内容")
+@track_job(
+    "weekly_digest",
+    name=f"{EDITION_LABELS['weekly']}生成",
+    timeout=300,
+    description=f"每周一凌晨3点生成{EDITION_LABELS['weekly']}，基于本周已分析内容",
+)
 # ── User-owned daily reports (T2) ────────────────────────────────────────
 # Generates a per-user daily report for Pro+ users that have enabled
 # private sources. Uses the same edition as the global daily report but
@@ -747,9 +763,9 @@ async def _generate_weekly_digest() -> None:
 
 @track_job(
     "monthly_digest",
-    name="AI月刊生成",
+    name=f"{EDITION_LABELS['monthly']}生成",
     timeout=300,
-    description="每月1日凌晨生成上月 AI 月刊（此前只有 API 触发，无人调用则永不生成）",
+    description=f"每月1日凌晨生成上月{EDITION_LABELS['monthly']}（此前只有 API 触发，无人调用则永不生成）",
 )
 async def _generate_monthly_digest() -> None:
     """Generate AI monthly digest for the previous month on the 1st, 04:45."""
@@ -1078,19 +1094,19 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # AI日报：午间、晚间生成当日快照
+    # 今日情报：午间、晚间生成当日快照
     scheduler.add_job(
         _generate_daily_report,
         trigger=CronTrigger(hour=12, minute=0),
         id="daily_report_noon",
-        name="AI日报午间快照",
+        name=f"{EDITION_LABELS['daily']}午间快照",
         replace_existing=True,
     )
     scheduler.add_job(
         _generate_daily_report,
         trigger=CronTrigger(hour=20, minute=0),
         id="daily_report_evening",
-        name="AI日报晚间快照",
+        name=f"{EDITION_LABELS['daily']}晚间快照",
         replace_existing=True,
     )
     # 用户专属日报：错开全局 10 分钟，避免 LLM gateway 拥堵
@@ -1112,25 +1128,25 @@ def start_scheduler() -> None:
         _generate_daily_report_final,
         trigger=CronTrigger(hour=0, minute=30),
         id="daily_report_final",
-        name="AI日报完整复盘",
+        name=f"{EDITION_LABELS['daily']}完整复盘",
         replace_existing=True,
     )
 
-    # AI周刊：每周一凌晨3点生成（总结上周）
+    # 每周情报：每周一凌晨3点生成（总结上周）
     scheduler.add_job(
         _generate_weekly_digest,
         trigger=CronTrigger(day_of_week="mon", hour=3, minute=0),
         id="weekly_digest",
-        name="AI周刊生成",
+        name=f"{EDITION_LABELS['weekly']}生成",
         replace_existing=True,
     )
 
-    # AI 月刊：每月 1 日 04:45 生成上月月刊（此前无调度注册，仅 API 触发）
+    # 每月情报：每月 1 日 04:45 生成上月月刊（此前无调度注册，仅 API 触发）
     scheduler.add_job(
         _generate_monthly_digest,
         trigger=CronTrigger(day=1, hour=4, minute=45),
         id="monthly_digest",
-        name="AI月刊生成",
+        name=f"{EDITION_LABELS['monthly']}生成",
         replace_existing=True,
     )
 

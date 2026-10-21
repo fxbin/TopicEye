@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import async_session, get_db
+from app.core.edition_naming import EDITION_LABELS
 from app.repositories.content_repo import ContentRepo
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.repositories.pick_mark_repo import PickMarkRepository
@@ -48,7 +49,7 @@ async def get_my_today_report(
     the same paywall.
     """
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+        raise HTTPException(status_code=403, detail=f"我的{EDITION_LABELS['daily']}需 Pro 及以上套餐")
     return await get_latest_today_report(db, owner_user_id=current_user.id)
 
 
@@ -61,7 +62,7 @@ async def get_my_report_by_date(
 ):
     """Fetch the user's own report for a date, or latest snapshot if final does not exist."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+        raise HTTPException(status_code=403, detail=f"我的{EDITION_LABELS['daily']}需 Pro 及以上套餐")
     repo = DailyReportRepository(db)
     report = await repo.get_by_date(date, edition=edition, owner_user_id=current_user.id)
     if report is None:
@@ -76,7 +77,7 @@ async def list_my_report_dates(
 ):
     """List all dates that have the user's own reports, newest first."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+        raise HTTPException(status_code=403, detail=f"我的{EDITION_LABELS['daily']}需 Pro 及以上套餐")
     repo = DailyReportRepository(db)
     dates = await repo.get_dates_with_reports(owner_user_id=current_user.id)
     return {"dates": dates}
@@ -89,7 +90,7 @@ async def trigger_my_generate(
 ):
     """Force generate today's user-owned daily report snapshot."""
     if not plan_allows_private_source(current_user.plan):
-        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+        raise HTTPException(status_code=403, detail=f"我的{EDITION_LABELS['daily']}需 Pro 及以上套餐")
     return await generate_daily_report(db, force=True, owner_user_id=current_user.id)
 
 
@@ -304,7 +305,7 @@ async def trigger_generate_version(
             "id": report_id,
             "report_date": report_date_iso,
             "status": "GENERATING",
-            "message": "日报正在后台生成，请稍后刷新查看",
+            "message": "情报正在后台生成，请稍后刷新查看",
         },
     )
 
@@ -328,9 +329,9 @@ async def push_daily_report_webhook(
     repo = DailyReportRepository(db)
     report = await repo.get_by_date(date, edition=edition)
     if report is None:
-        raise HTTPException(status_code=404, detail=f"未找到 {date} 的日报")
+        raise HTTPException(status_code=404, detail=f"未找到 {date} 的情报")
     if report.status != "DONE":
-        raise HTTPException(status_code=400, detail=f"日报状态为 {report.status}，无法推送")
+        raise HTTPException(status_code=400, detail=f"情报状态为 {report.status}，无法推送")
 
     picks = _json.loads(report.top_picks) if report.top_picks else []
     sent = await _push(
@@ -342,7 +343,7 @@ async def push_daily_report_webhook(
     )
     if not sent:
         return {"sent": False, "message": "未配置 webhook 或发送失败，请检查通知配置"}
-    return {"sent": True, "message": f"日报已推送到群（{report.report_date} {report.edition}）"}
+    return {"sent": True, "message": f"情报已推送到群（{report.report_date} {report.edition}）"}
 
 
 def _extract_sparkline_keywords(title: str, limit: int = 4) -> list[str]:
@@ -660,7 +661,7 @@ def _safe_json_loads(value) -> list | dict | None:
 
 @router.get("/yesterday-tracking")
 async def get_yesterday_tracking(
-    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    report_date: str = Query(..., description=f"{EDITION_LABELS['daily']}日期 YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
 ):
     """昨日 top picks 的 24h 热度 delta + lifecycle 验证（公共日报）。
@@ -672,13 +673,13 @@ async def get_yesterday_tracking(
 
 @router.get("/me/yesterday-tracking")
 async def get_my_yesterday_tracking(
-    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    report_date: str = Query(..., description=f"{EDITION_LABELS['daily']}日期 YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """昨日追踪（我的日报，Pro+）。额外返回 your_marked（昨日 write/watch 标记的今日进展）。"""
     if not plan_allows_private_source(user.plan):
-        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+        raise HTTPException(status_code=403, detail=f"我的{EDITION_LABELS['daily']}需 Pro 及以上套餐")
     return await _build_yesterday_tracking_public(db, report_date=report_date, owner_user_id=user.id, user_id=user.id)
 
 

@@ -13,6 +13,7 @@ import type {
   TrendKeywordItem,
   TrendPoint,
 } from '@/types/trends';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 /** 邮件 Provider 配置响应（smtp_password 脱敏）。#108 起仅剩自定义 SMTP */
 export interface EmailProviderConfig {
@@ -71,8 +72,8 @@ export interface NotificationWebhookConfigUpdate {
 /** 通知推送事件类型选项 */
 export const NOTIFICATION_EVENT_TYPES: Array<{ value: string; label: string; desc: string }> = [
   { value: 'source_failure', label: '信源失败告警', desc: '信源连续抓取失败时推送' },
-  { value: 'daily_report', label: '日报生成完成', desc: '每日午间/晚间/复盘日报生成后推送' },
-  { value: 'weekly_digest', label: '周报生成完成', desc: '每周一周报生成后推送' },
+  { value: 'daily_report', label: `${EDITION_LABELS.daily}生成完成`, desc: '每日午间/晚间/复盘版情报生成后推送' },
+  { value: 'weekly_digest', label: `${EDITION_LABELS.weekly}生成完成`, desc: `每周一${EDITION_LABELS.weekly}生成后推送` },
   { value: 'today_picks', label: '今日精选推送', desc: '分析+聚类完成后推送今日 Top 精选内容' },
   { value: 'test', label: '测试发送', desc: '点击「发送测试」按钮时推送' },
 ];

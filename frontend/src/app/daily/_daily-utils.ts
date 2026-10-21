@@ -106,7 +106,7 @@ export const SNAPSHOT_EDITION_LABELS: Record<string, string> = {
   snapshot: '实时快照',
   manual: '手动快照',
   final: '完整复盘',
-  legacy: '历史日报',
+  legacy: '历史情报',
 };
 
 export const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {

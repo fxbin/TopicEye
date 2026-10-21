@@ -602,7 +602,7 @@ async def _post_sync_trends() -> None:
     "daily_report",
     name=f"{EDITION_LABELS['daily']}生成",
     timeout=300,
-    description="按时间窗口生成日报快照/最终版，基于精选内容",
+    description=f"按时间窗口生成{EDITION_LABELS['daily']}快照/最终版，基于精选内容",
 )
 async def _generate_daily_report() -> None:
     """Generate current-day daily report snapshot."""
@@ -622,7 +622,7 @@ async def _generate_daily_report() -> None:
     "daily_report_final",
     name=f"{EDITION_LABELS['daily']}完整复盘",
     timeout=300,
-    description="每日凌晨生成前一天完整日报",
+    description=f"每日凌晨生成前一天完整{EDITION_LABELS['daily']}",
 )
 async def _generate_daily_report_final() -> None:
     """Generate previous day's full final daily report."""
@@ -678,7 +678,7 @@ async def _list_pro_users_with_private_sources() -> list[int]:
         return [row[0] for row in result.all()]
 
 
-@track_job("daily_report_user", name="用户日报生成", timeout=1800)
+@track_job("daily_report_user", name=f"用户{EDITION_LABELS['daily']}生成", timeout=1800)
 async def _generate_user_daily_reports() -> None:
     """Generate user-owned daily reports for all Pro+ users with private sources.
 
@@ -1114,14 +1114,14 @@ def start_scheduler() -> None:
         _generate_user_daily_reports,
         trigger=CronTrigger(hour=12, minute=10),
         id="daily_report_user_noon",
-        name="用户日报午间",
+        name=f"用户{EDITION_LABELS['daily']}午间",
         replace_existing=True,
     )
     scheduler.add_job(
         _generate_user_daily_reports,
         trigger=CronTrigger(hour=20, minute=10),
         id="daily_report_user_evening",
-        name="用户日报晚间",
+        name=f"用户{EDITION_LABELS['daily']}晚间",
         replace_existing=True,
     )
     scheduler.add_job(

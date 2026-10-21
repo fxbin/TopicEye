@@ -60,6 +60,7 @@ import {
   groupByCategory,
 } from './_daily-utils';
 import type { YesterdayTrackingData } from '@/types';
+import { dailyEditionLabel } from '@/lib/edition-naming';
 
 export default function DailyReportPage() {
   const [report, setReport] = useState<DailyReportData | null>(null);
@@ -187,7 +188,7 @@ export default function DailyReportPage() {
       if (errMsg.includes('404') || errMsg.includes('not found')) {
         setReport(null);
         if (date) setSelectedDate(date);
-        setError(date ? `${date} 暂无日报` : '暂无日报数据');
+        setError(date ? `${date} 暂无情报` : '暂无情报数据');
       } else {
         setError(errMsg);
       }
@@ -435,13 +436,13 @@ export default function DailyReportPage() {
             href="/daily"
             className={cx("rounded px-2.5 py-1", reportScope === 'public' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
           >
-            公共日报
+            公共情报
           </a>
           <a
             href="/daily?scope=mine"
             className={cx("rounded px-2.5 py-1", reportScope === 'mine' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
           >
-            我的日报
+            我的情报
           </a>
           {/* 今日已选入口（一期补行动闭环）：点击打开抽屉 */}
           <button
@@ -531,7 +532,7 @@ export default function DailyReportPage() {
               type="button"
               onClick={handlePushWebhook}
               disabled={pushing}
-              title="将当前日报推送到已配置的飞书/钉钉/Slack 群机器人"
+              title="将本期情报推送到已配置的飞书/钉钉/Slack 群机器人"
               className="ml-1 flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-primary disabled:opacity-50"
             >
               {pushing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
@@ -550,7 +551,7 @@ export default function DailyReportPage() {
       <div className="h-[calc(100%-40px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
         <div className="mx-auto max-w-[920px] px-4 py-4 sm:px-6">
           {loading ? (
-            <ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>
+            <ReportStatusPanel icon={FileText}>正在加载情报...</ReportStatusPanel>
           ) : error ? (
             <ReportStatusPanel
               icon={AlertTriangle}
@@ -582,7 +583,7 @@ export default function DailyReportPage() {
               </div>
             </div>
           ) : report?.status === 'GENERATING' ? (
-            <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
+            <ReportStatusPanel icon={Loader2}>情报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
             <div className="space-y-0">
               {/* 报头（刊名/日期行/统计行：期号·昨日兑现·长度合同） */}
@@ -735,7 +736,7 @@ export default function DailyReportPage() {
                       >
                         <span className="font-mono text-[10px] font-bold text-gray-400">{d.report_date} {d.weekday}</span>
                         <span className="truncate text-[11.5px] font-bold text-gray-700">
-                          {d.takeaway || '查看当日日报'}
+                          {d.takeaway || '查看当日情报'}
                         </span>
                       </button>
                     ))}
@@ -766,11 +767,11 @@ export default function DailyReportPage() {
                   loading={generating && generatingDate === recoveryDate}
                   icon={FileText}
                 >
-                  生成日报
+                  生成情报
                 </ReportActionButton>
               )}
             >
-              暂无日报数据
+              暂无情报数据
             </ReportStatusPanel>
           )}
         </div>

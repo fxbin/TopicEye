@@ -54,8 +54,8 @@ def _is_transient_webhook_failure(status_code: int | None) -> bool:
 
 # ── 事件类型枚举 ──
 # source_failure: 信源连续抓取失败告警（默认场景）
-# daily_report: 日报生成完成推送
-# weekly_digest: 周报生成完成推送
+# daily_report: 今日情报生成完成推送
+# weekly_digest: 每周情报生成完成推送
 # today_picks: 今日精选内容推送（分析+聚类完成后触发）
 # test: 测试发送（POST /settings/notification-webhook/test）
 EVENT_TYPES = {"source_failure", "daily_report", "weekly_digest", "today_picks", "test"}
@@ -301,8 +301,8 @@ async def send_alert(
     severity : info / warning / error
     event_type : 事件类型，用于按用户配置过滤推送通道
         - source_failure（默认）: 信源连续抓取失败
-        - daily_report: 日报生成完成
-        - weekly_digest: 周报生成完成
+        - daily_report: 见 core.edition_naming 的 daily 标签
+        - weekly_digest: 每周情报生成完成
         - test: 测试发送
         env 通道（ALERT_WEBHOOK_URL）不参与过滤，永远收所有告警。
     card : 可选卡片消息。传 dict 时发卡片（各平台适配），否则发 text。

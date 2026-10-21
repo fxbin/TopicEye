@@ -18,13 +18,14 @@ import { LoadingState } from '@/components/StateView';
 import { dailyReportApi } from '@/lib/api';
 import type { WebhookDeliveryLogItem } from '@/lib/api/_domains';
 import { buildSummaryBadges, summarizeLogPage } from './_scope-utils';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 const PAGE_SIZE = 30;
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   source_failure: '信源故障',
   trending: '热点推送',
-  daily_report: '日报推送',
+  daily_report: `${EDITION_LABELS.daily}推送`,
   test: '测试推送',
 };
 

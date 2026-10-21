@@ -17,6 +17,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.edition_naming import EDITION_LABELS
 from app.models.prompt_registry import PromptRegistry
 
 logger = logging.getLogger(__name__)
@@ -134,21 +135,21 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
     {
         "name": "daily_report_system",
         "scene": "daily_report",
-        "description": "日报系统提示词",
+        "description": f"{EDITION_LABELS['daily_neutral']}系统提示词",
         "module": "app.services.llm.prompts.daily_report",
         "attr": "SYSTEM_PROMPT",
     },
     {
         "name": "daily_report_prompt",
         "scene": "daily_report",
-        "description": "日报用户提示词",
+        "description": f"{EDITION_LABELS['daily_neutral']}用户提示词",
         "module": "app.services.llm.prompts.daily_report",
         "attr": "REPORT_PROMPT",
     },
     {
         "name": "weekly_digest_prompt",
         "scene": "weekly_digest",
-        "description": "周报提示词（统一模板，参数化生成）",
+        "description": f"{EDITION_LABELS['weekly']}提示词（统一模板，参数化生成）",
         "module": "app.services.llm.prompts.digest",
         "attr": "DIGEST_PROMPT",
     },

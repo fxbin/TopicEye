@@ -175,6 +175,6 @@ async def generate_monthly_digest(
             "success", "monthly_digest", f"{EDITION_LABELS['monthly']}生成完成", f"{month_label} 已生成"
         )
     except Exception as exc:
-        await commit_digest_error(digest, exc, "月刊", month_key, db)
+        await commit_digest_error(digest, exc, EDITION_LABELS["monthly"], month_key, db)
 
     return digest

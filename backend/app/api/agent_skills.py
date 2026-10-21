@@ -24,12 +24,14 @@ import hashlib
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 
+from app.core.edition_naming import EDITION_LABELS
+
 router = APIRouter(prefix="", tags=["agent-skills"])
 
 SKILL_NAME = "topiceye-reader"
 SKILL_DESCRIPTION = (
-    "读取 TopicEye 选题数据（今日精选 / 日报 / 趋势）。当用户询问"
-    "「今天有什么值得写的选题」「最近有什么热点」「给我看看选题日报」时调用。"
+    f"读取 TopicEye 选题数据（今日精选 / {EDITION_LABELS['daily_neutral']} / 趋势）。当用户询问"
+    f"「今天有什么值得写的选题」「最近有什么热点」「给我看看{EDITION_LABELS['daily_neutral']}」时调用。"
     "需要先设置环境变量 TOPICEYE_API_URL 和 TOPICEYE_API_TOKEN。"
 )
 

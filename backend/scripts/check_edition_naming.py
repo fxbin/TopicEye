@@ -52,14 +52,22 @@ def parse_backend() -> dict[str, str]:
     return result
 
 
+def _is_test_path(path: Path) -> bool:
+    """测试文件不算生产文案：断言字面值是它们的本职（穷举与单测都合法）。"""
+    parts = path.parts
+    if "__tests__" in parts or "tests" in parts:
+        return True
+    return path.name.endswith((".test.ts", ".test.tsx", "_test.py"))
+
+
 def scan_hardcoded() -> list[str]:
-    """情报族词出现在常量文件之外即为漂移（注释行不计）。"""
+    """情报族词出现在常量文件之外即为漂移（注释行与测试文件不计）。"""
     hits: list[str] = []
     for root in SCAN_ROOTS:
         for path in root.rglob("*"):
             if path.suffix not in SCAN_SUFFIXES or not path.is_file():
                 continue
-            if path.resolve() in CONSTANT_FILES:
+            if path.resolve() in CONSTANT_FILES or _is_test_path(path):
                 continue
             try:
                 text = path.read_text(encoding="utf-8")

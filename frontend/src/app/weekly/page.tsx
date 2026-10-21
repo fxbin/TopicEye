@@ -1,4 +1,5 @@
 'use client';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 import React, { useState, useCallback } from 'react';
 import { ClipboardList } from 'lucide-react';
@@ -20,10 +21,10 @@ export default function WeeklyDigestPage() {
   return (
     <>
       <DigestReportPage<WeeklyDigest, WeeklyDigestWeekSummary>
-        title="AI 周刊"
+        title={EDITION_LABELS.weekly}
         badge="WEEKLY REVIEW"
         heroLabel="TOPIC RADAR WEEKLY"
-        heroTitle={<>选题雷达<br />周刊</>}
+        heroTitle={<>选题雷达<br />{EDITION_LABELS.weekly}</>}
         sidebarTitle="历史周刊"
         emptyHistoryText="暂无历史周刊"
         emptyText="暂无周刊数据"

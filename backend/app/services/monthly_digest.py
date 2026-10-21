@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.edition_naming import EDITION_LABELS
 from app.core.time import utc_now
 from app.models.monthly_digest import MonthlyDigest
 from app.services.digest_base import (
@@ -170,7 +171,9 @@ async def generate_monthly_digest(
         digest.updated_at = utc_now()
         await db.commit()
         logger.info("Monthly digest generated: %s (%s)", month_key, month_label)
-        await push_digest_notification("success", "monthly_digest", "每月情报生成完成", f"{month_label} 已生成")
+        await push_digest_notification(
+            "success", "monthly_digest", f"{EDITION_LABELS['monthly']}生成完成", f"{month_label} 已生成"
+        )
     except Exception as exc:
         await commit_digest_error(digest, exc, "月刊", month_key, db)
 

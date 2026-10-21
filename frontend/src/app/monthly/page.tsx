@@ -22,7 +22,7 @@ export default function MonthlyDigestPage() {
       title={EDITION_LABELS.monthly}
       badge="MONTHLY REVIEW"
       heroLabel="TOPIC RADAR MONTHLY"
-      heroTitle={<>选题雷达<br />月刊</>}
+      heroTitle={<>选题雷达<br />{EDITION_LABELS.monthly}</>}
       sidebarTitle="历史月刊"
       emptyHistoryText="暂无历史月刊"
       emptyText="暂无月刊数据"

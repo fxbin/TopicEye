@@ -19,7 +19,7 @@ import { ArrowRight, BookOpen, Clock, ExternalLink, Flame } from 'lucide-react';
 import { cx } from '@/components/ui';
 import Sparkline from '@/components/Sparkline';
 import type { SparklineData } from '@/components/Sparkline';
-import { EDITION_LABELS } from '@/lib/edition-naming';
+import { dailyEditionLabel } from '@/lib/edition-naming';
 import {
   type DailyPick,
   type MarkAction,
@@ -130,7 +130,7 @@ export function Masthead({
   return (
     <header className="bg-white text-center">
       {/* #132 情报正族：眉题=种属四字裸放，品牌由主标题「选题雷达」承担（圆桌 r3-s2） */}
-      <p className="pt-5 text-[11px] font-bold tracking-[0.35em] text-gray-400">{EDITION_LABELS.daily}</p>
+      <p className="pt-5 text-[11px] font-bold tracking-[0.35em] text-gray-400">{dailyEditionLabel(reportDate)}</p>
       <h1 className="mt-1 font-display text-[34px] font-black leading-tight tracking-[0.6em] text-gray-900 [text-indent:0.6em]">
         选题雷达
       </h1>

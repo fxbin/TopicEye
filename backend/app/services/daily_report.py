@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.edition_naming import edition_title
 from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
@@ -482,7 +483,7 @@ async def push_daily_report_webhook(
     card = build_daily_report_card(report, picks, report_date, normalized_edition)
 
     return await send_alert(
-        title=f"📰 AI 日报 · {report_date} {_edition_label(normalized_edition)}",
+        title=f"📰 {edition_title('daily')} · {report_date} {_edition_label(normalized_edition)}",
         message=f"日报生成完成，共 {report.topic_count} 个选题",
         alert_key=f"daily_report:{report_date}:{normalized_edition}",
         severity="info",

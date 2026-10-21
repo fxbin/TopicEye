@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.edition_naming import edition_title
 from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
 from app.services.digest_base import (
@@ -207,7 +208,7 @@ async def generate_weekly_digest(
         await db.commit()
         logger.info("Weekly digest generated: %s (%s)", week_key, week_label)
         # 通知：周刊生成成功
-        await push_digest_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
+        await push_digest_notification("success", "weekly_digest", "每周情报生成完成", f"{week_label} 已生成")
 
         # webhook 卡片推送（失败不阻塞周报生成）
         try:
@@ -242,12 +243,11 @@ async def generate_weekly_digest(
 
             # 卡片链接：必须是绝对 URL
             from app.core.config import settings
-
             site_base = getattr(settings, "SITE_BASE_URL", "") or ""
             card_link = f"{site_base.rstrip('/')}/weekly" if site_base else ""
 
             await send_alert(
-                title=f"📚 AI 周刊 · {week_label}",
+                title=f"📚 {edition_title('weekly')} · {week_label}",
                 message=f"周报生成完成：{week_label}",
                 alert_key=f"weekly_digest:{week_key}",
                 severity="info",

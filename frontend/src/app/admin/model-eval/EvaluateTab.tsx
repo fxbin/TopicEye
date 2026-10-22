@@ -17,7 +17,7 @@ import { EDITION_LABELS } from '@/lib/edition-naming';
  * TextInput / FieldLabel / InfoCell / SelectInput）从 _components.tsx 复用。
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -29,6 +29,7 @@ import { Button, Panel, Toolbar, cx } from '@/components/ui';
 import { StatusPill, Surface } from './_components';
 import { modelsApi } from '@/lib/api';
 import type { EvalResult, LlmModelItem } from '@/lib/api';
+import { applyEvaluationScore } from './_evaluation-state';
 
 export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
   const enabledModels = useMemo(() => models.filter((m) => m.enabled), [models]);
@@ -40,7 +41,10 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
   const [promptType, setPromptType] = useState('analysis');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ eval_run_id: string; results: EvalResult[] } | null>(null);
-  const [scoringId, setScoringId] = useState<number | null>(null);
+  const [scoringIds, setScoringIds] = useState<Set<number>>(new Set());
+  const pendingScores = useRef(new Set<number>());
+  const [scoreErrors, setScoreErrors] = useState<Record<number, string>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setSelected((prev) => new Set([...prev].filter((id) => runnableModelIds.has(id))));
@@ -57,11 +61,13 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
   };
 
   const handleRun = async () => {
-    if (selected.size < 2) {
-      alert('至少选择 2 个模型进行对比');
+    if (selected.size < 2 || pendingScores.current.size > 0) {
+      setError(selected.size < 2 ? '至少选择 2 个模型进行对比' : '请等待评分保存完成');
       return;
     }
     setRunning(true);
+    setError(null);
+    setScoreErrors({});
     setResult(null);
     try {
       const res = await modelsApi.runEvaluation({
@@ -71,25 +77,26 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
       const detail = await modelsApi.getEvalRun(res.eval_run_id);
       setResult(detail);
     } catch (e) {
-      alert('测评失败: ' + String(e));
+      setError(e instanceof Error ? e.message : '测评失败，请重试');
+    } finally {
+      setRunning(false);
     }
-    setRunning(false);
   };
 
   const handleScore = async (evalId: number, score: number) => {
-    setScoringId(evalId);
+    if (!result || pendingScores.current.has(evalId)) return;
+    const runId = result.eval_run_id;
+    pendingScores.current.add(evalId);
+    setScoringIds(new Set(pendingScores.current));
+    setScoreErrors((current) => { const next = { ...current }; delete next[evalId]; return next; });
     try {
       await modelsApi.scoreEvaluation(evalId, score);
-      if (result) {
-        setResult({
-          ...result,
-          results: result.results.map((r) => (r.id === evalId ? { ...r, quality_score: score } : r)),
-        });
-      }
+      setResult((current) => applyEvaluationScore(current, runId, evalId, score));
     } catch (e) {
-      alert('评分失败: ' + String(e));
+      setScoreErrors((current) => ({ ...current, [evalId]: e instanceof Error ? e.message : '评分保存失败，请重试' }));
     } finally {
-      setScoringId(null);
+      pendingScores.current.delete(evalId);
+      setScoringIds(new Set(pendingScores.current));
     }
   };
 
@@ -113,6 +120,7 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
                 type="button"
                 onClick={() => toggleModel(m.id)}
                 disabled={!runnable}
+                aria-pressed={active}
                 title={runnable ? undefined : '该模型缺少 API Key，暂不能参与测评'}
                 className={cx(
                   'rounded-sm border px-3 py-2 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50',
@@ -135,6 +143,7 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
               key={pt.value}
               type="button"
               onClick={() => setPromptType(pt.value)}
+              aria-pressed={promptType === pt.value}
               className={cx(
                 'rounded-xs border px-3 py-1.5 text-[13px] font-bold transition',
                 promptType === pt.value ? 'border-primary bg-primary-light text-primary' : 'border-ink-200 bg-white text-ink-700 hover:border-primary-border',
@@ -145,10 +154,11 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
           ))}
         </Toolbar>
 
-        <Button type="button" variant="primary" onClick={handleRun} disabled={running || selected.size < 2} className="px-5 text-sm">
+        <Button type="button" variant="primary" onClick={handleRun} disabled={running || selected.size < 2 || scoringIds.size > 0} className="px-5 text-sm">
           <Play size={15} strokeWidth={2.2} />
           {running ? '测评进行中...' : '开始 A/B 测评'}
         </Button>
+        {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
       </Surface>
 
       {result && (
@@ -181,7 +191,9 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
                       key={s}
                       type="button"
                       onClick={() => handleScore(r.id, s)}
-                      disabled={scoringId === r.id}
+                      disabled={scoringIds.has(r.id)}
+                      aria-label={`${r.model_name}评分 ${s} 分`}
+                      aria-pressed={r.quality_score === s}
                       className={cx(
                         'h-7 w-7 rounded-xs border text-sm tabular-nums transition disabled:cursor-wait disabled:opacity-60',
                         r.quality_score === s ? 'border-primary bg-primary-light text-primary' : 'border-ink-200 bg-white text-ink-500 hover:border-primary-border',
@@ -191,6 +203,7 @@ export function EvaluateTab({ models }: { models: LlmModelItem[] }) {
                     </button>
                   ))}
                 </div>
+                {scoreErrors[r.id] && <p role="alert" className="text-sm text-red-700">{scoreErrors[r.id]}</p>}
               </Panel>
             ))}
           </div>

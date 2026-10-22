@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -14,9 +14,9 @@ import {
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
-import { LoadingState } from '@/components/StateView';
+import { LoadingState, ErrorState } from '@/components/StateView';
 import { dailyReportApi } from '@/lib/api';
-import type { WebhookDeliveryLogItem } from '@/lib/api/_domains';
+import { useFetch } from '@/hooks/useFetch';
 import { buildSummaryBadges, summarizeLogPage } from './_scope-utils';
 import { EDITION_LABELS } from '@/lib/edition-naming';
 
@@ -54,42 +54,27 @@ function formatDuration(ms: number): string {
 
 export default function WebhookLogsPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [logs, setLogs] = useState<WebhookDeliveryLogItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [eventType, setEventType] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await dailyReportApi.listWebhookLogs({
+  const { data, loading, error, refetch: fetchData } = useFetch(
+    () => dailyReportApi.listWebhookLogs({
         event_type: eventType,
         limit: PAGE_SIZE,
         offset,
-      });
-      setLogs(res.items);
-      setTotal(res.total);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [eventType, offset]);
-
-  useEffect(() => {
-    if (!authLoading && currentUser?.role === 'admin') {
-      void fetchData();
-    }
-  }, [fetchData, authLoading, currentUser]);
+    }),
+    [eventType, offset],
+    { enabled: !authLoading && currentUser?.role === 'admin' },
+  );
+  const logs = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   // Reset offset when filter changes
   const handleFilterChange = (value: string | undefined) => {
     setEventType(value);
     setOffset(0);
+    setExpandedId(null);
   };
 
   if (authLoading) return <LoadingState label="加载中..." />;
@@ -128,17 +113,13 @@ export default function WebhookLogsPage() {
         }
       />
 
-      {error && (
-        <div className="mb-4">
-          <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>
-        </div>
-      )}
-
       {/* Summary + Filter */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {loading ? (
             <span className="text-[12px] text-ink-500">加载中...</span>
+          ) : error ? (
+            <span className="text-sm text-ink-500">日志统计暂不可用</span>
           ) : (
             <>
               {buildSummaryBadges(
@@ -156,10 +137,12 @@ export default function WebhookLogsPage() {
         </div>
 
         {/* Event type filter */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-bold text-ink-500">事件类型</span>
           <button
+            type="button"
             onClick={() => handleFilterChange(undefined)}
+            aria-pressed={!eventType}
             className={cx(
               'rounded-sm border px-2 py-0.5 text-[11px] font-bold transition',
               !eventType
@@ -172,7 +155,9 @@ export default function WebhookLogsPage() {
           {Object.entries(EVENT_TYPE_LABELS).map(([key, label]) => (
             <button
               key={key}
+              type="button"
               onClick={() => handleFilterChange(key)}
+              aria-pressed={eventType === key}
               className={cx(
                 'rounded-sm border px-2 py-0.5 text-[11px] font-bold transition',
                 eventType === key
@@ -187,8 +172,10 @@ export default function WebhookLogsPage() {
       </div>
 
       {/* Log table */}
-      {loading && logs.length === 0 ? (
+      {loading ? (
         <LoadingState label="加载推送日志..." />
+      ) : error ? (
+        <ErrorState error={error} onRetry={() => void fetchData()} panel />
       ) : logs.length === 0 ? (
         <Panel className="p-8 text-center">
           <Send size={32} className="mx-auto mb-3 text-ink-300" />
@@ -220,9 +207,9 @@ export default function WebhookLogsPage() {
                           hasDetail && 'cursor-pointer',
                           !log.success && 'bg-red-light/40',
                         )}
-                        onClick={() => hasDetail && setExpandedId(expanded ? null : log.id)}
                       >
                         <td className="px-3 py-2.5">
+                          <span className="sr-only">{log.success ? '发送成功' : '发送失败'}</span>
                           {log.success ? (
                             <CheckCircle2 size={14} className="text-teal" />
                           ) : (
@@ -247,7 +234,7 @@ export default function WebhookLogsPage() {
                           )}
                         </td>
                         <td className="max-w-[320px] truncate px-3 py-2.5 text-ink-700" title={log.title}>
-                          {log.title}
+                          {hasDetail ? <button type="button" onClick={() => setExpandedId(expanded ? null : log.id)} aria-expanded={expanded} aria-controls={`webhook-detail-${log.id}`} className="max-w-full truncate text-left underline decoration-ink-300 underline-offset-4 hover:text-primary-text">{log.title}<span className="sr-only">：{expanded ? '收起' : '查看'}推送详情</span></button> : log.title}
                         </td>
                         <td className="px-3 py-2.5">
                           {log.status_code ? (
@@ -278,7 +265,7 @@ export default function WebhookLogsPage() {
                         </td>
                       </tr>
                       {expanded && hasDetail && (
-                        <tr className="bg-ink-100/60">
+                        <tr id={`webhook-detail-${log.id}`} className="bg-ink-100/60">
                           <td colSpan={6} className="px-3 py-3">
                             <div className="space-y-2">
                               {log.error_message && (

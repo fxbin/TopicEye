@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   CheckCircle2,
@@ -16,7 +16,7 @@ import { Badge, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { LoadingState } from '@/components/StateView';
 import { evidenceApi } from '@/lib/api';
-import type { EvidenceStats, EvidenceEffectStats } from '@/lib/api';
+import { useFetch } from '@/hooks/useFetch';
 
 const PERIOD_OPTIONS = [7, 14, 30];
 
@@ -126,34 +126,21 @@ function RateBar({
 
 export default function EvidenceDashboardPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [stats, setStats] = useState<EvidenceStats | null>(null);
-  const [effectStats, setEffectStats] = useState<EvidenceEffectStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(7);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [s, e] = await Promise.all([
+  const { data, loading, error, refetch: fetchData } = useFetch(
+    async () => {
+      const [stats, effectStats] = await Promise.all([
         evidenceApi.getStats(),
         evidenceApi.getEffectStats(days),
       ]);
-      setStats(s);
-      setEffectStats(e);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => {
-    if (!authLoading && currentUser?.role === 'admin') {
-      void fetchData();
-    }
-  }, [fetchData, authLoading, currentUser]);
+      return { stats, effectStats };
+    },
+    [days],
+    { enabled: !authLoading && currentUser?.role === 'admin' },
+  );
+  const stats = data?.stats;
+  const effectStats = data?.effectStats;
 
   if (authLoading) return <LoadingState label="加载中..." />;
   if (currentUser?.role !== 'admin') {
@@ -167,12 +154,6 @@ export default function EvidenceDashboardPage() {
   const marked = effectStats?.marked;
   const unmarked = effectStats?.unmarked;
   const comparison = effectStats?.comparison || {};
-  const maxRate = Math.max(
-    marked?.interaction_rate || 0,
-    unmarked?.interaction_rate || 0,
-    0.01,
-  );
-
   // Per-type rates for bar chart
   const allTypes = new Set([
     ...(marked ? Object.keys(marked.interactions_by_type) : []),
@@ -192,6 +173,7 @@ export default function EvidenceDashboardPage() {
               <button
                 key={d}
                 onClick={() => setDays(d)}
+                aria-pressed={days === d}
                 className={cx(
                   'rounded-sm border px-2.5 py-1 text-[12px] font-bold transition',
                   days === d
@@ -216,13 +198,13 @@ export default function EvidenceDashboardPage() {
 
       {error && (
         <div className="mb-4">
-          <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>
+          <AdminNoticeBanner tone="red">{error}<button type="button" onClick={() => void fetchData()} className="ml-3 underline">重试</button></AdminNoticeBanner>
         </div>
       )}
 
       {loading ? (
         <LoadingState label="加载统计数据..." />
-      ) : (
+      ) : error ? null : (
         <div className="space-y-5">
           {/* ── Summary tiles ── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

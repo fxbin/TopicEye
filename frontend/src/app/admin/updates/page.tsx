@@ -1,9 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import {
-  CheckCircle2,
-  CircleDot,
   Edit3,
   Loader2,
   Plus,
@@ -21,7 +19,6 @@ import { useDialogFocus } from '@/components/useDialogFocus';
 import {
   productFeedbackApi,
   type ProductUpdateItem,
-  type ProductUpdateEntry,
   type ProductUpdateKind,
   type ProductUpdateStatus,
 } from '@/lib/api';
@@ -76,7 +73,7 @@ function fromDateInput(s: string): string | null {
 }
 
 export default function AdminUpdatesPage() {
-  const { currentUser, authLoading } = useAppContext();
+  const { authLoading } = useAppContext();
   const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
   const [versionQuery, setVersionQuery] = useState('');
   const [editing, setEditing] = useState<ProductUpdateItem | null>(null);
@@ -400,10 +397,26 @@ function UpdateEditor({
   onSave: () => void;
   onClose: () => void;
 }) {
-  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
+  const [initialDraft] = useState(() => JSON.stringify(draft));
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const closeTriggerRef = useRef<HTMLElement | null>(null);
+  const fieldId = useId();
+  const dirty = JSON.stringify(draft) !== initialDraft;
+  const requestClose = (discardConfirmed = false) => {
+    if (saving) return;
+    if (dirty && !discardConfirmed) {
+      closeTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setConfirmDiscard(true);
+    } else onClose();
+  };
+  useEffect(() => {
+    if (confirmDiscard) continueRef.current?.focus();
+  }, [confirmDiscard]);
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, () => requestClose());
   return (
     <>
-      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={() => requestClose()} />
       <div
         ref={dialogRef}
         role="dialog"
@@ -418,7 +431,7 @@ function UpdateEditor({
           <h2 id="update-editor-title" className="text-base font-semibold text-ink-900">
             {editing ? `编辑 v${editing.version}` : '新建发版'}
           </h2>
-          <Button type="button" variant="ghost" onClick={onClose} className="!px-2 !py-1" aria-label="关闭发版编辑器">
+          <Button type="button" variant="ghost" onClick={() => requestClose()} disabled={saving} className="!px-2 !py-1" aria-label="关闭发版编辑器">
             <X size={16} />
           </Button>
         </div>
@@ -428,10 +441,12 @@ function UpdateEditor({
               <AdminNoticeBanner tone="red">{error}</AdminNoticeBanner>
             </div>
           )}
+          <fieldset disabled={saving} className="min-w-0">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-ink-700">版本号 *</label>
+              <label htmlFor={`${fieldId}-version`} className="mb-1 block text-[12px] font-medium text-ink-700">版本号 *</label>
               <input
+                id={`${fieldId}-version`}
                 type="text"
                 value={draft.version}
                 onChange={(e) => onChange({ ...draft, version: e.target.value })}
@@ -440,8 +455,8 @@ function UpdateEditor({
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-ink-700">状态</label>
-              <div className="flex gap-1.5">
+              <span id={`${fieldId}-status`} className="mb-1 block text-[12px] font-medium text-ink-700">状态</span>
+              <div role="group" aria-labelledby={`${fieldId}-status`} className="flex flex-wrap gap-1.5">
                 {STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
@@ -461,8 +476,9 @@ function UpdateEditor({
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-ink-700">计划日期</label>
+              <label htmlFor={`${fieldId}-target`} className="mb-1 block text-[12px] font-medium text-ink-700">计划日期</label>
               <input
+                id={`${fieldId}-target`}
                 type="date"
                 value={draft.target_date}
                 onChange={(e) => onChange({ ...draft, target_date: e.target.value })}
@@ -470,8 +486,9 @@ function UpdateEditor({
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-medium text-ink-700">发布日期</label>
+              <label htmlFor={`${fieldId}-shipped`} className="mb-1 block text-[12px] font-medium text-ink-700">发布日期</label>
               <input
+                id={`${fieldId}-shipped`}
                 type="date"
                 value={draft.shipped_at}
                 onChange={(e) => onChange({ ...draft, shipped_at: e.target.value })}
@@ -495,7 +512,7 @@ function UpdateEditor({
               <ul className="space-y-2">
                 {draft.items.map((it, idx) => (
                   <li key={idx} className="rounded-sm border border-ink-200 bg-white p-2.5">
-                    <div className="mb-1.5 flex items-center gap-1.5">
+                    <div role="group" aria-label={`第 ${idx + 1} 项更新类型`} className="mb-1.5 flex flex-wrap items-center gap-1.5">
                       {KIND_OPTIONS.map((opt) => (
                         <button
                           key={opt.value}
@@ -516,6 +533,7 @@ function UpdateEditor({
                         type="button"
                         variant="ghost"
                         onClick={() => onRemoveItem(idx)}
+                        aria-label={`删除第 ${idx + 1} 项更新`}
                         className="!ml-auto !px-1.5 !py-0.5 text-red hover:!text-red"
                       >
                         <Trash2 size={12} />
@@ -527,6 +545,7 @@ function UpdateEditor({
                     onChange={(e) => onUpdateItem(idx, { title: e.target.value })}
                     maxLength={200}
                     placeholder="更新项标题"
+                    aria-label={`第 ${idx + 1} 项更新标题`}
                     className="mb-2 w-full rounded-sm border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
                   />
                   <textarea
@@ -535,6 +554,7 @@ function UpdateEditor({
                       rows={2}
                       maxLength={500}
                       placeholder="描述这次更新（用户看到的文案）"
+                      aria-label={`第 ${idx + 1} 项更新描述`}
                       className="w-full rounded-sm border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
                     />
                   </li>
@@ -542,9 +562,17 @@ function UpdateEditor({
               </ul>
             )}
           </div>
+          </fieldset>
         </div>
+        {confirmDiscard && <div role="alertdialog" aria-label="放弃未保存的发版草稿" className="shrink-0 border-t border-amber-border bg-amber-light px-5 py-3">
+          <p className="text-sm text-ink-900">有未保存的修改，关闭后将丢失。</p>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <button ref={continueRef} type="button" disabled={saving} className="min-h-10 rounded-xs border border-ink-200 bg-white px-3 text-sm disabled:opacity-50" onClick={() => { setConfirmDiscard(false); closeTriggerRef.current?.focus(); }}>继续编辑</button>
+            <Button type="button" variant="danger" disabled={saving} onClick={() => requestClose(true)}>放弃修改</Button>
+          </div>
+        </div>}
         <div className="flex flex-shrink-0 justify-end gap-2 border-t border-ink-200 px-5 py-3">
-          <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+          <Button type="button" variant="secondary" onClick={() => requestClose()} disabled={saving}>取消</Button>
           <Button type="button" onClick={onSave} disabled={saving}>
             {saving && <Loader2 size={14} className="animate-spin" />}
             {editing ? '保存修改' : '创建'}

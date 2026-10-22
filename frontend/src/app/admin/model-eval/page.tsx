@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
-import { EmptyState, LoadingState } from '@/components/StateView';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { modelsApi } from '@/lib/api';
 import type {
@@ -78,6 +78,7 @@ import { EvaluateTab } from './EvaluateTab';
 import { UsageTab } from './UsageTab';
 import { HistoryTab } from './HistoryTab';
 import { EDITION_LABELS } from '@/lib/edition-naming';
+import { createModelListLoader } from './_model-list-loader';
 
 export default function ModelEvalPage() {
   const [tab, setTab] = useState<Tab>('models');
@@ -85,16 +86,15 @@ export default function ModelEvalPage() {
   const [usage, setUsage] = useState<ModelUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [usageLoading, setUsageLoading] = useState(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
-  const fetchModels = useCallback(async () => {
-    try {
-      const res = await modelsApi.list();
-      setModels(res.models);
-    } catch (e) {
-      console.error('fetchModels', e);
-    }
-    setLoading(false);
-  }, []);
+  const modelLoader = useMemo(() => createModelListLoader({
+    fetch: modelsApi.list,
+    onData: setModels,
+    onError: setModelsError,
+    onSettled: () => setLoading(false),
+  }), []);
+  const fetchModels = modelLoader.refresh;
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -107,14 +107,15 @@ export default function ModelEvalPage() {
     setUsageLoading(false);
   }, []);
 
-  const refreshAll = useCallback(() => {
-    void fetchModels();
-    void fetchUsage();
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchModels(), fetchUsage()]);
   }, [fetchModels, fetchUsage]);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    // fetchModels 已把失败显示在页面；事件入口仍须接住 Promise。
+    void refreshAll().catch(() => {});
+    return modelLoader.invalidate;
+  }, [modelLoader, refreshAll]);
 
   const enabledCount = models.filter((m) => m.enabled).length;
   const runnableCount = models.filter((m) => m.enabled && (m.api_key_set || !m.api_base)).length;
@@ -142,7 +143,7 @@ export default function ModelEvalPage() {
               description={`管理内容分析、${EDITION_LABELS.daily}、${EDITION_LABELS.weekly}和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。`}
             />
           </div>
-          <Button type="button" variant="secondary" onClick={refreshAll} className="w-fit whitespace-nowrap">
+          <Button type="button" variant="secondary" onClick={() => void refreshAll().catch(() => {})} className="w-fit whitespace-nowrap">
             <RefreshCw size={14} strokeWidth={2.2} />
             刷新数据
           </Button>
@@ -182,6 +183,7 @@ export default function ModelEvalPage() {
         })}
       </div>
 
+      {modelsError && <ErrorState error={modelsError} onRetry={() => void refreshAll().catch(() => {})} panel />}
       {loading ? (
         <Surface title="加载状态" icon={Beaker}>
           <LoadingState minHeight="220px" />

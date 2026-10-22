@@ -313,6 +313,7 @@ export default function SourcesPage() {
   const [pageSize, setPageSize] = useState(initial.pageSize);
   const [viewMode, setViewMode] = useState<'map' | 'sync' | 'list'>(initial.view);
   const [searchKeyword, setSearchKeyword] = useState(initial.q);
+  const [searchResetKey, setSearchResetKey] = useState(0);
   const [filterType, setFilterType] = useState(initial.type);
   const [filterEnabled, setFilterEnabled] = useState<boolean | undefined>(initial.enabled);
   const [loading, setLoading] = useState(true);
@@ -1110,6 +1111,7 @@ export default function SourcesPage() {
   };
 
   const clearAllFilters = () => {
+    setSearchResetKey((current) => current + 1);
     setSearchKeyword('');
     setFilterType('');
     setFilterEnabled(undefined);
@@ -1412,14 +1414,15 @@ export default function SourcesPage() {
           </>
         }
       />
-      <input ref={opmlInputRef} type="file" accept=".opml,.xml" className="hidden" onChange={handleOPMLImport} />
-      <input ref={batchImportInputRef} type="file" accept=".json,.md,.txt,.opml,.xml" className="hidden" onChange={handleBatchImportFile} />
+      <input ref={opmlInputRef} aria-label="导入 OPML 文件" type="file" accept=".opml,.xml" className="hidden" onChange={handleOPMLImport} />
+      <input ref={batchImportInputRef} aria-label="批量导入信源文件" type="file" accept=".json,.md,.txt,.opml,.xml" className="hidden" onChange={handleBatchImportFile} />
 
       {/* 筛选行：搜索（300ms 防抖内建）+ 类型/状态下拉；已选条件 chips 单移除 / 清空全部 */}
       <div className="space-y-2">
         <AdminFilters
           searchPlaceholder="搜索名称 / URL / 平台 / 分类…"
           searchValue={searchKeyword}
+          resetKey={searchResetKey}
           onSearchChange={handleSearchChange}
         >
           <select

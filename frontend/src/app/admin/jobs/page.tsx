@@ -331,14 +331,13 @@ function JobKeyRow({
 }) {
   return (
     <tr
-      onClick={onClick}
       className={cx(
-        'cursor-pointer border-b border-ink-100 transition hover:bg-ink-100',
+        'border-b border-ink-100 transition hover:bg-ink-100',
         isSelected && 'bg-primary/5',
       )}
     >
       <td className="px-2 py-2 font-mono text-[12px] text-ink-700">
-        {row.job_key}
+        <button type="button" onClick={onClick} aria-pressed={isSelected} aria-label={`${isSelected ? '清除' : '筛选'}任务 ${row.job_key}`} className="min-h-9 text-left underline decoration-ink-300 underline-offset-4 hover:text-primary-text">{row.job_key}</button>
       </td>
       <td className="px-2 py-2 text-right font-mono text-[12px] text-ink-700">
         {row.runs}

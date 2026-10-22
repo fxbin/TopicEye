@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Settings } from 'lucide-react';
 import { motherTopicsApi, type MotherTopic } from '@/lib/api';
@@ -30,8 +30,8 @@ function TopicCard({
   onDelete,
 }: {
   topic: MotherTopic;
-  onSave: (updated: Partial<MotherTopic>) => void;
-  onDelete: (id: number) => void;
+  onSave: (updated: Partial<MotherTopic>) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -45,11 +45,15 @@ function TopicCard({
     display_order: topic.display_order,
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const formId = useId();
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     const keywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
-    await onSave({
+    try {
+      await onSave({
       name: form.name,
       description: form.description || undefined,
       keywords,
@@ -58,9 +62,26 @@ function TopicCard({
       target_reader: form.target_reader || undefined,
       is_active: form.is_active,
       display_order: form.display_order,
-    });
-    setSaving(false);
-    setEditing(false);
+      });
+      setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleActiveChange = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (topic.is_active) await onDelete(topic.id);
+      else await onSave({ is_active: true });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '更新状态失败，请重试');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -80,10 +101,10 @@ function TopicCard({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs tabular-nums text-ink-500">权重 {topic.weight}</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="whitespace-nowrap text-xs tabular-nums text-ink-500">权重 {topic.weight}</span>
           {!topic.is_active && (
-            <Badge tone="red" className="rounded-sm px-2 py-0.5 text-[11px]">已停用</Badge>
+            <Badge tone="red" className="whitespace-nowrap rounded-sm px-2 py-0.5 text-xs">已停用</Badge>
           )}
         </div>
       </div>
@@ -92,24 +113,27 @@ function TopicCard({
         /* edit form */
         <div className="flex flex-col gap-3">
           <div>
-            <FieldLabel>名称</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-name`}>名称</FieldLabel>
             <input
+              id={`${formId}-name`}
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
               className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
             />
           </div>
           <div>
-            <FieldLabel>描述</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-description`}>描述</FieldLabel>
             <input
+              id={`${formId}-description`}
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
               className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
             />
           </div>
           <div>
-            <FieldLabel>关键词（逗号分隔）</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-keywords`}>关键词（逗号分隔）</FieldLabel>
             <textarea
+              id={`${formId}-keywords`}
               value={form.keywords}
               onChange={e => setForm({ ...form, keywords: e.target.value })}
               rows={4}
@@ -119,10 +143,11 @@ function TopicCard({
               当前 {form.keywords.split(',').filter(k => k.trim()).length} 个关键词
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <div className="flex-1">
-              <FieldLabel>权重乘数</FieldLabel>
+              <FieldLabel htmlFor={`${formId}-weight`}>权重乘数</FieldLabel>
               <input
+                id={`${formId}-weight`}
                 type="number"
                 step="0.1"
                 min="0.1"
@@ -133,8 +158,9 @@ function TopicCard({
               />
             </div>
             <div className="flex-1">
-              <FieldLabel>目标读者</FieldLabel>
+              <FieldLabel htmlFor={`${formId}-reader`}>目标读者</FieldLabel>
               <input
+                id={`${formId}-reader`}
                 value={form.target_reader}
                 onChange={e => setForm({ ...form, target_reader: e.target.value })}
                 className="w-full rounded-xs border border-ink-200 bg-white px-2.5 py-1.5 text-[13px] text-ink-900 outline-none focus:border-admin-accent"
@@ -154,6 +180,7 @@ function TopicCard({
             <Button
               type="button"
               onClick={() => setEditing(false)}
+              disabled={saving}
               variant="ghost"
               className="min-h-0 px-4 py-1.5 text-[13px] font-medium"
             >
@@ -192,7 +219,7 @@ function TopicCard({
           <Toolbar className="mt-3 border-t border-ink-100 pt-3">
             <Button
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={() => { setSaveError(null); setEditing(true); setForm({ name: topic.name, description: topic.description || '', keywords: topic.keywords.join(', '), weight: topic.weight, content_type: topic.content_type || '', target_reader: topic.target_reader || '', is_active: topic.is_active, display_order: topic.display_order }); }}
               variant="primary"
               className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
             >
@@ -201,7 +228,8 @@ function TopicCard({
             {topic.is_active ? (
               <Button
                 type="button"
-                onClick={() => onDelete(topic.id)}
+                onClick={() => void handleActiveChange()}
+                disabled={saving}
                 variant="danger"
                 className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
               >
@@ -210,7 +238,8 @@ function TopicCard({
             ) : (
               <Button
                 type="button"
-                onClick={() => onSave({ is_active: true })}
+                onClick={() => void handleActiveChange()}
+                disabled={saving}
                 variant="success"
                 className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
               >
@@ -220,6 +249,7 @@ function TopicCard({
           </Toolbar>
         </>
       )}
+      {saveError && <p role="alert" className="mt-3 text-sm text-red-700">{saveError}</p>}
     </Panel>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Loader2,
   RefreshCw,
@@ -16,9 +16,11 @@ import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel } from '@/components/ui';
 import { usersApi } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
+import { useFetch } from '@/hooks/useFetch';
+import { userStatusAction } from './_user-actions';
 import { formatDateTime } from '@/lib/datetime';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner, AdminModal, AdminModalFooter } from '@/components/admin-ui';
-import { LoadingState, EmptyState } from '@/components/StateView';
+import { LoadingState, EmptyState, ErrorState } from '@/components/StateView';
 import { Pagination } from '@/components/Pagination';
 
 const PAGE_SIZE = 20;
@@ -28,10 +30,7 @@ type FilterStatus = '' | 'active' | 'banned';
 
 export default function UsersAdminPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [items, setItems] = useState<UserListItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [filterRole, setFilterRole] = useState<FilterRole>('');
@@ -56,29 +55,19 @@ export default function UsersAdminPage() {
   });
   const [creating, setCreating] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await usersApi.list({
+  const { data, loading, error: listError, refetch: load } = useFetch(
+    () => usersApi.list({
         page,
         page_size: PAGE_SIZE,
         keyword: keyword || undefined,
         role: filterRole || undefined,
         is_active: filterStatus === 'active' ? true : filterStatus === 'banned' ? false : undefined,
-      });
-      setItems(data.items);
-      setTotal(data.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加载用户列表失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, keyword, filterRole, filterStatus]);
-
-  useEffect(() => {
-    if (currentUser?.role === 'admin') void load();
-  }, [load, currentUser]);
+    }),
+    [page, keyword, filterRole, filterStatus],
+    { enabled: currentUser?.role === 'admin' },
+  );
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,9 +106,8 @@ export default function UsersAdminPage() {
   };
 
   const handleToggleBan = (u: UserListItem) => {
-    const next = !u.is_active;
-    const verb = next ? '封禁' : '解封';
-    if (!confirm(`确定${verb}用户「${u.email}」？${next ? '该用户将立即无法登录。' : ''}`)) return;
+    const { next, verb, warning } = userStatusAction(u.is_active);
+    if (!confirm(`确定${verb}用户「${u.email}」？${warning}`)) return;
     void runAction(u.id, () => usersApi.update(u.id, { is_active: next }), `已${verb}`);
   };
 
@@ -231,17 +219,19 @@ export default function UsersAdminPage() {
         {/* 搜索 + 筛选 */}
         <Panel className="p-4">
           <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[240px] flex-1">
+            <div className="relative min-w-0 basis-60 flex-1">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="按邮箱或昵称搜索"
+                aria-label="按邮箱或昵称搜索"
                 className="h-9 w-full rounded-sm border border-gray-200 pl-9 pr-3 text-sm text-gray-800 outline-none focus:border-primary"
               />
             </div>
             <select
+              aria-label="按用户角色筛选"
               value={filterRole}
               onChange={(e) => {
                 setFilterRole(e.target.value as FilterRole);
@@ -254,6 +244,7 @@ export default function UsersAdminPage() {
               <option value="user">普通用户</option>
             </select>
             <select
+              aria-label="按用户状态筛选"
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value as FilterStatus);
@@ -281,6 +272,8 @@ export default function UsersAdminPage() {
         <Panel className="p-0">
           {loading ? (
             <LoadingState label="加载中…" minHeight="200px" panel={false} />
+          ) : listError ? (
+            <ErrorState error={listError} onRetry={() => void load()} panel={false} />
           ) : items.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -289,6 +282,7 @@ export default function UsersAdminPage() {
             />
           ) : (
             <div className="overflow-x-auto">
+              <div className="min-w-[760px]">
               {/* 表头 */}
               <div className="grid grid-cols-[1.6fr_88px_88px_88px_120px_150px] gap-2 border-b border-gray-100 bg-gray-50/60 px-4 py-2.5 text-[11px] font-black uppercase tracking-wide text-gray-500">
                 <div>邮箱</div>
@@ -380,6 +374,7 @@ export default function UsersAdminPage() {
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
 
@@ -405,8 +400,9 @@ export default function UsersAdminPage() {
           </p>
           <form onSubmit={submitCreate} className="space-y-3">
             <div>
-              <label className="mb-1 block text-[12px] font-bold text-gray-600">邮箱 *</label>
+              <label htmlFor="create-user-email" className="mb-1 block text-[12px] font-bold text-gray-600">邮箱 *</label>
               <input
+                id="create-user-email"
                 type="email"
                 value={createForm.email}
                 onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
@@ -416,9 +412,11 @@ export default function UsersAdminPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-bold text-gray-600">密码 *（至少 8 位，含字母和数字）</label>
+              <label htmlFor="create-user-password" className="mb-1 block text-[12px] font-bold text-gray-600">密码 *（至少 8 位，含字母和数字）</label>
               <input
-                type="text"
+                id="create-user-password"
+                type="password"
+                autoComplete="new-password"
                 value={createForm.password}
                 onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                 placeholder="如 Abc12345"
@@ -426,8 +424,9 @@ export default function UsersAdminPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-bold text-gray-600">昵称（可选）</label>
+              <label htmlFor="create-user-name" className="mb-1 block text-[12px] font-bold text-gray-600">昵称（可选）</label>
               <input
+                id="create-user-name"
                 type="text"
                 value={createForm.display_name}
                 onChange={(e) => setCreateForm({ ...createForm, display_name: e.target.value })}
@@ -437,8 +436,9 @@ export default function UsersAdminPage() {
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="mb-1 block text-[12px] font-bold text-gray-600">角色</label>
+                <label htmlFor="create-user-role" className="mb-1 block text-[12px] font-bold text-gray-600">角色</label>
                 <select
+                  id="create-user-role"
                   value={createForm.role}
                   onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as 'user' | 'admin' })}
                   className="h-9 w-full rounded-sm border border-gray-200 px-2 text-sm text-gray-700 outline-none focus:border-primary"
@@ -448,8 +448,9 @@ export default function UsersAdminPage() {
                 </select>
               </div>
               <div className="flex-1">
-                <label className="mb-1 block text-[12px] font-bold text-gray-600">套餐</label>
+                <label htmlFor="create-user-plan" className="mb-1 block text-[12px] font-bold text-gray-600">套餐</label>
                 <select
+                  id="create-user-plan"
                   value={createForm.plan}
                   onChange={(e) => setCreateForm({ ...createForm, plan: e.target.value as 'free' | 'pro' })}
                   className="h-9 w-full rounded-sm border border-gray-200 px-2 text-sm text-gray-700 outline-none focus:border-primary"
@@ -482,9 +483,11 @@ export default function UsersAdminPage() {
           </p>
           <form onSubmit={submitReset} className="space-y-3">
             <div>
-              <label className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
+              <label htmlFor="reset-user-password" className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
               <input
-                type="text"
+                id="reset-user-password"
+                type="password"
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoFocus

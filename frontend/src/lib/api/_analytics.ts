@@ -42,6 +42,7 @@ export interface EmailProviderConfigUpdate {
 
 /** 单个 webhook 配置响应（URL 脱敏） */
 export interface WebhookItem {
+  id: string;
   name: string;
   enabled: boolean;
   webhook_url_configured: boolean;
@@ -57,6 +58,7 @@ export interface NotificationWebhookConfig {
 
 /** 单个 webhook 配置更新请求。webhook_url 为空时保留原值 */
 export interface WebhookItemUpdate {
+  id?: string;
   name: string;
   enabled: boolean;
   webhook_url: string;

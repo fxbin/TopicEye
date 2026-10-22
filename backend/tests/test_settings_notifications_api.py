@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -14,7 +17,9 @@ from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import Base, database_profile
 from app.core.db_backend import create_database_profile
 from app.models.app_setting import DEFAULT_RSSHUB_INSTANCES
+from app.repositories.app_setting_repo import AppSettingRepository
 from app.services import duckdb_service, notification_service
+from app.services.secret_store import decrypt_secret, encrypt_secret
 
 
 @pytest_asyncio.fixture
@@ -272,3 +277,195 @@ async def test_notification_api_lifecycle(settings_notifications_client: httpx.A
     deleted = await settings_notifications_client.delete(f"/notifications/{created.id}")
     assert deleted.status_code == 200
     assert deleted.json() == {"success": True}
+
+
+@pytest_asyncio.fixture
+async def webhook_pg_client() -> AsyncGenerator[tuple[httpx.AsyncClient, AsyncSession], None]:
+    """Use the disposable runner's PostgreSQL for the real settings API."""
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    app = FastAPI()
+    app.include_router(settings_api.router)
+    app.dependency_overrides[get_current_admin_user] = lambda: SimpleNamespace(id=1, role="admin")
+    try:
+        async with factory() as db:
+            app.dependency_overrides[settings_api.get_db] = lambda: db
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                yield client, db
+    finally:
+        await engine.dispose()
+
+
+async def _seed_webhook_config(db: AsyncSession, *, legacy: bool = False, single: bool = False) -> list[dict]:
+    webhooks = [
+        {
+            "id": f"webhook-{name.lower()}",
+            "name": name,
+            "enabled": True,
+            "webhook_url": encrypt_secret(f"https://hooks-{name.lower()}.example.test/private-token-{name.lower()}"),
+            "event_types": ["source_failure"],
+            "note": f"group {name}",
+        }
+        for name in ("A", "B")
+    ]
+    if legacy:
+        webhooks = [{key: value for key, value in webhook.items() if key != "id"} for webhook in webhooks]
+    config = webhooks[0] if single else {"webhooks": webhooks}
+    await AppSettingRepository(db).upsert_setting("notification_webhook_config", json.dumps(config))
+    await db.commit()
+    return webhooks[:1] if single else webhooks
+
+
+async def _read_webhook_config(db: AsyncSession) -> dict:
+    row = await AppSettingRepository(db).get_by_key("notification_webhook_config")
+    assert row is not None
+    return json.loads(row.value)
+
+
+def _webhook_update(item: dict, **changes) -> dict:
+    return {
+        "id": item["id"],
+        "name": item["name"],
+        "enabled": item["enabled"],
+        "webhook_url": "",
+        "event_types": item["event_types"],
+        "note": item["note"],
+        **changes,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["delete-first", "reorder", "rename"])
+@pytest.mark.parametrize("legacy", [False, True], ids=["identified", "legacy"])
+async def test_webhook_secret_follows_identity_across_edits(webhook_pg_client, operation, legacy):
+    client, db = webhook_pg_client
+    originals = await _seed_webhook_config(db, legacy=legacy)
+    response = await client.get("/settings/notification-webhook")
+    assert response.status_code == 200
+    items = response.json()["webhooks"]
+    original_by_id = {item["id"]: original for item, original in zip(items, originals, strict=True)}
+    if operation == "delete-first":
+        updates = [_webhook_update(items[1])]
+    elif operation == "reorder":
+        updates = [_webhook_update(item) for item in reversed(items)]
+    else:
+        updates = [_webhook_update(item, name=f"renamed-{item['name']}") for item in items]
+
+    saved = await client.put("/settings/notification-webhook", json={"webhooks": updates})
+
+    assert saved.status_code == 200
+    stored = (await _read_webhook_config(db))["webhooks"]
+    assert [item["id"] for item in stored] == [item["id"] for item in updates]
+    for item, update in zip(stored, updates, strict=True):
+        assert item["name"] == update["name"]
+        assert item["webhook_url"] == original_by_id[item["id"]]["webhook_url"]
+    fresh = await client.get("/settings/notification-webhook")
+    assert [item["id"] for item in fresh.json()["webhooks"]] == [item["id"] for item in updates]
+    assert "private-token-" not in fresh.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single", [False, True], ids=["legacy-list", "legacy-single"])
+async def test_legacy_webhook_get_ids_are_stable_without_writes_and_persist_on_save(webhook_pg_client, single):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db, legacy=True, single=single)
+    before = await _read_webhook_config(db)
+
+    first = await client.get("/settings/notification-webhook")
+    second = await client.get("/settings/notification-webhook")
+
+    assert first.status_code == second.status_code == 200
+    items = first.json()["webhooks"]
+    ids = [item["id"] for item in items]
+    assert all(ids) and len(ids) == len(set(ids))
+    assert second.json() == first.json()
+    assert await _read_webhook_config(db) == before
+    saved = await client.put(
+        "/settings/notification-webhook", json={"webhooks": [_webhook_update(item) for item in items]}
+    )
+    assert saved.status_code == 200
+    assert [item["id"] for item in (await _read_webhook_config(db))["webhooks"]] == ids
+
+
+@pytest.mark.asyncio
+async def test_webhook_list_can_be_saved_empty(webhook_pg_client):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db)
+
+    saved = await client.put("/settings/notification-webhook", json={"webhooks": []})
+
+    assert saved.status_code == 200
+    assert await _read_webhook_config(db) == {"webhooks": []}
+    assert (await client.get("/settings/notification-webhook")).json() == {"webhooks": []}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_url", [False, True], ids=["retain", "replace"])
+async def test_unknown_webhook_id_rejects_entire_write(webhook_pg_client, explicit_url):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db)
+    before = await _read_webhook_config(db)
+    response = await client.put(
+        "/settings/notification-webhook",
+        json={
+            "webhooks": [
+                {"name": "new", "webhook_url": "https://new.example.test/explicit-token"},
+                {
+                    "id": "unknown-webhook",
+                    "name": "unknown",
+                    "webhook_url": "https://replace.example.test/explicit-token" if explicit_url else "",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 409
+    assert "标识已失效" in response.json()["detail"]
+    assert await _read_webhook_config(db) == before
+
+
+@pytest.mark.asyncio
+async def test_duplicate_webhook_id_is_rejected_without_writes(webhook_pg_client):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db)
+    before = await _read_webhook_config(db)
+    first = (await client.get("/settings/notification-webhook")).json()["webhooks"][0]
+    response = await client.put(
+        "/settings/notification-webhook",
+        json={"webhooks": [_webhook_update(first), _webhook_update(first, name="duplicate")]},
+    )
+
+    assert response.status_code == 409
+    assert "标识重复" in response.json()["detail"]
+    assert await _read_webhook_config(db) == before
+
+
+@pytest.mark.asyncio
+async def test_idless_client_cannot_implicitly_retain_a_secret(webhook_pg_client):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db, legacy=True)
+    before = await _read_webhook_config(db)
+    response = await client.put("/settings/notification-webhook", json={"webhooks": [{"name": "B", "webhook_url": ""}]})
+
+    assert response.status_code == 400
+    assert "Webhook 标识" in response.json()["detail"]
+    assert await _read_webhook_config(db) == before
+
+
+@pytest.mark.asyncio
+async def test_idless_client_can_supply_a_complete_replacement_url(webhook_pg_client):
+    client, db = webhook_pg_client
+    await _seed_webhook_config(db)
+    url = "https://replacement.example.test/explicit-token"
+    response = await client.put(
+        "/settings/notification-webhook", json={"webhooks": [{"name": "replacement", "webhook_url": url}]}
+    )
+
+    assert response.status_code == 200
+    stored = (await _read_webhook_config(db))["webhooks"]
+    assert len(stored) == 1
+    assert stored[0]["id"]
+    assert stored[0]["webhook_url"] != url
+    assert decrypt_secret(stored[0]["webhook_url"]) == url

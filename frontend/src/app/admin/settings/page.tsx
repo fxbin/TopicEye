@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { CheckCircle2, KeyRound, Loader2, LogIn, Mail, Plus, Server, Settings, Trash2, Webhook } from 'lucide-react';
 import { settingsApi } from '@/lib/api';
@@ -48,7 +48,7 @@ const SECTION_LINKS = [
 // ── 表单基样式（#121 新原语：ink token + admin-accent 聚焦，替代散落的 gray/primary 旧写法） ──
 const FIELD_LABEL_CLASS = 'mb-1.5 block text-xs font-medium text-ink-500';
 const INPUT_CLASS =
-  'h-9 w-full rounded-xs border border-ink-200 bg-white px-3 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none';
+  'h-11 w-full sm:h-10 rounded-xs border border-ink-200 bg-white px-3 text-base text-ink-900 sm:text-sm placeholder:text-ink-500 focus:border-admin-accent focus:outline-none';
 const INPUT_ICON_WRAPPER_CLASS =
   'flex items-center rounded-xs border border-ink-200 bg-white px-3 focus-within:border-admin-accent focus-within:outline-none';
 
@@ -118,6 +118,9 @@ function SectionNotes({ title, items }: { title: string; items: readonly React.R
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [webhookLoading, setWebhookLoading] = useState(true);
+  const [oauthLoading, setOauthLoading] = useState(true);
+  const [oauthLoaded, setOauthLoaded] = useState(false);
   const [config, setConfig] = useState<EmailProviderConfig | null>(null);
   const [fromEmail, setFromEmail] = useState('');
   const [fromName, setFromName] = useState(DEFAULT_FROM_NAME);
@@ -145,46 +148,49 @@ export default function AdminSettingsPage() {
   // 锚点导航当前高亮分组
   const [activeSection, setActiveSection] = useState<string>(SECTION_LINKS[0].id);
 
-  const syncOauthForms = (providers: OAuthProviderItem[]) => {
-    setOauthProviders(providers);
-    setOauthForms(
-      Object.fromEntries(
-        providers.map((p) => [p.provider, { client_id: p.client_id || '', client_secret: '', enabled: p.enabled }]),
-      ),
-    );
-  };
-
-  useEffect(() => {
-    Promise.all([
-      settingsApi.getEmailProvider(),
-      settingsApi.getNotificationWebhook(),
-      settingsApi.getOAuthProviders(),
-    ])
-      .then(([emailData, webhookData, oauthData]) => {
-        setConfig(emailData);
-        setFromEmail(emailData.from_email);
-        setFromName(emailData.from_name);
-        setSmtpHost(emailData.smtp_host);
-        setSmtpPort(emailData.smtp_port || 587);
-        setSmtpUsername(emailData.smtp_username);
-        setSmtpUseSsl(emailData.smtp_use_ssl);
-
-        setWebhookConfig(webhookData);
-        setWebhooks(
-          webhookData.webhooks.map((wh) => ({
-            name: wh.name,
-            enabled: wh.enabled,
-            webhook_url: '', // 空表示保留原值
-            event_types: wh.event_types?.length ? wh.event_types : ['source_failure'],
-            note: wh.note,
-          })),
-        );
-
-        syncOauthForms(oauthData.providers);
-      })
-      .catch(() => setError('加载配置失败'))
-      .finally(() => setLoading(false));
+  const loadEmail = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await settingsApi.getEmailProvider();
+      setConfig(data);
+      setFromEmail(data.from_email);
+      setFromName(data.from_name);
+      setSmtpHost(data.smtp_host);
+      setSmtpPort(data.smtp_port || 587);
+      setSmtpUsername(data.smtp_username);
+      setSmtpUseSsl(data.smtp_use_ssl);
+    } catch (err) { setError(err instanceof Error ? err.message : '邮件配置加载失败'); }
+    finally { setLoading(false); }
   }, []);
+
+  const loadWebhooks = useCallback(async () => {
+    setWebhookLoading(true);
+    setWebhookError(null);
+    try {
+      const data = await settingsApi.getNotificationWebhook();
+      setWebhookConfig(data);
+      setWebhooks(data.webhooks.map(wh => ({ id: wh.id, name: wh.name, enabled: wh.enabled,
+        webhook_url: '', event_types: wh.event_types, note: wh.note })));
+    } catch (err) { setWebhookError(err instanceof Error ? err.message : '通知配置加载失败'); }
+    finally { setWebhookLoading(false); }
+  }, []);
+
+  const loadOauth = useCallback(async () => {
+    setOauthLoading(true);
+    setOauthError(null);
+    try {
+      const data = await settingsApi.getOAuthProviders();
+      setOauthProviders(data.providers);
+      setOauthForms(Object.fromEntries(data.providers.map(p => [p.provider, {
+        client_id: p.client_id || '', client_secret: '', enabled: p.enabled,
+      }])));
+      setOauthLoaded(true);
+    } catch (err) { setOauthError(err instanceof Error ? err.message : '登录配置加载失败'); }
+    finally { setOauthLoading(false); }
+  }, []);
+
+  useEffect(() => { void loadEmail(); void loadWebhooks(); void loadOauth(); }, [loadEmail, loadWebhooks, loadOauth]);
 
   // 锚点导航高亮：分组卡进入视口上部激活带即点亮。
   // 用 IntersectionObserver 而非 window scroll——本页滚动发生在 AdminPageShell
@@ -255,10 +261,11 @@ export default function AdminSettingsPage() {
       setWebhookConfig(fresh);
       setWebhooks(
         fresh.webhooks.map((wh: WebhookItem) => ({
+          id: wh.id,
           name: wh.name,
           enabled: wh.enabled,
           webhook_url: '',
-          event_types: wh.event_types?.length ? wh.event_types : ['source_failure'],
+          event_types: wh.event_types,
           note: wh.note,
         })),
       );
@@ -280,14 +287,14 @@ export default function AdminSettingsPage() {
     setOauthSaving(provider);
     setOauthError(null);
     try {
-      await settingsApi.updateOAuthProvider(provider, {
+      const fresh = await settingsApi.updateOAuthProvider(provider, {
         client_id: form.client_id,
         client_secret: form.client_secret,
         enabled: form.enabled,
       });
       toast.success('已保存');
-      const fresh = await settingsApi.getOAuthProviders();
-      syncOauthForms(fresh.providers);
+      setOauthProviders(prev => prev.map(p => p.provider === provider ? fresh : p));
+      setOauthForms(prev => ({ ...prev, [provider]: { client_id: fresh.client_id || '', client_secret: '', enabled: fresh.enabled } }));
     } catch (err) {
       setOauthError(err instanceof Error ? err.message : '保存失败');
     } finally {
@@ -367,7 +374,7 @@ export default function AdminSettingsPage() {
             id="settings-email"
             icon={Mail}
             title="邮件服务"
-            actions={!loading && (config?.smtp_password_configured ? (
+            actions={!loading && config && (config?.smtp_password_configured ? (
               <Badge tone="teal">
                 <CheckCircle2 size={12} className="mr-1" />
                 已配置
@@ -378,8 +385,10 @@ export default function AdminSettingsPage() {
           >
             {loading ? (
               <AdminBlockSkeleton lines={7} />
+            ) : !config ? (
+              <Button onClick={loadEmail}>重试加载邮件配置</Button>
             ) : (
-              <>
+              <fieldset disabled={saving} className="min-w-0 border-0 p-0">
                 <Field label="发件人邮箱" className="mt-1">
                   <div className={INPUT_ICON_WRAPPER_CLASS}>
                     <Mail size={14} className="shrink-0 text-ink-500" />
@@ -388,7 +397,7 @@ export default function AdminSettingsPage() {
                       onChange={(e) => setFromEmail(e.target.value)}
                       type="email"
                       placeholder="noreply@yourdomain.com"
-                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                      className="h-11 min-w-0 sm:h-10 flex-1 bg-transparent px-2 text-base text-ink-900 sm:text-sm outline-none placeholder:text-ink-500"
                     />
                   </div>
                 </Field>
@@ -408,7 +417,7 @@ export default function AdminSettingsPage() {
                       value={smtpHost}
                       onChange={(e) => setSmtpHost(e.target.value)}
                       placeholder="smtp.qq.com"
-                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                      className="h-11 min-w-0 sm:h-10 flex-1 bg-transparent px-2 text-base text-ink-900 sm:text-sm outline-none placeholder:text-ink-500"
                     />
                   </div>
                 </Field>
@@ -459,7 +468,7 @@ export default function AdminSettingsPage() {
                           ? `已配置（${config.smtp_password_preview}****）留空不修改`
                           : '输入密码或授权码'
                       }
-                      className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                      className="h-11 min-w-0 sm:h-10 flex-1 bg-transparent px-2 text-base text-ink-900 sm:text-sm outline-none placeholder:text-ink-500"
                     />
                   </div>
                 </Field>
@@ -472,7 +481,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 <SectionNotes title="配置说明" items={SMTP_NOTES} />
-              </>
+              </fieldset>
             )}
           </SettingsSection>
 
@@ -482,7 +491,7 @@ export default function AdminSettingsPage() {
             icon={LogIn}
             title="第三方登录"
             description="配置 Google / GitHub 登录凭据，保存后即时生效（无需重启）。client_secret 加密存储，永不回传。"
-            actions={!loading && (oauthProviders.some((p) => p.enabled && p.client_secret_configured) ? (
+            actions={!oauthLoading && oauthLoaded && (oauthProviders.some((p) => p.enabled && p.client_secret_configured) ? (
               <Badge tone="teal">
                 <CheckCircle2 size={12} className="mr-1" />
                 {oauthProviders.filter((p) => p.enabled && p.client_secret_configured).length} 个已启用
@@ -491,9 +500,10 @@ export default function AdminSettingsPage() {
               <Badge tone="amber">未启用</Badge>
             ))}
           >
-            {loading ? (
+            {oauthError && <AdminNoticeBanner tone="red" className="mb-4" onClose={() => setOauthError(null)}>{oauthError}</AdminNoticeBanner>}
+            {oauthLoading ? (
               <AdminBlockSkeleton lines={6} />
-            ) : oauthProviders.length === 0 ? (
+            ) : !oauthLoaded ? <Button onClick={loadOauth}>重试加载登录配置</Button> : oauthProviders.length === 0 ? (
               <AdminEmptyState
                 icon={LogIn}
                 title="暂无可配置的登录方式"
@@ -507,11 +517,12 @@ export default function AdminSettingsPage() {
                     const form = oauthForms[p.provider] || { client_id: '', client_secret: '', enabled: false };
                     const configured = p.client_secret_configured && !!p.client_id;
                     return (
-                      <div key={p.provider} className="rounded-xs border border-ink-200 p-4">
-                        <div className="mb-3 flex items-center justify-between">
+                      <fieldset disabled={oauthSaving === p.provider} key={p.provider} className="min-w-0 rounded-xs border border-ink-200 p-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <input
                               type="checkbox"
+                              aria-label={`启用${OAUTH_PROVIDER_LABELS[p.provider] || p.provider}`}
                               checked={form.enabled}
                               onChange={(e) => handleUpdateOauthForm(p.provider, { enabled: e.target.checked })}
                               className="h-4 w-4 rounded border-ink-300 accent-ink-900"
@@ -542,7 +553,7 @@ export default function AdminSettingsPage() {
                               onChange={(e) => handleUpdateOauthForm(p.provider, { client_secret: e.target.value })}
                               type="password"
                               placeholder={p.client_secret_configured ? '已配置（加密存储）留空不修改' : '输入 Client Secret'}
-                              className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                              className="h-11 min-w-0 sm:h-10 flex-1 bg-transparent px-2 text-base text-ink-900 sm:text-sm outline-none placeholder:text-ink-500"
                             />
                           </div>
                         </Field>
@@ -552,20 +563,16 @@ export default function AdminSettingsPage() {
                             type="button"
                             variant="primary"
                             onClick={() => handleSaveOauth(p.provider)}
-                            disabled={oauthSaving === p.provider || (form.enabled && (!form.client_id.trim() || (!form.client_secret.trim() && !p.client_secret_configured)))}
+                            disabled={oauthSaving !== null || (form.enabled && (!form.client_id.trim() || (!form.client_secret.trim() && !p.client_secret_configured)))}
                           >
                             {oauthSaving === p.provider ? <Loader2 size={14} className="animate-spin" /> : null}
                             {oauthSaving === p.provider ? '保存中...' : '保存'}
                           </Button>
                         </div>
-                      </div>
+                      </fieldset>
                     );
                   })}
                 </div>
-
-                {oauthError && (
-                  <AdminNoticeBanner tone="red" className="mt-4" onClose={() => setOauthError(null)}>{oauthError}</AdminNoticeBanner>
-                )}
               </>
             )}
           </SettingsSection>
@@ -578,7 +585,7 @@ export default function AdminSettingsPage() {
             description="将运营通知推送到飞书 / 钉钉 / Slack 群机器人。每个 webhook 可独立配置推送事件类型。webhook URL 加密存储。"
             actions={
               <>
-                {!loading && (webhookConfig?.webhooks.some((w) => w.enabled && w.webhook_url_configured) ? (
+                {!webhookLoading && webhookConfig && (webhookConfig?.webhooks.some((w) => w.enabled && w.webhook_url_configured) ? (
                   <Badge tone="teal">
                     <CheckCircle2 size={12} className="mr-1" />
                     {webhookConfig.webhooks.filter((w) => w.enabled && w.webhook_url_configured).length} 个已启用
@@ -586,17 +593,19 @@ export default function AdminSettingsPage() {
                 ) : (
                   <Badge tone="amber">未配置</Badge>
                 ))}
-                <Button type="button" variant="ghost" onClick={handleAddWebhook} disabled={loading} className="!px-2 !py-1 text-xs">
+                <Button type="button" variant="ghost" onClick={handleAddWebhook} disabled={webhookLoading || !webhookConfig || webhookSaving} className="!px-2 !py-1 text-xs">
                   <Plus size={12} className="mr-1" />
                   添加
                 </Button>
               </>
             }
           >
-            {loading ? (
+            {webhookError && <AdminNoticeBanner tone="red" className="mb-4" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>}
+            {webhookLoading ? (
               <AdminBlockSkeleton lines={8} />
-            ) : webhooks.length === 0 ? (
-              <AdminEmptyState
+            ) : !webhookConfig ? <Button onClick={loadWebhooks}>重试加载通知配置</Button> : (
+              <fieldset disabled={webhookSaving} className="min-w-0 border-0 p-0">
+              {webhooks.length === 0 ? <AdminEmptyState
                 icon={Webhook}
                 title="暂无 webhook 配置"
                 description={`添加一个 webhook，把信源失败告警与${EDITION_LABELS.daily}推送到群里`}
@@ -607,30 +616,30 @@ export default function AdminSettingsPage() {
                     添加 webhook
                   </Button>
                 }
-              />
-            ) : (
-              <>
+              /> : (
                 <div className="space-y-4">
                   {webhooks.map((wh, index) => {
-                    const original = webhookConfig?.webhooks[index];
+                    const original = webhookConfig?.webhooks.find(item => item.id === wh.id);
                     const urlConfigured = original?.webhook_url_configured;
                     const urlPreview = original?.webhook_url_preview || '';
                     return (
                       <div key={index} className="rounded-xs border border-ink-200 p-4">
                         {/* 行 1：名称 + 启用 + 删除 */}
-                        <div className="mb-3 flex items-center justify-between">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
                             <input
                               type="checkbox"
+                              aria-label={`启用 ${wh.name || `Webhook ${index + 1}`}`}
                               checked={wh.enabled}
                               onChange={(e) => handleUpdateWebhook(index, { enabled: e.target.checked })}
                               className="h-4 w-4 rounded border-ink-300 accent-ink-900"
                             />
                             <input
+                              aria-label={`Webhook ${index + 1} 名称`}
                               value={wh.name}
                               onChange={(e) => handleUpdateWebhook(index, { name: e.target.value })}
                               placeholder={`Webhook ${index + 1}（如：运营群）`}
-                              className="h-8 w-48 rounded-xs border border-ink-200 bg-white px-2 text-[13px] font-bold text-ink-900 outline-none placeholder:font-normal placeholder:text-ink-500 focus:border-admin-accent"
+                              className="h-10 min-w-0 w-full max-w-48 rounded-xs border border-ink-200 bg-white px-2 text-[13px] font-bold text-ink-900 outline-none placeholder:font-normal placeholder:text-ink-500 focus:border-admin-accent"
                             />
                             {urlConfigured ? (
                               <Badge tone={wh.enabled ? 'teal' : 'neutral'}>
@@ -641,7 +650,7 @@ export default function AdminSettingsPage() {
                           <button
                             type="button"
                             onClick={() => handleRemoveWebhook(index)}
-                            className="shrink-0 text-ink-300 transition hover:text-red-500"
+                            className="grid h-10 w-10 shrink-0 place-items-center text-ink-500 transition hover:text-red-500"
                             title="删除"
                             aria-label={`删除 Webhook ${index + 1}`}
                           >
@@ -662,7 +671,7 @@ export default function AdminSettingsPage() {
                                   ? `已配置（${urlPreview}****）留空不修改`
                                   : 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
                               }
-                              className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink-900 outline-none placeholder:text-ink-500"
+                              className="h-11 min-w-0 sm:h-10 flex-1 bg-transparent px-2 text-base text-ink-900 sm:text-sm outline-none placeholder:text-ink-500"
                             />
                           </div>
                         </Field>
@@ -709,10 +718,7 @@ export default function AdminSettingsPage() {
                     );
                   })}
                 </div>
-
-                {webhookError && (
-                  <AdminNoticeBanner tone="red" className="mt-4" onClose={() => setWebhookError(null)}>{webhookError}</AdminNoticeBanner>
-                )}
+              )}
                 {webhookTestResult && (
                   <AdminNoticeBanner tone="teal" className="mt-4" onClose={() => setWebhookTestResult(null)}>
                     <pre className="whitespace-pre-wrap font-sans text-xs">{webhookTestResult}</pre>
@@ -736,7 +742,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 <SectionNotes title="推送说明" items={WEBHOOK_NOTES} />
-              </>
+              </fieldset>
             )}
           </SettingsSection>
         </div>

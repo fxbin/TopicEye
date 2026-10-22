@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   ChevronRight,
+  ChevronDown,
   FileText,
   Inbox,
   ListChecks,
@@ -15,9 +16,10 @@ import {
   Send,
   Smartphone,
   Target,
-  KeyRound,
 } from 'lucide-react';
 import { cx } from '@/components/ui';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { createReportLoader } from './_report-loader';
 import { useAppContext } from '@/components/ClientLayout';
 import { isAdmin } from '@/lib/navigation';
 import { dailyReportApi } from '@/lib/api';
@@ -29,7 +31,6 @@ import {
   PlatformHeading,
   ReportActionButton,
   ReportFooterStat,
-  ReportSectionTitle,
   ReportStatusPanel,
 } from '@/components/ReportLayout';
 import { BriefPickRow } from './_components';
@@ -47,172 +48,163 @@ import {
   type DailyReportData,
   type DateSummary,
   type CalendarDay,
-  type MarkAction,
   type DailyPick,
   EDITION_LABELS,
-  CATEGORY_ORDER,
-  CATEGORY_EN,
   localDateString,
   formatDateTime,
   parseJson,
   pickKey,
-  marksMapFromResp,
   groupByCategory,
+  recentReportDates,
+  reportLoadError,
+  shiftReportDate,
 } from './_daily-utils';
 import type { YesterdayTrackingData } from '@/types';
 
 export default function DailyReportPage() {
+  return <React.Suspense fallback={<ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>}><DailyReportContent /></React.Suspense>;
+}
+
+function DailyReportContent() {
+  const params = useSearchParams();
+  const router = useRouter();
   const [report, setReport] = useState<DailyReportData | null>(null);
   const [dates, setDates] = useState<DateSummary[]>([]);
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
-  const [calendarStats, setCalendarStats] = useState({ done: 0, error: 0, missing: 0, generating: 0 });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  // T2: 'public' (default) | 'mine' — query-string controlled to keep diff small
-  const [reportScope] = useState<'public' | 'mine'>(() => {
-    if (typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search).get('scope');
-      if (p === 'mine') return 'mine';
-    }
-    return 'public';
-  });
+  const reportScope = params.get('scope') === 'mine' ? 'mine' : 'public';
   const [loading, setLoading] = useState(true);
-  const [datesLoading, setDatesLoading] = useState(true);
-  const [calendarLoading, setCalendarLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingDate, setGeneratingDate] = useState<string | null>(null);
+  const [expandedPick, setExpandedPick] = useState<number | null>(null);
+  const [markError, setMarkError] = useState<string | null>(null);
+  const navigationSeq = useRef(0);
+  const indexSeq = useRef(0);
+  const pendingMarks = useRef(new Set<string>());
+  const touchedMarks = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
+  const [indexError, setIndexError] = useState<string | null>(null);
   // 生成轮询代际：新一轮生成或组件卸载时自增，使旧的 5s 轮询循环
   // 在下一次醒来后直接退出，避免卸载后持续请求 / 交错 setState
   const generateSeqRef = useRef(0);
   // 昨日追踪数据（报头兑现行 + ▲↑↓ 变化标记共用）
-  const [yesterdayData, setYesterdayData] = useState<YesterdayTrackingData | null>(null);
+  const [yesterdayData, setYesterdayData] = useState<YesterdayTrackingData | null | undefined>(undefined);
 
   useEffect(() => () => {
     generateSeqRef.current += 1;
   }, []);
 
   const refreshReportIndexes = useCallback(async () => {
+    const seq = ++indexSeq.current;
     const [datesData, calendarData] = await Promise.all([
       reportScope === 'mine' ? dailyReportApi.listMyDates() : dailyReportApi.listDates(),
-      dailyReportApi.calendar(30),
+      reportScope === 'mine' ? Promise.resolve(null) : dailyReportApi.calendar(30),
     ]);
+    if (seq !== indexSeq.current) return;
     setDates(datesData.dates || []);
-    setCalendarDays(calendarData.days || []);
-    setCalendarStats({
-      done: calendarData.done_count || 0,
-      error: calendarData.error_count || 0,
-      missing: calendarData.missing_count || 0,
-      generating: calendarData.generating_count || 0,
-    });
-  }, []);
+    setCalendarDays(calendarData?.days || []);
+
+  }, [reportScope]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        setDatesLoading(true);
-        setCalendarLoading(true);
+        setIndexError(null);
         await refreshReportIndexes();
-      } finally {
-        setDatesLoading(false);
-        setCalendarLoading(false);
+      } catch {
+        if (!cancelled) setIndexError('往期目录加载失败，可重试加载');
+
       }
     })();
+    return () => { cancelled = true; indexSeq.current += 1; };
   }, [refreshReportIndexes]);
 
   const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
   const [pickMarks, setPickMarks] = useState<Record<string, 'write' | 'watch' | 'skip'>>({});
 
-  // 昨日追踪：报头兑现行与 ▲↑↓ 的数据源（与 YesterdayTracking 组件同一端点，
-  // 页面持有一份供头版消费；错开主报告并发）
-  const fetchYesterday = useCallback((reportDate: string) => {
-    const fetcher =
-      reportScope === 'mine'
-        ? dailyReportApi.getMyYesterdayTracking
-        : dailyReportApi.getYesterdayTracking;
-    const timer = setTimeout(() => {
-      fetcher(reportDate)
-        .then(setYesterdayData)
-        .catch(() => setYesterdayData(null));
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [reportScope]);
-
-  const fetchReport = useCallback(async (date?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data: DailyReportData = date
-        ? ((reportScope === 'mine' ? await dailyReportApi.getMyByDate(date) : await dailyReportApi.getByDate(date)) as unknown as DailyReportData)
-        : ((reportScope === 'mine' ? await dailyReportApi.getMyToday() : await dailyReportApi.getToday()) as unknown as DailyReportData);
-      setReport(data);
-      setSelectedDate(data.report_date);
-      setYesterdayData(null);
-      fetchYesterday(data.report_date);
-
-      // 加载用户已标记的选题（恢复操作状态，刷新不丢失）
-      // 标记键优先用 source_title（稳定）；历史日报无该字段时回退 title。
-      try {
-        const marksResp = await dailyReportApi.listPickMarks(data.report_date);
-        setPickMarks(marksMapFromResp(marksResp.marks));
-      } catch {
-        // 静默失败（游客无 token 等），标记功能不可用不影响阅读
+  const reportLoader = useMemo(() => createReportLoader({
+    report: async (date) => (date
+      ? await (reportScope === 'mine' ? dailyReportApi.getMyByDate(date) : dailyReportApi.getByDate(date))
+      : await (reportScope === 'mine' ? dailyReportApi.getMyToday() : dailyReportApi.getToday())) as unknown as DailyReportData,
+    marks: dailyReportApi.listPickMarks,
+    tracking: reportScope === 'mine' ? dailyReportApi.getMyYesterdayTracking : dailyReportApi.getYesterdayTracking,
+    sparkline: (title) => dailyReportApi.sparkline(title, 48, 2),
+  }, {
+    report: (data) => { setReport(data); setSelectedDate(data.report_date); },
+    marks: (data) => setPickMarks((current) => {
+      const merged = { ...data };
+      for (const key of touchedMarks.current) {
+        if (current[key]) merged[key] = current[key];
+        else delete merged[key];
       }
+      return merged;
+    }),
+    tracking: setYesterdayData,
+    sparkline: (key, data) => setSparklines((prev) => ({ ...prev, [key]: data })),
+    loaded: () => setLoading(false),
+    error: (err) => {
+      setError(reportLoadError(err));
+    },
+  }), [reportScope]);
 
-      // 异步批量预加载所有选题的 sparkline 趋势（不阻塞主 UI）
-      // sparkline 关键词从 source_title 提取（原文标题信号更纯）；无则回退 title。
-      const topPicks = parseJson(data.top_picks) as Array<{ title: string; source_title?: string }> | null;
-      if (topPicks && topPicks.length > 0) {
-        const initial: Record<string, SparklineData> = {};
-        for (const pick of topPicks) {
-          const key = pick.source_title || pick.title;
-          if (key) initial[key] = { points: [], keywords: [], total: 0, window_hours: 48 };
-        }
-        setSparklines(initial);
-        await Promise.all(
-          topPicks
-            .map((pick) => pick.source_title || pick.title)
-            .filter(Boolean)
-            .map(async (key) => {
-              try {
-                const sp = await dailyReportApi.sparkline(key, 48, 2);
-                setSparklines((prev) => ({ ...prev, [key]: sp }));
-              } catch {
-                // 静默失败：保持空点（组件会显示 "no data"）
-              }
-            }),
-        );
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : '加载失败';
-      if (errMsg.includes('404') || errMsg.includes('not found')) {
-        setReport(null);
-        if (date) setSelectedDate(date);
-        setError(date ? `${date} 暂无日报` : '暂无日报数据');
-      } else {
-        setError(errMsg);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [reportScope, fetchYesterday]);
+  const fetchReport = useCallback((date?: string, knownReport?: DailyReportData) => {
+    navigationSeq.current += 1;
+    touchedMarks.current.clear();
+    generateSeqRef.current += 1;
+    setGenerating(false);
+    setGeneratingDate(null);
+    setLoading(true);
+    setError(null);
+    setReport(null);
+    setSelectedDate(date || localDateString());
+    setPickMarks({});
+    setSparklines({});
+    setYesterdayData(undefined);
+    setExpandedPick(null);
+    setMarkError(null);
+    return reportLoader.load(date, knownReport);
+  }, [reportLoader]);
 
+  const dateParam = params.get('date');
   useEffect(() => {
-    // 支持 /daily?date=YYYY-MM-DD 直达历史期（往期深链）；无参默认今天
-    const params = new URLSearchParams(window.location.search);
-    const dateParam = params.get('date');
-    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && dateParam <= localDateString()) {
-      fetchReport(dateParam);
-    } else {
-      fetchReport();
-    }
-  }, [fetchReport]);
+    const validDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && dateParam <= localDateString();
+    void fetchReport(validDate ? dateParam : undefined);
+    return () => { reportLoader.cancel(); generateSeqRef.current += 1; };
+  }, [dateParam, fetchReport, reportLoader]);
+
+  // A report may already be generating when the reader opens or reloads the page.
+  const pendingReportId = report?.status === 'GENERATING' ? report.id : null;
+  useEffect(() => {
+    if (pendingReportId == null || generating || error) return;
+    let cancelled = false;
+    const seq = navigationSeq.current;
+    void (async () => {
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        if (cancelled || seq !== navigationSeq.current) return;
+        try {
+          const data = await dailyReportApi.getVersion(pendingReportId, reportScope) as unknown as DailyReportData;
+          if (cancelled || seq !== navigationSeq.current) return;
+          if (data.status === 'DONE' || data.status === 'ERROR') {
+            void fetchReport(data.report_date, data);
+            return;
+          }
+        } catch { /* transient status read failure: retry within the same bounded poll */ }
+      }
+      if (!cancelled) setError('日报仍在生成，请稍后重新加载');
+    })();
+    return () => { cancelled = true; };
+  }, [pendingReportId, generating, error, reportScope, fetchReport]);
 
   const handleDateSelect = useCallback((date: string) => {
     if (date === selectedDate) return;
-    fetchReport(date);
-  }, [selectedDate, fetchReport]);
+    const next = new URLSearchParams(params.toString());
+    next.set('date', date);
+    router.push(`/daily?${next}`, { scroll: false });
+  }, [selectedDate, params, router]);
 
-  const generateForDate = useCallback(async (date: string) => {
+  const generateForDate = async (date: string) => {
     const seq = ++generateSeqRef.current;
     try {
       setGenerating(true);
@@ -220,29 +212,27 @@ export default function DailyReportPage() {
       setError(null);
       const today = localDateString();
       // POST 返回 202（后台异步生成），不再等 LLM 完成
-      await dailyReportApi.generateVersion({
+      const started = await dailyReportApi.generateVersion({
         target_date: date,
         edition: date < today ? 'final' : 'manual',
         force: true,
-      });
+      }, reportScope);
+      if (seq !== generateSeqRef.current) return;
+      const reportId = Number(started.id);
+      if (!Number.isFinite(reportId)) throw new Error('生成响应缺少日报编号，请刷新重试');
+      setReport((previous) => ({ ...previous, ...started, id: reportId, report_date: date, status: 'GENERATING' }) as DailyReportData);
       // 轮询直到 DONE（最多 120 秒）
       const maxAttempts = 24;
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 5000)); // 每 5 秒轮询
         if (seq !== generateSeqRef.current) return; // 已被新一轮生成/卸载取代，放弃旧轮询
         try {
-          const data = date < today
-            ? await dailyReportApi.getByDate(date)
-            : await dailyReportApi.getToday();
+          const data = await dailyReportApi.getVersion(reportId, reportScope);
           if (seq !== generateSeqRef.current) return;
           const reportData = data as unknown as DailyReportData;
           if (reportData.status === 'DONE' || reportData.status === 'ERROR') {
-            setReport(reportData);
-            setSelectedDate(reportData.report_date || date);
-            if (reportData.status === 'ERROR') {
-              setError(reportData.overview || '生成失败');
-            }
-            await refreshReportIndexes();
+            void fetchReport(date, reportData);
+            await refreshReportIndexes().catch(() => setIndexError('往期目录加载失败，可重试加载'));
             return;
           }
           // 还在 GENERATING，继续等
@@ -265,16 +255,38 @@ export default function DailyReportPage() {
         setGeneratingDate(null);
       }
     }
-  }, [refreshReportIndexes]);
+  };
 
   const handleRegenerate = async () => {
     await generateForDate(report?.report_date || selectedDate || localDateString());
+  };
+
+  const reloadCurrent = async () => {
+    const seq = navigationSeq.current;
+    if (report?.status === 'GENERATING') {
+      try {
+        const data = await dailyReportApi.getVersion(report.id, reportScope) as unknown as DailyReportData;
+        if (seq !== navigationSeq.current) return;
+        void fetchReport(data.report_date, data);
+      } catch (err) {
+        if (seq !== navigationSeq.current) return;
+        setError(err instanceof Error ? err.message : '加载失败');
+      }
+    } else {
+      void fetchReport(selectedDate || undefined);
+    }
   };
 
   const handleMark = useCallback(
     async (pickTitle: string, action: 'write' | 'watch' | 'skip', category?: string, sourceUrl?: string) => {
       if (!report) return;
       // 记住标记前的状态，用于失败回滚（修掉原静默失败）
+      const markDate = report.report_date;
+      const markSeq = navigationSeq.current;
+      const pendingKey = `${markDate}:${pickTitle}`;
+      if (pendingMarks.current.has(pendingKey)) return;
+      pendingMarks.current.add(pendingKey);
+      touchedMarks.current.add(pickTitle);
       const prevAction = pickMarks[pickTitle];
       const willUnmark = prevAction === action;
       // 乐观更新
@@ -290,10 +302,10 @@ export default function DailyReportPage() {
       setMarkError(null);
       try {
         if (willUnmark) {
-          await dailyReportApi.unmarkPick(report.report_date, pickTitle);
+          await dailyReportApi.unmarkPick(markDate, pickTitle);
         } else {
           await dailyReportApi.markPick({
-            report_date: report.report_date,
+            report_date: markDate,
             pick_title: pickTitle,
             action,
             pick_category: category,
@@ -301,6 +313,7 @@ export default function DailyReportPage() {
           });
         }
       } catch {
+        if (markSeq !== navigationSeq.current) return;
         // 失败回滚乐观更新，并给出轻量内联提示（不再静默）
         setPickMarks((prev) => {
           const next = { ...prev };
@@ -312,14 +325,14 @@ export default function DailyReportPage() {
           return next;
         });
         setMarkError(willUnmark ? '取消标记失败，已还原' : '标记失败，已还原');
+      } finally {
+        pendingMarks.current.delete(pendingKey);
       }
     },
     [report, pickMarks],
   );
 
-  const keywords = parseJson(report?.keywords);
   const trends = parseJson(report?.trends);
-  const topPicks = parseJson(report?.top_picks);
   const platformTips = parseJson(report?.platform_tips);
 
   // todayStr 用 state 延迟到客户端渲染后计算，避免 SSR/CSR 跨天日期不一致导致 hydration mismatch。
@@ -327,24 +340,22 @@ export default function DailyReportPage() {
   useEffect(() => {
     setTodayStr(localDateString());
   }, []);
-  const isToday = report?.report_date === todayStr;
+  const isToday = (selectedDate || report?.report_date) === todayStr;
   const generatedAt = formatDateTime(report?.generated_at || report?.updated_at);
-  const keywordList = Array.isArray(keywords) ? keywords as string[] : [];
   const trendList = Array.isArray(trends) ? trends as Array<{ title: string; desc: string; color?: string; momentum?: string }> : [];
-  const pickList = Array.isArray(topPicks)
-    ? topPicks as DailyPick[]
-    : [];
+  const pickList = useMemo(() => {
+    const picks = parseJson(report?.top_picks);
+    return Array.isArray(picks) ? picks as DailyPick[] : [];
+  }, [report?.top_picks]);
   const platformTipEntries = platformTips && typeof platformTips === 'object'
     ? Object.entries(platformTips as Record<string, unknown>)
     : [];
-  const recoveryDate = report?.report_date || selectedDate || todayStr;
-  const [expandedPick, setExpandedPick] = useState<number | null>(null);
+  const recoveryDate = selectedDate || report?.report_date || todayStr;
   // 原文标题展示语言：默认中文翻译，可切换英文原文
   const [showOriginalLang, setShowOriginalLang] = useState(false);
   // 今日已选抽屉开关（一期补行动闭环）
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 标记失败的轻量内联提示（修掉原 handleMark 静默失败）
-  const [markError, setMarkError] = useState<string | null>(null);
   // 站内阅读：点选题卡片标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
   const { openReader, currentUser } = useAppContext();
   const writePick = useWritePick();
@@ -383,12 +394,7 @@ export default function DailyReportPage() {
   const recoveryDays = calendarDays.filter((day) => day.status === 'MISSING' || day.status === 'ERROR');
 
   // ── 晨报头版派生数据 ────────────────────────────────────────────────
-  // 期号 = 已出刊日报天数（listDates 含今日）
-  const issueNumber = useMemo(
-    () => (datesLoading ? undefined : dates.length || undefined),
-    [dates, datesLoading],
-  );
-
+  // 日期目录可能分页或缺刊，不能把目录长度当作真实期号。
   // 昨日兑现行 + ▲↑↓ 标记（同一份 yesterday 数据）
   const yesterdaySummary = useMemo(() => {
     if (!yesterdayData?.has_yesterday || yesterdayData.picks.length === 0) return null;
@@ -421,148 +427,71 @@ export default function DailyReportPage() {
 
   // 往期条：最近 5 期（不含当前期），复活 dates 数据
   const recentDates = useMemo(() => {
-    const others = dates.filter((d) => d.report_date !== report?.report_date);
-    return others.slice(-5).reverse();
+    return recentReportDates(dates, report?.report_date);
   }, [dates, report?.report_date]);
 
   return (
-    <div className="h-full w-full overflow-hidden">
-      {/* 工具栏：scope + 日期选择 */}
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-2">
-        {/* scope 切换 */}
-        <div className="flex items-center gap-1 text-[11px] font-black text-gray-500">
-          <a
-            href="/daily"
-            className={cx("rounded px-2.5 py-1", reportScope === 'public' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
-          >
-            公共日报
-          </a>
-          <a
-            href="/daily?scope=mine"
-            className={cx("rounded px-2.5 py-1", reportScope === 'mine' ? "bg-teal-light text-teal" : "text-gray-500 hover:text-gray-700")}
-          >
-            我的日报
-          </a>
-          {/* 今日已选入口（一期补行动闭环）：点击打开抽屉 */}
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            disabled={writeCount === 0}
-            className={cx(
-              'ml-2 inline-flex items-center gap-1 rounded px-2 py-1 transition',
-              writeCount > 0
-                ? 'bg-primary-light text-primary hover:bg-primary/15'
-                : 'text-gray-300',
-            )}
-            title={writeCount > 0 ? `今日已选 ${writeCount} 个选题` : '今日还未选选题'}
-          >
-            <ListChecks size={12} />
-            <span className="tabular-nums">{writeCount}</span>
-            <span className="hidden sm:inline">已选</span>
+    <div className="daily-report flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
+        <nav aria-label="日报范围" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[13px] font-bold">
+          <a href="/daily" aria-current={reportScope === 'public' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'public' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>公共日报</a>
+          <a href="/daily?scope=mine" aria-current={reportScope === 'mine' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'mine' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>我的日报</a>
+          <button type="button" onClick={() => setDrawerOpen(true)} disabled={writeCount === 0} className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40" title={`本期已选 ${writeCount} 个选题`}>
+            <ListChecks size={16} /><span>已选 {writeCount}</span>
           </button>
-          {markError && (
-            <span className="text-[10px] font-bold text-red" title={markError}>
-              ⚠
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* 简洁日期选择器 */}
-          <button
-            type="button"
-            onClick={() => {
-              if (report) {
-                const d = new Date(report.report_date);
-                d.setDate(d.getDate() - 1);
-                fetchReport(localDateString(d));
-              }
-            }}
-            className="grid h-7 w-7 place-items-center rounded-xs border border-gray-200 text-gray-400 hover:text-gray-700"
-            title="前一天"
-          >
-            <ChevronRight size={14} className="rotate-180" />
-          </button>
-          <span className="min-w-[100px] text-center text-xs font-bold text-gray-700">
-            {report?.report_date || todayStr}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              if (report) {
-                const d = new Date(report.report_date);
-                d.setDate(d.getDate() + 1);
-                if (localDateString(d) <= todayStr) fetchReport(localDateString(d));
-              }
-            }}
-            disabled={isToday}
-            className="grid h-7 w-7 place-items-center rounded-xs border border-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30"
-            title="后一天"
-          >
-            <ChevronRight size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => fetchReport()}
-            className={cx('ml-1 rounded-xs px-2 py-1 text-[11px] font-bold', isToday ? 'bg-primary text-white' : 'text-gray-500 hover:bg-gray-50')}
-          >
-            今天
-          </button>
-
-          {/* 管理入口（折叠隐藏的补录中心入口） */}
-          {recoveryDays.length > 0 && (
-            <span className="ml-2 rounded-full bg-amber-light px-2 py-0.5 text-[10px] font-bold text-amber" title={`${recoveryDays.length} 天待补录`}>
-              {recoveryDays.length} 待补
-            </span>
-          )}
-          {report && (
-            <button
-              type="button"
-              onClick={handleRegenerate}
-              disabled={generating}
-              className="ml-1 flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-primary disabled:opacity-50"
-            >
-              {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-              刷新
+        </nav>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label="前一天" title="前一天" onClick={() => {
+              handleDateSelect(shiftReportDate(selectedDate || todayStr, -1));
+            }} className="grid h-9 w-8 shrink-0 place-items-center rounded-md border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50">
+              <ChevronRight size={16} className="rotate-180" />
             </button>
-          )}
-          {report?.status === 'DONE' && isAdmin(currentUser) && (
-            <button
-              type="button"
-              onClick={handlePushWebhook}
-              disabled={pushing}
-              title="将当前日报推送到已配置的飞书/钉钉/Slack 群机器人"
-              className="ml-1 flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-primary disabled:opacity-50"
-            >
-              {pushing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-              {pushing ? '推送中…' : '推送到群'}
+            <span className="min-w-[96px] text-center font-mono text-[13px] font-bold text-gray-800" aria-live="polite">{selectedDate || todayStr}</span>
+            <button type="button" aria-label="后一天" title="后一天" disabled={isToday} onClick={() => {
+              const next = shiftReportDate(selectedDate || todayStr, 1);
+              if (next <= todayStr) handleDateSelect(next);
+            }} className="grid h-9 w-8 shrink-0 place-items-center rounded-md border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-30">
+              <ChevronRight size={16} />
             </button>
-          )}
-          {pushMsg && (
-            <span className={cx('ml-1 text-[10px] font-bold', pushMsg.includes('失败') || pushMsg.includes('未配置') ? 'text-red' : 'text-teal')}>
-              {pushMsg}
-            </span>
-          )}
+            <button type="button" onClick={() => {
+              const next = new URLSearchParams(params.toString()); next.delete('date');
+              if (dateParam) router.push(`/daily?${next}`, { scroll: false });
+              else void fetchReport();
+            }} className={cx('ml-1 rounded-md px-2 py-2 text-[13px] font-bold transition-colors', isToday ? 'bg-primary-solid text-white' : 'text-gray-600 hover:bg-gray-50')}>今天</button>
+          </div>
+          <details className="relative">
+            <summary className="flex h-9 cursor-pointer list-none items-center gap-1 rounded-md border border-gray-200 px-2 text-[12px] font-semibold text-gray-600 hover:bg-gray-50">{generating ? <Loader2 size={13} className="animate-spin" /> : '更多'}<ChevronDown size={13} /></summary>
+            <div className="absolute right-0 top-full z-20 mt-2 flex min-w-[176px] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+              <button type="button" onClick={reloadCurrent} className="flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-[13px] text-gray-700 hover:bg-gray-50"><RefreshCw size={14} />重新加载</button>
+              {report && <button type="button" onClick={handleRegenerate} disabled={generating} className="flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                {generating ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}{generating ? '生成中' : '重新生成'}
+              </button>}
+              {reportScope === 'public' && report?.status === 'DONE' && isAdmin(currentUser) && <button type="button" onClick={handlePushWebhook} disabled={pushing} className="flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                {pushing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{pushing ? '推送中…' : '推送到群'}
+              </button>}
+              {reportScope === 'public' && isAdmin(currentUser) && recoveryDays.length > 0 && <span className="px-3 py-2 text-xs text-amber-800">{recoveryDays.length} 天待补</span>}
+            </div>
+          </details>
+          {pushMsg && <span role="status" className="text-xs text-gray-600">{pushMsg}</span>}
         </div>
       </div>
 
       {/* 主区域（晨报版式：报头 → 导语 → 头版 → 内页分版） */}
-      <div className="h-[calc(100%-40px)] overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)]">
-        <div className="mx-auto max-w-[920px] px-4 py-4 sm:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-page">
+        <div className="mx-auto max-w-[960px] px-3 py-3 sm:px-8 sm:py-8">
+          {indexError && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-amber-800">{indexError}<button type="button" className="underline" onClick={() => { void refreshReportIndexes().then(() => setIndexError(null)).catch(() => setIndexError('往期目录加载失败，可重试加载')); }}>重试目录</button></div>}
+          {markError && <div role="alert" className="mb-3 rounded-md bg-red-light px-4 py-3 text-sm text-red-700">{markError}</div>}
           {loading ? (
             <ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>
           ) : error ? (
             <ReportStatusPanel
               icon={AlertTriangle}
               tone="error"
-              action={(
-                <ReportActionButton
-                  onClick={() => generateForDate(recoveryDate)}
-                  loading={generating && generatingDate === recoveryDate}
-                  icon={RotateCcw}
-                >
-                  生成 {recoveryDate}
-                </ReportActionButton>
+              action={error === '该日期暂无日报' ? (
+                <ReportActionButton onClick={() => generateForDate(recoveryDate)} loading={generating} icon={FileText}>生成本期日报</ReportActionButton>
+              ) : (
+                <ReportActionButton onClick={reloadCurrent} icon={RefreshCw}>重新加载</ReportActionButton>
               )}
             >
               {error}
@@ -570,7 +499,7 @@ export default function DailyReportPage() {
           ) : report?.status === 'ERROR' ? (
             <div className="grid min-h-[300px] place-items-center p-8 text-center">
               <div>
-                <AlertTriangle size={28} className="mx-auto mb-3 text-red" strokeWidth={1.9} />
+                <AlertTriangle size={28} className="mx-auto mb-3 text-red-700" strokeWidth={1.9} />
                 <div className="mb-3 text-sm text-gray-500">{report.overview}</div>
                 <ReportActionButton
                   onClick={() => generateForDate(report.report_date)}
@@ -584,15 +513,14 @@ export default function DailyReportPage() {
           ) : report?.status === 'GENERATING' ? (
             <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
-            <div className="space-y-0">
+            <div className="space-y-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               {/* 报头（刊名/日期行/统计行：期号·昨日兑现·长度合同） */}
               <div className="bg-white">
                 <Masthead
                   reportDate={report.report_date}
                   weekday={report.weekday}
                   editionLabel={report.edition ? EDITION_LABELS[report.edition] : undefined}
-                  issueNumber={issueNumber}
-                  generatedAt={generatedAt || undefined}
+                  generatedAt={formatDateTime(report.cutoff_at) || generatedAt || undefined}
                   yesterdayLine={yesterdayLine}
                   pickCount={pickList.length}
                   readMinutes={readMinutes}
@@ -640,11 +568,11 @@ export default function DailyReportPage() {
 
               {/* 昨日追踪明细（折叠态：R8 校准后的问责剂量——一行摘要 + 明细可展开） */}
               <details className="bg-white">
-                <summary className="cursor-pointer px-5 py-2 text-[11px] font-bold text-gray-400 hover:text-gray-600">
+                <summary className="cursor-pointer px-5 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-600">
                   昨日追踪明细（24h 热度与兑现）
                 </summary>
                 <div className="px-5 pb-3">
-                  <YesterdayTracking scope={reportScope} reportDate={report.report_date} />
+                  <YesterdayTracking data={yesterdayData ?? null} loading={yesterdayData === undefined} />
                 </div>
               </details>
 
@@ -652,23 +580,20 @@ export default function DailyReportPage() {
               {hasBrief && (
                 <div className="mt-4">
                   <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-                    <span className="font-mono text-lg font-black text-gray-400">→</span>
+                    <span className="font-mono text-lg font-black text-gray-500">→</span>
                     <h2 className="text-sm font-black text-gray-700">速览 · 分版</h2>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[12px] font-bold text-gray-600">
                       {briefGroups.reduce((n, [, ps]) => n + ps.length, 0)} 篇
                     </span>
                   </div>
                   {briefGroups.map(([cat, picks], groupIdx) => (
                     <div key={`brief-group-${cat}`} className="mb-3">
                       <div className="mb-1.5 flex items-center gap-2 px-1">
-                        <span className="font-mono text-[13px] font-black text-gray-300">
+                        <span className="font-mono text-[13px] font-black text-gray-500">
                           {String(groupIdx + 1).padStart(2, '0')}
                         </span>
                         <span className="text-[12px] font-black text-gray-600">{cat}</span>
-                        {CATEGORY_EN[cat] && (
-                          <span className="text-[10px] font-bold text-gray-300">{CATEGORY_EN[cat]}</span>
-                        )}
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-400">{picks.length} 篇</span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[12px] font-bold text-gray-600">{picks.length} 篇</span>
                       </div>
                       <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
                         {picks.map((pick, j) => {
@@ -710,7 +635,7 @@ export default function DailyReportPage() {
                       <div key={platform}>
                         <PlatformHeading icon={Smartphone} label={platform} />
                         {(Array.isArray(tips) ? tips : []).map((tip: string, j: number) => (
-                          <div key={`${platform}-${j}`} className="mb-1.5 border-l-2 border-primary-border pl-2.5 text-[12px] leading-5 text-gray-500">
+                          <div key={`${platform}-${j}`} className="mb-1.5 text-[13px] leading-6 text-gray-600">
                             {tip}
                           </div>
                         ))}
@@ -723,7 +648,7 @@ export default function DailyReportPage() {
               {/* 往期条：最近 5 期（每天一格带当日导语） */}
               {recentDates.length > 0 && (
                 <div className="mt-4 bg-white px-5 py-3">
-                  <div className="mb-2 text-[10px] font-black tracking-widest text-gray-400">往期 · 每天一格</div>
+                  <div className="mb-2 text-[12px] font-black tracking-widest text-gray-500">往期 · 每天一格</div>
                   <div className="flex flex-wrap gap-2">
                     {recentDates.map((d) => (
                       <button
@@ -733,8 +658,8 @@ export default function DailyReportPage() {
                         className="flex min-w-[170px] flex-1 flex-col gap-0.5 rounded-xs border border-gray-200 px-3 py-2 text-left hover:border-primary"
                         title={d.takeaway || undefined}
                       >
-                        <span className="font-mono text-[10px] font-bold text-gray-400">{d.report_date} {d.weekday}</span>
-                        <span className="truncate text-[11.5px] font-bold text-gray-700">
+                        <span className="font-mono text-[12px] font-bold text-gray-500">{d.report_date} {d.weekday}</span>
+                        <span className="truncate text-[12px] font-bold text-gray-700">
                           {d.takeaway || '查看当日日报'}
                         </span>
                       </button>
@@ -744,13 +669,13 @@ export default function DailyReportPage() {
               )}
 
               {/* 底部统计 + 报脚 */}
-              <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-200 pt-3 text-[11px] text-gray-400">
+              <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-200 px-5 pt-4 text-[13px] text-gray-500">
                 <ReportFooterStat icon={BarChart3}>分析 {report.analyzed_count || 0} 条</ReportFooterStat>
                 <ReportFooterStat icon={Target}>推荐 {pickList.length} 个选题</ReportFooterStat>
                 {generatedAt && <ReportFooterStat icon={CalendarDays}>{generatedAt}</ReportFooterStat>}
               </div>
-              <footer className="mt-2 border-t border-gray-200 py-2.5 text-center text-[10px] tracking-wide text-gray-400">
-                版面编辑：TopicEye 编辑台 · 热点不认行业，角度认赛道 · 每条可溯原文{issueNumber ? ` · 总第 ${issueNumber} 期` : ''}
+              <footer className="mt-3 border-t border-gray-100 px-5 py-4 text-center text-[13px] leading-6 text-gray-500">
+                TopicEye 编辑台 · 编辑判断供选题参考，请结合原文核实
               </footer>
             </div>
           ) : report ? (

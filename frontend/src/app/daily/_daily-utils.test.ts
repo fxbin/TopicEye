@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   localDateString,
+  creationPlanHref,
+  reportLoadError,
+  shiftReportDate,
+  recentReportDates,
   formatDateTime,
   parseJson,
   pickKey,
@@ -192,5 +196,50 @@ describe('CATEGORY_ORDER', () => {
     expect(CATEGORY_ORDER).toHaveLength(6);
     expect(CATEGORY_ORDER).toContain('模型发布');
     expect(CATEGORY_ORDER).toContain('开源项目');
+  });
+});
+
+
+describe('report dates', () => {
+  it('follows the report service Shanghai date even when the browser is in UTC', () => {
+    expect(localDateString(new Date('2026-10-21T17:00:00Z'))).toBe('2026-10-22');
+  });
+  it('shows the newest completed editions and excludes current or failed dates', () => {
+    const dates = ['2026-10-01', '2026-10-20', '2026-10-22', '2026-10-21', '2026-10-19'].map((report_date) => ({ report_date, weekday: '', takeaway: null, status: report_date === '2026-10-19' ? 'ERROR' : 'DONE' }));
+    expect(recentReportDates(dates, '2026-10-22', 2).map((d) => d.report_date)).toEqual(['2026-10-21', '2026-10-20']);
+  });
+});
+
+
+describe('creation entry context', () => {
+  it('preserves translated title and original URL across every entry point', () => {
+    const href = creationPlanHref({ title: '编辑标题', source_title: 'English title', source_title_zh: '中文标题 & 问题', source_url: 'https://example.com/a?q=1&b=2' });
+    const params = new URL(href, 'https://topiceye.test').searchParams;
+    expect(params.get('title')).toBe('中文标题 & 问题');
+    expect(params.get('url')).toBe('https://example.com/a?q=1&b=2');
+  });
+});
+
+
+describe('report HTTP errors', () => {
+  it('recognizes missing editions using status, independent of server language', () => {
+    expect(reportLoadError(Object.assign(new Error('No report found for this date'), { status: 404 }))).toBe('该日期暂无日报');
+    expect(reportLoadError(Object.assign(new Error('需升级套餐'), { status: 403 }))).toBe('需升级套餐');
+  });
+});
+
+
+describe('report date navigation across timezones', () => {
+  it('moves exactly one calendar day in UTC, Shanghai and Los Angeles', () => {
+    const previous = process.env.TZ;
+    try {
+      for (const zone of ['UTC', 'Asia/Shanghai', 'America/Los_Angeles']) {
+        process.env.TZ = zone;
+        expect(shiftReportDate('2026-10-21', -1)).toBe('2026-10-20');
+        expect(shiftReportDate('2026-10-21', 1)).toBe('2026-10-22');
+        expect(shiftReportDate('2026-03-08', 1)).toBe('2026-03-09');
+        expect(shiftReportDate('2026-01-01', -1)).toBe('2025-12-31');
+      }
+    } finally { process.env.TZ = previous; }
   });
 });

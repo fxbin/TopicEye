@@ -15,7 +15,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpen, Clock, ExternalLink, Flame } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ChevronDown, Clock, ExternalLink, Flame } from 'lucide-react';
 import { cx } from '@/components/ui';
 import Sparkline from '@/components/Sparkline';
 import type { SparklineData } from '@/components/Sparkline';
@@ -23,49 +23,42 @@ import {
   type DailyPick,
   type MarkAction,
   LIFECYCLE_META,
-  CATEGORY_EN,
   isEnglishTitle,
   displaySourceTitle,
   pickKey,
+  creationPlanHref,
 } from './_daily-utils';
 
 
 /** 「写这个」：带选题上下文跳创作计划页（与 PickCard 的链接同参）。 */
 export function useWritePick() {
   const router = useRouter();
-  return (pick: PickForWrite) => {
-    const title = encodeURIComponent(pick.source_title_zh || pick.source_title || pick.title || '');
-    const url = pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : '';
-    router.push(`/plan?title=${title}${url}`);
-  };
-}
-
-interface PickForWrite {
-  title?: string;
-  source_title?: string;
-  source_title_zh?: string;
-  source_url?: string;
+  return (pick: Partial<DailyPick>) => router.push(creationPlanHref(pick));
 }
 
 // ── 变化标记（▲新入 / ↑涨 / →稳）：与昨日日报 diff 得出 ──────────────
 
-export type PickChangeMarker = 'new' | 'up' | 'flat';
+export type PickChangeMarker = 'new' | 'up' | 'down' | 'flat';
 
 export function computeChangeMarkers(
   picks: DailyPick[],
-  yesterdayPicks: Array<{ source_title: string; old_score: number | null }> | undefined,
+  yesterdayPicks: Array<{ source_title: string; title?: string; old_score: number | null }> | undefined,
 ): Record<string, PickChangeMarker> {
   const markers: Record<string, PickChangeMarker> = {};
   if (!yesterdayPicks) return markers;
-  const yesterday = new Map(yesterdayPicks.map((p) => [p.source_title, p.old_score]));
+  const yesterday = new Map(yesterdayPicks.map((p) => [pickKey(p), p.old_score]));
   for (const pick of picks) {
     const key = pickKey(pick);
     if (!key) continue;
     const oldScore = yesterday.get(key);
-    if (oldScore == null) {
+    if (!yesterday.has(key)) {
       markers[key] = 'new';
+    } else if (oldScore == null) {
+      continue;
     } else if (pick.score != null && pick.score > oldScore + 1) {
       markers[key] = 'up';
+    } else if (pick.score != null && pick.score < oldScore - 1) {
+      markers[key] = 'down';
     } else {
       markers[key] = 'flat';
     }
@@ -74,15 +67,16 @@ export function computeChangeMarkers(
 }
 
 const CHANGE_META: Record<PickChangeMarker, { label: string; cls: string }> = {
-  new: { label: '▲新入', cls: 'text-teal bg-teal-light' },
-  up: { label: '↑涨', cls: 'text-amber bg-amber-light' },
-  flat: { label: '→稳', cls: 'text-gray-400 bg-gray-100' },
+  new: { label: '▲新入', cls: 'text-teal-text bg-teal-light' },
+  up: { label: '↑涨', cls: 'text-amber-800 bg-amber-light' },
+  down: { label: '↓降', cls: 'text-gray-600 bg-gray-100' },
+  flat: { label: '→稳', cls: 'text-gray-500 bg-gray-100' },
 };
 
 export function ChangeMarkerBadge({ marker }: { marker?: PickChangeMarker }) {
   if (!marker) return null;
   const meta = CHANGE_META[marker];
-  return <span className={cx('shrink-0 rounded-xs px-1.5 py-0.5 text-[10px] font-black', meta.cls)}>{meta.label}</span>;
+  return <span className={cx('shrink-0 rounded-xs px-1.5 py-0.5 text-[12px] font-black', meta.cls)}>{meta.label}</span>;
 }
 
 // ── 「这题什么时候凉」：lifecycle + time_window 的创作者翻译 ──────────
@@ -127,26 +121,26 @@ export function Masthead({
   readMinutes: number;
 }) {
   return (
-    <header className="bg-white text-center">
-      <p className="pt-5 text-[11px] font-bold tracking-[0.35em] text-gray-400">TopicEye · 全行业信息日报</p>
-      <h1 className="mt-1 font-display text-[34px] font-black leading-tight tracking-[0.6em] text-gray-900 [text-indent:0.6em]">
+    <header className="bg-white px-5 pt-2 text-center sm:px-8">
+      <p className="pt-3 text-[12px] font-semibold tracking-[0.16em] text-gray-500">TopicEye · 全行业信息日报</p>
+      <h1 className="mt-1 font-serif-display text-[30px] font-black leading-tight tracking-[0.3em] text-gray-900 [text-indent:0.3em] sm:text-[38px] sm:tracking-[0.5em] sm:[text-indent:0.5em]">
         选题雷达
       </h1>
-      <div className="mx-0 mt-2 border-t-[3px] border-b border-gray-900" />
-      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 py-1.5 text-[11px] font-bold text-gray-500">
+      <div className="mx-0 mt-3 border-t-[3px] border-b border-gray-900" />
+      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 py-3 text-[12px] font-medium text-gray-600">
         <span className="text-[12px] font-black text-gray-800">{reportDate} {weekday}</span>
         {editionLabel && <span>· {editionLabel}</span>}
         {issueNumber != null && <span>· 第 {issueNumber} 期</span>}
-        <span className="ml-auto hidden items-center gap-1 sm:flex">
+        <span className="basis-full text-center text-[12px] text-gray-500 sm:ml-auto sm:basis-auto">
           {generatedAt && <>数据截至 {generatedAt}</>}
         </span>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-b border-gray-200 py-1.5 text-[11px] font-bold text-gray-500">
-        {yesterdayLine && <span className="text-gray-600">{yesterdayLine}</span>}
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-b border-gray-200 py-2.5 text-[12px] font-medium text-gray-600">
+        {yesterdayLine && <span className="hidden text-gray-600 sm:inline">{yesterdayLine}</span>}
         <span>
-          今日 <span className="font-mono text-[13px] font-black text-primary">{pickCount}</span> 题
+          本期 <span className="font-mono text-[13px] font-black text-primary-text">{pickCount}</span> 题
         </span>
-        <span>头版约 1 分钟 · 完整版约 {readMinutes} 分钟</span>
+        <span>约 {readMinutes} 分钟读完</span>
       </div>
     </header>
   );
@@ -157,17 +151,22 @@ export function Masthead({
 export function LeadIn({ takeaway, overview }: { takeaway?: string | null; overview?: string | null }) {
   if (!takeaway && !overview) return null;
   return (
-    <section className="bg-white px-5 py-4">
+    <section className="bg-white px-5 py-5 sm:px-8 sm:py-6">
       {(takeaway || overview) && (
-        <p className="font-display text-[17px] font-black leading-8 text-gray-900">
-          {takeaway || overview?.slice(0, 60)}
+        <p className="font-serif-display text-[18px] font-bold leading-8 text-gray-900 sm:text-[21px]">
+          {takeaway || overview}
         </p>
       )}
       {overview && takeaway && (
-        <div className="mt-2.5 border-l-[3px] border-primary pl-3 text-[13px] leading-7 text-gray-600">
-          <span className="mr-1.5 text-[10px] font-black tracking-widest text-primary">主编判断</span>
-          {overview}
-        </div>
+        <>
+          <div className="mt-3 hidden max-w-[48em] text-[14px] leading-7 text-gray-600 sm:block">
+            <span className="mr-2 text-[12px] font-bold text-gray-800">主编判断</span>{overview}
+          </div>
+          <details className="mt-2 text-[14px] leading-7 text-gray-600 sm:hidden">
+            <summary className="cursor-pointer py-1 text-[13px] font-semibold text-gray-600">主编判断</summary>
+            <p className="pt-1">{overview}</p>
+          </details>
+        </>
       )}
     </section>
   );
@@ -200,65 +199,65 @@ export function LeadPickCard({
   const cool = coolDownText(pick);
 
   return (
-    <article className="border-l-[4px] border-primary bg-white px-5 py-4">
+    <article className="border-t border-gray-200 bg-white px-5 py-6 sm:px-8">
       {/* 引题行 */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-black tracking-widest text-primary">
+        <span className="text-[12px] font-bold tracking-wide text-primary-text">
           {pick.category || '精选选题'}
         </span>
         {pick.score != null && (
-          <span className="font-mono text-[11px] font-black text-gray-400">综合 {pick.score}</span>
+          <span className="font-mono text-[12px] font-semibold text-gray-500">综合 {pick.score}</span>
         )}
         {lifecycleMeta && (
-          <span className={cx('rounded-xs px-1.5 py-0.5 text-[10px] font-bold', lifecycleMeta.color, lifecycleMeta.bg)}>
+          <span className={cx('rounded-xs px-1.5 py-0.5 text-[12px] font-bold', lifecycleMeta.color, lifecycleMeta.bg)}>
             {lifecycleMeta.label}
           </span>
         )}
       </div>
 
       {/* 大标题 + 副题（主判） */}
-      <h2 className="mt-1.5 font-display text-[24px] font-black leading-snug text-gray-900">
+      <h2 className="mt-3 font-serif-display text-[24px] font-bold leading-snug text-gray-900 sm:text-[30px]">
         {pick.editorial_title || pick.title}
       </h2>
-      <p className="mt-1.5 text-[13.5px] leading-7 text-gray-600">{pick.reason}</p>
+      <p className="mt-3 max-w-[46em] text-[15px] leading-7 text-gray-600">{pick.reason}</p>
 
       {/* 证据行：原文 + 热度曲线 + 还热判断 */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashed border-gray-200 pt-2.5 text-[11px] text-gray-500">
-        {sourceTitle && (
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 pt-3 text-[13px] text-gray-600">
+        {sourceTitle && (pick.content_id || pick.source_url) && (
           <button
             type="button"
-            className="flex min-w-0 items-center gap-1 hover:text-primary"
+            className="flex min-w-0 max-w-full items-center gap-1.5 text-left hover:text-primary-text"
             onClick={() => (pick.content_id ? onOpenReader(pick.content_id) : window.open(pick.source_url, '_blank'))}
-            title={isEnglishTitle(pick.source_title) ? '切换中/EN 显示' : undefined}
+            title={pick.content_id ? '站内阅读原文' : '打开原文'}
           >
             {pick.content_id ? <BookOpen size={11} className="shrink-0" /> : <ExternalLink size={11} className="shrink-0" />}
-            <span className="max-w-[320px] truncate font-bold">{sourceTitle}</span>
+            <span className="min-w-0 break-words font-medium">{sourceTitle}</span>
           </button>
         )}
         {sparklineData && sparklineData.points.length > 0 && (
           <Sparkline data={sparklineData} />
         )}
         {cool && (
-          <span className="flex items-center gap-1 font-bold text-amber">
+          <span className="flex items-start gap-1.5 text-[12px] font-medium leading-6 text-amber-800">
             <Clock size={11} />
-            这题什么时候凉：{cool}
+            选题时机：{cool}
           </span>
         )}
-        <button
+        {isEnglishTitle(pick.source_title) && <button
           type="button"
           onClick={onToggleLang}
-          className="ml-auto shrink-0 text-[10px] font-bold text-teal hover:text-primary"
+          className="ml-auto shrink-0 text-[12px] font-bold text-teal-text hover:text-primary-text"
         >
-          中/EN
-        </button>
+          {showOriginalLang ? '显示中文' : '显示原文'}
+        </button>}
       </div>
 
       {/* 可写角度 */}
       {pick.angles && pick.angles.length > 0 && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-black tracking-widest text-gray-400">可写角度</span>
+          <span className="text-[12px] font-bold text-gray-500">可写角度</span>
           {pick.angles.map((angle, i) => (
-            <span key={`angle-${i}`} className="rounded-xs bg-primary-light px-2 py-0.5 text-[12px] font-bold text-primary">
+            <span key={`angle-${i}`} className="rounded-md bg-gray-50 px-2.5 py-1 text-[13px] font-medium leading-6 text-gray-700">
               {angle}
             </span>
           ))}
@@ -267,27 +266,35 @@ export function LeadPickCard({
 
       {/* 避坑提示 */}
       {pick.pitfall && (
-        <div className="mt-2.5 rounded-xs border-l-[3px] border-amber bg-amber-light px-3 py-1.5 text-[12px] font-bold leading-5 text-amber">
-          ⚠ {pick.pitfall}
+        <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2.5 text-[13px] leading-6 text-gray-700">
+          <AlertTriangle size={14} className="mt-1 shrink-0 text-amber-800" /> {pick.pitfall}
         </div>
       )}
 
       {/* 动作带 */}
-      <div className="mt-3 flex items-center gap-2 border-t border-dashed border-gray-200 pt-2.5">
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
         <button
           type="button"
           onClick={() => onWrite(pick)}
-          className="flex items-center gap-1 rounded-xs bg-primary px-3.5 py-1.5 text-[12px] font-black text-white hover:brightness-95"
+          className="flex min-h-10 items-center gap-2 rounded-md bg-primary-solid px-4 py-2 text-[13px] font-bold text-white transition-colors hover:bg-primary-text active:scale-[0.98] motion-reduce:transform-none"
         >
           写这个 <ArrowRight size={12} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onMark(key, 'write', pick.category, pick.source_url)}
+          aria-pressed={markAction === 'write'}
+          className={cx('inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors', markAction === 'write' ? 'border-primary-border bg-primary-light text-primary-text' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}
+        >
+          <CheckCircle2 size={14} />{markAction === 'write' ? '已选' : '加入已选'}
         </button>
         <button
           type="button"
           onClick={() => onMark(key, 'watch', pick.category, pick.source_url)}
           aria-pressed={markAction === 'watch'}
           className={cx(
-            'rounded-xs border px-3 py-1.5 text-[12px] font-black',
-            markAction === 'watch' ? 'border-teal-border bg-teal-light text-teal' : 'border-gray-200 text-gray-400 hover:text-gray-600',
+            'min-h-10 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors',
+            markAction === 'watch' ? 'border-teal-border bg-teal-light text-teal-text' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
           )}
         >
           {markAction === 'watch' ? '✓ 已记着' : '先记着'}
@@ -297,8 +304,8 @@ export function LeadPickCard({
           onClick={() => onMark(key, 'skip', pick.category, pick.source_url)}
           aria-pressed={markAction === 'skip'}
           className={cx(
-            'rounded-xs border px-3 py-1.5 text-[12px] font-black',
-            markAction === 'skip' ? 'border-gray-400 bg-gray-100 text-gray-600' : 'border-gray-200 text-gray-400 hover:text-gray-600',
+            'min-h-10 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors',
+            markAction === 'skip' ? 'border-gray-400 bg-gray-100 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
           )}
         >
           {markAction === 'skip' ? '✓ 已跳过' : '跳过'}
@@ -339,68 +346,73 @@ export function SecondPickRow({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-dashed border-gray-100 px-5 py-2.5 text-left hover:bg-gray-50"
+        aria-expanded={expanded}
+        className="grid w-full grid-cols-[28px_minmax(0,1fr)_18px] items-start gap-3 border-t border-gray-200 px-5 py-5 text-left transition-colors hover:bg-gray-50 sm:px-8"
       >
-        <span className="w-6 shrink-0 font-mono text-[13px] font-bold text-gray-300">
-          {String(rank).padStart(2, '0')}
+        <span className="pt-0.5 font-mono text-[16px] font-medium text-gray-500">{String(rank).padStart(2, '0')}</span>
+        <span className="min-w-0">
+          <span className="mb-1.5 flex flex-wrap items-center gap-2 text-[12px] font-medium text-gray-500">
+            <span>{pick.category || '精选'}</span><ChangeMarkerBadge marker={marker} />
+            {pick.score != null && <span className="ml-auto font-mono">综合 {pick.score}</span>}
+          </span>
+          <span className="block text-[17px] font-bold leading-7 text-gray-900">{pick.editorial_title || pick.title}</span>
+          {!expanded && <span className="mt-1.5 line-clamp-2 block text-[14px] leading-6 text-gray-600">{pick.reason}</span>}
+          {cool && <span className="mt-2 block text-[12px] font-medium leading-5 text-amber-800">{cool}</span>}
         </span>
-        <span className="shrink-0 text-[10px] font-black tracking-wide text-gray-400">
-          {pick.category || '精选'}
-        </span>
-        <ChangeMarkerBadge marker={marker} />
-        <span className="min-w-0 flex-1 truncate text-[14px] font-black text-gray-900">
-          {pick.editorial_title || pick.title}
-        </span>
-        {pick.score != null && (
-          <span className="shrink-0 font-mono text-[11px] font-bold text-gray-400">{pick.score}</span>
-        )}
-        {cool && <span className="shrink-0 text-[10px] font-bold text-amber">{cool}</span>}
-        <span className={cx('shrink-0 text-[10px] text-gray-400 transition-transform', expanded && 'rotate-90')}>▸</span>
+        <ChevronDown size={16} className={cx('mt-1 text-gray-500 transition-transform duration-200 motion-reduce:transition-none', expanded && 'rotate-180')} />
       </button>
 
       {expanded && (
-        <div className="border-b border-dashed border-gray-100 bg-gray-50/60 px-5 py-3">
-          <p className="text-[12.5px] leading-7 text-gray-600">{pick.reason}</p>
+        <div className="border-b border-gray-100 bg-gray-50/60 px-5 pb-5 pt-1 sm:px-8">
+          <p className="text-[14px] leading-7 text-gray-600">{pick.reason}</p>
           {pick.angles && pick.angles.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-black tracking-widest text-gray-400">可写角度</span>
+              <span className="text-[12px] font-bold text-gray-500">可写角度</span>
               {pick.angles.map((angle, i) => (
-                <span key={`s-angle-${i}`} className="rounded-xs bg-primary-light px-2 py-0.5 text-[11.5px] font-bold text-primary">
+                <span key={`s-angle-${i}`} className="rounded-xs bg-primary-light px-2 py-0.5 text-[12px] font-bold text-primary-text">
                   {angle}
                 </span>
               ))}
             </div>
           )}
           {pick.pitfall && (
-            <div className="mt-2 rounded-xs border-l-[3px] border-amber bg-amber-light px-3 py-1.5 text-[11.5px] font-bold leading-5 text-amber">
+            <div className="mt-2 rounded-xs border-l-[3px] border-amber bg-amber-light px-3 py-1.5 text-[12px] font-bold leading-5 text-amber-800">
               ⚠ {pick.pitfall}
             </div>
           )}
-          {pick.source_title && (
+          {pick.source_title && (pick.content_id || pick.source_url) && (
             <button
               type="button"
-              className="mt-2 flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-primary"
+              className="mt-2 flex min-w-0 items-center gap-1 text-left text-[13px] font-medium text-gray-600 hover:text-primary-text"
               onClick={() => (pick.content_id ? onOpenReader(pick.content_id) : window.open(pick.source_url, '_blank'))}
             >
               {pick.content_id ? <BookOpen size={11} /> : <ExternalLink size={11} />}
               {pick.source_title_zh || pick.source_title}
             </button>
           )}
-          <div className="mt-2.5 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => onWrite(pick)}
-              className="flex items-center gap-1 rounded-xs bg-primary px-3 py-1 text-[11.5px] font-black text-white hover:brightness-95"
+              className="flex items-center gap-1 min-h-10 rounded-md bg-primary-solid px-3 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-primary-text"
             >
               写这个 <ArrowRight size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onMark(key, 'write', pick.category, pick.source_url)}
+              aria-pressed={markAction === 'write'}
+              className={cx('inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors', markAction === 'write' ? 'border-primary-border bg-primary-light text-primary-text' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}
+            >
+              <CheckCircle2 size={14} />{markAction === 'write' ? '已选' : '加入已选'}
             </button>
             <button
               type="button"
               onClick={() => onMark(key, 'watch', pick.category, pick.source_url)}
               aria-pressed={markAction === 'watch'}
               className={cx(
-                'rounded-xs border px-2.5 py-1 text-[11.5px] font-black',
-                markAction === 'watch' ? 'border-teal-border bg-teal-light text-teal' : 'border-gray-200 text-gray-400',
+                'min-h-10 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors',
+                markAction === 'watch' ? 'border-teal-border bg-teal-light text-teal-text' : 'border-gray-200 text-gray-500',
               )}
             >
               {markAction === 'watch' ? '✓ 已记着' : '先记着'}
@@ -409,8 +421,8 @@ export function SecondPickRow({
               type="button"
               onClick={() => onMark(key, 'skip', pick.category, pick.source_url)}
               className={cx(
-                'rounded-xs border px-2.5 py-1 text-[11.5px] font-black',
-                markAction === 'skip' ? 'border-gray-400 bg-gray-100 text-gray-600' : 'border-gray-200 text-gray-400',
+                'min-h-10 rounded-md border px-3 py-2 text-[13px] font-semibold transition-colors',
+                markAction === 'skip' ? 'border-gray-400 bg-gray-100 text-gray-600' : 'border-gray-200 text-gray-500',
               )}
             >
               跳过
@@ -430,21 +442,21 @@ export function ColophonStrip({
   yesterdaySummary?: { confirmed: number; reversed: number; persisted: number; dropped: number } | null;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-b border-gray-200 px-4 py-2 text-[11px] font-bold text-gray-500">
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-b border-gray-200 px-4 py-2 text-[12px] font-medium text-gray-600">
       {yesterdaySummary ? (
         <span>
           昨日对账：
-          <span className="text-teal">兑现 {yesterdaySummary.confirmed}</span> ·
-          <span className="text-amber"> 反转 {yesterdaySummary.reversed}</span> ·
-          <span className="text-primary"> 仍在榜 {yesterdaySummary.persisted}</span> ·
-          <span className="text-gray-400"> 掉出 {yesterdaySummary.dropped}</span>
+          <span className="text-teal-text">兑现 {yesterdaySummary.confirmed}</span> ·
+          <span className="text-amber-800"> 反转 {yesterdaySummary.reversed}</span> ·
+          <span className="text-primary-text"> 仍在榜 {yesterdaySummary.persisted}</span> ·
+          <span className="text-gray-500"> 掉出 {yesterdaySummary.dropped}</span>
         </span>
       ) : (
         <span>昨日对账：首期或数据不足</span>
       )}
-      <span className="text-gray-300">｜</span>
-      <a href="/trends" className="hover:text-primary">趋势实验室 →</a>
-      <a href="/today-picks" className="hover:text-primary">今日精选 →</a>
+      <span className="text-gray-500">｜</span>
+      <a href="/trends" className="hover:text-primary-text">趋势实验室 →</a>
+      <a href="/today-picks" className="hover:text-primary-text">今日精选 →</a>
     </div>
   );
 }
@@ -458,18 +470,18 @@ export function TrendsOneLiner({
 }) {
   if (trends.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-white px-5 py-2 text-[11px] text-gray-500">
-      <Flame size={12} className="shrink-0 text-primary" />
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gray-100 bg-white px-5 py-4 text-[13px] text-gray-600 sm:px-8">
+      <Flame size={12} className="shrink-0 text-primary-text" />
       <span className="font-black text-gray-700">趋势信号</span>
       {trends.slice(0, 3).map((t, i) => (
         <span key={`t-${i}`} className="flex items-center gap-1">
-          <span className={cx('font-bold', t.momentum === 'up' ? 'text-teal' : t.momentum === 'down' ? 'text-gray-400' : 'text-amber')}>
+          <span className={cx('font-bold', t.momentum === 'up' ? 'text-teal-text' : t.momentum === 'down' ? 'text-gray-500' : 'text-amber-800')}>
             {t.momentum === 'up' ? '↑' : t.momentum === 'down' ? '↓' : '→'}
           </span>
           {t.title}
         </span>
       ))}
-      <a href="/trends" className="ml-auto font-bold text-teal hover:text-primary">趋势实验室 →</a>
+      <a href="/trends" className="ml-auto font-bold text-teal-text hover:text-primary-text">趋势实验室 →</a>
     </div>
   );
 }

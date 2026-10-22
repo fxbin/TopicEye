@@ -49,7 +49,7 @@ dependencies = [
     "trafilatura>=2.1.0",
     "curl_cffi>=0.15.0",
     # reader: 抽取 PDF 原文为可阅读文本（文字型 PDF；扫描件优雅回退到外链）
-    "pypdf>=6.0,<7.0",
+    "pypdf>=6.21.1,<7.0",
     "mcp==2.3.0",
 ]
 

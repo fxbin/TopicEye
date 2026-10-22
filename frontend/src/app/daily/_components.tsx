@@ -25,6 +25,7 @@ import {
   type MarkAction,
   LIFECYCLE_META,
   pickKey,
+  creationPlanHref,
   isEnglishTitle,
   displaySourceTitle,
 } from './_daily-utils';
@@ -69,9 +70,10 @@ export function PickCard({
       {/* 选题一行摘要（可扫描层）*/}
       <div
         role="button"
+        aria-expanded={isExpanded}
         tabIndex={0}
         onClick={onToggleExpand}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand(); } }}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggleExpand(); } }}
         className="flex w-full cursor-pointer items-start gap-3 p-3 text-left sm:p-4"
       >
         {/* 评分 */}
@@ -93,7 +95,7 @@ export function PickCard({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenReader(pick.content_id!); }}
-                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
                 title="站内阅读"
               >
                 <BookOpen size={14} />
@@ -104,7 +106,7 @@ export function PickCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
                 title="查看原文"
               >
                 <ExternalLink size={14} />
@@ -113,13 +115,13 @@ export function PickCard({
           </div>
           {/* 原文标题（默认中文翻译，可切换英文原文） */}
           {pick.source_title && pick.source_title !== pick.title && (
-            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-400">
-              <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+            <div className="mt-0.5 flex items-center gap-1 text-[12px] text-gray-500">
+              <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-500 underline-offset-2 hover:underline" /></span>
               {isEnglishTitle(pick.source_title) && pick.source_title_zh && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onToggleLang(); }}
-                  className="shrink-0 rounded border border-gray-200 px-1 text-[10px] text-gray-400 hover:text-gray-600"
+                  className="shrink-0 rounded border border-gray-200 px-1 text-[12px] text-gray-500 hover:text-gray-600"
                 >
                   {showOriginalLang ? '中' : 'EN'}
                 </button>
@@ -129,17 +131,17 @@ export function PickCard({
           {/* 元数据行：lifecycle + 平台 + 时窗（不挤 sparkline） */}
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {lc && (
-              <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', lc.bg, lc.color)}>
+              <span className={cx('rounded-full px-2 py-0.5 text-[12px] font-bold', lc.bg, lc.color)}>
                 {lc.label}
               </span>
             )}
             {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
-              <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-500">
+              <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[12px] text-gray-500">
                 {p}
               </span>
             ))}
             {pick.time_window && (
-              <span className="text-[10px] text-gray-400">· {pick.time_window}</span>
+              <span className="text-[12px] text-gray-500">· {pick.time_window}</span>
             )}
           </div>
           {/* 24h 内容热度趋势 sparkline 独立一行（"内容热度"非"流量热度"） */}
@@ -152,7 +154,7 @@ export function PickCard({
         </div>
 
         {/* 展开指示 */}
-        <div className={cx('mt-1 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
+        <div className={cx('mt-1 shrink-0 text-gray-500 transition', isExpanded && 'rotate-90')}>
           <ChevronRight size={16} />
         </div>
       </div>
@@ -162,13 +164,13 @@ export function PickCard({
         <div className="border-t border-gray-100 px-3 pb-3 pt-2 sm:px-4">
           {/* 原文标题（展开态补回，让创作者决定写不写时能核对原文） */}
           {pick.source_title && pick.source_title !== pick.title && (
-            <div className="mb-2 flex items-center gap-1 text-[11px] text-gray-400">
-              <span className="break-all">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+            <div className="mb-2 flex items-center gap-1 text-[12px] text-gray-500">
+              <span className="break-all">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-500 underline-offset-2 hover:underline" /></span>
               {isEnglishTitle(pick.source_title) && pick.source_title_zh && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onToggleLang(); }}
-                  className="shrink-0 rounded border border-gray-200 px-1 text-[10px] text-gray-400 hover:text-gray-600"
+                  className="shrink-0 rounded border border-gray-200 px-1 text-[12px] text-gray-500 hover:text-gray-600"
                 >
                   {showOriginalLang ? '中' : 'EN'}
                 </button>
@@ -181,8 +183,8 @@ export function PickCard({
           {/* 创作角度 */}
           {pick.angles && pick.angles.length > 0 && (
             <div className="mb-3">
-              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-black text-gray-500">
-                <Lightbulb size={12} className="text-primary" /> 推荐角度
+              <div className="mb-1.5 flex items-center gap-1 text-[12px] font-black text-gray-500">
+                <Lightbulb size={12} className="text-primary-text" /> 推荐角度
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {pick.angles.map((angle, k) => (
@@ -197,7 +199,7 @@ export function PickCard({
           {/* 避坑提示 */}
           {pick.pitfall && (
             <div className="mb-3 flex items-start gap-2 rounded-md bg-amber-light px-3 py-2">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber" />
+              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-800" />
               <span className="text-[12px] leading-5 text-gray-600"><AutoLink text={pick.pitfall} /></span>
             </div>
           )}
@@ -205,7 +207,7 @@ export function PickCard({
           {/* 操作按钮 */}
           <div className="flex items-center gap-2">
             <a
-              href={`/plan?title=${encodeURIComponent(displaySourceTitle(pick, false))}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
+              href={creationPlanHref(pick)}
               className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90"
             >
               <FileText size={13} /> 写这个
@@ -216,7 +218,7 @@ export function PickCard({
               className={cx(
                 'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
                 markAction === 'write'
-                  ? 'border-primary bg-primary-light text-primary'
+                  ? 'border-primary bg-primary-light text-primary-text'
                   : 'border-gray-200 text-gray-500 hover:text-gray-700',
               )}
             >
@@ -228,7 +230,7 @@ export function PickCard({
               className={cx(
                 'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
                 markAction === 'watch'
-                  ? 'border-amber bg-amber-light text-amber'
+                  ? 'border-amber bg-amber-light text-amber-800'
                   : 'border-gray-200 text-gray-500 hover:text-gray-700',
               )}
             >
@@ -241,7 +243,7 @@ export function PickCard({
                 'flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-bold transition',
                 markAction === 'skip'
                   ? 'border-gray-400 bg-gray-100 text-gray-500'
-                  : 'border-gray-200 text-gray-400 hover:text-gray-600',
+                  : 'border-gray-200 text-gray-500 hover:text-gray-600',
               )}
             >
               跳过
@@ -253,7 +255,7 @@ export function PickCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="ml-auto flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-primary"
+                className="ml-auto flex items-center gap-1 text-[12px] font-bold text-gray-500 hover:text-primary-text"
                 title="在新标签打开原文站点"
               >
                 <ExternalLink size={12} /> 去原站
@@ -297,12 +299,13 @@ export function BriefPickRow({
     <div>
       <div
         role="button"
+        aria-expanded={isExpanded}
         tabIndex={0}
         onClick={onToggleExpand}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand(); } }}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggleExpand(); } }}
         className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2.5 text-left sm:px-4"
       >
-        <span className="mt-0.5 shrink-0 font-mono text-[11px] font-bold text-gray-300">{String(globalIdx + 1).padStart(2, '0')}</span>
+        <span className="mt-0.5 shrink-0 font-mono text-[12px] font-bold text-gray-500">{String(globalIdx + 1).padStart(2, '0')}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <h3 className="min-w-0 flex-1 break-words text-[13px] font-bold leading-5 text-gray-800">{pick.title}</h3>
@@ -311,7 +314,7 @@ export function BriefPickRow({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenReader(pick.content_id!); }}
-                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
                 title="站内阅读"
               >
                 <BookOpen size={13} />
@@ -322,23 +325,23 @@ export function BriefPickRow({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
+                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
                 title="查看原文"
               >
                 <ExternalLink size={13} />
               </a>
             )}
           </div>
-          <div className="mt-0.5 text-[11px] text-gray-500"><AutoLink text={pick.reason} /></div>
+          <div className="mt-1 text-[13px] leading-6 text-gray-600"><AutoLink text={pick.reason} /></div>
           {/* 原文标题（英文时默认中文翻译，可切换） */}
           {pick.source_title && pick.source_title !== pick.title && isEnglishTitle(pick.source_title) && (
-            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
-              <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-400 underline-offset-2 hover:underline" /></span>
+            <div className="mt-0.5 flex items-center gap-1 text-[12px] text-gray-500">
+              <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-500 underline-offset-2 hover:underline" /></span>
               {pick.source_title_zh && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onToggleLang(); }}
-                  className="shrink-0 rounded border border-gray-200 px-1 text-[9px] text-gray-400 hover:text-gray-600"
+                  className="shrink-0 rounded border border-gray-200 px-1 text-[12px] text-gray-500 hover:text-gray-600"
                 >
                   {showOriginalLang ? '中' : 'EN'}
                 </button>
@@ -348,20 +351,20 @@ export function BriefPickRow({
           {(pick.platforms ?? []).length > 0 && (
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
-                <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-400">{p}</span>
+                <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[12px] text-gray-500">{p}</span>
               ))}
             </div>
           )}
         </div>
-        <div className={cx('mt-0.5 shrink-0 text-gray-300 transition', isExpanded && 'rotate-90')}>
+        <div className={cx('mt-0.5 shrink-0 text-gray-500 transition', isExpanded && 'rotate-90')}>
           <ChevronRight size={14} />
         </div>
       </div>
       {isExpanded && (
-        <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2 sm:px-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-3 py-3 sm:px-4">
           <a
-            href={`/plan?title=${encodeURIComponent(displaySourceTitle(pick, false))}${pick.source_url ? `&url=${encodeURIComponent(pick.source_url)}` : ''}`}
-            className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:opacity-90"
+            href={creationPlanHref(pick)}
+            className="flex items-center gap-1 rounded-md bg-primary-solid px-3 py-2 text-[12px] font-bold text-white hover:opacity-90"
           >
             <FileText size={12} /> 写这个
           </a>
@@ -369,9 +372,9 @@ export function BriefPickRow({
             type="button"
             onClick={(e) => { e.stopPropagation(); onMark(key, 'write', pick.category, pick.source_url); }}
             className={cx(
-              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[12px] font-bold transition',
               markAction === 'write'
-                ? 'border-primary bg-primary-light text-primary'
+                ? 'border-primary bg-primary-light text-primary-text'
                 : 'border-gray-200 text-gray-500 hover:text-gray-700',
             )}
           >
@@ -381,9 +384,9 @@ export function BriefPickRow({
             type="button"
             onClick={(e) => { e.stopPropagation(); onMark(key, 'watch', pick.category, pick.source_url); }}
             className={cx(
-              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[12px] font-bold transition',
               markAction === 'watch'
-                ? 'border-amber bg-amber-light text-amber'
+                ? 'border-amber bg-amber-light text-amber-800'
                 : 'border-gray-200 text-gray-500 hover:text-gray-700',
             )}
           >
@@ -393,10 +396,10 @@ export function BriefPickRow({
             type="button"
             onClick={(e) => { e.stopPropagation(); onMark(key, 'skip', pick.category, pick.source_url); }}
             className={cx(
-              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition',
+              'flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[12px] font-bold transition',
               markAction === 'skip'
                 ? 'border-gray-400 bg-gray-100 text-gray-500'
-                : 'border-gray-200 text-gray-400 hover:text-gray-600',
+                : 'border-gray-200 text-gray-500 hover:text-gray-600',
             )}
           >
             跳过

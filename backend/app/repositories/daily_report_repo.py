@@ -157,12 +157,13 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         start_iso: str,
         end_iso: str,
     ) -> Sequence[DailyReport]:
-        """按日期范围查询日报（含所有 edition），供 /calendar 端点分组聚合使用。
+        """按日期范围查询公共日报（含所有 edition），供 /calendar 端点分组聚合使用。
 
         排序：report_date DESC, cutoff_at DESC, updated_at DESC（与历史行为等价）。
         """
         stmt = (
             select(self.model)
+            .where(self._owner_clause(None))
             .where(self.model.report_date >= start_iso)
             .where(self.model.report_date <= end_iso)
             .order_by(
@@ -176,12 +177,17 @@ class DailyReportRepository(BaseRepository[DailyReport]):
 
     async def count_all(self) -> int:
         """统计日报总记录数，供 /daily-reports 端点返回 total 字段使用。"""
-        result = await self.db.execute(select(func.count()).select_from(self.model))
+        result = await self.db.execute(select(func.count()).select_from(self.model).where(self._owner_clause(None)))
         return result.scalar() or 0
 
     async def list_recent_with_limit(self, limit: int = 7) -> Sequence[DailyReport]:
         """返回最近的 N 条日报（所有 edition），按 report_date 和 cutoff_at 倒序。"""
-        stmt = select(self.model).order_by(self.model.report_date.desc(), self.model.cutoff_at.desc()).limit(limit)
+        stmt = (
+            select(self.model)
+            .where(self._owner_clause(None))
+            .order_by(self.model.report_date.desc(), self.model.cutoff_at.desc())
+            .limit(limit)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -190,6 +196,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         report_date_iso: str,
         edition: str,
         owner_user_id: int | None = None,
+        cutoff_at: datetime | None = None,
     ) -> DailyReport | None:
         """按 (date, edition, owner) 查现有日报记录（取最新一条），供生成版本端点判断使用。
 
@@ -205,6 +212,8 @@ class DailyReportRepository(BaseRepository[DailyReport]):
             .order_by(self.model.id.desc())
             .limit(1)
         )
+        if cutoff_at is not None:
+            stmt = stmt.where(self.model.cutoff_at == cutoff_at)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -280,6 +289,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         window_start,
         window_end,
         cutoff_at,
+        owner_user_id: int | None = None,
         status: str = "GENERATING",
         overview: str = f"正在生成{EDITION_LABELS['daily']}...",
     ) -> DailyReport:
@@ -295,6 +305,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
             window_start=window_start,
             window_end=window_end,
             cutoff_at=cutoff_at,
+            owner_user_id=owner_user_id,
             status=status,
             overview=overview,
         )
@@ -308,7 +319,8 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         事务边界（commit）由调用方通过 ``repo.commit()`` 控制。
         """
         report.status = "GENERATING"
-        report.updated_at = datetime.now(LOCAL_TZ)
+        report.generated_at = datetime.now(LOCAL_TZ)
+        report.updated_at = report.generated_at
 
     async def mark_error(self, report_id: int, error_msg: str) -> None:
         """按主键加载日报记录并标记为 ERROR（含 overview 错误信息）。

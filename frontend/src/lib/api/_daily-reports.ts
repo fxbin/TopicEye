@@ -5,7 +5,7 @@
  */
 
 import { request } from './_core';
-import type { PaginatedResponse, YesterdayTrackingData } from '@/types';
+import type { YesterdayTrackingData } from '@/types';
 
 export interface WebhookDeliveryLogItem {
   id: number;
@@ -122,13 +122,18 @@ export const dailyReportApi = {
   },
 
   /** 生成指定日报版本 */
-  generateVersion(params: { target_date?: string; edition?: string; cutoff_at?: string; force?: boolean } = {}): Promise<Record<string, unknown>> {
+  generateVersion(params: { target_date?: string; edition?: string; cutoff_at?: string; force?: boolean } = {}, scope: 'public' | 'mine' = 'public'): Promise<Record<string, unknown>> {
     const query = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, String(v)])
     ).toString();
-    return request(`/daily-reports/generate-version${query ? `?${query}` : ''}`, { method: 'POST' });
+    return request(`/daily-reports${scope === 'mine' ? '/me' : ''}/generate-version${query ? `?${query}` : ''}`, { method: 'POST' });
+  },
+
+  /** 查询同一生成记录，避免 final 优先规则提前返回另一份旧日报。 */
+  getVersion(id: number, scope: 'public' | 'mine' = 'public'): Promise<Record<string, unknown>> {
+    return request(`/daily-reports${scope === 'mine' ? '/me' : ''}/versions/${id}`);
   },
 
   /** 手动推送日报到 webhook（管理员） */

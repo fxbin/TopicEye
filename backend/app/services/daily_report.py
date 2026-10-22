@@ -482,6 +482,10 @@ async def push_daily_report_webhook(
 
     Returns: True 如果发送成功，False 如果未配置或全部失败。
     """
+    # Shared group webhooks must never receive a user's private-source report.
+    if report.owner_user_id is not None:
+        return False
+
     from app.services.alerting import send_alert
 
     card = build_daily_report_card(report, picks, report_date, normalized_edition)
@@ -515,6 +519,7 @@ async def _push_daily_report_success(
             "daily_report",
             daily_generation_notice(report_date),
             f"{report_date} {_edition_label(normalized_edition)}，共 {report.topic_count} 个选题",
+            target_user_ids=[report.owner_user_id] if report.owner_user_id is not None else None,
         )
     except Exception:
         logger.warning("daily_report success notification failed", exc_info=True)
@@ -531,12 +536,18 @@ async def _push_daily_report_success(
         logger.warning("daily_report webhook push failed (non-fatal)", exc_info=True)
 
 
-async def _push_daily_report_failure(exc: Exception) -> None:
+async def _push_daily_report_failure(exc: Exception, *, owner_user_id: int | None = None) -> None:
     """日报生成失败时推送站内 error 通知。失败仅记录 warning，不抛出。"""
     try:
         from app.services.notification_service import push_notification
 
-        await push_notification("error", "daily_report", f"{EDITION_LABELS['daily_neutral']}生成失败", str(exc)[:200])
+        await push_notification(
+            "error",
+            "daily_report",
+            f"{EDITION_LABELS['daily_neutral']}生成失败",
+            str(exc)[:200],
+            target_user_ids=[owner_user_id] if owner_user_id is not None else None,
+        )
     except Exception:
         logger.warning("daily_report failure notification failed", exc_info=True)
 
@@ -567,7 +578,7 @@ async def generate_daily_report(
             select(DailyReport)
             .where(DailyReport.report_date == report_date)
             .where(DailyReport.edition == normalized_edition)
-            .where(DailyReport.cutoff_at == window_end)
+            .where(DailyReport.cutoff_at == window_end.replace(tzinfo=LOCAL_TZ))
             .where(_owner_filter(owner_user_id))
             .with_for_update()
         )
@@ -584,10 +595,10 @@ async def generate_daily_report(
                 report_date=report_date,
                 weekday=weekday,
                 edition=normalized_edition,
-                generated_at=now,
-                window_start=window_start,
-                window_end=window_end,
-                cutoff_at=window_end,
+                generated_at=now.replace(tzinfo=LOCAL_TZ),
+                window_start=window_start.replace(tzinfo=LOCAL_TZ),
+                window_end=window_end.replace(tzinfo=LOCAL_TZ),
+                cutoff_at=window_end.replace(tzinfo=LOCAL_TZ),
                 source_scope="curated",
                 status="GENERATING",
                 content_count=0,
@@ -606,14 +617,14 @@ async def generate_daily_report(
                 if _is_active_generating(report, _local_now()) and not force:
                     return report, False
                 report.status = "GENERATING"
-                report.generated_at = _local_now()
+                report.generated_at = _local_now().replace(tzinfo=LOCAL_TZ)
                 await db.flush()
         else:
             report.status = "GENERATING"
-            report.generated_at = now
-            report.window_start = window_start
-            report.window_end = window_end
-            report.cutoff_at = window_end
+            report.generated_at = now.replace(tzinfo=LOCAL_TZ)
+            report.window_start = window_start.replace(tzinfo=LOCAL_TZ)
+            report.window_end = window_end.replace(tzinfo=LOCAL_TZ)
+            report.cutoff_at = window_end.replace(tzinfo=LOCAL_TZ)
             await db.flush()
 
         return report, True
@@ -653,7 +664,7 @@ async def generate_daily_report(
         report.platform_tips = json.dumps({}, ensure_ascii=False)
         report.topic_count = 0
         report.source_item_ids = json.dumps([], ensure_ascii=False)
-        report.updated_at = _local_now()
+        report.updated_at = _local_now().replace(tzinfo=LOCAL_TZ)
         await db.commit()
         return report
 
@@ -705,7 +716,7 @@ async def generate_daily_report(
             selected_source_ids or [item["id"] for item in curated_items], ensure_ascii=False
         )
         report.status = "DONE"
-        report.updated_at = _local_now()
+        report.updated_at = _local_now().replace(tzinfo=LOCAL_TZ)
         await db.commit()
         await _push_daily_report_success(report, picks, report_date, normalized_edition)
     except Exception as exc:
@@ -713,7 +724,7 @@ async def generate_daily_report(
         report.overview = f"生成失败: {str(exc)[:200]}"
         report.source_item_ids = json.dumps([item["id"] for item in curated_items], ensure_ascii=False)
         await db.commit()
-        await _push_daily_report_failure(exc)
+        await _push_daily_report_failure(exc, owner_user_id=owner_user_id)
 
     return report
 

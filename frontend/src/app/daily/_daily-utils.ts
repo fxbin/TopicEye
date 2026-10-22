@@ -110,9 +110,9 @@ export const SNAPSHOT_EDITION_LABELS: Record<string, string> = {
 };
 
 export const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
-  '上升期': { label: '↑ 上升期', color: 'text-teal', bg: 'bg-teal-light' },
-  '见顶': { label: '→ 见顶', color: 'text-amber', bg: 'bg-amber-light' },
-  '退潮': { label: '↓ 退潮', color: 'text-gray-400', bg: 'bg-gray-100' },
+  '上升期': { label: '↑ 上升期', color: 'text-teal-text', bg: 'bg-teal-light' },
+  '见顶': { label: '→ 见顶', color: 'text-amber-800', bg: 'bg-amber-light' },
+  '退潮': { label: '↓ 退潮', color: 'text-gray-500', bg: 'bg-gray-100' },
 };
 
 export const CATEGORY_ORDER = ['模型发布', '产品更新', '行业动态', '技巧观点', '科研论文', '开源项目'];
@@ -129,7 +129,7 @@ export const CATEGORY_EN: Record<string, string> = {
 // ── Utility functions ────────────────────────────────────────────────
 
 export function localDateString(date = new Date()) {
-  return date.toLocaleDateString('en-CA');
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
 }
 
 export function formatDateTime(value?: string | null) {
@@ -208,4 +208,33 @@ export function groupByCategory(picks: DailyPick[], tierFilter: 'feature' | 'bri
     const ib = CATEGORY_ORDER.indexOf(b);
     return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
   });
+}
+
+/** 日期目录的 API 按新到旧返回；排序后取最近几期，排除当前期与未完成期。 */
+export function recentReportDates(dates: DateSummary[], currentDate?: string, limit = 5) {
+  return dates.filter((d) => d.report_date !== currentDate && d.status === 'DONE')
+    .sort((a, b) => b.report_date.localeCompare(a.report_date)).slice(0, limit);
+}
+
+/** All daily entry points carry the same chosen topic into the creation page. */
+export function creationPlanHref(pick: { title?: string; source_title?: string; source_title_zh?: string; source_url?: string }) {
+  const params = new URLSearchParams({ title: pick.source_title_zh || pick.source_title || pick.title || '' });
+  if (pick.source_url) params.set('url', pick.source_url);
+  return `/plan?${params}`;
+}
+
+/** API failures carry a status code; server wording is not an error contract. */
+export function reportLoadError(error: unknown) {
+  if (error instanceof Error) {
+    return (error as Error & { status?: number }).status === 404 ? '该日期暂无情报' : error.message;
+  }
+  return '加载失败';
+}
+
+/** Shift an ISO report date without passing through the browser's timezone. */
+export function shiftReportDate(isoDate: string, days: number) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return isoDate;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }

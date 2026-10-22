@@ -4,7 +4,7 @@
  * 今日已选抽屉（一期补行动闭环）。
  *
  * 把 fire-and-forget 的「已选」标记汇总成一个可见抽屉：
- * - 列出今日 write 标记的选题，带「进 plan」入口；
+ * - 列出今日 write 标记的选题，带「开始创作」入口；
  * - 顶部显示「今日已选 N」+「共 M 个标记」；
  * - 空态引导回榜单。
  *
@@ -14,12 +14,14 @@
 import React, { useEffect } from 'react';
 import { ExternalLink, Inbox, ListChecks, Target, X } from 'lucide-react';
 import { cx } from '@/components/ui';
+import { creationPlanHref } from './_daily-utils';
 
 type MarkAction = 'write' | 'watch' | 'skip';
 
 interface PickLike {
   title: string;
   source_title?: string;
+  source_title_zh?: string;
   source_url?: string;
   category?: string;
   platforms?: string[];
@@ -86,20 +88,20 @@ export default function SelectedDrawer({
         {/* 头部 */}
         <header className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <ListChecks size={17} className="text-primary" strokeWidth={2.2} />
+            <ListChecks size={17} className="text-primary-text" strokeWidth={2.2} />
             <div>
               <div className="text-sm font-black text-gray-900">
-                今日已选 <span className="text-primary">{writeKeys.length}</span>
+                今日已选 <span className="text-primary-text">{writeKeys.length}</span>
               </div>
               {totalMarks > writeKeys.length && (
-                <div className="text-[11px] text-gray-400">共 {totalMarks} 个标记</div>
+                <div className="text-[13px] text-gray-500">共 {totalMarks} 个标记</div>
               )}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-xs text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            className="grid h-8 w-8 place-items-center rounded-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700"
             aria-label="关闭"
           >
             <X size={18} />
@@ -110,7 +112,7 @@ export default function SelectedDrawer({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* 已选（write）列表 */}
           <section className="mb-5">
-            <div className="mb-2 text-[11px] font-bold text-gray-500">
+            <div className="mb-2 text-[13px] font-bold text-gray-500">
               已选选题（{writeKeys.length}）
             </div>
             {writeKeys.length === 0 ? (
@@ -129,24 +131,24 @@ export default function SelectedDrawer({
                           {pick?.title || key}
                         </span>
                         {pick?.category && (
-                          <span className="shrink-0 rounded-xs bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-500">
+                          <span className="shrink-0 rounded-xs bg-gray-100 px-1.5 py-0.5 text-[12px] font-bold text-gray-500">
                             {pick.category}
                           </span>
                         )}
                       </div>
                       <div className="mt-2 flex items-center gap-2">
                         <a
-                          href="/plan"
-                          className="inline-flex items-center gap-1 rounded-xs bg-primary px-2.5 py-1 text-[11px] font-bold text-white hover:bg-primary-hover"
+                          href={creationPlanHref(pick || { title: key })}
+                          className="inline-flex items-center gap-1 rounded-xs bg-primary-solid px-2.5 py-1 text-[13px] font-bold text-white hover:bg-primary-hover"
                         >
-                          <Target size={11} /> 进 plan
+                          <Target size={11} /> 开始创作
                         </a>
                         {pick?.source_url && (
                           <a
                             href={pick.source_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-gray-700"
+                            className="inline-flex items-center gap-1 rounded-xs border border-gray-200 px-2 py-1 text-[13px] font-bold text-gray-500 hover:text-gray-700"
                           >
                             <ExternalLink size={11} /> 原文
                           </a>
@@ -162,7 +164,7 @@ export default function SelectedDrawer({
           {/* 观察（watch）列表 */}
           {watchKeys.length > 0 && (
             <section>
-              <div className="mb-2 text-[11px] font-bold text-gray-500">
+              <div className="mb-2 text-[13px] font-bold text-gray-500">
                 观察中（{watchKeys.length}）
               </div>
               <ul className="space-y-1">
@@ -200,7 +202,7 @@ export default function SelectedDrawer({
 
 function EmptyHint({ text }: { text: string }) {
   return (
-    <div className="grid place-items-center rounded-sm border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-[12px] text-gray-400">
+    <div className="grid place-items-center rounded-sm border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-[12px] text-gray-500">
       <div>
         <Inbox size={26} className="mx-auto mb-2 text-gray-300" strokeWidth={1.8} />
         {text}

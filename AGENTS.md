@@ -13,7 +13,7 @@ OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官�
 两件不看代码就会踩空的事：
 
 - **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
-  `app/repositories/`）；DuckDB 承担分析查询（picks / stats / topics / reports，见
+  `app/repositories/`，日报版本/归属/选题标记也在 PG）；DuckDB 承担分析聚合查询（picks / stats / topics / reports，见
   `app/services/duckdb_service.py` 及其 mixin）。跨层读写时先确认自己在哪一套里。
 - **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见
   [`.agents/notes/`](.agents/notes/)，跑测守则见第三节。

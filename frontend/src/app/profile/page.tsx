@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -83,6 +83,10 @@ function SectionLabel({ icon: Icon, label }: { icon: typeof ShieldCheck; label: 
   );
 }
 
+const subscribeOrigin = () => () => {};
+const getOrigin = () => window.location.origin;
+const getServerOrigin = () => '';
+
 export default function ProfilePage() {
   const router = useRouter();
   const { currentUser, authLoading, refreshCounts } = useAppContext();
@@ -108,6 +112,7 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false);
   const [pwNotice, setPwNotice] = useState<string | null>(null);
   const [pwError, setPwError] = useState<string | null>(null);
+  const hostOrigin = useSyncExternalStore(subscribeOrigin, getOrigin, getServerOrigin);
 
   const docsUrl = status?.docs_url || 'https://weread.qq.com/r/weread-skills';
   const canSave = apiKey.trim().length >= 8 && !saving;
@@ -329,7 +334,6 @@ export default function ProfilePage() {
   const roleLabel = currentUser.role === 'admin' ? '管理员' : '普通用户';
 
   // Agent 接入命令字符串（显示与复制共用同一 source of truth）
-  const hostOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const installCommand = `npx skills add ${hostOrigin || '$TOPICEYE_HOST'} -g`;
   const envCommand = `export TOPICEYE_API_URL="${hostOrigin}"\nexport TOPICEYE_API_TOKEN="${newTokenSecret || '<上方创建的 Token>'}"`;
 
@@ -357,9 +361,9 @@ export default function ProfilePage() {
         </div>
 
         {/* ── 双列分区布局 ── */}
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
           {/* ═══ 左列：账号与安全 ═══ */}
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <SectionLabel icon={ShieldCheck} label="账号与安全" />
 
             {/* 当前账号 — 身份卡 */}
@@ -411,35 +415,38 @@ export default function ProfilePage() {
               <p className="mb-4 text-xs leading-5 text-gray-500">
                 修改密码需验证旧密码。修改成功后，其他设备的登录状态会立即失效，当前设备保持登录。
               </p>
-              <form onSubmit={handleChangePassword} className="space-y-3">
+              <form onSubmit={handleChangePassword} className="min-w-0 space-y-3">
                 <div>
-                  <label className="mb-1 block text-[12px] font-bold text-gray-600">旧密码</label>
+                  <label htmlFor="password-old" className="mb-1 block text-sm font-medium text-gray-700">旧密码</label>
                   <input
                     type="password"
+                    id="password-old"
                     value={pwForm.old}
                     onChange={(e) => setPwForm((prev) => ({ ...prev, old: e.target.value }))}
                     autoComplete="current-password"
-                    className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                    className="h-11 w-full rounded-sm border border-gray-200 px-3 text-base sm:h-10 sm:text-sm outline-none focus:border-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[12px] font-bold text-gray-600">新密码（至少 8 位，含字母和数字）</label>
+                  <label htmlFor="password-next" className="mb-1 block text-sm font-medium text-gray-700">新密码（至少 8 位，含字母和数字）</label>
                   <input
                     type="password"
+                    id="password-next"
                     value={pwForm.next}
                     onChange={(e) => setPwForm((prev) => ({ ...prev, next: e.target.value }))}
                     autoComplete="new-password"
-                    className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                    className="h-11 w-full rounded-sm border border-gray-200 px-3 text-base sm:h-10 sm:text-sm outline-none focus:border-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[12px] font-bold text-gray-600">确认新密码</label>
+                  <label htmlFor="password-confirm" className="mb-1 block text-sm font-medium text-gray-700">确认新密码</label>
                   <input
                     type="password"
+                    id="password-confirm"
                     value={pwForm.confirm}
                     onChange={(e) => setPwForm((prev) => ({ ...prev, confirm: e.target.value }))}
                     autoComplete="new-password"
-                    className="h-9 w-full rounded-sm border border-gray-200 px-3 text-sm outline-none focus:border-primary"
+                    className="h-11 w-full rounded-sm border border-gray-200 px-3 text-base sm:h-10 sm:text-sm outline-none focus:border-primary"
                   />
                   {pwForm.confirm && pwForm.next !== pwForm.confirm && (
                     <p className="mt-1 text-[11px] text-red-600">两次输入的新密码不一致</p>
@@ -460,7 +467,7 @@ export default function ProfilePage() {
           </div>
 
           {/* ═══ 右列：集成与接入 ═══ */}
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <SectionLabel icon={PlugZap} label="集成与接入" />
 
             {/* 微信读书素材 */}
@@ -729,7 +736,7 @@ export default function ProfilePage() {
               )}
 
               {/* 安装命令 */}
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="rounded-sm border border-gray-200 bg-gray-50 p-2.5">
                   <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-gray-500">
                     <TerminalSquare size={12} />

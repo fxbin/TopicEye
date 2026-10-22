@@ -99,9 +99,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-#__next,
-main {
-  height: 100vh;
+#__next {
+  height: 100dvh;
   min-width: 0;
 }
 
@@ -379,4 +378,16 @@ svg {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* A short opening response keeps the navigation change visible. */
+@keyframes navigation-enter {
+  from { transform: translateX(-16px); opacity: 0.5; }
+  to { transform: translateX(0); opacity: 1; }
+}
+dialog[open] > .navigation-drawer-panel {
+  animation: navigation-enter 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog[open] > .navigation-drawer-panel { animation: none; }
 }

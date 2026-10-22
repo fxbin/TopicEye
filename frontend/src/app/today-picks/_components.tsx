@@ -89,19 +89,19 @@ export function OverviewStrip({
   ];
 
   return (
-    <section className="mb-4 grid grid-cols-4 gap-2.5 max-md:grid-cols-2">
+    <section className="mb-4 grid grid-cols-4 gap-2 sm:gap-2.5">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <Panel key={stat.label} className="min-w-0 p-3.5">
-            <div className="mb-2.5 flex items-center gap-2">
-              <Icon size={15} className={stat.color} strokeWidth={2.2} />
+          <Panel key={stat.label} className="min-w-0 p-2.5 sm:p-3.5">
+            <div className="mb-2 flex items-center gap-2">
+              <Icon size={15} className={cx('hidden shrink-0 sm:block', stat.color)} strokeWidth={2.2} />
               <span className="text-xs font-bold text-gray-500">{stat.label}</span>
             </div>
-            <div className="font-mono text-[28px] font-black leading-none text-gray-900">
+            <div className="font-mono text-2xl sm:text-[28px] font-black leading-none text-gray-900">
               {stat.value}
             </div>
-            <div className="mt-1 text-[11px] text-gray-400">{stat.hint}</div>
+            <div className="mt-1 hidden text-xs text-gray-500 sm:block">{stat.hint}</div>
           </Panel>
         );
       })}

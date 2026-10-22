@@ -85,15 +85,15 @@ export default function McpAuthorizePage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 items-center justify-center bg-page px-6 py-8">
-      <Panel className="w-full max-w-md p-8 shadow-sm">
+    <div className="flex h-full min-h-0 flex-col items-center overflow-y-auto bg-page px-4 py-6 sm:px-6 sm:py-8">
+      <Panel className="my-auto w-full max-w-md shrink-0 p-5 shadow-sm sm:p-8">
         {status === 'loading' && (
           <div className="flex flex-col items-center text-center">
             <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-sm bg-primary text-white shadow-sm">
               <Radar size={22} strokeWidth={2.4} className="animate-pulse" />
             </div>
             <p className="text-sm font-black text-gray-700">正在加载授权请求...</p>
-            <p className="mt-1 text-xs text-gray-400">请稍候</p>
+            <p className="mt-1 text-sm leading-relaxed text-gray-600">请稍候</p>
           </div>
         )}
 
@@ -105,17 +105,17 @@ export default function McpAuthorizePage() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg font-black leading-tight text-gray-900">连接 AI 客户端</h1>
-                <p className="text-xs text-gray-400">TopicEye 选题雷达 · MCP 授权</p>
+                <p className="text-sm leading-relaxed text-gray-600">TopicEye 选题雷达 · MCP 授权</p>
               </div>
             </div>
 
             <div className="mb-4 rounded-sm border border-gray-200 bg-gray-50 px-4 py-3">
               <p className="text-xs font-black text-gray-500">授权对象</p>
-              <p className="mt-1 truncate text-[15px] font-black text-gray-900" title={info.client_name}>
+              <p className="mt-1 break-words text-[15px] font-black text-gray-900" title={info.client_name}>
                 {info.client_name}
               </p>
               {info.redirect_host && (
-                <p className="mt-1 text-xs text-gray-400">回调地址：{info.redirect_host}</p>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">回调地址：{info.redirect_host}</p>
               )}
               {/* DCR 开放注册，客户端名可任意取（含仿冒官方）——知情权必须显式给出 */}
               <p className="mt-2 text-xs font-bold text-amber-600">
@@ -135,7 +135,7 @@ export default function McpAuthorizePage() {
                   <span>对你提交的候选选题跑六维打分并返回评分明细</span>
                 </li>
               </ul>
-              <p className="text-xs text-gray-400">
+              <p className="text-sm leading-relaxed text-gray-600">
                 授权可随时在 AI 客户端断开（token 撤销即失效）；不会暴露你的登录密码。
                 {currentUser ? ` 当前账号：${currentUser.display_name || currentUser.email}。` : ''}
               </p>
@@ -169,7 +169,7 @@ export default function McpAuthorizePage() {
               <XCircle size={22} strokeWidth={2.4} />
             </div>
             <p className="mb-1 text-sm font-black text-gray-800">无法完成授权</p>
-            <p className="mb-5 max-w-xs text-xs leading-6 text-gray-500">{errorMsg}</p>
+            <p className="mb-5 max-w-xs text-sm leading-6 text-gray-600">{errorMsg}</p>
             <Button variant="secondary" onClick={() => router.replace('/')}>
               返回首页
               <ArrowRight size={14} />

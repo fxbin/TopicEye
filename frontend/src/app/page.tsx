@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
+import { ErrorState } from '@/components/StateView';
 import Header from '@/components/Header';
 import CategoryChip from '@/components/CategoryChip';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
@@ -63,8 +64,11 @@ export default function HomePage() {
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadRevision, setReloadRevision] = useState(0);
   const [activeCategory, setActiveCategory] = useState('全部');
   const [categoryExpanded, setCategoryExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [activeRecommendLevel, setActiveRecommendLevel] = useState<RecommendLevel | '全部'>('全部');
   const [activeTag, setActiveTag] = useState('全部');
   const [tagFacets, setTagFacets] = useState<Array<{ tag: string; count: number }>>([]);
@@ -144,7 +148,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
+  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, reloadRevision, reportContentTotal]);
 
   // 标签统计与基础口径联动（时间/来源/分类/搜索），覆盖口径内全部内容；
   // 等级/标签筛选不改变 chips 本身，只改变列表结果。
@@ -211,7 +215,7 @@ export default function HomePage() {
       setItems((prev) => prev.filter((item) => item.id !== id));
       refreshCounts?.();
     } catch (err) {
-      console.error('Ignore failed:', err);
+      setActionError(err instanceof Error ? err.message : '忽略内容失败，请重试');
     }
   }, [currentUser, refreshCounts, router]);
 
@@ -255,7 +259,7 @@ export default function HomePage() {
 
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
     setWorkflowPendingId(item.id);
-    setError(null);
+    setActionError(null);
     try {
       await startContentWorkflow({
         contentId: item.id,
@@ -267,7 +271,7 @@ export default function HomePage() {
       contentFavoriteState.refresh();
       refreshCounts?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '推进选题失败');
+      setActionError(err instanceof Error ? err.message : '推进选题失败');
     } finally {
       setWorkflowPendingId(null);
     }
@@ -308,7 +312,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-10 py-8">
+    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
       {/* Header */}
       <Header
         title="今日选题"
@@ -323,13 +327,14 @@ export default function HomePage() {
       <div className="mb-4 max-w-[820px]">
         <input
           type="text"
+          aria-label="搜索选题内容"
           placeholder="搜索标题、摘要、标签、AI分析..."
           value={searchQuery}
           onChange={(e) => {
             resetPagination();
             setSearchQuery(e.target.value);
           }}
-          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-primary"
+          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-base text-gray-900 sm:text-sm outline-none transition focus:border-primary"
         />
       </div>
 
@@ -337,18 +342,19 @@ export default function HomePage() {
       <div className="mb-3 max-w-[820px]">
         <Toolbar className="gap-3">
           {/* Time range */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-gray-500">时间</span>
             {['24h', '48h', '7d', '全部'].map((range) => (
               <button
                 key={range}
+                aria-pressed={activeTimeRange === range}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveTimeRange(range);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeTimeRange === range
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -359,20 +365,21 @@ export default function HomePage() {
             ))}
           </div>
           {/* Divider */}
-          <div className="h-5 w-px bg-gray-200" />
+          <div className="hidden h-5 w-px bg-gray-200 sm:block" />
           {/* Source type */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className={cx('flex-wrap items-center gap-1.5', filtersExpanded ? 'flex' : 'hidden sm:flex')}>
             <span className="text-xs font-medium text-gray-500">来源</span>
             {['全部', 'RSS', 'RSSHub', '网站', 'Reddit', 'Zhihu'].map((type) => (
               <button
                 key={type}
+                aria-pressed={activeSourceType === type}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveSourceType(type);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeSourceType === type
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -385,6 +392,12 @@ export default function HomePage() {
         </Toolbar>
       </div>
 
+      <button type="button" aria-expanded={filtersExpanded} aria-controls="content-filters" onClick={() => setFiltersExpanded(value => !value)}
+        className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-sm border border-gray-200 bg-white px-3 text-sm text-gray-700 sm:hidden">
+        {filtersExpanded ? '收起筛选' : '更多筛选'}
+        <ChevronDown size={16} className={filtersExpanded ? 'rotate-180 transition' : 'transition'} />
+      </button>
+      <div id="content-filters" className={cx(filtersExpanded ? 'block' : 'hidden', 'sm:block')}>
       {/* Filters - Category (first row + expand) */}
       <div className="mb-3 max-w-[820px]">
         <div className="flex flex-wrap items-center gap-2">
@@ -407,6 +420,7 @@ export default function HomePage() {
           {categoryOptions.length > 6 && (
             <button
               type="button"
+              aria-expanded={categoryExpanded}
               onClick={() => setCategoryExpanded((v) => !v)}
               className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-normal text-gray-500 transition hover:border-primary-border hover:text-primary-text"
             >
@@ -424,13 +438,14 @@ export default function HomePage() {
             {RECOMMEND_FILTERS.map((level) => (
               <button
                 key={level}
+                aria-pressed={activeRecommendLevel === level}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveRecommendLevel(level);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeRecommendLevel === level
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -452,13 +467,14 @@ export default function HomePage() {
               return (
                 <button
                   key={tag}
+                aria-pressed={activeTag === tag}
                   type="button"
                   onClick={() => {
                     resetPagination();
                     setActiveTag(tag);
                   }}
                   className={cx(
-                    'rounded-xs px-2.5 py-1 text-xs transition',
+                    'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                     activeTag === tag
                       ? 'bg-teal-light font-semibold text-teal-text'
                       : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -472,18 +488,16 @@ export default function HomePage() {
         </Toolbar>
       </div>
 
+      </div>
+      {actionError && <div className="mb-4 max-w-[820px]"><ErrorState error={actionError} onDismiss={() => setActionError(null)} /></div>}
       {/* Error state */}
-      {error && (
-        <div className="mb-5 max-w-[820px] rounded-lg border border-red bg-red-light px-5 py-4 text-sm text-red">
-          加载失败：{error}
-        </div>
-      )}
+      {error && <div className="mb-4 max-w-[820px]"><ErrorState error={error} onRetry={() => setReloadRevision(value => value + 1)} /></div>}
 
       {/* Loading state */}
       {loading && (
         <div className="max-w-[820px] py-[60px] text-center">
           <Spinner />
-          <div className="mt-3 text-[13px] text-gray-400">加载中...</div>
+          <div className="mt-3 text-sm text-gray-600">加载中...</div>
         </div>
       )}
 
@@ -496,9 +510,11 @@ export default function HomePage() {
               isFavorited={contentFavoriteState.isFavorited}
               onToggleFav={async (id) => {
                 const wasFav = contentFavoriteState.isFavorited(id);
-                await toggleFavorite(id);
-                contentFavoriteState.refresh();
-                contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+                try {
+                  await toggleFavorite(id);
+                  contentFavoriteState.refresh();
+                  contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+                } catch (err) { setActionError(err instanceof Error ? err.message : '收藏失败，请重试'); }
               }}
               onIgnore={handleIgnore}
               onShowAnalysis={(a) => setSelectedAnalysis(a)}

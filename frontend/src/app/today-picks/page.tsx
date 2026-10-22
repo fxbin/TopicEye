@@ -3,6 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  ChevronDown,
   Columns3,
   FileText,
   List,
@@ -55,6 +56,7 @@ function TodayPicksPage() {
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
   const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
   const [selectedAnalysis, setSelectedAnalysis] = useState<(ContentAnalysis & { _content_id?: number }) | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [groupByTopic, setGroupByTopic] = useState(true);
   const [expandedTopics, setExpandedTopics] = useState<Set<number>>(new Set());
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
@@ -230,20 +232,20 @@ function TodayPicksPage() {
   };
 
   return (
-    <div className="fade-in min-h-full overflow-y-auto bg-gradient-to-b from-[#F8FAFC] via-[#F4F6F8] to-[#EEF2F5] px-10 pb-12">
-      <div className="sticky top-0 z-10 -mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-10 py-4.5 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1180px] items-center gap-4.5">
-          <div className="flex-1">
+    <div className="fade-in min-h-full overflow-y-auto bg-gradient-to-b from-[#F8FAFC] via-[#F4F6F8] to-[#EEF2F5] px-4 pb-12 sm:px-6 lg:px-10">
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 sm:px-6 lg:px-10 py-4.5 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <RadarSignature size={40} />
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="display-title text-xl text-gray-900">当日精选</h1>
-                <Badge tone="primary" className="font-mono text-[10px]">
+                <Badge tone="primary" className="!hidden font-mono text-[10px] sm:!inline-flex">
                   CURATION DESK
                 </Badge>
               </div>
             </div>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-sm leading-6 text-gray-600">
               从算法候选中筛出可写选题，按话题、质量和来源做二次判断
             </p>
           </div>
@@ -348,6 +350,10 @@ function TodayPicksPage() {
         </main>
 
         <aside className="sticky top-[88px] flex flex-col gap-3.5 max-lg:static max-lg:row-start-1">
+          <button type="button" aria-expanded={filtersOpen} aria-controls="picks-filters" onClick={() => setFiltersOpen(value => !value)} className="flex min-h-11 items-center justify-between rounded-sm border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 lg:hidden">
+            筛选选题{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''}<ChevronDown size={16} className={filtersOpen ? 'rotate-180 transition' : 'transition'} />
+          </button>
+          <div id="picks-filters" className={cx(filtersOpen ? 'contents' : 'hidden', 'lg:contents')}>
           <FilterPanel
             selectedCategory={selectedCategory}
             selectedContentType={selectedContentType}
@@ -361,6 +367,7 @@ function TodayPicksPage() {
             onClear={clearFilters}
           />
           <QualityPanel levelStats={levelStats} total={filteredItems.length} />
+          </div>
         </aside>
       </div>
 

@@ -63,25 +63,27 @@ export function Pagination({
   className?: string;
 }) {
   const [jumpValue, setJumpValue] = useState('');
-  const showJump = totalPages > 5;
+  const safePages = Math.max(0, Math.floor(totalPages) || 0);
+  const currentPage = Math.min(Math.max(1, page), Math.max(1, safePages));
+  const showJump = safePages > 5;
   const showPageSize = pageSize != null && onPageSizeChange != null;
   const options = pageSizeOptions ?? PAGE_SIZE_OPTIONS;
 
   const jumpToPage = () => {
     const target = Number.parseInt(jumpValue, 10);
     if (Number.isFinite(target)) {
-      const clamped = Math.min(Math.max(1, target), Math.max(1, totalPages));
+      const clamped = Math.min(Math.max(1, target), Math.max(1, safePages));
       onPage(clamped);
     }
     setJumpValue('');
   };
 
   // 计算最多 5 个页码窗口，始终围绕当前页
-  const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
-    if (totalPages <= 5) return index + 1;
-    if (page <= 3) return index + 1;
-    if (page >= totalPages - 2) return totalPages - 4 + index;
-    return page - 2 + index;
+  const pageNumbers = Array.from({ length: Math.min(5, safePages) }, (_, index) => {
+    if (safePages <= 5) return index + 1;
+    if (currentPage <= 3) return index + 1;
+    if (currentPage >= safePages - 2) return safePages - 4 + index;
+    return currentPage - 2 + index;
   });
 
   return (
@@ -95,7 +97,7 @@ export function Pagination({
               value={pageSize}
               onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
               aria-label="每页条数"
-              className="h-8 rounded-sm border border-gray-200 bg-white px-1.5 text-[13px] text-gray-700"
+              className="h-10 rounded-sm border border-gray-200 bg-white px-1.5 text-[13px] text-gray-700"
             >
               {options.map((option) => (
                 <option key={option} value={option}>
@@ -108,14 +110,16 @@ export function Pagination({
         )}
         <div className="flex gap-1">
           {pageNumbers.map((pageNumber) => {
-            const active = page === pageNumber;
+            const active = currentPage === pageNumber;
             return (
               <button
                 key={pageNumber}
                 type="button"
                 onClick={() => onPage(pageNumber)}
+                aria-label={`第 ${pageNumber} 页`}
+                aria-current={active ? 'page' : undefined}
                 className={cx(
-                  'h-8 w-8 rounded-sm border text-[13px] transition',
+                  'h-10 w-10 rounded-sm border text-[13px] transition',
                   active
                     ? 'border-primary-border bg-primary font-black text-white'
                     : 'border-gray-200 bg-white font-bold text-gray-600 hover:border-primary-border hover:text-primary',
@@ -138,18 +142,18 @@ export function Pagination({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') jumpToPage();
               }}
-              onBlur={() => setJumpValue('')}
               aria-label={`跳转页码（1-${totalPages}）`}
-              className="h-8 w-14 rounded-sm border border-gray-200 bg-white px-2 text-center text-[13px] text-gray-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="h-10 w-14 rounded-sm border border-gray-200 bg-white px-2 text-center text-[13px] text-gray-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             页
+            <Button type="button" onClick={jumpToPage} disabled={!jumpValue.trim()} aria-label="跳转到指定页">前往</Button>
           </div>
         )}
         <div className="flex gap-2">
-          <PageButton disabled={page === 1} onClick={() => onPage((current) => Math.max(1, current - 1))}>
+          <PageButton disabled={safePages === 0 || currentPage <= 1} onClick={() => onPage(Math.max(1, currentPage - 1))}>
             <ChevronLeft size={14} /> 上一页
           </PageButton>
-          <PageButton disabled={page === totalPages} onClick={() => onPage((current) => Math.min(totalPages, current + 1))}>
+          <PageButton disabled={safePages === 0 || currentPage >= safePages} onClick={() => onPage(Math.min(safePages, currentPage + 1))}>
             下一页 <ChevronRight size={14} />
           </PageButton>
         </div>

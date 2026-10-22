@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Bookmark, CheckCircle2, Eye, XCircle, ExternalLink } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
 import { weeklyDigestApi } from '@/lib/api';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 interface PickTrackMark {
   pick_title: string;
@@ -71,7 +72,7 @@ export default function WeeklyPickTracking({ weekKey }: { weekKey: string | unde
         <span className="text-[11px] text-gray-400">· {weekRange}</span>
       </div>
       <p className="mb-3 text-[12px] leading-5 text-gray-500">
-        本周你在日报里标记的选题，以下追踪它们在几天日报中持续上榜。
+        {`本周你在${EDITION_LABELS.daily_neutral}里标记的选题，以下追踪它们在几天情报中持续上榜。`}
       </p>
       <div className="space-y-2">
         {marks.map((mark, i) => {

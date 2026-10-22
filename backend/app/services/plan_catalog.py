@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.edition_naming import EDITION_LABELS
+
 PLAN_TIERS: list[dict[str, Any]] = [
     {
         "key": "free",
@@ -11,7 +13,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
         "highlight": "公开浏览 + 登录后个人工作台，自定义 AI 配置需升级付费权益。",
         "features": [
             "公开浏览今日选题、当日精选和趋势雷达",
-            "登录后使用日报、周刊、月刊、数据统计和我的母题",
+            f"登录后使用{EDITION_LABELS['daily']}、{EDITION_LABELS['weekly']}、{EDITION_LABELS['monthly']}、数据统计和我的母题",
             "收藏夹、算法流程和网文雷达对登录用户开放",
             "个人中心支持基础集成 API Key 加密保存",
             "自定义 AI Key 和模型配置不对免费用户开放",
@@ -106,7 +108,7 @@ PLAN_TIERS: list[dict[str, Any]] = [
 
 FREE_AREA = [
     "公开可看：今日选题、当日精选、趋势雷达、趋势追踪、权益规划",
-    "登录后可用：日报、周刊、月刊、数据统计、我的母题、收藏夹、算法流程、网文雷达",
+    f"登录后可用：{EDITION_LABELS['daily']}、{EDITION_LABELS['weekly']}、{EDITION_LABELS['monthly']}、数据统计、我的母题、收藏夹、算法流程、网文雷达",
     "个人中心：账号信息、个人集成 API Key 加密保存",
     "管理员可用：信源管理、AI 引擎、内容/母题配置、网文数据同步",
 ]

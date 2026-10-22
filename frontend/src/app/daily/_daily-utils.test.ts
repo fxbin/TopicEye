@@ -12,7 +12,7 @@ import {
   displaySourceTitle,
   marksMapFromResp,
   groupByCategory,
-  EDITION_LABELS,
+  SNAPSHOT_EDITION_LABELS,
   CATEGORY_ORDER,
   type DailyPick,
 } from './_daily-utils';
@@ -183,11 +183,11 @@ describe('groupByCategory', () => {
   });
 });
 
-describe('EDITION_LABELS', () => {
+describe('SNAPSHOT_EDITION_LABELS', () => {
   it('包含所有预期版本', () => {
-    expect(EDITION_LABELS.noon).toBe('午间快照');
-    expect(EDITION_LABELS.evening).toBe('晚间快照');
-    expect(EDITION_LABELS.final).toBe('完整复盘');
+    expect(SNAPSHOT_EDITION_LABELS.noon).toBe('午间快照');
+    expect(SNAPSHOT_EDITION_LABELS.evening).toBe('晚间快照');
+    expect(SNAPSHOT_EDITION_LABELS.final).toBe('完整复盘');
   });
 });
 
@@ -223,7 +223,7 @@ describe('creation entry context', () => {
 
 describe('report HTTP errors', () => {
   it('recognizes missing editions using status, independent of server language', () => {
-    expect(reportLoadError(Object.assign(new Error('No report found for this date'), { status: 404 }))).toBe('该日期暂无日报');
+    expect(reportLoadError(Object.assign(new Error('No report found for this date'), { status: 404 }))).toBe('该日期暂无情报');
     expect(reportLoadError(Object.assign(new Error('需升级套餐'), { status: 403 }))).toBe('需升级套餐');
   });
 });

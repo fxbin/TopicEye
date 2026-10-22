@@ -139,6 +139,22 @@ jobs:
       - name: Check scoring caliber mirror
         run: python scripts/check_scoring_mirror.py
 
+  # ── 刊物种属词族前后端对账（#132，命名圆桌 2026-10-20「情报正族」）──
+  # frontend/src/lib/edition-naming.ts 与 app/core/edition_naming.py 逐值
+  # 一致；前科是 AI 日报/AI 周刊/全行业信息日报三种口径并存八处分裂。
+  edition-naming:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check edition naming mirror
+        run: python scripts/check_edition_naming.py
+
   # ── 依赖安全扫描 ──
   security-scan:
     runs-on: ubuntu-latest

@@ -60,9 +60,9 @@ export const NAV_SPACES: NavSpace[] = [
     id: 'review',
     label: '复盘',
     items: [
-      { id: 'daily', label: '日报', href: '/daily', icon: Newspaper, access: 'user' },
-      { id: 'weekly', label: '周刊', href: '/weekly', icon: ClipboardList, access: 'user' },
-      { id: 'monthly', label: '月刊', href: '/monthly', icon: CalendarDays, access: 'user' },
+      { id: 'daily', label: '今日情报', href: '/daily', icon: Newspaper, access: 'user' },
+      { id: 'weekly', label: '每周情报', href: '/weekly', icon: ClipboardList, access: 'user' },
+      { id: 'monthly', label: '每月情报', href: '/monthly', icon: CalendarDays, access: 'user' },
       { id: 'stats', label: '数据统计', href: '/stats', icon: BarChart3, access: 'user' },
     ],
   },

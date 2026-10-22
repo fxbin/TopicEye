@@ -98,13 +98,15 @@ export interface DailyPick {
 
 // ── Constants ────────────────────────────────────────────────────────
 
-export const EDITION_LABELS: Record<string, string> = {
+// #132 改名让位：种属词族「今日情报/每周情报…」住在 @/lib/edition-naming 的
+// EDITION_LABELS；本表是日报快照的生命周期轴，语义不同，勿混用。
+export const SNAPSHOT_EDITION_LABELS: Record<string, string> = {
   noon: '午间快照',
   evening: '晚间快照',
   snapshot: '实时快照',
   manual: '手动快照',
   final: '完整复盘',
-  legacy: '历史日报',
+  legacy: '历史情报',
 };
 
 export const LIFECYCLE_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -224,7 +226,7 @@ export function creationPlanHref(pick: { title?: string; source_title?: string; 
 /** API failures carry a status code; server wording is not an error contract. */
 export function reportLoadError(error: unknown) {
   if (error instanceof Error) {
-    return (error as Error & { status?: number }).status === 404 ? '该日期暂无日报' : error.message;
+    return (error as Error & { status?: number }).status === 404 ? '该日期暂无情报' : error.message;
   }
   return '加载失败';
 }

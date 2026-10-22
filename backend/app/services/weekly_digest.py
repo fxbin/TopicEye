@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.edition_naming import EDITION_LABELS, edition_title
 from app.core.time import utc_now
 from app.models.weekly_digest import WeeklyDigest
 from app.services.digest_base import (
@@ -207,7 +208,9 @@ async def generate_weekly_digest(
         await db.commit()
         logger.info("Weekly digest generated: %s (%s)", week_key, week_label)
         # 通知：周刊生成成功
-        await push_digest_notification("success", "weekly_digest", "AI周刊生成完成", f"{week_label} 已生成")
+        await push_digest_notification(
+            "success", "weekly_digest", f"{EDITION_LABELS['weekly']}生成完成", f"{week_label} 已生成"
+        )
 
         # webhook 卡片推送（失败不阻塞周报生成）
         try:
@@ -247,8 +250,8 @@ async def generate_weekly_digest(
             card_link = f"{site_base.rstrip('/')}/weekly" if site_base else ""
 
             await send_alert(
-                title=f"📚 AI 周刊 · {week_label}",
-                message=f"周报生成完成：{week_label}",
+                title=f"📚 {edition_title('weekly')} · {week_label}",
+                message=f"{EDITION_LABELS['weekly']}生成完成：{week_label}",
                 alert_key=f"weekly_digest:{week_key}",
                 severity="info",
                 event_type="weekly_digest",
@@ -256,12 +259,12 @@ async def generate_weekly_digest(
                     "content": card_content,
                     "link": card_link,
                     "elements": feishu_elements,
-                    "button_text": "查看完整周刊",
+                    "button_text": "查看完整情报",
                 },
             )
         except Exception:
             logger.warning("weekly_digest webhook push failed (non-fatal)", exc_info=True)
     except Exception as e:
-        await commit_digest_error(digest, e, "周刊", week_key, db)
+        await commit_digest_error(digest, e, EDITION_LABELS["weekly"], week_key, db)
 
     return digest

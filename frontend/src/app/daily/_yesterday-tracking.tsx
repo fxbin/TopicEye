@@ -85,7 +85,7 @@ export default function YesterdayTracking({ data, loading = false }: { data: Yes
 
   // 明确区分无对照报告与加载失败。
   if (!data || !data.has_yesterday || data.picks.length === 0) {
-    return <p className="py-2 text-sm text-gray-500">{data ? '暂无可对照的昨日报告' : '昨日追踪暂时不可用'}</p>;
+    return <p className="py-2 text-sm text-gray-500">{data ? '暂无可对照的昨日情报' : '昨日追踪暂时不可用'}</p>;
   }
 
   return (

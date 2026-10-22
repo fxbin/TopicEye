@@ -49,7 +49,7 @@ import {
   type DateSummary,
   type CalendarDay,
   type DailyPick,
-  EDITION_LABELS,
+  SNAPSHOT_EDITION_LABELS,
   localDateString,
   formatDateTime,
   parseJson,
@@ -62,7 +62,7 @@ import {
 import type { YesterdayTrackingData } from '@/types';
 
 export default function DailyReportPage() {
-  return <React.Suspense fallback={<ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>}><DailyReportContent /></React.Suspense>;
+  return <React.Suspense fallback={<ReportStatusPanel icon={FileText}>正在加载情报...</ReportStatusPanel>}><DailyReportContent /></React.Suspense>;
 }
 
 function DailyReportContent() {
@@ -192,7 +192,7 @@ function DailyReportContent() {
           }
         } catch { /* transient status read failure: retry within the same bounded poll */ }
       }
-      if (!cancelled) setError('日报仍在生成，请稍后重新加载');
+      if (!cancelled) setError('情报仍在生成，请稍后重新加载');
     })();
     return () => { cancelled = true; };
   }, [pendingReportId, generating, error, reportScope, fetchReport]);
@@ -219,7 +219,7 @@ function DailyReportContent() {
       }, reportScope);
       if (seq !== generateSeqRef.current) return;
       const reportId = Number(started.id);
-      if (!Number.isFinite(reportId)) throw new Error('生成响应缺少日报编号，请刷新重试');
+      if (!Number.isFinite(reportId)) throw new Error('生成响应缺少情报编号，请刷新重试');
       setReport((previous) => ({ ...previous, ...started, id: reportId, report_date: date, status: 'GENERATING' }) as DailyReportData);
       // 轮询直到 DONE（最多 120 秒）
       const maxAttempts = 24;
@@ -433,9 +433,9 @@ function DailyReportContent() {
   return (
     <div className="daily-report flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
-        <nav aria-label="日报范围" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[13px] font-bold">
-          <a href="/daily" aria-current={reportScope === 'public' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'public' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>公共日报</a>
-          <a href="/daily?scope=mine" aria-current={reportScope === 'mine' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'mine' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>我的日报</a>
+        <nav aria-label="情报范围" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[13px] font-bold">
+          <a href="/daily" aria-current={reportScope === 'public' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'public' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>公共情报</a>
+          <a href="/daily?scope=mine" aria-current={reportScope === 'mine' ? 'page' : undefined} className={cx('rounded-md px-3 py-2 transition-colors', reportScope === 'mine' ? 'bg-primary-light text-primary-text' : 'text-gray-600 hover:bg-gray-50')}>我的情报</a>
           <button type="button" onClick={() => setDrawerOpen(true)} disabled={writeCount === 0} className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40" title={`本期已选 ${writeCount} 个选题`}>
             <ListChecks size={16} /><span>已选 {writeCount}</span>
           </button>
@@ -483,13 +483,13 @@ function DailyReportContent() {
           {indexError && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-sm text-amber-800">{indexError}<button type="button" className="underline" onClick={() => { void refreshReportIndexes().then(() => setIndexError(null)).catch(() => setIndexError('往期目录加载失败，可重试加载')); }}>重试目录</button></div>}
           {markError && <div role="alert" className="mb-3 rounded-md bg-red-light px-4 py-3 text-sm text-red-700">{markError}</div>}
           {loading ? (
-            <ReportStatusPanel icon={FileText}>正在加载日报...</ReportStatusPanel>
+            <ReportStatusPanel icon={FileText}>正在加载情报...</ReportStatusPanel>
           ) : error ? (
             <ReportStatusPanel
               icon={AlertTriangle}
               tone="error"
-              action={error === '该日期暂无日报' ? (
-                <ReportActionButton onClick={() => generateForDate(recoveryDate)} loading={generating} icon={FileText}>生成本期日报</ReportActionButton>
+              action={error === '该日期暂无情报' ? (
+                <ReportActionButton onClick={() => generateForDate(recoveryDate)} loading={generating} icon={FileText}>生成本期情报</ReportActionButton>
               ) : (
                 <ReportActionButton onClick={reloadCurrent} icon={RefreshCw}>重新加载</ReportActionButton>
               )}
@@ -511,7 +511,7 @@ function DailyReportContent() {
               </div>
             </div>
           ) : report?.status === 'GENERATING' ? (
-            <ReportStatusPanel icon={Loader2}>日报生成中，请稍候...</ReportStatusPanel>
+            <ReportStatusPanel icon={Loader2}>情报生成中，请稍候...</ReportStatusPanel>
           ) : report && pickList.length > 0 ? (
             <div className="space-y-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
               {/* 报头（刊名/日期行/统计行：期号·昨日兑现·长度合同） */}
@@ -519,7 +519,7 @@ function DailyReportContent() {
                 <Masthead
                   reportDate={report.report_date}
                   weekday={report.weekday}
-                  editionLabel={report.edition ? EDITION_LABELS[report.edition] : undefined}
+                  editionLabel={report.edition ? SNAPSHOT_EDITION_LABELS[report.edition] : undefined}
                   generatedAt={formatDateTime(report.cutoff_at) || generatedAt || undefined}
                   yesterdayLine={yesterdayLine}
                   pickCount={pickList.length}
@@ -660,7 +660,7 @@ function DailyReportContent() {
                       >
                         <span className="font-mono text-[12px] font-bold text-gray-500">{d.report_date} {d.weekday}</span>
                         <span className="truncate text-[12px] font-bold text-gray-700">
-                          {d.takeaway || '查看当日日报'}
+                          {d.takeaway || '查看当日情报'}
                         </span>
                       </button>
                     ))}
@@ -691,11 +691,11 @@ function DailyReportContent() {
                   loading={generating && generatingDate === recoveryDate}
                   icon={FileText}
                 >
-                  生成日报
+                  生成情报
                 </ReportActionButton>
               )}
             >
-              暂无日报数据
+              暂无情报数据
             </ReportStatusPanel>
           )}
         </div>

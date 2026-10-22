@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
+from app.core.edition_naming import EDITION_LABELS
 from app.models.user import User
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.schemas.daily_report import DailyReportResponse
@@ -62,10 +63,10 @@ async def skill_today_picks(
 @router.get(
     "/daily-report",
     response_model=DailyReportResponse,
-    summary="日报（agent 读取）",
+    summary=f"{EDITION_LABELS['daily_neutral']}（agent 读取）",
     description=(
-        "返回指定日期的日报；缺省 date 时返回今天的最新日报（无则自动生成快照）。"
-        "日报含 overview（选题综述）、top_picks（精选条目）、keywords、trends 等字段。"
+        f"返回指定日期的{EDITION_LABELS['daily_neutral']}；缺省 date 时返回今天的最新{EDITION_LABELS['daily_neutral']}（无则自动生成快照）。"
+        f"{EDITION_LABELS['daily_neutral']}含 overview（选题综述）、top_picks（精选条目）、keywords、trends 等字段。"
         "外部 agent 可用它获取已编辑的选题综述。"
         "\n\nExample: `GET /api/v1/skill/daily-report?date=2026-07-15`"
     ),

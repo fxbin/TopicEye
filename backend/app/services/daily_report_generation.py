@@ -80,7 +80,7 @@ async def start_daily_report_generation(
                     owner_user_id=owner_user_id,
                 )
                 if result.id != report_id:
-                    raise RuntimeError(f"日报生成记录不一致: expected={report_id}, actual={result.id}")
+                    raise RuntimeError(f"情报生成记录不一致: expected={report_id}, actual={result.id}")
             except Exception as exc:
                 logger.exception("Background daily report generation failed: id=%s", report_id)
                 try:

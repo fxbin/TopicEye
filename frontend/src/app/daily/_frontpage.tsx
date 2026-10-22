@@ -19,6 +19,7 @@ import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ChevronDown, Clock, 
 import { cx } from '@/components/ui';
 import Sparkline from '@/components/Sparkline';
 import type { SparklineData } from '@/components/Sparkline';
+import { dailyEditionLabel } from '@/lib/edition-naming';
 import {
   type DailyPick,
   type MarkAction,
@@ -122,7 +123,7 @@ export function Masthead({
 }) {
   return (
     <header className="bg-white px-5 pt-2 text-center sm:px-8">
-      <p className="pt-3 text-[12px] font-semibold tracking-[0.16em] text-gray-500">TopicEye · 全行业信息日报</p>
+      <p className="pt-3 text-[12px] font-semibold tracking-[0.16em] text-gray-500">{dailyEditionLabel(reportDate)}</p>
       <h1 className="mt-1 font-serif-display text-[30px] font-black leading-tight tracking-[0.3em] text-gray-900 [text-indent:0.3em] sm:text-[38px] sm:tracking-[0.5em] sm:[text-indent:0.5em]">
         选题雷达
       </h1>

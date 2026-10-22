@@ -6,6 +6,7 @@ import { CheckCircle2, KeyRound, Loader2, LogIn, Mail, Plus, Server, Settings, T
 import { settingsApi } from '@/lib/api';
 import type { EmailProviderConfig, NotificationWebhookConfig, OAuthProviderItem, WebhookItem, WebhookItemUpdate } from '@/lib/api/_analytics';
 import { NOTIFICATION_EVENT_TYPES } from '@/lib/api/_analytics';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { AdminBlockSkeleton, AdminEmptyState, toast } from '@/components/admin';
@@ -31,7 +32,7 @@ const WEBHOOK_NOTES: React.ReactNode[] = [
   '支持配置多个 webhook，每个独立配置推送事件类型',
   '支持飞书 / 钉钉 / Slack 群机器人 incoming webhook',
   'webhook URL 含 token，以加密方式存储，不会明文保存',
-  '推送场景：信源失败告警 / 日报生成完成 / 周报生成完成 / 今日精选推送 / 测试发送',
+  `推送场景：信源失败告警 / ${EDITION_LABELS.daily}生成完成 / ${EDITION_LABELS.weekly}生成完成 / 今日精选推送 / 测试发送`,
   <>
     环境变量 <code className="rounded-xs bg-ink-100 px-1 py-0.5 font-mono text-[11px]">ALERT_WEBHOOK_URL</code> 仍生效（运维通道，不参与事件过滤）
   </>,
@@ -598,7 +599,7 @@ export default function AdminSettingsPage() {
               <AdminEmptyState
                 icon={Webhook}
                 title="暂无 webhook 配置"
-                description="添加一个 webhook，把信源失败告警与日报推送送到群里"
+                description={`添加一个 webhook，把信源失败告警与${EDITION_LABELS.daily}推送到群里`}
                 compact
                 action={
                   <Button type="button" variant="secondary" onClick={handleAddWebhook}>

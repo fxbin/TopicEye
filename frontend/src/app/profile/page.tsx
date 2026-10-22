@@ -23,6 +23,7 @@ import { integrationsApi, apiTokensApi, authApi } from '@/lib/api';
 import type { ApiTokenItem } from '@/lib/api';
 import type { IntegrationStatus, WeReadSyncResult } from '@/types';
 import { formatDateTime } from '@/lib/datetime';
+import { EDITION_LABELS } from '@/lib/edition-naming';
 
 const DEFAULT_API_URL_PLACEHOLDER = 'https://weread.example.com/api';
 
@@ -613,7 +614,7 @@ export default function ProfilePage() {
                 </Badge>
               </div>
               <p className="mb-3 text-xs leading-5 text-gray-500">
-                创建 API Token 后，外部 Agent（ZCode / Claude）可通过 skill 自主查询今日精选、日报与趋势。
+                创建 API Token 后，外部 Agent（ZCode / Claude）{`可通过 skill 自主查询今日精选、${EDITION_LABELS.daily_neutral}与趋势。`}
               </p>
 
               {tokenError && (
@@ -754,7 +755,7 @@ export default function ProfilePage() {
 
               <div className="mt-2.5 rounded-sm border border-teal-border bg-teal-light px-3 py-2 text-[11px] leading-5 text-teal">
                 <ShieldCheck size={12} className="mr-1 inline" />
-                装好后，在 Agent 对话中直接问「今天有什么值得写的选题」「看看选题日报」即可。
+                装好后，在 Agent 对话中{`直接问「今天有什么值得写的选题」「看看${EDITION_LABELS.daily_neutral}」即可。`}
               </div>
             </Panel>
           </div>

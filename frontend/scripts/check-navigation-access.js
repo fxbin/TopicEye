@@ -60,12 +60,12 @@ function visibleLabels(currentUser) {
 
 const anonymousLabels = visibleLabels(null);
 assert(!anonymousLabels.includes('低粉爆文'), 'removed navigation should stay hidden');
-for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源', '管理后台']) {
+for (const label of ['今日情报', '每周情报', '每月情报', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源', '管理后台']) {
   assert(!anonymousLabels.includes(label), `anonymous navigation should hide ${label}`);
 }
 
 const userLabels = visibleLabels(user);
-for (const label of ['日报', '周刊', '月刊', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源']) {
+for (const label of ['今日情报', '每周情报', '每月情报', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源']) {
   assert(userLabels.includes(label), `user navigation should show ${label}`);
 }
 for (const label of ['管理后台', '低粉爆文']) {

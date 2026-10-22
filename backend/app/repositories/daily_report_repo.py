@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
+from app.core.edition_naming import EDITION_LABELS
 from app.models.daily_report import DailyReport
 from app.repositories.base import BaseRepository
 
@@ -290,7 +291,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
         cutoff_at,
         owner_user_id: int | None = None,
         status: str = "GENERATING",
-        overview: str = "正在生成日报...",
+        overview: str = f"正在生成{EDITION_LABELS['daily']}...",
     ) -> DailyReport:
         """创建并 db.add 一个 GENERATING 占位日报记录，返回实例引用。
 

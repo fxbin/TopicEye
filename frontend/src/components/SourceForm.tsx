@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useId, useRef } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import { cx } from '@/components/ui';
 import { FieldLabel } from '@/components/form';
 import { sourcesApi } from '@/lib/api';
@@ -115,13 +116,20 @@ function getKeywordFieldConfig(sourceType: string): KeywordFieldConfig {
 }
 
 export default function SourceForm({ form, setForm }: SourceFormProps) {
+  const fieldId = useId();
+  const recognition = useRef(createRequestGuard());
+  useEffect(() => {
+    const guard = recognition.current;
+    return () => guard.invalidate();
+  }, []);
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <FieldLabel required>信源名称</FieldLabel>
+        <FieldLabel required htmlFor={`${fieldId}-name`}>信源名称</FieldLabel>
         <input
           type="text"
           placeholder="例：量子位"
+          id={`${fieldId}-name`}
           value={form.name}
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           className={inputClass}
@@ -129,8 +137,9 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
       </div>
 
       <div>
-        <FieldLabel>类型</FieldLabel>
+        <FieldLabel htmlFor={`${fieldId}-source_type`}>类型</FieldLabel>
         <select
+          id={`${fieldId}-source_type`}
           value={form.source_type}
           onChange={(e) => setForm((f) => ({ ...f, source_type: e.target.value }))}
           className={inputClass}
@@ -140,19 +149,23 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
       </div>
 
       <div>
-        <FieldLabel>URL / 地址</FieldLabel>
+        <FieldLabel htmlFor={`${fieldId}-url`}>URL / 地址</FieldLabel>
         <input
           type="text"
           placeholder={URL_PLACEHOLDERS[form.source_type] || 'https://example.com/feed'}
+          id={`${fieldId}-url`}
           value={form.url}
           onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
           onBlur={async (e) => {
             const pastedUrl = e.target.value.trim();
             if (!pastedUrl) return;
+            const active = recognition.current.begin();
+            const sourceType = form.source_type;
             try {
               const result = await sourcesApi.recognizeMine(pastedUrl, form.name || undefined);
+              if (!active()) return;
               // 用识别结果覆盖（仅当当前类型是默认 RSS 或与识别结果不同时）
-              setForm((f) => ({
+              setForm((f) => f.url.trim() !== pastedUrl || f.source_type !== sourceType ? f : ({
                 ...f,
                 source_type: SOURCE_TYPES.includes(result.source_type) ? result.source_type : f.source_type,
                 url: result.normalized_url || f.url,
@@ -175,13 +188,14 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
         if (!kwConfig.show) return null;
         return (
           <div>
-            <FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-keyword`}>
               {kwConfig.label}
               {kwConfig.hint && (
                 <span className="ml-2 text-[11px] font-normal text-gray-400">{kwConfig.hint}</span>
               )}
             </FieldLabel>
             <textarea
+              id={`${fieldId}-keyword`}
               value={form.keyword}
               onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
               placeholder={kwConfig.placeholder}
@@ -192,8 +206,9 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
       })()}
 
       <div>
-        <FieldLabel>分类</FieldLabel>
+        <FieldLabel htmlFor={`${fieldId}-category`}>分类</FieldLabel>
         <select
+          id={`${fieldId}-category`}
           value={form.category}
           onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
           className={inputClass}
@@ -212,6 +227,8 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
             <button
               key={w}
               type="button"
+              aria-label={`信源权重 ${w} / 5`}
+              aria-pressed={form.weight === w}
               onClick={() => setForm((f) => ({ ...f, weight: w }))}
               className={cx('text-lg leading-none transition', w <= form.weight ? 'text-primary' : 'text-gray-200')}
             >
@@ -231,6 +248,7 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
             <button
               key={opt.value}
               type="button"
+              aria-pressed={form.fetch_interval_minutes === opt.value}
               onClick={() => setForm((f) => ({ ...f, fetch_interval_minutes: opt.value }))}
               className={cx(
                 'h-8 rounded-xs border px-2 text-xs transition',
@@ -251,9 +269,9 @@ export default function SourceForm({ form, setForm }: SourceFormProps) {
           checked={form.enabled}
           onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
           className="h-4 w-4 cursor-pointer accent-primary"
-          id="src-enabled"
+          id={`${fieldId}-enabled`}
         />
-        <label htmlFor="src-enabled" className="cursor-pointer text-[13px] font-bold text-gray-700">启用此信源</label>
+        <label htmlFor={`${fieldId}-enabled`} className="cursor-pointer text-[13px] font-bold text-gray-700">启用此信源</label>
       </div>
     </div>
   );

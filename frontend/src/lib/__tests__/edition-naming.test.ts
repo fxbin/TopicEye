@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EDITION_LABELS, dailyEditionLabel } from '@/lib/edition-naming';
 
 /**
@@ -19,10 +19,18 @@ describe('EDITION_LABELS', () => {
 });
 
 describe('dailyEditionLabel', () => {
+  afterEach(() => vi.useRealTimers());
   it('当日报 → 今日情报', () => {
-    const now = new Date();
-    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    expect(dailyEditionLabel(iso)).toBe('今日情报');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-22T16:30:00Z'));
+    expect(dailyEditionLabel('2026-10-23')).toBe('今日情报');
+  });
+
+  it('上海已跨日时，浏览器所在日期不改变刊名', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-22T16:30:00Z'));
+    expect(dailyEditionLabel('2026-10-22')).toBe('每日情报');
+    expect(dailyEditionLabel('2026-10-23')).toBe('今日情报');
   });
 
   it('历史期 → 每日情报（日期中性）', () => {

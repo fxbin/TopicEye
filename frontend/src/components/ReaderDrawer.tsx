@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import { BookOpen, ExternalLink, FileWarning, Languages, Loader2, RefreshCw, X } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import type { ArticleReaderBlock, ArticleReaderSnapshot, ContentItem } from '@/types';
@@ -108,59 +109,73 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
   const [showZh, setShowZh] = useState(true); // 默认中文（有翻译时）
   const [error, setError] = useState<string | null>(null);
   const isOpen = contentId !== null;
+  const requests = useRef(createRequestGuard());
   const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(isOpen, onClose);
 
   const load = useCallback(async (id: number, refresh = false) => {
+    const active = requests.current.begin();
+    setTranslating(false);
     if (refresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     setShowZh(true);
     try {
       const item = await contentsApi.get(id);
+      if (!active()) return;
       setContent(item);
       const reader = await contentsApi.reader(id, refresh);
+      if (!active()) return;
       setSnapshot(reader);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '暂时无法提取原文');
+      if (active()) setError(err instanceof Error ? err.message : '暂时无法提取原文');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (active()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    const guard = requests.current;
+    setRefreshing(false);
+    setTranslating(false);
     if (contentId !== null && contentId > 0) {
       setContent(null);
       setSnapshot(null);
       void load(contentId);
     }
+    return () => guard.invalidate();
   }, [contentId, load]);
 
   const hasZh = Boolean(snapshot?.content_blocks_zh?.length || snapshot?.text_content_zh);
   const isOriginalZh = hasZh && snapshot?.text_content_zh === snapshot?.text_content;
 
   const handleTranslate = useCallback(async () => {
-    if (!contentId || translating) return;
+    if (!contentId || translating || refreshing || loading) return;
+    const active = requests.current.begin();
     setTranslating(true);
+    setError(null);
     try {
       const result = await contentsApi.translateReader(contentId);
+      if (!active()) return;
       setSnapshot(result);
       setShowZh(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '翻译失败');
+      if (active()) setError(err instanceof Error ? err.message : '翻译失败');
     } finally {
-      setTranslating(false);
+      if (active()) setTranslating(false);
     }
-  }, [contentId, translating]);
+  }, [contentId, translating, refreshing, loading]);
 
   // 切换中/英；无翻译时自动触发翻译
   const toggleLang = useCallback(() => {
-    if (showZh) {
-      setShowZh(false);
-    } else if (hasZh) {
-      setShowZh(true);
-    } else {
+    if (!hasZh) {
       void handleTranslate();
+    } else if (showZh) {
+      setShowZh(false);
+    } else {
+      setShowZh(true);
     }
   }, [showZh, hasZh, handleTranslate]);
 
@@ -210,7 +225,7 @@ export function ReaderDrawer({ contentId, onClose }: ReaderDrawerProps) {
               <button
                 type="button"
                 onClick={toggleLang}
-                disabled={translating}
+                disabled={translating || refreshing || loading}
                 className={cx(
                   'inline-flex items-center gap-1 text-xs font-bold transition',
                   translating ? 'text-gray-300' : 'text-gray-500 hover:text-primary',

@@ -33,7 +33,6 @@ export type EditionKey = keyof typeof EDITION_LABELS;
  */
 export function dailyEditionLabel(reportDate?: string | null): string {
   if (!reportDate) return EDITION_LABELS.daily_neutral;
-  const today = new Date();
-  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return reportDate === iso ? EDITION_LABELS.daily : EDITION_LABELS.daily_neutral;
 }

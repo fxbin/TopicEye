@@ -19,7 +19,6 @@ export default function WeeklyDigestPage() {
   useReadTracking('weekly_digest', currentWeekKey);
 
   return (
-    <>
       <DigestReportPage<WeeklyDigest, WeeklyDigestWeekSummary>
         title={EDITION_LABELS.weekly}
         badge="WEEKLY INTELLIGENCE"
@@ -53,8 +52,8 @@ export default function WeeklyDigestPage() {
         getSummaryKey={(summary) => summary.week_key}
         getSummaryLabel={(summary) => summary.week_label}
         onDigestChange={handleDigestChange}
-      />
-      <WeeklyPickTracking weekKey={currentWeekKey} />
-    </>
+      >
+        <WeeklyPickTracking weekKey={currentWeekKey} />
+      </DigestReportPage>
   );
 }

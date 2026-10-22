@@ -106,6 +106,7 @@ export default function MySourcesPage() {
 
   // ─── Submit (create or edit) ───
   const handleSubmit = async () => {
+    if (submitting) return;
     if (!form.name.trim()) {
       setActionError('请输入信源名称');
       return;
@@ -231,7 +232,7 @@ export default function MySourcesPage() {
 
       <main className="mx-auto mt-5 max-w-[860px]">
         {/* Plan upgrade banner (403 on create) */}
-        {planError && (
+        {planError && !showForm && (
           <NoticeBanner tone="amber" onClose={() => setPlanError(null)}>
             <strong className="font-black">当前套餐不支持创建私有信源</strong>
             <p className="mt-1 text-xs">{planError}</p>
@@ -239,7 +240,7 @@ export default function MySourcesPage() {
         )}
 
         {/* Action error banner */}
-        {actionError && (
+        {actionError && !showForm && (
           <NoticeBanner tone="red" onClose={() => setActionError(null)}>
             <p className="text-xs">{actionError}</p>
           </NoticeBanner>
@@ -304,8 +305,10 @@ export default function MySourcesPage() {
           form={form}
           setForm={setForm}
           submitting={submitting}
+          error={planError || actionError}
           onSubmit={handleSubmit}
           onClose={() => {
+            if (submitting) return;
             setShowForm(false);
             setEditing(null);
             setForm(emptyForm);
@@ -351,6 +354,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
     <div className="relative">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
       <input
+        aria-label="搜索信源名称或 URL"
         type="text"
         placeholder="搜索名称 / URL"
         value={value}
@@ -598,6 +602,7 @@ function SourceFormModal({
   form,
   setForm,
   submitting,
+  error,
   onSubmit,
   onClose,
 }: {
@@ -605,14 +610,16 @@ function SourceFormModal({
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   submitting: boolean;
+  error: string | null;
   onSubmit: () => void;
   onClose: () => void;
 }) {
-  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, onClose);
+  const close = () => { if (!submitting) onClose(); };
+  const { dialogRef, onKeyDown } = useDialogFocus<HTMLDivElement>(true, close);
   const mode: FormMode = editing ? 'edit' : 'create';
   return (
     <>
-      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} />
+      <div aria-hidden="true" className="fixed inset-0 z-[1000] bg-black/30" onClick={close} />
       <div
         ref={dialogRef}
         role="dialog"
@@ -622,25 +629,29 @@ function SourceFormModal({
         onKeyDown={onKeyDown}
         className="pointer-events-none fixed inset-0 z-[1001] flex items-center justify-center px-4"
       >
-        <Panel className="pointer-events-auto w-full max-w-[480px] p-8 shadow-2xl">
+        <Panel className="pointer-events-auto max-h-[calc(100dvh-2rem)] w-full max-w-[480px] overflow-y-auto p-5 shadow-2xl sm:p-8">
+        <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
         <h2 id="private-source-form-modal-title" className="mb-6 text-xl font-black text-gray-900">
           {mode === 'create' ? '新建私有信源' : `编辑：${editing?.name ?? ''}`}
         </h2>
-        <SourceForm form={form} setForm={setForm} />
+        {error && <p role="alert" className="mb-4 rounded-sm bg-red-light p-3 text-sm text-red">{error}</p>}
+        <fieldset disabled={submitting} className="min-w-0">
+          <SourceForm form={form} setForm={setForm} />
+        </fieldset>
         <div className="mt-7 flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={onClose} disabled={submitting} className="px-5">
             取消
           </Button>
           <Button
-            type="button"
+            type="submit"
             variant="primary"
-            onClick={onSubmit}
             disabled={submitting || !form.name.trim()}
             className="px-5"
           >
             {submitting ? (mode === 'create' ? '创建中…' : '保存中…') : (mode === 'create' ? '创建' : '保存')}
           </Button>
         </div>
+        </form>
         </Panel>
       </div>
     </>

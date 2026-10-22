@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import {
   AlertTriangle,
   ArrowDown,
@@ -136,6 +137,7 @@ interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends D
   getSummaryKey: (summary: TSummary) => string;
   getSummaryLabel: (summary: TSummary) => string;
   onDigestChange?: (digest: TDigest | null) => void;
+  children?: React.ReactNode;
 }
 
 function DigestStat({
@@ -228,24 +230,35 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   getSummaryKey,
   getSummaryLabel,
   onDigestChange,
+  children,
 }: DigestReportPageProps<TDigest, TSummary>) {
   const [digest, setDigest] = useState<TDigest | null>(null);
   const [periods, setPeriods] = useState<TSummary[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [latestPeriod, setLatestPeriod] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodsLoading, setPeriodsLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [periodsError, setPeriodsError] = useState<string | null>(null);
+  const requests = useRef(createRequestGuard());
+  const historyRequests = useRef(createRequestGuard());
+  const mobileHistory = useRef<HTMLDetailsElement>(null);
   // 站内阅读：点选题标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
   const { openReader } = useAppContext();
 
 
   const loadPeriods = useCallback(async () => {
+    const active = historyRequests.current.begin();
     try {
       setPeriodsLoading(true);
-      setPeriods(await api.listPeriods());
+      setPeriodsError(null);
+      const list = await api.listPeriods();
+      if (active()) setPeriods(list);
+    } catch (err) {
+      if (active()) setPeriodsError(err instanceof Error ? err.message : '历史期刊加载失败');
     } finally {
-      setPeriodsLoading(false);
+      if (active()) setPeriodsLoading(false);
     }
   }, [api]);
 
@@ -256,14 +269,22 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   }, []);
 
   const fetchDigest = useCallback(async (periodKey?: string) => {
+    const active = requests.current.begin();
     try {
       setLoading(true);
+      setGenerating(false);
       setError(null);
+      setDigest(null);
+      setSelectedPeriod(periodKey || null);
+      onDigestChange?.(null);
       const data = periodKey ? await api.getByPeriod(periodKey) : await api.getCurrent();
+      if (!active()) return;
       setDigest(data);
       setSelectedPeriod(getDigestKey(data));
+      if (!periodKey) setLatestPeriod(getDigestKey(data));
       onDigestChange?.(data);
     } catch (err: unknown) {
+      if (!active()) return;
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg?.includes('404') || errMsg?.includes('not found')) {
         setDigest(null);
@@ -273,34 +294,44 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         setError(errMsg || '加载失败');
       }
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
-  }, [api, getDigestKey, periodName]);
+  }, [api, getDigestKey, periodName, onDigestChange]);
 
   // 仅 mount 时加载当前期——不依赖 fetchDigest（其依赖 api/getDigestKey 是父组件
   // 内联传参，每次 render 新引用，若放依赖会重跑此 effect 拉回 current 覆盖用户切换）。
   // 后续切换由 handlePeriodSelect 主动调 fetchDigest(periodKey)。
   useEffect(() => {
+    const guard = requests.current;
+    const historyGuard = historyRequests.current;
     void fetchDigest();
+    return () => { guard.invalidate(); historyGuard.invalidate(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePeriodSelect = useCallback((periodKey: string) => {
-    if (periodKey === selectedPeriod) return;
+    if (periodKey === selectedPeriod && !error) return;
+    if (mobileHistory.current) mobileHistory.current.open = false;
     void fetchDigest(periodKey);
-  }, [fetchDigest, selectedPeriod]);
+  }, [fetchDigest, selectedPeriod, error]);
 
   const handleRegenerate = async (periodKey?: string) => {
+    if (generating || loading) return;
+    const active = requests.current.begin();
     try {
       setGenerating(true);
+      setError(null);
       const data = await api.generate(periodKey);
+      if (!active()) return;
       setDigest(data);
       setSelectedPeriod(getDigestKey(data));
+      if (!periodKey) setLatestPeriod(getDigestKey(data));
+      onDigestChange?.(data);
       await loadPeriods();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '生成失败');
+      if (active()) setError(err instanceof Error ? err.message : '生成失败');
     } finally {
-      setGenerating(false);
+      if (active()) setGenerating(false);
     }
   };
 
@@ -344,15 +375,14 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
 
   const actionItems = parseJson<DigestActionItem[]>(digest?.action_items, []);
   const visiblePeriods = useMemo(() => periods, [periods]);
-  const currentKey = digest ? getDigestKey(digest) : undefined;
+  const currentKey = digest ? getDigestKey(digest) : selectedPeriod || undefined;
 
-  return (
-    <div className="flex h-full overflow-hidden">
-      <aside className="flex w-[260px] min-w-[260px] flex-col overflow-hidden border-r border-gray-200 bg-white">
+  const historyControls = (
+    <>
         <ReportSidebarHeader icon={HistoryIcon} title={sidebarTitle} countText={`共 ${periods.length} 期`} />
 
         <div className="px-3 pb-1 pt-2">
-          <CurrentPeriodButton active={!selectedPeriod || selectedPeriod === currentKey} icon={Pin} onClick={() => fetchDigest()}>
+          <CurrentPeriodButton active={!selectedPeriod || selectedPeriod === latestPeriod} icon={Pin} onClick={() => { if (mobileHistory.current) mobileHistory.current.open = false; void fetchDigest(); }}>
             {latestButtonLabel}
           </CurrentPeriodButton>
         </div>
@@ -360,6 +390,11 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         <div className="flex-1 overflow-y-auto px-3 pb-3 pt-1">
           {periodsLoading ? (
             <div className="px-2 py-5 text-center text-xs text-gray-400">加载中...</div>
+          ) : periodsError ? (
+            <div role="alert" className="px-2 py-3 text-sm text-red">
+              {periodsError}
+              <Button type="button" variant="secondary" className="mt-2" onClick={() => void loadPeriods()}>重试加载历史</Button>
+            </div>
           ) : visiblePeriods.length === 0 ? (
             <div className="px-2 py-5 text-center text-xs text-gray-400">{emptyHistoryText}</div>
           ) : (
@@ -370,6 +405,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
                 <button
                   key={periodKey}
                   type="button"
+                  aria-current={isActive ? 'true' : undefined}
                   onClick={() => handlePeriodSelect(periodKey)}
                   className={cx(
                     'mb-0.5 block w-full rounded-xs border-l-3 px-3 py-2.5 text-left text-[13px] transition',
@@ -389,10 +425,21 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
             })
           )}
         </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden lg:flex-row">
+      <details ref={mobileHistory} className="shrink-0 border-b border-gray-200 bg-white lg:hidden">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-gray-700">选择期刊 · {digest ? getDigestLabel(digest) : sidebarTitle}</summary>
+        <div className="flex max-h-[45dvh] flex-col overflow-y-auto">{historyControls}</div>
+      </details>
+      <aside className="hidden w-[260px] shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white lg:flex">
+        {historyControls}
       </aside>
 
-      <main className="flex-1 overflow-y-auto px-10 py-7 pb-16">
-        <header className="mb-4 flex items-start justify-between gap-5">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 pb-16 sm:px-6 lg:px-10 lg:py-7">
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="mb-2 flex flex-wrap items-center gap-2.5">
               <h1 className="m-0 text-[26px] font-black text-gray-900">{title}</h1>
@@ -400,11 +447,11 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
               {digest && <ReportBadge tone="history">{periodName}归档</ReportBadge>}
             </div>
             <p className="m-0 text-[13px] text-gray-500">
-              {digest ? `${getDigestLabel(digest)}（${getDigestStart(digest)} ~ ${getDigestEnd(digest)}）` : '加载中...'}
+              {digest ? `${getDigestLabel(digest)}（${getDigestStart(digest)} ~ ${getDigestEnd(digest)}）` : loading ? '加载中...' : selectedPeriod || `暂无${periodName}`}
               {digest?.content_count ? ` · 基于 ${digest.content_count} 条内容分析` : ''}
             </p>
           </div>
-          <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating} icon={RefreshCw}>
+          <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating || loading} loadingText={loading ? '加载中...' : '生成中...'} icon={RefreshCw}>
             重新生成
           </ReportActionButton>
         </header>
@@ -412,13 +459,13 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         {loading ? (
           <ReportStatusPanel icon={HistoryIcon}>{loadingText}</ReportStatusPanel>
         ) : error ? (
-          <ReportStatusPanel icon={AlertTriangle} tone="error">{error}</ReportStatusPanel>
+          <ReportStatusPanel icon={AlertTriangle} tone="error" action={<Button type="button" variant="secondary" onClick={() => void fetchDigest(selectedPeriod || undefined)}>重试加载</Button>}>{error}</ReportStatusPanel>
         ) : digest?.status === 'ERROR' ? (
           <div className="grid min-h-[360px] place-items-center p-10 text-center">
             <div>
               <AlertTriangle size={30} className="mx-auto mb-3 text-red" strokeWidth={1.9} />
               <div className="mb-3 text-sm text-gray-500">{digest.overview}</div>
-              <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating} icon={RefreshCw}>
+              <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating || loading} loadingText={loading ? '加载中...' : '生成中...'} icon={RefreshCw}>
                 重试生成
               </ReportActionButton>
             </div>
@@ -633,7 +680,8 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
               </Panel>
             )}
 
-            <div className="flex flex-wrap gap-6 border-t border-gray-200 pt-3.5 text-xs text-gray-400">
+            {children}
+            <div className="mt-4 flex flex-wrap gap-6 border-t border-gray-200 pt-3.5 text-xs text-gray-400">
               <ReportFooterStat icon={CalendarDays}>{getDigestLabel(digest)}</ReportFooterStat>
               <ReportFooterStat icon={BarChart3}>分析 {digest.analyzed_count} 条内容</ReportFooterStat>
               <ReportFooterStat icon={RadioTower}>来自 {digest.source_count} 个信源</ReportFooterStat>

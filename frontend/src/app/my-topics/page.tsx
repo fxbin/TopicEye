@@ -18,7 +18,7 @@ import {
 import { useAppContext } from '@/components/ClientLayout';
 import SourceBadge from '@/components/SourceBadge';
 import { Badge, Button, Metric, Panel, Toolbar, cx } from '@/components/ui';
-import { LoadingState } from '@/components/StateView';
+import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { motherTopicsApi, contentsApi, type MotherTopic, type ContentItem } from '@/lib/api';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
@@ -262,7 +262,7 @@ export default function MyTopicsPage() {
   const [filterMinScore, setFilterMinScore] = useState(45);
   const { toggleFavorite, openReader } = useAppContext();
 
-  const { data, loading, refetch } = useFetch<TopicsPayload>(async () => {
+  const { data, loading, error, refetch } = useFetch<TopicsPayload>(async () => {
     const [topicList, contentPage] = await Promise.all([
       motherTopicsApi.list(true),
       contentsApi.list({ page: 1, page_size: 200, include_trend_sources: false }),
@@ -282,8 +282,8 @@ export default function MyTopicsPage() {
         content,
         scoring: resultMap.get(content.title) ?? null,
       }));
-    } catch {
-      scored = (contentPage.items || []).map((content) => ({ content, scoring: null }));
+    } catch (err) {
+      throw new Error(err instanceof Error ? `母题打分失败：${err.message}` : '母题打分失败，请重试');
     }
 
     scored.sort((a, b) => (b.scoring?.final_score || 0) - (a.scoring?.final_score || 0));
@@ -309,8 +309,8 @@ export default function MyTopicsPage() {
     })();
   }, [refetch]);
 
-  const topics = data?.topics ?? [];
-  const allScored = data?.scored ?? [];
+  const topics = useMemo(() => data?.topics ?? [], [data]);
+  const allScored = useMemo(() => data?.scored ?? [], [data]);
 
   const matchedItems = useMemo(() => (
     allScored.filter((item) => (item.scoring?.final_score || 0) > 0)
@@ -408,6 +408,7 @@ export default function MyTopicsPage() {
             </div>
             <input
               type="range"
+              aria-label="母题匹配最低得分"
               min={0}
               max={100}
               value={filterMinScore}
@@ -464,6 +465,8 @@ export default function MyTopicsPage() {
 
           {loading ? (
             <LoadingState label="正在按母题打分…" minHeight="260px" />
+          ) : error ? (
+            <ErrorState error={error} onRetry={() => void refetch()} />
           ) : filtered.length === 0 ? (
             <Panel className="grid min-h-[260px] place-items-center p-9 text-center">
               <div>

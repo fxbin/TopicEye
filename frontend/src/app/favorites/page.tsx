@@ -1,23 +1,10 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  Archive,
-  CheckSquare,
-  Filter,
-  Inbox,
-  RefreshCw,
-  Search,
-  Star,
-  Trash2,
-  Video,
-  X,
-} from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import { creationApi, favoritesApi } from '@/lib/api';
 import { useAppContext } from '@/components/ClientLayout';
-import CreationPlanDisplay, { type CreationPlan } from '@/components/CreationPlanDisplay';
-import { Badge, Button, Panel, cx } from '@/components/ui';
+import type { CreationPlan } from '@/components/CreationPlanDisplay';
 import type { FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
 import {
   BatchActionBar,
@@ -31,12 +18,8 @@ import {
 import {
   STATUS_FLOW,
   TYPE_OPTIONS,
-  STATUS_OPTIONS,
   CREATION_PLATFORMS,
   FAVORITES_PAGE_SIZE,
-  TYPE_LABEL,
-  TYPE_TONE,
-  STATUS_LABEL,
   getFavoriteTags,
   getSavedCreationPlans,
   parseTagInput,
@@ -73,8 +56,11 @@ export default function FavoritesPage() {
   const [editNote, setEditNote] = useState('');
   const [editTags, setEditTags] = useState('');
   const [editPending, setEditPending] = useState(false);
+  const requests = useRef(createRequestGuard());
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   const fetchFavorites = useCallback(async () => {
+    const active = requests.current.begin();
     try {
       setLoading(true);
       setError(null);
@@ -88,6 +74,7 @@ export default function FavoritesPage() {
         keyword: keyword.trim() || undefined,
       });
       const totalItems = firstPage.total || 0;
+      if (!active()) return;
       const totalPages = Math.ceil(totalItems / FAVORITES_PAGE_SIZE);
       const allItems = [...(firstPage.items || [])];
       if (totalPages > 1) {
@@ -102,21 +89,24 @@ export default function FavoritesPage() {
         );
         rest.forEach((page) => allItems.push(...(page.items || [])));
       }
+      if (!active()) return;
       setItems(allItems);
       setTotal(totalItems);
       setSelectedIds(new Set());
       setDirtyStatuses(new Set());
       setSavedNotice(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '收藏夹加载失败');
+      if (active()) setError(err instanceof Error ? err.message : '收藏夹加载失败');
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
   }, [targetType, status, keyword]);
 
   useEffect(() => {
+    const guard = requests.current;
     void fetchFavorites();
-  }, [fetchFavorites]);
+    return () => guard.invalidate();
+  }, [fetchFavorites, refreshVersion]);
 
   const counts = useMemo(() => {
     const byStatus = STATUS_FLOW.reduce((acc, column) => {
@@ -167,16 +157,20 @@ export default function FavoritesPage() {
   const applyFavoriteUpdates = useCallback((updatedItems: FavoriteItem[]) => {
     if (updatedItems.length === 0) return;
     const byId = new Map(updatedItems.map((item) => [item.id, item]));
-    const removedIds = new Set<number>();
-    const nextItems = items.flatMap((item) => {
+    const removedIds = new Set(items.filter(item => {
+      const updated = byId.get(item.id);
+      return updated && !favoriteMatchesFilters(updated);
+    }).map(item => item.id));
+    const merge = (current: FavoriteItem[]) => current.flatMap((item) => {
       const updated = byId.get(item.id);
       if (!updated) return [item];
       if (favoriteMatchesFilters(updated)) return [updated];
-      removedIds.add(item.id);
       return [];
     });
 
-    setItems(nextItems);
+    // Derive removals from the displayed snapshot, but merge responses into the
+    // latest items so two completed edits cannot overwrite one another.
+    setItems(merge);
     if (removedIds.size > 0) {
       setTotal((prev) => Math.max(0, prev - removedIds.size));
       setSelectedIds((prev) => {
@@ -190,6 +184,7 @@ export default function FavoritesPage() {
   const handleSearch = () => setKeyword(draftKeyword);
 
   const startEdit = (item: FavoriteItem) => {
+    if (editPending) return;
     setEditingId(item.id);
     setEditNote(item.note || '');
     setEditTags(getFavoriteTags(item).join(', '));
@@ -203,6 +198,8 @@ export default function FavoritesPage() {
   };
 
   const saveFavoriteMeta = async (item: FavoriteItem) => {
+    if (editPending || editingId !== item.id) return;
+    const active = requests.current.capture();
     setEditPending(true);
     setError(null);
     try {
@@ -210,6 +207,10 @@ export default function FavoritesPage() {
         note: editNote.trim() || null,
         tags: parseTagInput(editTags),
       });
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       applyFavoriteUpdates([updated]);
       cancelEdit();
     } catch (err) {
@@ -241,10 +242,15 @@ export default function FavoritesPage() {
   };
 
   const updateStatus = async (item: FavoriteItem, nextStatus: FavoriteStatus) => {
+    const active = requests.current.capture();
     setPendingId(item.id);
     setError(null);
     try {
       const updated = await favoritesApi.update(item.id, { status: nextStatus });
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       applyFavoriteUpdates([updated]);
     } catch (err) {
       setError(err instanceof Error ? err.message : '状态更新失败');
@@ -307,6 +313,7 @@ export default function FavoritesPage() {
 
   const saveOrder = useCallback(async () => {
     if (dirtyStatuses.size === 0) return;
+    const active = requests.current.capture();
     setSavingOrder(true);
     setError(null);
     try {
@@ -320,12 +327,21 @@ export default function FavoritesPage() {
       const updatedItems = reorderTargets.length > 0
         ? await favoritesApi.reorderBoard(reorderTargets)
         : [];
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       const byId = new Map(updatedItems.map((item) => [item.id, item]));
       setItems((prev) => prev.map((item) => byId.get(item.id) || item));
       setDirtyStatuses(new Set());
       setSavedNotice('排序已保存');
     } catch (err) {
       const message = err instanceof Error ? err.message : '排序保存失败';
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        setError(message);
+        return;
+      }
       await fetchFavorites();
       setError(`${message}，已恢复服务器排序`);
     } finally {
@@ -335,10 +351,15 @@ export default function FavoritesPage() {
 
   const updateSelectedStatus = async (nextStatus: FavoriteStatus) => {
     if (selectedItems.length === 0) return;
+    const active = requests.current.capture();
     setBulkPending(true);
     setError(null);
     try {
       const updated = await favoritesApi.bulkStatus(nextStatus, selectedItems.map((item) => item.id));
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       applyFavoriteUpdates(updated);
       setSelectedIds(new Set());
     } catch (err) {
@@ -349,10 +370,15 @@ export default function FavoritesPage() {
   };
 
   const removeFavorite = async (item: FavoriteItem) => {
+    const active = requests.current.capture();
     setPendingId(item.id);
     setError(null);
     try {
       await favoritesApi.delete(item.id);
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       setItems((prev) => prev.filter((row) => row.id !== item.id));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -370,10 +396,15 @@ export default function FavoritesPage() {
 
   const removeSelected = async () => {
     if (selectedItems.length === 0) return;
+    const active = requests.current.capture();
     setBulkPending(true);
     setError(null);
     try {
       await favoritesApi.bulkDelete(selectedItems.map((item) => item.id));
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
       setTotal((prev) => Math.max(0, prev - selectedItems.length));
       setSelectedIds(new Set());
@@ -388,6 +419,7 @@ export default function FavoritesPage() {
   const generateCreationPlan = async (item: FavoriteItem, platform: string) => {
     if (item.target_type !== 'content' || !item.target_id) return;
     const creatingId = `${item.id}:${platform}`;
+    const active = requests.current.capture();
     setCreatingKey(creatingId);
     setError(null);
     try {
@@ -397,6 +429,10 @@ export default function FavoritesPage() {
         status: 'drafting',
         snapshot: withSavedCreationPlan(item, planPlatform, plan),
       });
+      if (!active()) {
+        setRefreshVersion(version => version + 1);
+        return;
+      }
       setCreationDraft({ item: updated, platform: planPlatform, plan });
       applyFavoriteUpdates([updated]);
     } catch (err) {

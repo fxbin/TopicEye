@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import {
+  ChevronDown,
   Activity,
   BarChart3,
   Clock3,
@@ -12,16 +13,13 @@ import {
   RefreshCw,
   Rss,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { createRequestGuard } from '@/lib/request-guard';
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
 import {
-  AnglePanel,
   ClusterCard,
   PanelTitle,
-  ResonanceBadge,
-  SourceMiniItem,
   StatTile,
   TrendBadge,
   WebnovelItemRow,
@@ -29,7 +27,6 @@ import {
 import {
   CATEGORIES,
   CATEGORY_COLORS,
-  SOURCE_BRAND,
   SOURCE_LABELS,
   isWebnovelSource,
   sourceBrand,
@@ -39,9 +36,7 @@ import {
   trendingApi,
   type TrendingItem,
   type TrendingSource,
-  type TrendingAngleRecommendation,
   type CrossPlatformCluster,
-  type CrossPlatformSourceItem,
   type PersistentTopic,
 } from '@/lib/api';
 import { timeAgoShort as formatTime } from '@/lib/datetime';
@@ -53,6 +48,7 @@ import { timeAgoShort as formatTime } from '@/lib/datetime';
 
 function TrendingPage() {
   const { currentUser } = useAppContext();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [tab, setTab] = useState<'list' | 'resonance' | 'persistent'>('list');
   const [items, setItems] = useState<TrendingItem[]>([]);
   const [sources, setSources] = useState<TrendingSource[]>([]);
@@ -67,12 +63,18 @@ function TrendingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncingSource, setSyncingSource] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const requests = useRef(createRequestGuard());
   const [minResonance, setMinResonance] = useState(2);
 
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSource, setSelectedSource] = useState('');
 
   const fetchList = useCallback(async () => {
+    const active = requests.current.begin();
     setLoading(true);
     setError(null);
     try {
@@ -83,49 +85,55 @@ function TrendingPage() {
         exclude_sources: ['heiyan', 'ishugui'],
         limit: 200,
       });
-      setItems(itemList);
+      if (active()) setItems(itemList);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '趋势数据加载失败');
+      if (active()) setError(e instanceof Error ? e.message : '趋势数据加载失败');
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
   }, [selectedCategory, selectedSource]);
 
   const fetchClusters = useCallback(async () => {
+    const active = requests.current.begin();
     setLoading(true);
     setError(null);
     try {
       const data = await trendingApi.crossPlatform({ min_resonance: minResonance, limit: 50 });
+      if (!active()) return;
       setClusters(data.clusters || []);
       if (minResonance === 2) {
         setStats(prev => ({ ...prev, resonanceCount: data.total ?? data.clusters?.length ?? 0 }));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '共振数据加载失败');
+      if (active()) setError(e instanceof Error ? e.message : '共振数据加载失败');
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
   }, [minResonance]);
 
   const fetchPersistent = useCallback(async () => {
+    const active = requests.current.begin();
     setLoading(true);
     setError(null);
     try {
       const data = await trendingApi.persistent({ min_days: 2, min_sources: 1, days_back: 7 });
+      if (!active()) return;
       setPersistentTopics(data.topics || []);
       setStats(prev => ({ ...prev, persistentCount: data.total ?? data.topics?.length ?? 0 }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '持续热度数据加载失败');
+      if (active()) setError(e instanceof Error ? e.message : '持续热度数据加载失败');
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const guard = requests.current;
     if (tab === 'list') fetchList();
     else if (tab === 'resonance') fetchClusters();
     else fetchPersistent();
-  }, [tab, fetchList, fetchClusters, fetchPersistent]);
+    return () => guard.invalidate();
+  }, [tab, fetchList, fetchClusters, fetchPersistent, refreshVersion]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -151,14 +159,17 @@ function TrendingPage() {
   }, [fetchStats]);
 
   const handleSyncAll = async () => {
+    if (syncing) return;
     setSyncing(true);
+    setSyncError(null);
+    setSyncNotice(null);
     try {
       await trendingApi.syncAll();
       await fetchStats();
-      if (tab === 'list') await fetchList();
-      else await fetchClusters();
+      setRefreshVersion(version => version + 1);
+      setSyncNotice('全量同步已完成');
     } catch (e) {
-      console.error('Sync failed:', e);
+      setSyncError(e instanceof Error ? e.message : '同步失败，请重试');
     } finally {
       setSyncing(false);
     }
@@ -201,37 +212,40 @@ function TrendingPage() {
   return (
     <div className="mx-auto min-h-full max-w-[1480px] px-9 pb-20 pt-7 max-md:px-3.5 max-md:pb-16 max-md:pt-4.5">
       <Panel className="relative overflow-hidden p-5.5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] before:absolute before:left-0 before:right-0 before:top-0 before:h-1 before:bg-gradient-to-r before:from-primary before:to-teal max-md:p-4.5">
-        <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-5 max-md:grid-cols-1">
-          <div className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="hidden sm:flex mb-3 flex flex-wrap items-center gap-2.5">
               <Badge tone="primary" className="gap-1.5 font-mono">
                 <Radar size={13} strokeWidth={2.4} />
                 TREND RADAR
               </Badge>
               <span className="text-xs font-black text-gray-500">{activeLabel}</span>
             </div>
-            <h1 className="m-0 text-[28px] font-black leading-[1.12] text-gray-900">
-              趋势雷达工作台
+            <h1 className="m-0 text-2xl font-black leading-snug sm:text-[28px] text-gray-900">
+              趋势雷达
             </h1>
             <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-gray-500">
-              把多平台榜单、跨平台共振和持续热度放在同一个扫描台里，优先看到正在扩散、已经共振、还在持续的内容信号。
+              按平台扫描榜单，寻找跨平台共振与持续热度。
             </p>
           </div>
           {canSyncTrending && (
-            <Button type="button" variant="primary" onClick={handleSyncAll} disabled={syncing} className="whitespace-nowrap px-4 shadow-[0_10px_22px_rgba(255,107,53,0.18)]">
+            <Button type="button" variant="primary" onClick={handleSyncAll} disabled={syncing || syncingSource !== null} className="whitespace-nowrap px-4 shadow-[0_10px_22px_rgba(255,107,53,0.18)]">
               <RefreshCw size={14} strokeWidth={2.3} className={syncing ? 'animate-spin' : ''} />
               {syncing ? '同步中...' : '刷新全量'}
             </Button>
           )}
         </div>
-        <div className="mt-4.5 grid grid-cols-4 gap-2.5 max-md:grid-cols-2">
+        <div className="mt-4.5 hidden grid-cols-4 gap-2.5 sm:grid">
           <StatTile icon={Rss} label="信源" value={stats.sourceCount || filteredSources.length || sources.length} hint="当前可扫描平台" colorClass="text-primary" />
           <StatTile icon={Layers3} label="样本" value={stats.sampleCount || items.length} hint="榜单候选内容" colorClass="text-teal" />
           <StatTile icon={Activity} label="共振" value={stats.resonanceCount} hint="最低 2 平台" colorClass="text-red" />
           <StatTile icon={Clock3} label="持续" value={stats.persistentCount} hint="近 7 天持续话题" colorClass="text-amber" />
         </div>
+        <p className="mt-3 text-sm text-gray-600 sm:hidden">{sources.length} 个信源 · {items.length} 条榜单内容</p>
       </Panel>
 
+      {syncError && <p role="alert" className="mt-3 rounded-sm bg-red-light p-3 text-sm text-red">{syncError}</p>}
+      {syncNotice && <p role="status" className="mt-3 text-sm text-teal">{syncNotice}</p>}
       <div className="mt-4.5 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-4.5 max-xl:grid-cols-1">
         <main className="min-w-0">
           {loading && <LoadingState />}
@@ -380,26 +394,28 @@ function TrendingPage() {
                       {canSyncTrending && (
                         <button
                           type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const btn = e.currentTarget as HTMLButtonElement;
-                            btn.disabled = true;
+                          disabled={syncing || syncingSource !== null}
+                          aria-label={`刷新${SOURCE_LABELS[source] || source}榜单`}
+                          onClick={async () => {
+                            setSyncingSource(source);
+                            setSyncError(null);
+                            setSyncNotice(null);
                             try {
-                              const data = await trendingApi.sync(source);
-                              if (data.fetched > 0) {
-                                await Promise.all([fetchList(), fetchStats()]);
-                              }
+                              await trendingApi.sync(source);
+                              await fetchStats();
+                              setRefreshVersion(version => version + 1);
+                              setSyncNotice(`${SOURCE_LABELS[source] || source}同步已完成`);
                             } catch (err) {
-                              console.error('Sync source failed:', err);
+                              setSyncError(err instanceof Error ? err.message : '信源同步失败，请重试');
                             } finally {
-                              btn.disabled = false;
+                              setSyncingSource(null);
                             }
                           }}
                           className="inline-flex h-[22px] w-6 items-center justify-center rounded-xs border border-gray-200 bg-white p-0 transition disabled:cursor-wait disabled:opacity-60"
                           style={{ color: brand.color }}
                           title="刷新此榜单"
                         >
-                          <RefreshCw size={12} strokeWidth={2.2} />
+                          <RefreshCw size={12} strokeWidth={2.2} className={syncingSource === source ? 'animate-spin' : ''} />
                         </button>
                       )}
                       {lastSynced && (
@@ -457,8 +473,8 @@ function TrendingPage() {
 
         <aside className="sticky top-4.5 flex min-w-0 flex-col gap-3 max-xl:static max-xl:row-start-1">
           <Panel className="p-4">
-            <PanelTitle icon={BarChart3} title="视图切换" hint={activeLabel} />
-            <div className="grid gap-2">
+            <PanelTitle icon={BarChart3} title="视图切换" hint={activeLabel} className="hidden xl:flex" />
+            <div role="group" aria-label="趋势视图" className="grid grid-cols-3 gap-2 xl:grid-cols-1">
               {[
                 { key: 'list' as const, label: '榜单扫描', desc: '按信源查看实时榜单' },
                 { key: 'resonance' as const, label: '共振发现', desc: '同一主题跨平台出现' },
@@ -469,6 +485,7 @@ function TrendingPage() {
                   <button
                     key={t.key}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setTab(t.key)}
                     className={cx(
                       'w-full rounded-sm border px-3 py-2.5 text-left transition',
@@ -479,13 +496,15 @@ function TrendingPage() {
                       <span className={cx('text-[13px] font-black', active ? 'text-primary' : 'text-gray-800')}>{t.label}</span>
                       {active && <span className="h-2 w-2 rounded-full bg-primary" />}
                     </div>
-                    <div className="mt-1 text-[11px] leading-5 text-gray-400">{t.desc}</div>
+                    <div className="mt-1 hidden text-xs leading-5 text-gray-600 xl:block">{t.desc}</div>
                   </button>
                 );
               })}
             </div>
           </Panel>
 
+          <button type="button" aria-expanded={filtersOpen} aria-controls="trending-filters" onClick={() => setFiltersOpen(value => !value)} className="flex min-h-11 items-center justify-between rounded-sm border border-gray-200 bg-white px-4 text-sm text-gray-700 xl:hidden">筛选与信源<ChevronDown size={16} className={filtersOpen ? 'rotate-180 transition' : 'transition'} /></button>
+          <div id="trending-filters" className={cx(filtersOpen ? 'contents' : 'hidden', 'xl:contents')}>
           {tab === 'list' && (
             <Panel className="p-4">
               <PanelTitle icon={Filter} title="榜单筛选" hint={`${Object.keys(groupedItems).length} 个信源`} />
@@ -496,6 +515,7 @@ function TrendingPage() {
                   return (
                     <button
                       key={c.value}
+                      aria-pressed={active}
                       type="button"
                       onClick={() => {
                         setSelectedCategory(c.value);
@@ -518,6 +538,7 @@ function TrendingPage() {
                   return (
                     <button
                       key={src.source}
+                      aria-pressed={active}
                       type="button"
                       onClick={() => setSelectedSource(active ? '' : src.source)}
                       className="flex w-full items-center gap-2 rounded-xs border px-2 py-1.5 text-left transition"
@@ -589,6 +610,7 @@ function TrendingPage() {
               </div>
             )}
           </Panel>
+          </div>
         </aside>
       </div>
     </div>

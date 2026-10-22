@@ -6,6 +6,7 @@ import { ArrowRight, Radar } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { authApi, setAuthToken } from '@/lib/api';
 import { Button, Panel } from '@/components/ui';
+import { consumeOauthReturnTo } from '../_return-to';
 
 type Status = 'loading' | 'error' | 'success';
 
@@ -36,7 +37,7 @@ export default function OauthCallbackPage() {
       const errorParam = new URLSearchParams(location.search).get('error');
       if (errorParam) {
         if (!cancelled) {
-          setErrorMsg(decodeURIComponent(errorParam));
+          setErrorMsg(errorParam);
           setStatus('error');
         }
         return;
@@ -62,8 +63,11 @@ export default function OauthCallbackPage() {
 
         // 清理 URL，防止残留状态参数
         history.replaceState(null, '', '/oauth/callback');
-        router.replace('/');
+        const returnTo = consumeOauthReturnTo(window.sessionStorage);
+        if (returnTo !== '/') window.location.replace(returnTo);
+        else router.replace('/');
       } catch (err) {
+        if (cancelled) return;
         // cookie 缺失/无效或 me() 失败 → 清理并报错
         setAuthToken(null);
         if (!cancelled) {

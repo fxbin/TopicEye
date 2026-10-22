@@ -1159,6 +1159,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         self,
         keywords: list[str],
         cutoff: datetime,
+        *,
+        end: datetime | None = None,
+        visible_user_id: int | None = None,
     ) -> list[tuple[datetime, int]]:
         """按标题关键词做小时分桶计数，供 /daily-reports/sparkline 端点使用。
 
@@ -1185,6 +1188,9 @@ class ContentRepo(BaseRepository[ContentItem]):
             )
             .group_by("ts")
         )
+        if end is not None:
+            stmt = stmt.where(self.model.crawled_at < end)
+        stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id, public_only=visible_user_id is None)
         result = await self.db.execute(stmt)
         return [(row.ts, int(row.cnt)) for row in result.all()]
 

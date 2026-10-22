@@ -5,14 +5,14 @@ Daily Report API endpoints.
 from __future__ import annotations
 
 import logging
-from datetime import date as date_cls, datetime, timedelta
+from datetime import UTC, date as date_cls, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
-from app.core.database import async_session, get_db
+from app.core.database import get_db
 from app.repositories.content_repo import ContentRepo
 from app.repositories.daily_report_repo import DailyReportRepository
 from app.repositories.pick_mark_repo import PickMarkRepository
@@ -22,7 +22,7 @@ from app.schemas.daily_report import (
     DailyReportListResponse,
     DailyReportResponse,
 )
-from app.services.daily_report import LOCAL_TZ, WEEKDAYS, generate_daily_report, get_latest_today_report
+from app.services.daily_report import LOCAL_TZ, WEEKDAYS, _local_today, generate_daily_report, get_latest_today_report
 from app.services.plan_catalog import plan_allows_private_source
 
 if TYPE_CHECKING:
@@ -128,7 +128,7 @@ async def get_report_calendar(
     db: AsyncSession = Depends(get_db),
 ):
     """Return a recent date map for spotting missing or failed daily reports."""
-    today = datetime.now(LOCAL_TZ).date()
+    today = _local_today()
     start = today - timedelta(days=days - 1)
     repo = DailyReportRepository(db)
     reports = await repo.list_for_calendar(start.isoformat(), today.isoformat())
@@ -195,7 +195,7 @@ async def get_report_calendar(
 
 @router.get("", response_model=DailyReportListResponse)
 async def list_reports(
-    limit: int = 7,
+    limit: int = Query(7, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List recent daily reports."""
@@ -213,100 +213,105 @@ async def trigger_generate(db: AsyncSession = Depends(get_db)):
     return report
 
 
-@router.post("/generate-version")
-async def trigger_generate_version(
-    target_date: str | None = Query(None, description="Target date in YYYY-MM-DD, defaults to today"),
-    edition: str | None = Query(None, description="snapshot/noon/evening/final/manual"),
-    cutoff_at: str | None = Query(None, description="ISO datetime cutoff, defaults to now"),
-    force: bool = Query(True, description="Regenerate even if this exact version exists"),
-    db: AsyncSession = Depends(get_db),
+async def _start_generation_response(
+    db: AsyncSession,
+    *,
+    target_date: date_cls | None,
+    edition: str | None,
+    cutoff_at: datetime | None,
+    force: bool,
+    owner_user_id: int | None = None,
 ):
-    """Generate a specific daily report version/window (async).
-
-    日报生成调 LLM 耗时 30-60 秒，超过 Next.js 代理默认超时。
-    改为异步：先创建/标记 GENERATING 记录立即返回 202，
-    后台 task 完成后前端通过轮询 /today 拿最终结果。
-    """
-
-    from app.services.daily_report import _day_window, _local_today, _local_window_to_utc_naive
-
-    parsed_date = date_cls.fromisoformat(target_date) if target_date else _local_today()
-    parsed_cutoff = datetime.fromisoformat(cutoff_at) if cutoff_at else None
-    normalized_edition = edition or "manual"
-
-    # 快速创建 GENERATING 占位记录（如果还没有）
-    from app.services.daily_report import VALID_EDITIONS
-
-    if normalized_edition not in VALID_EDITIONS:
-        normalized_edition = "manual"
-
-    window_start, window_end = _day_window(parsed_date, parsed_cutoff, normalized_edition)
-    utc_start, utc_end = _local_window_to_utc_naive(window_start, window_end)
-
-    # 查是否已有记录（取最新一条，避免历史脏数据导致 MultipleResultsFound）
-    repo = DailyReportRepository(db)
-    report = await repo.find_existing_for_version(
-        report_date_iso=parsed_date.isoformat(),
-        edition=normalized_edition,
-        owner_user_id=None,
-    )
-
-    if report and report.status == "DONE" and not force:
-        return report
-
-    if report:
-        repo.mark_generating(report)
-    else:
-        report = repo.create_generating_placeholder(
-            report_date_iso=parsed_date.isoformat(),
-            weekday=WEEKDAYS[parsed_date.weekday()],
-            edition=normalized_edition,
-            window_start=utc_start,
-            window_end=utc_end,
-            cutoff_at=parsed_cutoff,
-        )
-
-    await repo.commit()
-    report_id = report.id
-    report_date_iso = parsed_date.isoformat()
-
-    # 后台异步生成（独立 DB session，不阻塞当前请求）
-    async def _bg_generate():
-        async with async_session() as bg_db:
-            try:
-                await generate_daily_report(
-                    bg_db,
-                    target_date=parsed_date,
-                    edition=normalized_edition,
-                    cutoff_at=parsed_cutoff,
-                    force=True,
-                )
-            except Exception as e:
-                logger.error("Background daily report generation failed: %s", e)
-                # 标记失败；mark_error 再失败必须留痕（曾因 except: pass
-                # 导致报告永远卡在 GENERATING，issue #72），日志兜底。
-                try:
-                    bg_repo = DailyReportRepository(bg_db)
-                    await bg_repo.mark_error(report_id, f"生成失败: {str(e)[:200]}")
-                except Exception:
-                    logger.exception("Failed to mark daily report id=%s as ERROR", report_id)
-
-    from app.core.task_registry import track_background_task
-
-    track_background_task(_bg_generate(), name=f"daily-report-bg-{report_id}")
-
-    # 返回 GENERATING 状态（HTTP 202 Accepted）
     from fastapi.responses import JSONResponse
 
+    from app.services.daily_report_generation import start_daily_report_generation
+
+    try:
+        report = await start_daily_report_generation(
+            db,
+            target_date=target_date,
+            edition=edition,
+            cutoff_at=cutoff_at,
+            force=force,
+            owner_user_id=owner_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if report.status != "GENERATING":
+        return DailyReportResponse.model_validate(report)
     return JSONResponse(
         status_code=202,
         content={
-            "id": report_id,
-            "report_date": report_date_iso,
+            "id": report.id,
+            "report_date": report.report_date,
+            "edition": report.edition,
             "status": "GENERATING",
             "message": "日报正在后台生成，请稍后刷新查看",
         },
     )
+
+
+@router.post("/generate-version")
+async def trigger_generate_version(
+    target_date: date_cls | None = Query(None),
+    edition: str | None = Query(None),
+    cutoff_at: datetime | None = Query(None),
+    force: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start a frozen public version; poll /versions/{id} for its result."""
+    return await _start_generation_response(
+        db,
+        target_date=target_date,
+        edition=edition,
+        cutoff_at=cutoff_at,
+        force=force,
+    )
+
+
+@router.post("/me/generate-version")
+async def trigger_my_generate_version(
+    target_date: date_cls | None = Query(None),
+    edition: str | None = Query(None),
+    cutoff_at: datetime | None = Query(None),
+    force: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Start a frozen user-owned version, with the same Pro gate as /me/today."""
+    if not plan_allows_private_source(user.plan):
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+    return await _start_generation_response(
+        db,
+        target_date=target_date,
+        edition=edition,
+        cutoff_at=cutoff_at,
+        force=force,
+        owner_user_id=user.id,
+    )
+
+
+async def _get_scoped_version(db: AsyncSession, report_id: int, owner_user_id: int | None):
+    report = await DailyReportRepository(db).get_by_id(report_id)
+    if report is None or report.owner_user_id != owner_user_id:
+        raise HTTPException(status_code=404, detail="No report found")
+    return report
+
+
+@router.get("/versions/{report_id}", response_model=DailyReportResponse)
+async def get_public_version(report_id: int, db: AsyncSession = Depends(get_db)):
+    return await _get_scoped_version(db, report_id, None)
+
+
+@router.get("/me/versions/{report_id}", response_model=DailyReportResponse)
+async def get_my_version(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not plan_allows_private_source(user.plan):
+        raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
+    return await _get_scoped_version(db, report_id, user.id)
 
 
 @router.post("/push-webhook")
@@ -505,29 +510,24 @@ def _heat_delta_pct(
     raw: list[tuple[datetime, int]],
     *,
     today_iso: str,
+    elapsed_hours: float = 24.0,
 ) -> float | None:
-    """根据 sparkline pipeline 返回的小时桶数据，算「昨日 vs 今日」热度变化率。
+    """比较本地昨日与报告日的每小时流入量，包含没有命中的小时。
 
-    取昨日桶均值作 baseline，今日桶均值作对比，返回百分比变化：
-    (today_avg - yesterday_avg) / max(1, yesterday_avg) * 100。
-    任一侧无数据返回 None（前端显示「—」）。
+    数据库桶以 UTC 返回；报告日期按 Asia/Shanghai。历史期固定两天窗口，
+    今日按已过去时长归一化。任一侧无观测时不编造变化率。
     """
-    if not raw:
+    yesterday_iso = (date_cls.fromisoformat(today_iso) - timedelta(days=1)).isoformat()
+    counts: dict[str, int] = {}
+    for ts, count in raw:
+        local_day = (ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts).astimezone(LOCAL_TZ).date().isoformat()
+        if local_day in (yesterday_iso, today_iso):
+            counts[local_day] = counts.get(local_day, 0) + count
+    if not counts.get(yesterday_iso) or today_iso not in counts or elapsed_hours <= 0:
         return None
-    yesterday_counts: list[int] = []
-    today_counts: list[int] = []
-    for ts, cnt in raw:
-        if ts.date().isoformat() == today_iso:
-            today_counts.append(cnt)
-        else:
-            yesterday_counts.append(cnt)
-    if not yesterday_counts or not today_counts:
-        return None
-    y_avg = sum(yesterday_counts) / len(yesterday_counts)
-    t_avg = sum(today_counts) / len(today_counts)
-    if y_avg <= 0:
-        return None
-    return round((t_avg - y_avg) / y_avg * 100, 1)
+    yesterday_rate = counts[yesterday_iso] / 24
+    today_rate = counts[today_iso] / min(24, elapsed_hours)
+    return round((today_rate - yesterday_rate) / yesterday_rate * 100, 1)
 
 
 async def _build_yesterday_tracking(
@@ -598,9 +598,17 @@ async def _build_yesterday_tracking(
         keywords = _extract_sparkline_keywords(yp.get("source_title") or yp.get("title") or "")
         heat_delta = None
         if keywords:
-            cutoff = datetime.now() - timedelta(hours=48)
-            raw = await content_repo.count_hourly_by_title_keywords(keywords, cutoff)
-            heat_delta = _heat_delta_pct(raw, today_iso=today_report.report_date)
+            today_start = datetime.combine(today_date, datetime.min.time(), tzinfo=LOCAL_TZ)
+            cutoff = today_start - timedelta(days=1)
+            end = min(today_start + timedelta(days=1), datetime.now(LOCAL_TZ))
+            raw = await content_repo.count_hourly_by_title_keywords(
+                keywords, cutoff, end=end, visible_user_id=owner_user_id
+            )
+            heat_delta = _heat_delta_pct(
+                raw,
+                today_iso=today_report.report_date,
+                elapsed_hours=(end - today_start).total_seconds() / 3600,
+            )
 
         items.append(
             {
@@ -660,26 +668,28 @@ def _safe_json_loads(value) -> list | dict | None:
 
 @router.get("/yesterday-tracking")
 async def get_yesterday_tracking(
-    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    report_date: date_cls = Query(..., description="今日报告日期 YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
 ):
     """昨日 top picks 的 24h 热度 delta + lifecycle 验证（公共日报）。
 
     纯只读聚合，不改数据。无昨日报告返回 ``{has_yesterday: false}``。
     """
-    return await _build_yesterday_tracking_public(db, report_date=report_date, owner_user_id=None)
+    return await _build_yesterday_tracking_public(db, report_date=report_date.isoformat(), owner_user_id=None)
 
 
 @router.get("/me/yesterday-tracking")
 async def get_my_yesterday_tracking(
-    report_date: str = Query(..., description="今日报告日期 YYYY-MM-DD"),
+    report_date: date_cls = Query(..., description="今日报告日期 YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """昨日追踪（我的日报，Pro+）。额外返回 your_marked（昨日 write/watch 标记的今日进展）。"""
     if not plan_allows_private_source(user.plan):
         raise HTTPException(status_code=403, detail="我的日报需 Pro 及以上套餐")
-    return await _build_yesterday_tracking_public(db, report_date=report_date, owner_user_id=user.id, user_id=user.id)
+    return await _build_yesterday_tracking_public(
+        db, report_date=report_date.isoformat(), owner_user_id=user.id, user_id=user.id
+    )
 
 
 async def _build_yesterday_tracking_public(

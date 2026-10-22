@@ -15,9 +15,9 @@ from app.core.database import Base
 class DailyReport(Base):
     __tablename__ = "daily_reports"
     __table_args__ = (
-        # owner_user_id 在最前 —— 多列 unique 中 NULL 视为 distinct，
-        # 公共行（owner_user_id=NULL）天然只一份；不同 user 各一份。
-        # 应用层额外 catch IntegrityError 兜底（公共 NULL 多进程并发）。
+        # 普通 UNIQUE 将 NULL 视为 distinct：约束私有版本，不保证公共版本唯一。
+        # 公共异步生成的领取由 daily_report_generation 的事务 advisory lock 串行化；
+        # 不能把此约束或 IntegrityError 兜底当作公共行的并发防重。
         UniqueConstraint("owner_user_id", "report_date", "edition", "cutoff_at", name="uq_daily_report_version"),
         Index("ix_daily_reports_owner", "owner_user_id"),
         Index("ix_daily_reports_owner_date", "owner_user_id", "report_date"),

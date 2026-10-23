@@ -131,3 +131,42 @@ async def test_pair_negative_cannot_be_reused_as_pool_negative_and_scopes_are_is
         await evaluate_pool(data)
     with pytest.raises(ValueError, match="explicit positive"):
         await evaluate_pool(dataset(), mode="live")
+
+
+@pytest.mark.asyncio
+async def test_live_requires_both_caps_and_mock_response_is_not_usage_proof(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.services import content_event_normalization as normalizer
+
+    for caps in ({}, {"max_physical_attempts": 1}, {"max_cost_usd": 0.01}):
+        with pytest.raises(ValueError, match="physical-attempt and monetary"):
+            await evaluate_pool(dataset(), mode="live", max_model_calls=1, **caps)
+    monkeypatch.setattr(
+        normalizer,
+        "call_llm_json",
+        AsyncMock(return_value={"decision": "duplicate", "target_content_id": 1, "confidence": 0.99}),
+    )
+    result = await evaluate_pool(dataset(), mode="live", max_model_calls=1, max_physical_attempts=1, max_cost_usd=0.01)
+    assert result["model_calls"] == 1 and result["physical_attempts"] == 0
+    assert not result["model_accuracy_measured"] and not result["usage_and_cost_verified"]
+    assert result["cost_usd"] is None
+
+
+@pytest.mark.asyncio
+async def test_budget_refusal_stops_new_calls_and_preserves_pending_denominator(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.services import content_event_normalization as normalizer
+    from app.services.llm.call_trace import LlmTraceBudgetExceeded
+
+    data = dataset()
+    data["queries"].append({**deepcopy(data["queries"][0]), "query_id": "q2"})
+    transport = AsyncMock(side_effect=LlmTraceBudgetExceeded("known unit prices required"))
+    monkeypatch.setattr(normalizer, "call_llm_json", transport)
+    result = await evaluate_pool(data, mode="live", max_model_calls=2, max_physical_attempts=1, max_cost_usd=0.01)
+    assert transport.await_count == 1
+    assert result["query_count"] == 2 and result["decision_counts"] == {"pending": 2}
+    assert result["model_status_counts"] == {"budget_refused": 1, "run_budget_blocked": 1}
+    assert result["physical_attempts"] == 0 and result["reserved_cost_usd"] == 0
+    assert not result["usage_and_cost_verified"] and not result["model_accuracy_measured"]

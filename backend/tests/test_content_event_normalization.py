@@ -931,3 +931,28 @@ async def test_normalizer_skips_provisional_target_claimed_during_model_wait(pro
         assert result["completed_content_ids"] == result["standalone_content_ids"] == []
         assert await db.scalar(select(func.count()).select_from(ContentEventMember)) == 0
         assert await db.scalar(select(func.count()).select_from(ContentEventGroup)) == 1
+
+
+@pytest.mark.asyncio
+async def test_local_budget_refusal_does_not_consume_transient_retry_allowance(progress_db, monkeypatch):
+    from app.services.llm.call_trace import LlmTraceBudgetExceeded
+
+    async def refuse(*args, **kwargs):
+        raise LlmTraceBudgetExceeded("known unit prices required")
+
+    monkeypatch.setattr(normalization, "call_llm_json", refuse)
+    async with progress_db() as db:
+        canonical = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="budget-a")
+        await ContentEventService(db).create_event([canonical.id], owner_user_id=None)
+        incoming = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="budget-b")
+        incoming_id = incoming.id
+        await db.commit()
+        result = await normalize_recent_events_with_lease(db, mode="shadow", idempotency_key="local-budget-refusal")
+        await db.commit()
+        assert result["pending"] == 1 and result["status"] == "succeeded"
+        assert result["retry_states"] == [
+            {**result["retry_states"][0], "content_id": incoming_id, "attempts": 0, "cause": "budget_deferred"}
+        ]
+        assert incoming_id not in result["completed_content_ids"]
+        row = await db.get(ContentItem, incoming_id)
+        assert row is not None

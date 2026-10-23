@@ -29,8 +29,8 @@ class LLMCache:
         self.default_ttl = default_ttl_seconds
         self.max_entries = max_entries
 
-        # value: (raw_response, expires_at)
-        self._cache: dict[str, tuple[str, float]] = {}
+        # value: (raw_response, expires_at, route_metadata)
+        self._cache: dict[str, tuple[str, float, dict]] = {}
         self._hits = 0
         self._misses = 0
         self._stores = 0
@@ -55,19 +55,30 @@ class LLMCache:
         ttl_seconds: int | None = None,
     ) -> str | None:
         """Return cached raw response, or None on miss / expiry."""
+        entry = self.get_with_metadata(messages, temperature, max_tokens, model, ttl_seconds)
+        return entry[0] if entry is not None else None
+
+    def get_with_metadata(
+        self,
+        messages: list,
+        temperature: float,
+        max_tokens: int,
+        model: str | None,
+        ttl_seconds: int | None = None,
+    ) -> tuple[str, dict] | None:
         key = self._key(messages, temperature, max_tokens, model)
         entry = self._cache.get(key)
         if entry is None:
             self._misses += 1
             return None
-        raw, expires_at = entry
+        raw, expires_at, metadata = entry
         if expires_at < time.monotonic():
             self._cache.pop(key, None)
             self._misses += 1
             return None
         self._hits += 1
         logger.debug("LLM cache hit: key=%s…", key[:8])
-        return raw
+        return raw, dict(metadata)
 
     def evict(
         self,
@@ -91,13 +102,14 @@ class LLMCache:
         model: str | None,
         raw_response: str,
         ttl_seconds: int | None = None,
+        metadata: dict | None = None,
     ) -> None:
         """Store raw response under the cache key."""
         if not raw_response:
             return  # don't cache empty responses
         key = self._key(messages, temperature, max_tokens, model)
         ttl = ttl_seconds or self.default_ttl
-        self._cache[key] = (raw_response, time.monotonic() + ttl)
+        self._cache[key] = (raw_response, time.monotonic() + ttl, dict(metadata or {}))
         self._stores += 1
         # Evict oldest entries if over cap
         if len(self._cache) > self.max_entries:

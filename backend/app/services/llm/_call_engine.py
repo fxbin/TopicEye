@@ -75,6 +75,7 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
     冷却健康路由，并在所有模型都拒绝同一请求时打开全局熔断器。
     """
     from app.services.llm._context_guard import LlmContextWindowExceededError
+    from app.services.llm.call_trace import LlmTraceBudgetExceeded
 
     if isinstance(
         exc,
@@ -84,7 +85,8 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
         | JSONSchemaValidationError
         | UnprocessableEntityError
         | UnsupportedParamsError
-        | LlmContextWindowExceededError,
+        | LlmContextWindowExceededError
+        | LlmTraceBudgetExceeded,
     ):
         return True
     return _is_bad_request_error(exc)
@@ -145,8 +147,9 @@ async def _call_llm_single(
     scene: str = "general",
 ) -> str:
     """Make a single LLM call (no retry)."""
+    from app.services.llm.call_trace import LlmTraceBudgetExceeded, current_trace, finish_attempt
     from app.services.llm.provider import _litellm_extra_kwargs
-    from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
+    from app.services.llm_usage import extract_usage, has_complete_usage, record_llm_call_in_new_session
 
     pool_scope = _pool_scope(model_config, scene)
     rate_limit_started = time.monotonic()
@@ -168,6 +171,10 @@ async def _call_llm_single(
         "num_retries": 0,
     }
     kwargs.update(_litellm_extra_kwargs(model_config))
+    if current_trace() is not None:
+        # A traced physical-attempt cap must include SDK retries. One guarded
+        # attempt therefore permits exactly one LiteLLM completion attempt.
+        kwargs["num_retries"] = 0
     completion_timeout = _completion_timeout_seconds(kwargs.get("timeout"))
     # 同时传给 LiteLLM 和 asyncio。前者取消底层 HTTP 请求，后者为每个
     # provider 提供一致的兜底截止时间。
@@ -182,8 +189,12 @@ async def _call_llm_single(
     logger.info("LLM call: model=%s, messages=%d", model, len(messages))
 
     start = time.monotonic()
+    attempt = None
     try:
         async with acquire_completion_slot(model_config, scene):
+            trace = current_trace()
+            if trace is not None:
+                attempt = trace.begin_attempt(model_config, model, max_tokens)
             response = await asyncio.wait_for(
                 acompletion(**kwargs),
                 timeout=completion_timeout,
@@ -191,13 +202,20 @@ async def _call_llm_single(
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content
         usage = extract_usage(response)
-        await record_llm_call_in_new_session(
+        persisted = await record_llm_call_in_new_session(
             model=model_config,
             request_model=model,
             scene=scene,
             status="DONE",
             duration_ms=duration_ms,
             usage=usage,
+            request_id=attempt["request_id"] if attempt else None,
+        )
+        finish_attempt(
+            attempt,
+            status="done",
+            usage=usage if has_complete_usage(response) else None,
+            persisted=persisted,
         )
         # ── 内存指标采集（不阻塞、不重试、失败静默）──
         try:
@@ -220,16 +238,23 @@ async def _call_llm_single(
             pass  # 指标采集不能影响主链路
         logger.info("LLM response: %d chars", len(content) if content else 0)
         return content or ""
+    except asyncio.CancelledError as exc:
+        finish_attempt(attempt, status="cancelled", error=exc)
+        raise
     except Exception as exc:
+        if isinstance(exc, LlmTraceBudgetExceeded):
+            raise
         duration_ms = int((time.monotonic() - start) * 1000)
-        await record_llm_call_in_new_session(
+        persisted = await record_llm_call_in_new_session(
             model=model_config,
             request_model=model,
             scene=scene,
             status="FAILED",
             duration_ms=duration_ms,
             error_message=str(exc),
+            request_id=attempt["request_id"] if attempt else None,
         )
+        finish_attempt(attempt, status="failed", persisted=persisted, error=exc)
         # ── 失败也记录指标 ──
         try:
             from app.core.request_metrics import get_collector

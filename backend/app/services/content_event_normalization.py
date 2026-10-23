@@ -39,10 +39,21 @@ from app.services.content_event_service import (
     ContentEventConflictError,
     ContentEventService,
 )
-from app.services.llm import call_llm_json
+from app.services.llm import call_llm_json_with_metadata
+from app.services.llm.call_trace import LlmTraceBudgetExceeded, current_trace, trace_llm_call
 
 CLASSIFIER_VERSION = "event-normalizer-v2"
 logger = logging.getLogger(__name__)
+
+
+async def call_llm_json(*args, **kwargs):
+    """Compatibility injection point; production retains the route metadata."""
+    result, metadata = await call_llm_json_with_metadata(*args, **kwargs)
+    if (trace := current_trace()) is not None:
+        trace.route = metadata
+    return result
+
+
 _VALID_RELATIONS = {
     EventRelationType.DUPLICATE.value,
     EventRelationType.CORROBORATION.value,
@@ -146,6 +157,8 @@ class _Prediction:
     llm_error: str | None = None
     application_status: str | None = None
     application_reason: str | None = None
+    llm_trace: dict[str, Any] | None = None
+    llm_budget_refused: bool = False
 
     def audit_dict(self) -> dict[str, Any]:
         return {
@@ -163,6 +176,8 @@ class _Prediction:
             "llm_error": self.llm_error,
             "application_status": self.application_status,
             "application_reason": self.application_reason,
+            "llm_trace": self.llm_trace,
+            "llm_budget_refused": self.llm_budget_refused,
         }
 
 
@@ -473,6 +488,20 @@ async def _classify_boundary(
     *,
     limits: _Limits,
     semaphore: asyncio.Semaphore,
+    logical_request_id: str | None = None,
+) -> _Prediction:
+    with trace_llm_call(logical_request_id) as trace:
+        prediction = await _classify_boundary_inner(content, candidates, limits=limits, semaphore=semaphore)
+        prediction.llm_trace = trace.report()
+        return prediction
+
+
+async def _classify_boundary_inner(
+    content: _ContentSnapshot,
+    candidates: list[_Candidate],
+    *,
+    limits: _Limits,
+    semaphore: asyncio.Semaphore,
 ) -> _Prediction:
     candidate = candidates[0]
     messages = [
@@ -592,6 +621,7 @@ async def _classify_boundary(
             review_status=EventReviewStatus.PENDING.value,
             llm_used=True,
             llm_failed=True,
+            llm_budget_refused=isinstance(exc, LlmTraceBudgetExceeded),
             llm_error=f"{type(exc).__name__}: {str(exc)}"[:500],
         )
 
@@ -936,6 +966,7 @@ async def normalize_recent_events_with_lease(
                         boundary_candidates,
                         limits=limits,
                         semaphore=semaphore,
+                        logical_request_id=f"event_run:{claim.run_id}:content:{content.id}",
                     )
                     for _index, content, boundary_candidates in batch
                 ]
@@ -950,7 +981,12 @@ async def normalize_recent_events_with_lease(
                     {
                         "scene": "event_normalization",
                         "routing_group": limits.routing_group,
-                        "model": None,
+                        "model": ((prediction.llm_trace or {}).get("route") or {}).get("provider_reported_model"),
+                        "logical_request_id": (prediction.llm_trace or {}).get("logical_request_id"),
+                        "physical_request_ids": [
+                            attempt["request_id"]
+                            for attempt in (prediction.llm_trace or {}).get("physical_attempts", [])
+                        ],
                         "status": ("failed" if prediction.llm_failed else "completed"),
                         "error": prediction.llm_error,
                     }
@@ -1014,13 +1050,17 @@ async def normalize_recent_events_with_lease(
                 continue
             previous = retry_states.get(prediction.content_id, {})
             # A budget deferral is not a failed model attempt.
-            attempts = int(previous.get("attempts", 0)) + int(prediction.llm_failed)
+            attempts = int(previous.get("attempts", 0)) + int(
+                prediction.llm_failed and not prediction.llm_budget_refused
+            )
             next_retries.append(
                 {
                     "content_id": prediction.content_id,
                     "attempts": attempts,
                     "retry_after": (now + timedelta(seconds=retry_base * (2 ** max(0, attempts - 1)))).isoformat(),
-                    "cause": "model_unavailable" if prediction.llm_failed else "budget_deferred",
+                    "cause": "model_unavailable"
+                    if prediction.llm_failed and not prediction.llm_budget_refused
+                    else "budget_deferred",
                 }
             )
         exhausted = sum(state["attempts"] >= retry_max for state in next_retries)

@@ -16,13 +16,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import Text, cast, exists, func, or_, select, update
+from sqlalchemy import Text, and_, case, cast, exists, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload, with_expression
 
 from app.core.config import settings
 from app.core.database import database_profile
+from app.core.scoring_caliber import CONFIG
 from app.core.time import naive_utc_now
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_event import (
@@ -530,6 +531,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         search_query: str | None = None,
         recommend_level: str | None = None,
         tag: str | None = None,
+        group_events: bool = False,
     ) -> tuple[Sequence[ContentItem], int]:
         """Like list_paginated but eager-loads analyses relation.
 
@@ -538,7 +540,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         ADR 0001 visibility for user-facing list endpoints. Pass ``None`` (the
         default) for batch/internal callers that must see all rows.
         """
-        stmt = select(self.model).options(selectinload(self.model.analyses))
+        stmt = select(self.model).options(
+            selectinload(self.model.analyses), with_expression(self.model.event_activity_at, literal(None))
+        )
         count_stmt = select(func.count()).select_from(self.model)
         stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
         count_stmt = apply_visibility(count_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
@@ -600,28 +604,14 @@ class ContentRepo(BaseRepository[ContentItem]):
         # 两者口径与前端展示保持一致：等级取最新一条分析；标签命中
         # content.tags 或任一分析的 tags（对应前端 getItemTags 的合并）。
         if recommend_level:
-            stmt = stmt.where(
-                exists(
-                    select(1)
-                    .where(
-                        AiAnalysis.content_id == self.model.id,
-                        AiAnalysis.recommend_level == recommend_level,
-                    )
-                    .order_by(AiAnalysis.created_at.desc(), AiAnalysis.id.desc())
-                    .limit(1)
+            level_match = exists(
+                select(1).where(
+                    AiAnalysis.id == latest_analysis_id_subquery(self.model, AiAnalysis),
+                    AiAnalysis.recommend_level == recommend_level,
                 )
             )
-            count_stmt = count_stmt.where(
-                exists(
-                    select(1)
-                    .where(
-                        AiAnalysis.content_id == self.model.id,
-                        AiAnalysis.recommend_level == recommend_level,
-                    )
-                    .order_by(AiAnalysis.created_at.desc(), AiAnalysis.id.desc())
-                    .limit(1)
-                )
-            )
+            stmt = stmt.where(level_match)
+            count_stmt = count_stmt.where(level_match)
         if tag:
             tag_key = normalize_tag_key(tag)
             tag_match = or_(
@@ -636,6 +626,22 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(tag_match)
             count_stmt = count_stmt.where(tag_match)
 
+        if group_events:
+            # Group AFTER all filters, BEFORE pagination. A source/search/time
+            # filter can therefore retain a matching member even when its
+            # persisted canonical is outside the selected scope.
+            representatives = self._event_representatives(stmt, sort_by=sort_by, sort_order=sort_order)
+            count_stmt = select(func.count()).select_from(representatives).where(representatives.c.report_rank == 1)
+            stmt = (
+                select(self.model)
+                .options(
+                    selectinload(self.model.analyses),
+                    with_expression(self.model.event_activity_at, representatives.c.event_order),
+                )
+                .join(representatives, representatives.c.content_id == self.model.id)
+                .where(representatives.c.report_rank == 1)
+            )
+
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0
 
@@ -643,17 +649,118 @@ class ContentRepo(BaseRepository[ContentItem]):
         # id 作决胜键：created_at/crawled_at 大量并列时，仅按时间排序在
         # LIMIT/OFFSET 边界不稳定，翻页会出现重叠或跳条；前端按页追加
         # 依赖稳定的全局顺序。
-        if sort_order == "desc":
+        if group_events:
+            order_value = representatives.c.event_order
+            stmt = stmt.order_by(
+                order_value.desc().nulls_last() if sort_order == "desc" else order_value.asc().nulls_last(),
+                representatives.c.event_key.desc() if sort_order == "desc" else representatives.c.event_key.asc(),
+            )
+        elif sort_order == "desc":
             stmt = stmt.order_by(sort_col.desc(), self.model.id.desc())
         else:
             stmt = stmt.order_by(sort_col.asc(), self.model.id.asc())
 
         offset = (page - 1) * page_size
         stmt = stmt.offset(offset).limit(page_size)
+        stmt = stmt.execution_options(populate_existing=True)
 
         result = await self.db.execute(stmt)
         items = result.scalars().unique().all()
         return items, total
+
+    def _event_representatives(self, filtered, *, sort_by: str, sort_order: str):
+        """SQL-only read projection; never changes an event's canonical ID."""
+        from app.models.analysis import AiAnalysis
+        from app.models.source_evidence_profile import SourceEvidenceProfile
+
+        canonical = aliased(ContentItem)
+        member = aliased(ContentItem)
+
+        def owner_matches(content):
+            return or_(
+                and_(ContentEventGroup.owner_user_id.is_(None), content.owner_user_id.is_(None)),
+                and_(
+                    ContentEventGroup.owner_user_id.is_not(None),
+                    content.owner_user_id == ContentEventGroup.owner_user_id,
+                ),
+            )
+
+        canonicals = (
+            select(
+                canonical.id.label("content_id"),
+                ContentEventGroup.id.label("event_id"),
+                ContentEventGroup.canonical_content_id,
+                ContentEventGroup.canonical_locked,
+            )
+            .join(canonical, canonical.id == ContentEventGroup.canonical_content_id)
+            .where(ContentEventGroup.status == EventStatus.ACTIVE, owner_matches(canonical))
+        )
+        members = (
+            select(
+                member.id.label("content_id"),
+                ContentEventGroup.id.label("event_id"),
+                ContentEventGroup.canonical_content_id,
+                ContentEventGroup.canonical_locked,
+            )
+            .select_from(ContentEventMember)
+            .join(ContentEventGroup, ContentEventGroup.id == ContentEventMember.event_group_id)
+            .join(member, member.id == ContentEventMember.content_id)
+            .join(canonical, canonical.id == ContentEventGroup.canonical_content_id)
+            .where(
+                ContentEventGroup.status == EventStatus.ACTIVE,
+                ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
+                owner_matches(canonical),
+                owner_matches(member),
+            )
+        )
+        assignments = union_all(canonicals, members).subquery()
+        matching_ids = filtered.with_only_columns(self.model.id).order_by(None).subquery()
+        event_key = case(
+            (assignments.c.event_id.is_not(None), literal("event:") + cast(assignments.c.event_id, Text)),
+            else_=literal("content:") + cast(self.model.id, Text),
+        )
+        sort_col = getattr(self.model, sort_by, self.model.created_at)
+        manual = and_(assignments.c.canonical_locked.is_(True), self.model.id == assignments.c.canonical_content_id)
+        formal = and_(AiAnalysis.id.is_not(None), func.coalesce(AiAnalysis.summary_source, "") != "local_fallback")
+        primary = and_(
+            self.model.owner_user_id.is_(None),
+            SourceEvidenceProfile.managed_by_admin.is_(True),
+            SourceEvidenceProfile.reviewed_at.is_not(None),
+            SourceEvidenceProfile.publisher_kind.in_(("primary", "official")),
+        )
+        substantive = and_(
+            func.coalesce(AiAnalysis.quality_score, AiAnalysis.info_density, 0) > CONFIG["quality_gate_min"],
+            func.coalesce(AiAnalysis.risk_score, 0) < CONFIG["risk_threshold"],
+        )
+        return (
+            select(
+                self.model.id.label("content_id"),
+                event_key.label("event_key"),
+                (func.min(sort_col) if sort_order == "asc" else func.max(sort_col))
+                .over(partition_by=event_key)
+                .label("event_order"),
+                func.row_number()
+                .over(
+                    partition_by=event_key,
+                    order_by=(
+                        case((formal, 1), else_=0).desc(),
+                        case((substantive, 1), else_=0).desc(),
+                        case((manual, 1), else_=0).desc(),
+                        case((primary, 1), else_=0).desc(),
+                        func.coalesce(AiAnalysis.quality_score, 0).desc(),
+                        func.coalesce(AiAnalysis.curation_score, 0).desc(),
+                        func.coalesce(self.model.published_at, self.model.crawled_at, self.model.created_at).asc(),
+                        self.model.id.asc(),
+                    ),
+                )
+                .label("report_rank"),
+            )
+            .join(matching_ids, matching_ids.c.id == self.model.id)
+            .outerjoin(assignments, assignments.c.content_id == self.model.id)
+            .outerjoin(AiAnalysis, AiAnalysis.id == latest_analysis_id_subquery(self.model, AiAnalysis))
+            .outerjoin(SourceEvidenceProfile, SourceEvidenceProfile.source_id == self.model.source_id)
+            .subquery()
+        )
 
     async def list_tag_sources_for_facets(
         self,

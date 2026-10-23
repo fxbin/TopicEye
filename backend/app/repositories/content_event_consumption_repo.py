@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, and_, cast, func, literal, or_, select, union_all
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -44,6 +44,8 @@ class EventAssignment:
     relation_type: str | None = None
     confidence: float | None = None
     canonical_summary_source: str | None = None
+    canonical_locked: bool = False
+    display_is_primary: bool = False
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,8 @@ class EventDisplayGroup:
     member_count: int
     source_count: int
     members: tuple[EventDisplayMember, ...]
+    version: int = 1
+    update_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -178,6 +182,16 @@ class ContentEventConsumptionRepository:
         canonical = aliased(ContentItem)
         member_content = aliased(ContentItem)
         canonical_guard = aliased(ContentItem)
+        canonical_profile = aliased(SourceEvidenceProfile)
+        member_profile = aliased(SourceEvidenceProfile)
+
+        def primary(content, profile):
+            return and_(
+                content.owner_user_id.is_(None),
+                profile.managed_by_admin.is_(True),
+                profile.reviewed_at.is_not(None),
+                profile.publisher_kind.in_(("primary", "official")),
+            )
 
         for content_batch in _chunks(content_ids):
             canonical_result = await self.db.execute(
@@ -185,6 +199,8 @@ class ContentEventConsumptionRepository:
                     ContentEventGroup.id,
                     ContentEventGroup.canonical_content_id,
                     canonical_summary_source.label("canonical_summary_source"),
+                    ContentEventGroup.canonical_locked,
+                    primary(canonical, canonical_profile).label("display_is_primary"),
                 )
                 .join(
                     canonical,
@@ -196,8 +212,9 @@ class ContentEventConsumptionRepository:
                     _content_matches_group_owner(canonical),
                     ContentEventGroup.canonical_content_id.in_(content_batch),
                 )
+                .outerjoin(canonical_profile, canonical_profile.source_id == canonical.source_id)
             )
-            for event_group_id, canonical_content_id, summary_source in canonical_result.all():
+            for event_group_id, canonical_content_id, summary_source, locked, is_primary in canonical_result.all():
                 content_id = int(canonical_content_id)
                 assignments[content_id] = EventAssignment(
                     content_id=content_id,
@@ -205,6 +222,8 @@ class ContentEventConsumptionRepository:
                     canonical_content_id=content_id,
                     is_canonical=True,
                     canonical_summary_source=summary_source,
+                    canonical_locked=bool(locked),
+                    display_is_primary=bool(is_primary),
                 )
 
             member_result = await self.db.execute(
@@ -215,6 +234,8 @@ class ContentEventConsumptionRepository:
                     ContentEventMember.relation_type,
                     ContentEventMember.confidence,
                     canonical_summary_source.label("canonical_summary_source"),
+                    ContentEventGroup.canonical_locked,
+                    primary(member_content, member_profile).label("display_is_primary"),
                 )
                 .join(
                     ContentEventMember,
@@ -236,6 +257,7 @@ class ContentEventConsumptionRepository:
                     ContentEventMember.review_status.in_(_ACCEPTED_REVIEWS),
                     ContentEventMember.content_id.in_(content_batch),
                 )
+                .outerjoin(member_profile, member_profile.source_id == member_content.source_id)
             )
             for row in member_result.all():
                 content_id = int(row[2])
@@ -247,6 +269,8 @@ class ContentEventConsumptionRepository:
                     relation_type=_enum_value(row[3]),
                     confidence=float(row[4]),
                     canonical_summary_source=row[5],
+                    canonical_locked=bool(row[6]),
+                    display_is_primary=bool(row[7]),
                 )
         return assignments
 
@@ -256,10 +280,19 @@ class ContentEventConsumptionRepository:
         *,
         visible_user_id: int | None,
         member_limit: int = 5,
+        member_offset: int = 0,
+        representatives: dict[int, int] | None = None,
     ) -> dict[int, EventDisplayGroup]:
-        """Load canonical summaries and a stable top-N member expansion."""
+        """Load other accepted reports relative to each displayed representative.
+
+        Group identity and canonical ownership are unchanged. A non-canonical
+        representative sees the original canonical in its expansion instead of
+        seeing itself. Group share locks keep counts/pages on one version until
+        the caller's short read transaction ends.
+        """
 
         safe_limit = max(0, min(int(member_limit), 20))
+        safe_offset = max(0, int(member_offset))
         groups: dict[int, dict[str, Any]] = {}
 
         for group_batch in _chunks(event_group_ids):
@@ -268,6 +301,7 @@ class ContentEventConsumptionRepository:
                 select(
                     ContentEventGroup.id,
                     ContentEventGroup.canonical_content_id,
+                    ContentEventGroup.version,
                 )
                 .join(
                     canonical,
@@ -279,10 +313,14 @@ class ContentEventConsumptionRepository:
                     _visible_group_clause(visible_user_id),
                     _content_matches_group_owner(canonical),
                 )
+                .order_by(ContentEventGroup.id)
+                .with_for_update(read=True, of=ContentEventGroup)
             )
-            for event_group_id, canonical_content_id in canonical_result.all():
+            for event_group_id, canonical_content_id, version in canonical_result.all():
                 groups[int(event_group_id)] = {
                     "canonical_content_id": int(canonical_content_id),
+                    "version": int(version),
+                    "update_count": 0,
                     "member_count": 0,
                     "source_count": 1,
                     "members": [],
@@ -296,6 +334,7 @@ class ContentEventConsumptionRepository:
                 select(
                     ContentEventMember.event_group_id,
                     func.count(ContentEventMember.id),
+                    func.sum(case((ContentEventMember.relation_type == EventRelationType.UPDATE, 1), else_=0)),
                 )
                 .join(
                     ContentEventGroup,
@@ -314,9 +353,10 @@ class ContentEventConsumptionRepository:
                 )
                 .group_by(ContentEventMember.event_group_id)
             )
-            for event_group_id, member_count in member_count_result.all():
+            for event_group_id, member_count, update_count in member_count_result.all():
                 if int(event_group_id) in groups:
                     groups[int(event_group_id)]["member_count"] = int(member_count)
+                    groups[int(event_group_id)]["update_count"] = int(update_count or 0)
 
             canonical_source = aliased(ContentItem)
             member_source = aliased(ContentItem)
@@ -365,12 +405,17 @@ class ContentEventConsumptionRepository:
                 if int(event_group_id) in groups:
                     groups[int(event_group_id)]["source_count"] = int(source_count)
 
+            excluded_ids = [
+                (representatives or {}).get(event_id, groups[event_id]["canonical_content_id"])
+                for event_id in group_batch
+                if event_id in groups
+            ]
             ranked_content = aliased(ContentItem)
-            ranked = (
+            member_rows = (
                 select(
                     ContentEventMember.event_group_id.label("event_group_id"),
                     ContentEventMember.content_id.label("content_id"),
-                    ContentEventMember.relation_type.label("relation_type"),
+                    cast(ContentEventMember.relation_type, String).label("relation_type"),
                     ContentEventMember.confidence.label("confidence"),
                     ContentEventMember.reason.label("reason"),
                     ranked_content.title.label("title"),
@@ -381,19 +426,9 @@ class ContentEventConsumptionRepository:
                     ranked_content.platform.label("platform"),
                     ranked_content.published_at.label("published_at"),
                     ranked_content.crawled_at.label("crawled_at"),
-                    func.row_number()
-                    .over(
-                        partition_by=ContentEventMember.event_group_id,
-                        order_by=(
-                            func.coalesce(
-                                ranked_content.published_at,
-                                ranked_content.crawled_at,
-                                ranked_content.created_at,
-                            ).asc(),
-                            ranked_content.id.asc(),
-                        ),
-                    )
-                    .label("member_rank"),
+                    func.coalesce(
+                        ranked_content.published_at, ranked_content.crawled_at, ranked_content.created_at
+                    ).label("sort_time"),
                 )
                 .join(
                     ContentEventGroup,
@@ -409,12 +444,50 @@ class ContentEventConsumptionRepository:
                     _visible_group_clause(visible_user_id),
                     _content_matches_group_owner(ranked_content),
                     ContentEventMember.review_status.in_(_ACCEPTED_REVIEWS),
+                    ranked_content.id.notin_(excluded_ids),
                 )
-                .subquery()
             )
+            canonical_rows = (
+                select(
+                    ContentEventGroup.id.label("event_group_id"),
+                    canonical.id.label("content_id"),
+                    literal("canonical").label("relation_type"),
+                    literal(1.0).label("confidence"),
+                    literal(None).label("reason"),
+                    canonical.title,
+                    canonical.url,
+                    canonical.source_id,
+                    canonical.source_name,
+                    canonical.source_type,
+                    canonical.platform,
+                    canonical.published_at,
+                    canonical.crawled_at,
+                    func.coalesce(canonical.published_at, canonical.crawled_at, canonical.created_at).label(
+                        "sort_time"
+                    ),
+                )
+                .join(canonical, canonical.id == ContentEventGroup.canonical_content_id)
+                .where(
+                    ContentEventGroup.id.in_(group_batch),
+                    ContentEventGroup.status == EventStatus.ACTIVE,
+                    _visible_group_clause(visible_user_id),
+                    _content_matches_group_owner(canonical),
+                    canonical.id.notin_(excluded_ids),
+                )
+            )
+            reports = union_all(member_rows, canonical_rows).subquery()
+            ranked = select(
+                reports,
+                func.row_number()
+                .over(
+                    partition_by=reports.c.event_group_id,
+                    order_by=(reports.c.sort_time.asc(), reports.c.content_id.asc()),
+                )
+                .label("member_rank"),
+            ).subquery()
             member_result = await self.db.execute(
                 select(ranked)
-                .where(ranked.c.member_rank <= safe_limit)
+                .where(ranked.c.member_rank > safe_offset, ranked.c.member_rank <= safe_offset + safe_limit)
                 .order_by(
                     ranked.c.event_group_id,
                     ranked.c.member_rank,
@@ -449,6 +522,8 @@ class ContentEventConsumptionRepository:
                 member_count=int(values["member_count"]),
                 source_count=int(values["source_count"]),
                 members=tuple(values["members"]),
+                version=int(values["version"]),
+                update_count=int(values["update_count"]),
             )
             for event_group_id, values in groups.items()
         }

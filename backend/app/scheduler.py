@@ -901,6 +901,7 @@ async def _normalize_content_events() -> dict:
         normalize_recent_events_with_lease,
     )
     from app.services.content_event_service import ContentEventConflictError
+    from app.services.content_read_cache import invalidate_normalized_event_caches
 
     now = datetime.now(UTC)
     bucket_minute = now.minute - (now.minute % 15)
@@ -916,6 +917,7 @@ async def _normalize_content_events() -> dict:
                 idempotency_key=idempotency_key,
             )
             await db.commit()
+            invalidate_normalized_event_caches(result, mode=mode)
             logger.info("Scheduler: content event normalization done — %s", result)
             return result
         except ContentEventConflictError:

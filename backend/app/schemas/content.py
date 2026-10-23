@@ -18,6 +18,7 @@ class ContentResponse(BaseModel):
     platform: str | None = None
     author: str | None = None
     published_at: datetime | None = None
+    event_activity_at: datetime | None = None
     crawled_at: datetime
     content_hash: str | None = None
     summary: str | None = None

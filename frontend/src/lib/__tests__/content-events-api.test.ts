@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { contentEventsAdminApi } from '@/lib/api';
+import { contentEventsAdminApi, contentsApi } from '@/lib/api';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -10,6 +10,23 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('contentsApi.getEventCoverage', () => {
+  it('carries the representative, pagination and expected event version', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ content_id: 2, event: null }));
+    vi.stubGlobal('fetch', fetchMock);
+    await contentsApi.getEventCoverage(2, { member_offset: 5, member_limit: 20, expected_event_id: 10, expected_version: 3 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/contents/2/event/coverage?member_offset=5&member_limit=20&expected_event_id=10&expected_version=3',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('preserves a coverage conflict so the UI can reload the first page', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ detail: 'Event changed; reload coverage' }, 409)));
+    await expect(contentsApi.getEventCoverage(2)).rejects.toMatchObject({ status: 409 });
+  });
 });
 
 describe('contentEventsAdminApi', () => {

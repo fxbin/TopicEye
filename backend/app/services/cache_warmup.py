@@ -164,6 +164,7 @@ async def warmup_content_list(db) -> None:
     from datetime import datetime, timedelta
 
     from app.repositories.ignored_repo import IgnoredRepo
+    from app.services.content_event_coverage import attach_event_coverage
 
     params = home_content_list_cache_params()
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
@@ -176,6 +177,8 @@ async def warmup_content_list(db) -> None:
         exclude_ids=ignored_ids,
         exclude_source_types={"DouyinHot"},
         time_cutoff=datetime.now(UTC) - timedelta(hours=params.hours or 48),
+        public_only=True,
+        group_events=params.group_events,
     )
     payload = {
         "items": [content_with_latest_analysis(item) for item in items],
@@ -183,6 +186,8 @@ async def warmup_content_list(db) -> None:
         "page": params.page,
         "page_size": params.page_size,
     }
+    if params.group_events:
+        await attach_event_coverage(db, payload["items"], visible_user_id=None)
     set_cached_content_list(params, payload)
 
 

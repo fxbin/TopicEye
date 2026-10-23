@@ -30,6 +30,7 @@ class ContentListCacheParams:
     recommend_level: str | None = None
     tag: str | None = None
     user_id: int | None = None  # None = anonymous (public-only), int = user-scoped
+    group_events: bool = False
 
     @property
     def cacheable(self) -> bool:
@@ -44,6 +45,7 @@ class ContentListCacheParams:
             "sort_by": self.sort_by,
             "sort_order": self.sort_order,
             "user_id": "" if self.user_id is None else str(self.user_id),
+            "group_events": int(self.group_events),
         }
         optional = {
             "source_type": self.source_type,
@@ -62,7 +64,7 @@ class ContentListCacheParams:
 
 
 def home_content_list_cache_params() -> ContentListCacheParams:
-    return ContentListCacheParams(page=1, page_size=HOME_CONTENT_LIST_INITIAL_PAGE_SIZE, hours=24)
+    return ContentListCacheParams(page=1, page_size=HOME_CONTENT_LIST_INITIAL_PAGE_SIZE, hours=24, group_events=True)
 
 
 def get_cached_content_list(params: ContentListCacheParams, *, ttl_seconds: float):

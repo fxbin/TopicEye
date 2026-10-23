@@ -43,7 +43,6 @@ import { mergeItemsById } from '@/lib/utils';
 import ContentAnalysisPanel from '@/components/ContentAnalysisPanel';
 import { startContentWorkflow } from '@/lib/workflow';
 import {
-  parseUTC,
   formatClock as formatTime,
   timeAgo,
   isToday,
@@ -79,6 +78,8 @@ export default function HomePage() {
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRequestSequence = useRef(0);
+  const moreRequestPending = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,10 +107,16 @@ export default function HomePage() {
   // Fetch data
   useEffect(() => {
     let cancelled = false;
+    const sequence = ++contentRequestSequence.current;
+    moreRequestPending.current = false;
+    const invalidateSequence = () => {
+      if (contentRequestSequence.current === sequence) ++contentRequestSequence.current;
+    };
 
     (async () => {
       try {
         setLoading(true);
+        setLoadingMore(false);
         setNextPage(2);
         setLoadMoreError(null);
         setError(null);
@@ -120,6 +127,7 @@ export default function HomePage() {
           category: activeCategory === '全部' ? undefined : activeCategory,
           q: searchQuery.trim() || undefined,
           include_trend_sources: false,
+          group_events: true,
           recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
           tag: activeTag === '全部' ? undefined : activeTag,
         });
@@ -147,8 +155,9 @@ export default function HomePage() {
 
     return () => {
       cancelled = true;
+      invalidateSequence();
     };
-  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, reloadRevision, reportContentTotal]);
+  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, reloadRevision, reportContentTotal, currentUser?.id]);
 
   // 标签统计与基础口径联动（时间/来源/分类/搜索），覆盖口径内全部内容；
   // 等级/标签筛选不改变 chips 本身，只改变列表结果。
@@ -179,6 +188,9 @@ export default function HomePage() {
   }, []);
 
   const handleLoadMore = useCallback(async () => {
+    if (moreRequestPending.current) return;
+    moreRequestPending.current = true;
+    const sequence = contentRequestSequence.current;
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
@@ -192,16 +204,21 @@ export default function HomePage() {
         category: activeCategory === '全部' ? undefined : activeCategory,
         q: searchQuery.trim() || undefined,
         include_trend_sources: false,
+        group_events: true,
         recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
         tag: activeTag === '全部' ? undefined : activeTag,
       });
+      if (sequence !== contentRequestSequence.current) return;
       setItems((prev) => mergeItemsById(prev, res.items || []));
       setTotalAvailable((prev) => res.total ?? prev);
       setNextPage((prev) => prev + 1);
     } catch (err) {
-      setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
+      if (sequence === contentRequestSequence.current) setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
     } finally {
-      setLoadingMore(false);
+      if (sequence === contentRequestSequence.current) {
+        moreRequestPending.current = false;
+        setLoadingMore(false);
+      }
     }
   }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
 
@@ -234,11 +251,8 @@ export default function HomePage() {
   // 客户端只负责按发布时间排序展示。
   const filtered = useMemo(() => {
     const result = [...items];
-    result.sort((a, b) => {
-      const ta = parseUTC(getContentTime(a)).getTime() || 0;
-      const tb = parseUTC(getContentTime(b)).getTime() || 0;
-      return tb - ta;
-    });
+    // The server paginates the same event order used for totals. Re-sorting
+    // representatives by their own article date would undo that ordering.
     return result;
   }, [items]);
 
@@ -318,8 +332,8 @@ export default function HomePage() {
         title="今日选题"
         date={dateStr}
         stats={[
-          { label: '总内容', value: displayedTotalCount, color: 'var(--color-primary-text)' },
-          { label: '今日新增', value: todayCount, color: 'var(--color-teal-text)' },
+          { label: '选题事件', value: displayedTotalCount, color: 'var(--color-primary-text)' },
+          { label: '今日已加载', value: todayCount, color: 'var(--color-teal-text)' },
         ]}
       />
 
@@ -539,7 +553,7 @@ export default function HomePage() {
                     </button>
                   </div>
                 )}
-                <div className="mt-2 text-[11px] text-gray-400">首屏优先展示最新内容，按需继续展开。</div>
+                <div className="mt-2 text-xs text-gray-500">同一事件合并展示，其它报道可在卡片内展开。</div>
               </div>
             )}
             {filtered.length === 0 && (

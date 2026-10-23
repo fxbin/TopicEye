@@ -37,6 +37,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/components/ClientLayout';
 import SourceBadge from '@/components/SourceBadge';
+import EventCoverage from '@/components/EventCoverage';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { feedbackApi } from '@/lib/api';
 import type { FeedbackType } from '@/lib/api';
@@ -236,7 +237,7 @@ export function EditorialItem({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-xs text-gray-300">/</span>
-          <span className="shrink-0 text-xs text-gray-500">{timeLabel || time}</span>
+          <span className="shrink-0 text-xs text-gray-500">{item.event_activity_at && (item.normalization?.member_count ?? 0) > 0 ? '事件更新 ' : ''}{timeLabel || time}</span>
           {level && <RecommendBadge level={level} />}
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
@@ -251,6 +252,8 @@ export function EditorialItem({
       <h3 className="mb-2 text-base font-semibold leading-[1.55] text-gray-900">
         <button type="button" className="text-left hover:text-primary-text" onClick={event => { event.stopPropagation(); handleCardClick(); }}>{item.title}</button>
       </h3>
+
+      <EventCoverage item={item} />
 
       {recommendation && (
         <div className="line-clamp-2 mb-3 border-l-[3px] border-primary py-1.5 pl-3 text-[13px] leading-7 text-gray-600">

@@ -67,6 +67,29 @@ class ContentEventLookupResponse(BaseModel):
     event: ContentEventResponse | None
 
 
+class ContentEventCoverageMember(ContentEventContentResponse):
+    relation_type: Literal["canonical", "duplicate", "corroboration", "update"]
+
+
+class ContentEventCoverageResponse(BaseModel):
+    event_id: int
+    version: int
+    canonical_id: int
+    representative_id: int
+    member_count: int = Field(ge=0)
+    source_count: int = Field(ge=0)
+    update_count: int = Field(default=0, ge=0)
+    member_offset: int = Field(ge=0)
+    next_offset: int = Field(ge=0)
+    has_more: bool
+    members: list[ContentEventCoverageMember]
+
+
+class ContentEventCoverageLookupResponse(BaseModel):
+    content_id: int
+    event: ContentEventCoverageResponse | None
+
+
 class ContentEventNormalizeRequest(BaseModel):
     hours: int = Field(default=24, ge=1, le=720)
     mode: Literal["shadow", "write"] = "shadow"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -442,6 +443,39 @@ async def test_scheduler_off_has_no_database_or_service_side_effect(monkeypatch)
     assert result == {"status": "off", "scanned": 0}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["shadow", "write"])
+async def test_scheduler_invalidates_event_cache_only_after_committed_write(monkeypatch, mode):
+    from app import scheduler as scheduler_module
+    from app.services import content_read_cache
+
+    events = []
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def commit(self):
+            events.append("commit")
+
+        async def rollback(self):
+            events.append("rollback")
+
+    async def normalize(*args, **kwargs):
+        return {"created_members": 2}
+
+    monkeypatch.setattr(scheduler_module.settings, "EVENT_NORMALIZATION_MODE", mode)
+    monkeypatch.setattr(scheduler_module, "async_session", Session)
+    monkeypatch.setattr(normalization, "normalize_recent_events_with_lease", normalize)
+    monkeypatch.setattr(content_read_cache, "invalidate_content_read_caches", lambda: events.append("invalidate"))
+    result = await scheduler_module._normalize_content_events()
+    assert result["created_members"] == 2
+    assert events == (["commit", "invalidate"] if mode == "write" else ["commit"])
+
+
 def test_prediction_audit_respects_default_json_byte_limit(monkeypatch):
     predictions = [
         {
@@ -485,3 +519,126 @@ def test_run_model_matches_migration_contract():
     assert any(
         constraint.name == "uq_content_event_normalization_runs_scope_key" for constraint in run_table.constraints
     )
+
+
+def _snapshot(title: str, *, days_ago: int = 0, source: int = 1, summary: str = ""):
+    moment = datetime.now(UTC) - timedelta(days=days_ago)
+    return normalization._ContentSnapshot(
+        id=source * 100 + days_ago,
+        title=title,
+        summary=summary,
+        source_id=source,
+        source_name=f"publisher-{source}",
+        platform="rss",
+        tags=[],
+        owner_user_id=None,
+        published_at=moment,
+        crawled_at=moment,
+        created_at=moment,
+    )
+
+
+def test_alternative_headlines_reach_fact_check_instead_of_standalone():
+    canonical = _snapshot("MiniMax 宣布 M3.1 Flash 权重公开，总参数 428B，每 token 激活 23B，提供 Hugging Face 下载。")
+    incoming = _snapshot("MiniMax 开放 M3.1 Flash 权重，Together AI 提供首日托管", source=2)
+    ranked = normalization._best_candidates(
+        incoming, [normalization._Candidate(event_id=7, canonical=canonical)], limit=8
+    )
+    prediction, boundary = normalization._local_prediction(incoming, ranked)
+    assert prediction is None, "entity/version overlap must reach fact checking, never auto-merge"
+    assert boundary is not None and boundary.event_id == 7
+
+
+@pytest.mark.parametrize(
+    ("canonical_title", "incoming_title", "days_ago"),
+    [
+        ("OpenAI 发布全新推理模型", "OpenAI 发布全新推理模型", 90),
+        ("OpenAI 发布 GPT-5.1 模型", "OpenAI 发布 GPT-5.2 模型", 0),
+        ("MiniMax 开源 M3.1 Flash", "MiniMax 开源 M3.2 Flash", 0),
+    ],
+)
+def test_different_dates_or_versions_do_not_merge(canonical_title, incoming_title, days_ago):
+    canonical = _snapshot(canonical_title, days_ago=days_ago)
+    incoming = _snapshot(incoming_title)
+    incoming = normalization._ContentSnapshot(**{**incoming.__dict__, "id": 999})
+    ranked = normalization._best_candidates(
+        incoming, [normalization._Candidate(event_id=7, canonical=canonical)], limit=8
+    )
+    prediction, boundary = normalization._local_prediction(incoming, ranked)
+    assert prediction is not None and prediction.decision == "standalone"
+    assert boundary is None
+
+
+def test_similar_same_publisher_headlines_require_fact_check():
+    canonical = _snapshot("OpenAI 发布 GPT-5.2，开放模型 API，面向企业开发者提供服务")
+    incoming = _snapshot("OpenAI 发布 GPT-5.2，开放模型 API，面向个人开发者提供服务")
+    # Same publisher but distinct content identities.
+    incoming = normalization._ContentSnapshot(**{**incoming.__dict__, "id": 101})
+    ranked = normalization._best_candidates(
+        incoming, [normalization._Candidate(event_id=7, canonical=canonical)], limit=8
+    )
+    prediction, boundary = normalization._local_prediction(incoming, ranked)
+    assert prediction is None
+    assert boundary is not None
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("Anthropic 禁止辱骂 Claude 模型", "Anthropic 更新 Claude 使用政策，禁止对模型持续无必要的辱骂或残忍行为"),
+        ("OpenAI 年化营收被曝接近 500 亿美元", "OpenAI annualised revenues $20B less than previously signalled"),
+        ("3 名遭解雇 OpenAI 研究员发表公开信", "OpenAI 解雇三名安全研究员，当事人发公开信称因优先安全被清除"),
+    ],
+)
+def test_actor_action_recall_reaches_boundary_without_product_version(left, right):
+    canonical, incoming = _snapshot(left), _snapshot(right, source=2)
+    ranked = normalization._best_candidates(
+        incoming, [normalization._Candidate(event_id=7, canonical=canonical)], limit=8
+    )
+    prediction, boundary = normalization._local_prediction(incoming, ranked)
+    assert prediction is None and boundary is not None
+
+
+def test_summary_fact_conflict_blocks_exact_title_fast_path():
+    canonical = _snapshot("OpenAI 发布新产品", summary="昨天推出了新的编码助手，支持批量审查代码和自动化测试。")
+    incoming = _snapshot("OpenAI 发布新产品", summary="今天上线音频生成服务，用于音乐制作和多语言配音。")
+    incoming = normalization._ContentSnapshot(**{**incoming.__dict__, "id": 101})
+    ranked = normalization._best_candidates(
+        incoming, [normalization._Candidate(event_id=7, canonical=canonical)], limit=8
+    )
+    prediction, boundary = normalization._local_prediction(incoming, ranked)
+    assert prediction is None and boundary is not None
+
+
+@pytest.mark.asyncio
+async def test_model_can_select_second_candidate_and_cannot_invent_target(monkeypatch):
+    incoming = _snapshot("MiniMax 开放 M3.1 Flash 模型权重", source=3)
+    candidates = [
+        normalization._Candidate(event_id=7, canonical=_snapshot("MiniMax M3.1 Flash 使用教程"), score=0.8),
+        normalization._Candidate(event_id=8, canonical=_snapshot("MiniMax M3.1 Flash 权重公开", source=2), score=0.74),
+    ]
+
+    async def choose_second(messages, **kwargs):
+        request = json.loads(messages[1]["content"])
+        assert len(request["candidates"]) == 2
+        return {
+            "decision": "duplicate",
+            "target_content_id": candidates[1].canonical.id,
+            "confidence": 0.96,
+            "reason": "same weight release, not the tutorial",
+        }
+
+    monkeypatch.setattr(normalization, "call_llm_json", choose_second)
+    prediction = await normalization._classify_boundary(
+        incoming, candidates, limits=normalization._limits(), semaphore=asyncio.Semaphore(1)
+    )
+    assert prediction.target_event_id == 8 and prediction.review_status == "auto"
+
+    async def invented_target(*args, **kwargs):
+        return {"decision": "duplicate", "target_content_id": 99999, "confidence": 1, "reason": "invented"}
+
+    monkeypatch.setattr(normalization, "call_llm_json", invented_target)
+    prediction = await normalization._classify_boundary(
+        incoming, candidates, limits=normalization._limits(), semaphore=asyncio.Semaphore(1)
+    )
+    assert prediction.review_status == "pending" and prediction.llm_failed is True

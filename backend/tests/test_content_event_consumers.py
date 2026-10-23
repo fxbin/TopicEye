@@ -314,7 +314,7 @@ def _pick_row(content_id: int) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_today_picks_hides_all_event_members_and_exposes_reason(
+async def test_today_picks_hides_all_event_members_and_exposes_coverage(
     monkeypatch,
 ):
     rows = [_pick_row(i) for i in (1, 2, 3, 4)]
@@ -369,10 +369,12 @@ async def test_today_picks_hides_all_event_members_and_exposes_reason(
         *,
         visible_user_id,
         member_limit,
+        representatives,
     ):
         assert set(event_group_ids) == {10}
         assert visible_user_id is None
         assert member_limit == 5
+        assert representatives == {10: 1}
         return groups
 
     monkeypatch.setattr(
@@ -399,14 +401,18 @@ async def test_today_picks_hides_all_event_members_and_exposes_reason(
     )
 
     assert {item["id"] for item in payload["items"]} == {1, 4}
-    assert payload["event_members_hidden"] == 2
+    # The group whose canonical (99) is outside this window keeps an in-scope
+    # representative (3), instead of silently hiding the entire event.
+    assert payload["event_members_hidden"] == 1
     # 名次截断后 items 按分数序（id4 在前），canonical 的归一化信息按 id 定位
     canonical = next(item for item in payload["items"] if item["id"] == 1)
     normalization = canonical["normalization"]
     assert normalization["member_count"] == 2
     assert normalization["has_more"] is True
     assert normalization["members"][0]["relation_type"] == "corroboration"
-    assert normalization["members"][0]["reason"] == "same release reported by another publisher"
+    assert "reason" not in normalization["members"][0]
+    assert normalization["event_id"] == 10
+    assert normalization["representative_id"] == 1
 
 
 @pytest.mark.asyncio

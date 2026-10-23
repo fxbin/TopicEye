@@ -45,6 +45,7 @@ def _event_truth_without_assignments(monkeypatch):
         *,
         visible_user_id,
         member_limit,
+        representatives,
     ):
         return {}
 
@@ -1115,3 +1116,15 @@ async def test_fallback_event_canonical_cannot_hide_reviewed_representative(monk
     assert payload["total"] == 1
     assert payload["pending_review"]["total"] == int(canonical_in_window)
     assert payload["event_members_hidden"] == 1
+
+
+def test_thin_primary_report_cannot_hide_a_curatable_member():
+    from app.repositories.content_event_consumption_repo import EventAssignment
+
+    rows = [{**_duckdb_rows()[0], "id": i, "summary_source": "llm_lite"} for i in (1, 2)]
+    rows[0]["quality_score"] = 10
+    assignments = {
+        1: EventAssignment(1, 10, 1, True, canonical_locked=True, display_is_primary=True),
+        2: EventAssignment(2, 10, 1, False, canonical_locked=True),
+    }
+    assert [item["id"] for item in today_picks._apply_event_assignments(rows, assignments)] == [2]

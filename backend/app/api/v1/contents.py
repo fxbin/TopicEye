@@ -29,6 +29,7 @@ from app.repositories.content_repo import ContentRepo
 from app.repositories.favorite_repo import FavoriteRepo
 from app.schemas.analysis import AiAnalysisResponse
 from app.schemas.content import ArticleReaderResponse, ContentListResponse, ContentResponse
+from app.services.content_event_coverage import attach_event_coverage
 from app.services.content_list_cache import (
     ContentListCacheParams,
     get_cached_content_list,
@@ -150,6 +151,7 @@ async def list_contents(
     sort_by: str = Query("created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score)$"),
     sort_order: str = Query("desc", pattern=r"^(asc|desc)$"),
     admin_view: bool = Query(False, description="Return management fields; admin only"),
+    group_events: bool = Query(False, description="按已接受的事件关系折叠报道；筛选后按事件分页，仅支持时间排序"),
     current_user: User | None = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -159,6 +161,8 @@ async def list_contents(
 
     require_admin_view(admin_view, current_user)
     include_raw_content = is_admin(current_user)
+    if group_events and sort_by == "curation_score":
+        raise HTTPException(400, "group_events 暂只支持 created_at / published_at / crawled_at 排序")
 
     cache_params = ContentListCacheParams(
         page=page,
@@ -177,6 +181,7 @@ async def list_contents(
         recommend_level=recommend_level,
         tag=tag,
         user_id=current_user.id if current_user is not None else None,
+        group_events=group_events,
     )
     if cache_params.cacheable and not include_raw_content:
         cached = get_cached_content_list(cache_params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
@@ -246,6 +251,7 @@ async def list_contents(
         search_query=q,
         recommend_level=recommend_level,
         tag=tag,
+        group_events=group_events,
     )
     payload = {
         "items": [content_with_latest_analysis(i, include_raw_content=include_raw_content) for i in items],
@@ -253,6 +259,10 @@ async def list_contents(
         "page": page,
         "page_size": page_size,
     }
+    if group_events:
+        await attach_event_coverage(
+            db, payload["items"], visible_user_id=current_user.id if current_user is not None else None
+        )
     if cache_params.cacheable and not include_raw_content:
         content = set_cached_content_list(cache_params, payload)
         return Response(

@@ -15,6 +15,11 @@ OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官�
 - **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
   `app/repositories/`，日报版本/归属/选题标记也在 PG）；DuckDB 承担分析聚合查询（picks / stats / topics / reports，见
   `app/services/duckdb_service.py` 及其 mixin）。跨层读写时先确认自己在哪一套里。
+- **事件归并与展示分开**：PG `content_event_groups` / `content_event_members` 是事实源，
+  只有 active + auto/confirmed 关系参与首页与精选折叠。持久化 canonical 与当前展示报道
+  不一定相同；旧 `content_relations.same_event` 只是相似关联，不能用于隐藏文章。
+  读取、分页版本及 off → shadow → write 启用门槛见
+  [`docs/content-event-coverage.md`](docs/content-event-coverage.md)。
 - **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见
   [`.agents/notes/`](.agents/notes/)，跑测守则见第三节。
 

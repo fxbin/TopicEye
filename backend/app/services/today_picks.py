@@ -21,6 +21,7 @@ from app.services.content_summary import clean_content_summary
 from app.services.duckdb_service import query_today_picks, query_topics, run_query
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
+from app.services.scoring_event_selection import event_candidate_ids
 
 logger = logging.getLogger(__name__)
 
@@ -164,9 +165,18 @@ async def build_today_picks(
     working_rows = _apply_event_assignments(rows, event_assignments)
     hidden_member_count = len(rows) - len(working_rows)
 
-    scored_rows = _score_rows(working_rows)
-    if not scored_rows:
-        return _empty_payload()
+    all_scored_rows = _score_rows(working_rows, selected_only=False)
+    scored_rows = [(bd, row) for bd, row in all_scored_rows if bd.selected]
+    # Pending candidates remain readable but never contribute to formal counts,
+    # quality stats, personalization slots, or topic recommendations.
+    pending_rows = [row for _bd, row in all_scored_rows if row.get("summary_source") == "local_fallback"]
+    pending_review = {
+        "total": len(pending_rows),
+        "items": [
+            {"id": row["id"], "title": row.get("title") or "未命名内容", "source_name": row.get("source_name")}
+            for row in pending_rows[: limit or 40]
+        ],
+    }
 
     # The scorer still sees the entire candidate pool (needed for percentile
     # selection), while the response only materializes the requested first page.
@@ -242,6 +252,7 @@ async def build_today_picks(
         topic_map,
         total=total,
         event_members_hidden=hidden_member_count,
+        pending_review=pending_review,
     )
 
 
@@ -400,6 +411,7 @@ async def _build_today_picks_via_oltp(
 def _empty_payload() -> dict:
     return {
         "items": [],
+        "pending_review": {"items": [], "total": 0},
         "total": 0,
         "event_members_hidden": 0,
         "topics": [],
@@ -408,7 +420,7 @@ def _empty_payload() -> dict:
     }
 
 
-def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
+def _score_rows(rows: list[dict], *, selected_only: bool = True) -> list[tuple[ScoreBreakdown, dict]]:
     input_rows: list[tuple[ScoringInput, dict]] = [(_row_to_scoring_input(row), row) for row in rows]
     row_map = {item.content_id: row for item, row in input_rows}
     scored = score_items([item for item, _row in input_rows])
@@ -417,7 +429,9 @@ def _score_rows(rows: list[dict]) -> list[tuple[ScoreBreakdown, dict]]:
     # 决定用固定阈值还是百分位阈值；percentile 模式下实际阈值可能是 18
     # （P70 of all final_scores），再用硬编码 55 兜底会把 percentile 选出来的
     # 全部过滤掉。直接用 breakdown.selected 即可。
-    return [(breakdown, row_map[item.content_id]) for breakdown, item in scored if breakdown.selected]
+    return [
+        (breakdown, row_map[item.content_id]) for breakdown, item in scored if not selected_only or breakdown.selected
+    ]
 
 
 def _row_to_scoring_input(row: dict) -> ScoringInput:
@@ -561,15 +575,9 @@ def _apply_event_assignments(
     rows: list[dict],
     assignments: dict[int, EventAssignment],
 ) -> list[dict]:
-    """Keep only canonicals and content not assigned to an accepted event."""
-
-    visible: list[dict] = []
-    for row in rows:
-        content_id = row.get("id")
-        assignment = assignments.get(int(content_id)) if content_id is not None else None
-        if assignment is None or assignment.is_canonical:
-            visible.append(row)
-    return visible
+    """Choose response-only representatives; persisted canonical IDs stay intact."""
+    visible_ids = event_candidate_ids([_row_to_scoring_input(row) for row in rows], assignments)
+    return [row for row in rows if row["id"] in visible_ids]
 
 
 def _attach_event_normalization(
@@ -628,6 +636,7 @@ def _pack_today_picks(
     *,
     total: int,
     event_members_hidden: int = 0,
+    pending_review: dict | None = None,
 ) -> dict:
     topic_ids = {item.get("topic_id") for item in items if item.get("topic_id")}
     visible_topics = [topic for topic in topic_map.values() if topic["id"] in topic_ids]
@@ -636,6 +645,7 @@ def _pack_today_picks(
         "total": total,
         "event_members_hidden": event_members_hidden,
         "topics": visible_topics,
+        "pending_review": pending_review or {"items": [], "total": 0},
         "page": 1,
         "page_size": len(items),
     }

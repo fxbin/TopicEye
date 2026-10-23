@@ -12,6 +12,7 @@ import { contentsApi } from '@/lib/api';
 import type { EvidenceMark } from '@/types';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import { PendingReview } from './_pending-review';
 import RadarSignature from '@/components/RadarSignature';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { EmptyState, LoadingState } from '@/components/StateView';
@@ -295,7 +296,7 @@ function TodayPicksPage() {
           ) : filteredItems.length === 0 ? (
             <EmptyState
               icon={FileText}
-              title={activeFilterCount > 0 ? '筛选后没有匹配内容' : '近 48 小时暂无精选内容'}
+              title={activeFilterCount > 0 ? '筛选后没有匹配内容' : '当前窗口暂无精选内容'}
               desc={isDefaultWindow && !hasNonTimeFilters ? '当前窗口没有可写样本，可以先查看近 7 天历史样本，或等待信源同步和分析完成。' : '可以放宽等级、分类或时间范围。'}
               actions={[
                 ...(isDefaultWindow ? [{ label: '查看 7 天历史样本', onClick: () => setTimeRange('7d'), variant: 'primary' as const }] : []),
@@ -335,6 +336,7 @@ function TodayPicksPage() {
               ))}
             </div>
           )}
+          {!loading && data?.pending_review && !selectedLevel && <PendingReview {...data.pending_review} onRead={handleRead} />}
           {!loading && items.length < total && (
             <div className="pb-10 text-center">
               <Button

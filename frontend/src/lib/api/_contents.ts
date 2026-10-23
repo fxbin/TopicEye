@@ -65,6 +65,7 @@ export const contentsApi = {
     topics: TopicInfo[];
     total: number;
     event_members_hidden: number;
+    pending_review?: { items: Pick<ContentItem, 'id' | 'title' | 'source_name'>[]; total: number };
   }> {
     const query = params
       ? '?' + new URLSearchParams(

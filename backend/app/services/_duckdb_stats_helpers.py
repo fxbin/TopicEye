@@ -21,6 +21,7 @@ def stats_row_to_scoring_input(row: dict[str, Any]) -> ScoringInput:
         content_id=row["id"],
         title="",
         category=row.get("category"),
+        summary_source=row.get("summary_source"),
         source_id=row.get("source_id"),
         source_name=row.get("source_name"),
         crawled_at=row.get("crawled_at"),

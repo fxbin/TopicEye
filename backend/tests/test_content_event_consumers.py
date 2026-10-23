@@ -5,6 +5,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database import Base
+from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
 from app.models.content_event import (
     ContentEventGroup,
@@ -167,6 +168,8 @@ async def test_today_pick_event_projection_is_batched_scoped_and_stable():
 
     async with async_sessionmaker(engine, expire_on_commit=False)() as db:
         public_group, public, private_group, private = await _seed_events(db)
+        db.add(AiAnalysis(content_id=public[0].id, summary_source="local_fallback"))
+        await db.flush()
         repo = ContentEventConsumptionRepository(db)
         statements: list[str] = []
 
@@ -198,6 +201,8 @@ async def test_today_pick_event_projection_is_batched_scoped_and_stable():
             public[3].id,
         }
         assert public_assignments[public[0].id].is_canonical is True
+        assert public_assignments[public[0].id].canonical_summary_source == "local_fallback"
+        assert public_assignments[public[2].id].canonical_summary_source == "local_fallback"
         assert public_assignments[public[2].id].relation_type == "corroboration"
         assert public[4].id not in public_assignments
 
@@ -427,6 +432,7 @@ async def test_today_picks_event_truth_error_returns_empty_payload(monkeypatch):
 
     assert payload == {
         "items": [],
+        "pending_review": {"items": [], "total": 0},
         "total": 0,
         "event_members_hidden": 0,
         "topics": [],

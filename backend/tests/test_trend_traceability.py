@@ -124,6 +124,30 @@ async def test_snapshot_freezes_only_public_canonical_members_and_keyword_tags_o
         await snapshot_daily_trends(db, target)
         assert (await db.execute(select(TopicTrendMember))).scalars().all()
         assert len((await db.execute(select(TopicTrendMember))).scalars().all()) == 2
+        canonical_analysis = await db.get(AiAnalysis, 1)
+        canonical_analysis.summary_source = "local_fallback"
+        reviewed_analysis = await db.get(AiAnalysis, 3)
+        reviewed_analysis.summary_source = "llm_lite"
+        for field in (
+            "curation_score",
+            "quality_score",
+            "info_density",
+            "actionability",
+            "creator_score",
+            "viral_score",
+            "freshness_score",
+        ):
+            setattr(reviewed_analysis, field, 90)
+        await db.flush()
+        await snapshot_daily_trends(db, target)
+        topic_snapshot = (await db.execute(select(TopicTrend).where(TopicTrend.topic_id == 1))).scalar_one()
+        assert topic_snapshot.pick_count == 1
+        topic_members = (
+            (await db.execute(select(TopicTrendMember).where(TopicTrendMember.trend_id == topic_snapshot.id)))
+            .scalars()
+            .all()
+        )
+        assert {member.content_id for member in topic_members if member.selected} == {3}
 
     await engine.dispose()
 

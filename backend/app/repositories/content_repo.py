@@ -1099,6 +1099,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 AiAnalysis.tags.label("analysis_tags"),
                 AiAnalysis.creator_angles,
                 AiAnalysis.curation_score,
+                AiAnalysis.summary_source,
                 AiAnalysis.info_density,
                 AiAnalysis.actionability,
                 AiAnalysis.source_weight,

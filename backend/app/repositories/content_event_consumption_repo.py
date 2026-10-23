@@ -16,6 +16,7 @@ from sqlalchemy import String, and_, cast, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
 from app.models.content_event import (
     ContentEventGroup,
@@ -42,6 +43,7 @@ class EventAssignment:
     is_canonical: bool
     relation_type: str | None = None
     confidence: float | None = None
+    canonical_summary_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +167,14 @@ class ContentEventConsumptionRepository:
         visible_user_id: int | None,
     ) -> dict[int, EventAssignment]:
         assignments: dict[int, EventAssignment] = {}
+        canonical_summary_source = (
+            select(AiAnalysis.summary_source)
+            .where(AiAnalysis.content_id == ContentEventGroup.canonical_content_id)
+            .order_by(AiAnalysis.created_at.desc(), AiAnalysis.id.desc())
+            .limit(1)
+            .correlate(ContentEventGroup)
+            .scalar_subquery()
+        )
         canonical = aliased(ContentItem)
         member_content = aliased(ContentItem)
         canonical_guard = aliased(ContentItem)
@@ -174,6 +184,7 @@ class ContentEventConsumptionRepository:
                 select(
                     ContentEventGroup.id,
                     ContentEventGroup.canonical_content_id,
+                    canonical_summary_source.label("canonical_summary_source"),
                 )
                 .join(
                     canonical,
@@ -186,13 +197,14 @@ class ContentEventConsumptionRepository:
                     ContentEventGroup.canonical_content_id.in_(content_batch),
                 )
             )
-            for event_group_id, canonical_content_id in canonical_result.all():
+            for event_group_id, canonical_content_id, summary_source in canonical_result.all():
                 content_id = int(canonical_content_id)
                 assignments[content_id] = EventAssignment(
                     content_id=content_id,
                     event_group_id=int(event_group_id),
                     canonical_content_id=content_id,
                     is_canonical=True,
+                    canonical_summary_source=summary_source,
                 )
 
             member_result = await self.db.execute(
@@ -202,6 +214,7 @@ class ContentEventConsumptionRepository:
                     ContentEventMember.content_id,
                     ContentEventMember.relation_type,
                     ContentEventMember.confidence,
+                    canonical_summary_source.label("canonical_summary_source"),
                 )
                 .join(
                     ContentEventMember,
@@ -233,6 +246,7 @@ class ContentEventConsumptionRepository:
                     is_canonical=False,
                     relation_type=_enum_value(row[3]),
                     confidence=float(row[4]),
+                    canonical_summary_source=row[5],
                 )
         return assignments
 

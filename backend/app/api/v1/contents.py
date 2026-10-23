@@ -329,7 +329,7 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
 
     from app.services.json_cache import get_cached_json, set_cached_json
 
-    cache_key = f"today_count:v3:user={current_user.id if current_user is not None else 'public'}"
+    cache_key = f"today_count:v4:user={current_user.id if current_user is not None else 'public'}"
     cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
         return Response(

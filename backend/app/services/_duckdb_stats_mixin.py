@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.repositories.content_event_consumption_repo import EventAssignment
 from app.services._duckdb_sql import (
     LATEST_ANALYSIS_CTE,
 )
@@ -19,6 +20,7 @@ from app.services._duckdb_stats_helpers import (
     stats_threshold_from_scored,
 )
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, score_items
+from app.services.scoring_event_selection import event_candidate_ids
 
 ACCEPTED_EVENT_MEMBER_PREDICATE = """
 NOT EXISTS (
@@ -49,11 +51,31 @@ class StatsMixin:
         conn = self._get_conn()
         window = timedelta(hours=hours) if hours is not None else timedelta(days=days)
         cutoff = (datetime.now(UTC) - window).isoformat()
+        summary_source_expr = (
+            "a.summary_source"
+            if self._oltp_column_exists(conn, "ai_analyses", "summary_source")
+            else "CAST(NULL AS VARCHAR)"
+        )
+        canonical_source_expr = (
+            "canonical_analysis.summary_source"
+            if self._oltp_column_exists(conn, "ai_analyses", "summary_source")
+            else "CAST(NULL AS VARCHAR)"
+        )
         rows = conn.execute(
             f"""
             WITH {LATEST_ANALYSIS_CTE},
             {self._feedback_scores_cte(conn)},
-            {self._ignored_content_cte(conn)}
+            {self._ignored_content_cte(conn)},
+            event_assignments AS (
+                SELECT g.id AS event_group_id, g.canonical_content_id,
+                       g.canonical_content_id AS content_id, TRUE AS is_canonical
+                FROM oltp_db.content_event_groups g WHERE g.status = 'active'
+                UNION ALL
+                SELECT g.id, g.canonical_content_id, m.content_id, FALSE
+                FROM oltp_db.content_event_groups g
+                JOIN oltp_db.content_event_members m ON m.event_group_id = g.id
+                WHERE g.status = 'active' AND m.review_status IN ('auto', 'confirmed')
+            )
             SELECT
                 c.id,
                 c.source_id,
@@ -71,16 +93,20 @@ class StatsMixin:
                 a.quality_score,
                 a.hot_score,
                 a.risk_score,
+                {summary_source_expr} AS summary_source,
                 COALESCE(s.weight, 3) AS source_weight_db,
-                COALESCE(f.feedback_score, 0) AS feedback_score
+                COALESCE(f.feedback_score, 0) AS feedback_score,
+                event_assignment.event_group_id, event_assignment.canonical_content_id,
+                event_assignment.is_canonical, {canonical_source_expr} AS canonical_summary_source
             FROM latest_analysis a
             JOIN oltp_db.content_items c ON c.id = a.content_id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
             LEFT JOIN feedback_scores f ON f.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
+            LEFT JOIN event_assignments event_assignment ON event_assignment.content_id = c.id
+            LEFT JOIN latest_analysis canonical_analysis ON canonical_analysis.content_id = event_assignment.canonical_content_id
             WHERE c.crawled_at >= ?
               AND ignored.content_id IS NULL
-              AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
               AND a.curation_score IS NOT NULL
         """,
             [cutoff],
@@ -103,12 +129,30 @@ class StatsMixin:
             "quality_score",
             "hot_score",
             "risk_score",
+            "summary_source",
             "source_weight_db",
             "feedback_score",
+            "event_group_id",
+            "canonical_content_id",
+            "is_canonical",
+            "canonical_summary_source",
         ]
         item_rows = [dict(zip(columns, row, strict=False)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}
-        scored = score_items([stats_row_to_scoring_input(row) for row in item_rows])
+        inputs = [stats_row_to_scoring_input(row) for row in item_rows]
+        assignments = {
+            row["id"]: EventAssignment(
+                row["id"],
+                row["event_group_id"],
+                row["canonical_content_id"],
+                row["is_canonical"],
+                canonical_summary_source=row["canonical_summary_source"],
+            )
+            for row in item_rows
+            if row["event_group_id"] is not None
+        }
+        visible_ids = event_candidate_ids(inputs, assignments)
+        scored = score_items([item for item in inputs if item.content_id in visible_ids])
         scored_items: list[dict[str, Any]] = []
         for breakdown, item in scored:
             row = dict(row_map[item.content_id])

@@ -761,3 +761,23 @@ async def test_report_window_prefers_published_at():
         assert 3 in {item.id for item in report_items}
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_scoring_rows_keep_fallback_provenance(test_session_factory):
+    from app.services.scoring_engine import score_items
+    from app.services.scoring_flow import build_scoring_inputs_from_rows
+
+    async with test_session_factory() as db:
+        content = ContentItem(title="待 AI 复核", url="https://example.com/fallback", crawled_at=datetime.now(UTC))
+        db.add(content)
+        await db.flush()
+        db.add(
+            AiAnalysis(content_id=content.id, summary_source="local_fallback", curation_score=100, quality_score=100)
+        )
+        await db.flush()
+        rows = await ContentRepo(db).list_scoring_rows(limit=20)
+        assert rows[0].summary_source == "local_fallback"
+        inputs, _, _ = await build_scoring_inputs_from_rows(db, rows)
+        assert inputs[0].summary_source == "local_fallback"
+        assert not score_items(inputs)[0][0].selected

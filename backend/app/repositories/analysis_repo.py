@@ -64,6 +64,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
                     content_id=int(analysis.content_id),
                     title=content.title,
                     category=content.category,
+                    summary_source=analysis.summary_source,
                     source_id=content.source_id,
                     source_name=content.source_name,
                     published_at=content.published_at,

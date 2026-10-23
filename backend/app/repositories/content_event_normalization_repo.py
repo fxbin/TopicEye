@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import exists, or_, select, update
+from sqlalchemy import JSON, Integer, case, cast, exists, func, literal, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentItem, ContentStatus
@@ -225,6 +226,9 @@ class ContentEventNormalizationRepository:
         owner_user_id: int | None,
         since: datetime,
         limit: int,
+        shadow_classifier_version: str | None = None,
+        exclude_ids: Sequence[int] = (),
+        retry_ids: Sequence[int] = (),
     ) -> list[ContentItem]:
         canonical_exists = exists(
             select(ContentEventGroup.id).where(ContentEventGroup.canonical_content_id == ContentItem.id)
@@ -238,8 +242,10 @@ class ContentEventNormalizationRepository:
                 ContentItem.status == ContentStatus.ANALYZED,
                 ~canonical_exists,
                 ~member_exists,
+                ContentItem.id.not_in(self._id_values(exclude_ids)),
             )
             .order_by(
+                case((ContentItem.id.in_(self._id_values(retry_ids)), 0), else_=1),
                 ContentItem.published_at.asc().nulls_last(),
                 ContentItem.crawled_at.asc().nulls_last(),
                 ContentItem.created_at.asc(),
@@ -247,8 +253,105 @@ class ContentEventNormalizationRepository:
             )
             .limit(max(1, limit))
         )
+        if shadow_classifier_version:
+            stmt = stmt.where(
+                ContentItem.id.not_in(
+                    self._shadow_content_ids(
+                        owner_user_id=owner_user_id,
+                        since=since,
+                        classifier_version=shadow_classifier_version,
+                        field="completed_content_ids",
+                    )
+                )
+            )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
+
+    def _id_values(self, values: Sequence[int]):
+        """One JSON bind avoids PostgreSQL's parameter limit for a backlog."""
+        array = literal(json.dumps(list(values)))
+        if self.db.bind.dialect.name == "postgresql":
+            rows = func.json_array_elements_text(cast(array, JSON)).table_valued("value")
+        else:
+            rows = func.json_each(array).table_valued("value")
+        return select(cast(rows.c.value, Integer))
+
+    def _shadow_content_ids(self, *, owner_user_id: int | None, since: datetime, classifier_version: str, field: str):
+        """Unnest the complete progress ledger, never the truncated predictions.
+
+        Keep this inside SQL rather than growing a parameter list per content.
+        Missing fields in older run records yield no IDs.
+        """
+        run = ContentEventNormalizationRun
+        array = run.result[field]
+        if self.db.bind.dialect.name == "postgresql":
+            values = func.json_array_elements_text(array).table_valued("value")
+        else:
+            values = func.json_each(array).table_valued("value")
+        scope = "public" if owner_user_id is None else f"user:{owner_user_id}"
+        return (
+            select(cast(values.c.value, Integer))
+            .select_from(run)
+            .join(values, true())
+            .where(
+                run.scope_key == scope,
+                run.mode == "shadow",
+                run.status == "succeeded",
+                run.classifier_version == classifier_version,
+                run.started_at >= since,
+                values.c.value.is_not(None),
+            )
+        )
+
+    async def list_shadow_canonicals(
+        self, *, owner_user_id: int | None, since: datetime, classifier_version: str, limit: int
+    ) -> list[ContentItem]:
+        stmt = (
+            select(ContentItem)
+            .where(
+                self._owner_clause(owner_user_id),
+                ContentItem.status == ContentStatus.ANALYZED,
+                ~exists(select(ContentEventGroup.id).where(ContentEventGroup.canonical_content_id == ContentItem.id)),
+                ~exists(select(ContentEventMember.id).where(ContentEventMember.content_id == ContentItem.id)),
+                ContentItem.id.in_(
+                    self._shadow_content_ids(
+                        owner_user_id=owner_user_id,
+                        since=since,
+                        classifier_version=classifier_version,
+                        field="standalone_content_ids",
+                    )
+                ),
+            )
+            .order_by(ContentItem.created_at.desc(), ContentItem.id.desc())
+            .limit(limit)
+        )
+        return list((await self.db.scalars(stmt)).all())
+
+    async def latest_retry_states(
+        self, *, scope_key: str, mode: str, classifier_version: str, since: datetime
+    ) -> dict[int, dict]:
+        """Read compact retry entries, newest first; successful facts exclude themselves.
+
+        The indexed owner/time range bounds this to the requested scan window.
+        Streaming avoids retaining complete run/prediction objects in memory.
+        """
+        run = ContentEventNormalizationRun
+        rows = await self.db.stream_scalars(
+            select(run.result["retry_states"])
+            .where(
+                run.scope_key == scope_key,
+                run.mode == mode,
+                run.classifier_version == classifier_version,
+                run.status == "succeeded",
+                run.started_at >= since,
+            )
+            .order_by(run.started_at.desc(), run.id.desc())
+        )
+        states = {}
+        async for entries in rows:
+            for entry in entries or []:
+                states.setdefault(int(entry["content_id"]), entry)
+        return states
 
     async def list_historical_canonicals(
         self,

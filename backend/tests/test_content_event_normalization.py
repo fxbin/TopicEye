@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 import app.models  # noqa: F401
 from app.core.database import Base
@@ -36,6 +38,18 @@ async def normalization_db(tmp_path, monkeypatch):
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(normalization, "async_session", factory)
+    yield factory
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(params=["sqlite", "postgresql"])
+async def progress_db(request, normalization_db, monkeypatch):
+    if request.param == "sqlite":
+        yield normalization_db
+        return
+    engine = create_async_engine(os.environ["DATABASE_URL"], poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(normalization, "async_session", factory)
     yield factory
@@ -185,7 +199,7 @@ async def test_write_recalls_historical_canonical_and_replays_idempotently(
 
 
 @pytest.mark.asyncio
-async def test_llm_failure_and_cap_create_pending_members(
+async def test_llm_failure_and_cap_create_retry_state_without_event_members(
     normalization_db,
     monkeypatch,
 ):
@@ -221,6 +235,7 @@ async def test_llm_failure_and_cap_create_pending_members(
             hour=2,
             source_name="Publisher-C",
         )
+        pending_ids = {second.id, third.id}
         await db.commit()
 
         result = await normalize_recent_events_with_lease(
@@ -236,15 +251,13 @@ async def test_llm_failure_and_cap_create_pending_members(
         assert result["llm_calls"] == 1
         assert result["pending"] == 2
         assert result["created_events"] == 1
-        assert result["created_members"] == 2
+        assert result["created_members"] == 0
+        assert result["retry_pending"] == 2
+        assert {entry["content_id"] for entry in result["retry_states"]} == pending_ids
         pending_members = list(
             (await db.execute(select(ContentEventMember).order_by(ContentEventMember.content_id))).scalars().all()
         )
-        assert [member.content_id for member in pending_members] == [
-            second.id,
-            third.id,
-        ]
-        assert {member.review_status for member in pending_members} == {"pending"}
+        assert pending_members == []
 
 
 @pytest.mark.asyncio
@@ -642,3 +655,279 @@ async def test_model_can_select_second_candidate_and_cannot_invent_target(monkey
         incoming, candidates, limits=normalization._limits(), semaphore=asyncio.Semaphore(1)
     )
     assert prediction.review_status == "pending" and prediction.llm_failed is True
+
+
+@pytest.mark.asyncio
+async def test_shadow_progress_survives_sessions_and_recalls_previous_batch(progress_db, monkeypatch):
+    monkeypatch.setattr(normalization.settings, "EVENT_NORMALIZATION_MAX_ITEMS", 1)
+    monkeypatch.setattr(normalization.settings, "EVENT_NORMALIZATION_PREDICTION_AUDIT_MAX_BYTES", 2)
+    async with progress_db() as db:
+        first = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="progress")
+        second = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="progress")
+        await db.commit()
+        ids = [first.id, second.id]
+    outcomes = []
+    for key in ("progress-1", "progress-2", "progress-3"):
+        async with progress_db() as db:
+            outcomes.append(await normalize_recent_events_with_lease(db, mode="shadow", hours=24, idempotency_key=key))
+            await db.commit()
+    assert [result["scanned"] for result in outcomes] == [1, 1, 0]
+    assert outcomes[0]["scanned_content_ids"] == ids[:1]
+    assert outcomes[1]["scanned_content_ids"] == ids[1:]
+    assert outcomes[1]["matched"] == 1, "shadow must retain earlier provisional candidates across batches"
+    async with progress_db() as db:
+        assert await db.scalar(select(func.count()).select_from(ContentEventGroup)) == 0
+        assert await db.scalar(select(func.count()).select_from(ContentEventMember)) == 0
+
+
+@pytest.mark.asyncio
+async def test_shadow_progress_does_not_skip_late_analysis_or_other_classifier(progress_db, monkeypatch):
+    async with progress_db() as db:
+        late = await _content(db, "古籍扫描方法", hour=0, source_name="late")
+        late.status = ContentStatus.PENDING
+        ready = await _content(db, "海洋潮汐观测", hour=1, source_name="ready")
+        await db.commit()
+        late_id, ready_id = late.id, ready.id
+        first = await normalize_recent_events_with_lease(db, mode="shadow", idempotency_key="ready")
+        await db.commit()
+        assert first["scanned"] == 1
+        late.status = ContentStatus.ANALYZED
+        await db.commit()
+        second = await normalize_recent_events_with_lease(db, mode="shadow", idempotency_key="late")
+        await db.commit()
+        assert second["scanned_content_ids"] == [late_id]
+        monkeypatch.setattr(normalization, "CLASSIFIER_VERSION", "progress-next-classifier")
+        third = await normalize_recent_events_with_lease(db, mode="shadow", idempotency_key="new-classifier")
+        await db.commit()
+        assert set(third["scanned_content_ids"]) == {late_id, ready_id}
+
+
+@pytest.mark.asyncio
+async def test_transient_retry_is_due_bounded_and_never_creates_pending_facts(progress_db, monkeypatch):
+    monkeypatch.setattr(normalization.settings, "EVENT_NORMALIZATION_RETRY_BASE_SECONDS", 60, raising=False)
+    monkeypatch.setattr(normalization.settings, "EVENT_NORMALIZATION_RETRY_MAX_ATTEMPTS", 2, raising=False)
+    now = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(normalization, "datetime", Clock)
+    calls = 0
+
+    async def unavailable(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("temporary model outage")
+
+    monkeypatch.setattr(normalization, "call_llm_json", unavailable)
+    async with progress_db() as db:
+        canonical = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="retry-a")
+        await ContentEventService(db).create_event([canonical.id], owner_user_id=None)
+        incoming = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="retry-b")
+        incoming_id = incoming.id
+        await db.commit()
+
+    async def run(key):
+        async with progress_db() as db:
+            result = await normalize_recent_events_with_lease(db, mode="write", idempotency_key=key)
+            await db.commit()
+            return result
+
+    first = await run("retry-first")
+    assert first["retry_pending"] == 1
+    assert first["created_members"] == 0
+    assert (await run("retry-too-soon"))["scanned"] == 0
+    now += timedelta(seconds=61)
+    second = await run("retry-due")
+    assert second["retry_exhausted"] == 1
+    now += timedelta(hours=1)
+    assert (await run("retry-exhausted"))["scanned"] == 0
+    assert calls == 2
+    async with progress_db() as db:
+        assert (
+            await db.scalar(
+                select(func.count()).select_from(ContentEventMember).where(ContentEventMember.content_id == incoming_id)
+            )
+            == 0
+        )
+
+
+@pytest.mark.asyncio
+async def test_transient_retry_recovers_but_fact_pending_is_not_retried(progress_db, monkeypatch):
+    now = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(normalization, "datetime", Clock)
+    calls = 0
+
+    async def model(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("pool unavailable")
+        return {"decision": "duplicate", "confidence": 0.99, "reason": "same facts"}
+
+    monkeypatch.setattr(normalization, "call_llm_json", model)
+    async with progress_db() as db:
+        canonical = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="recover-a")
+        group = await ContentEventService(db).create_event([canonical.id], owner_user_id=None)
+        incoming = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="recover-b")
+        pending = await _content(db, "GLM 5.2 发布模型池能力", hour=2, source_name="human-pending")
+        incoming_id, pending_id = incoming.id, pending.id
+        await ContentEventService(db).add_member(group.id, pending.id, match_method="manual", review_status="pending")
+        await db.commit()
+    for index in range(3):
+        async with progress_db() as db:
+            result = await normalize_recent_events_with_lease(db, mode="write", idempotency_key=f"recover-{index}")
+            await db.commit()
+            if index == 0:
+                assert result["retry_pending"] == 1
+            if index == 1:
+                assert result["matched"] == 1
+            now += timedelta(hours=1)
+    assert calls == 2
+    async with progress_db() as db:
+        statuses = dict(
+            (await db.execute(select(ContentEventMember.content_id, ContentEventMember.review_status))).all()
+        )
+        assert statuses[incoming_id] == "auto"
+        assert statuses[pending_id] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_rolled_back_shadow_success_does_not_advance_progress(progress_db):
+    async with progress_db() as db:
+        article = await _content(db, "海洋潮汐观测", hour=0, source_name="rollback-progress")
+        article_id = article.id
+        await db.commit()
+        result = await normalize_recent_events_with_lease(db, mode="shadow", idempotency_key="rolled-back-progress")
+        assert result["scanned"] == 1
+        await db.rollback()
+        remaining = await ContentEventNormalizationRepository(db).list_recent_unassigned(
+            owner_user_id=None,
+            since=datetime.now(UTC) - timedelta(hours=24),
+            limit=50,
+            shadow_classifier_version=normalization.CLASSIFIER_VERSION,
+        )
+        assert [row.id for row in remaining] == [article_id]
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(ContentEventNormalizationRun)
+                .where(ContentEventNormalizationRun.status == "succeeded")
+            )
+            == 0
+        )
+
+
+@pytest.mark.asyncio
+async def test_fact_uncertainty_stays_in_review_not_retry_queue(progress_db, monkeypatch):
+    calls = 0
+
+    async def uncertain(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return {"decision": "pending", "confidence": 0.4, "reason": "facts need human review"}
+
+    monkeypatch.setattr(normalization, "call_llm_json", uncertain)
+    async with progress_db() as db:
+        canonical = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="uncertain-a")
+        await ContentEventService(db).create_event([canonical.id], owner_user_id=None)
+        await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="uncertain-b")
+        await db.commit()
+        first = await normalize_recent_events_with_lease(db, mode="write", idempotency_key="fact-pending")
+        await db.commit()
+        assert first["pending"] == 1 and first["retry_pending"] == 0 and first["created_members"] == 1
+        next_run = await normalize_recent_events_with_lease(db, mode="write", idempotency_key="fact-pending-again")
+        await db.commit()
+        assert next_run["scanned"] == 0 and calls == 1
+        assert await db.scalar(select(ContentEventMember.review_status)) == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_status", ["pending", "rejected", "confirmed"])
+async def test_normalizer_never_overwrites_relationship_added_during_model_wait(
+    progress_db, monkeypatch, review_status
+):
+    async with progress_db() as db:
+        canonical = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="race-canonical")
+        group = await ContentEventService(db).create_event([canonical.id], owner_user_id=None)
+        incoming = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="race-incoming")
+        incoming_id, canonical_id, event_id = incoming.id, canonical.id, group.id
+        await db.commit()
+
+    async def model(*args, **kwargs):
+        async with progress_db() as other:
+            service = ContentEventService(other)
+            group = await service.add_member(
+                event_id, incoming_id, match_method="manual", review_status="pending", reason="human queued"
+            )
+            member = await other.scalar(select(ContentEventMember).where(ContentEventMember.content_id == incoming_id))
+            if review_status != "pending":
+                await service.review_relation(
+                    member.id,
+                    decision="reject" if review_status == "rejected" else "accept",
+                    relation_type=None if review_status == "rejected" else "corroboration",
+                    reason="human decision",
+                    expected_version=group.version,
+                )
+            await other.commit()
+        return {
+            "decision": "duplicate",
+            "target_content_id": canonical_id,
+            "confidence": 0.99,
+            "reason": "late model result",
+        }
+
+    monkeypatch.setattr(normalization, "call_llm_json", model)
+    async with progress_db() as db:
+        result = await normalize_recent_events_with_lease(db, mode="write", idempotency_key="manual-race")
+        await db.commit()
+        member = await db.scalar(select(ContentEventMember).where(ContentEventMember.content_id == incoming_id))
+        assert member.review_status == review_status
+        assert member.match_method == "manual"
+        assert member.reason == ("human queued" if review_status == "pending" else "human decision")
+        assert result["created_members"] == 0 and result["matched"] == 0
+        assert result["skipped_conflicts"] == 1
+        assert result["skipped_content_ids"] == [incoming_id]
+        assert incoming_id not in result["completed_content_ids"]
+        # A pending/rejected decision must leave the article independently visible.
+        if review_status in {"pending", "rejected"}:
+            from app.services.content_event_coverage import get_event_coverage
+
+            assert (
+                await get_event_coverage(db, incoming_id, visible_user_id=None, member_offset=0, member_limit=20)
+                is None
+            )
+
+
+@pytest.mark.asyncio
+async def test_normalizer_skips_provisional_target_claimed_during_model_wait(progress_db, monkeypatch):
+    async with progress_db() as db:
+        parent = await _content(db, "GLM 5.2 发布模型池能力", hour=0, source_name="target-parent")
+        child = await _content(db, "GLM 5.2 发布模型池能力", hour=1, source_name="target-child")
+        parent_id, child_id = parent.id, child.id
+        await db.commit()
+
+    async def model(*args, **kwargs):
+        async with progress_db() as other:
+            await ContentEventService(other).create_event([parent_id], owner_user_id=None)
+            await other.commit()
+        return {"decision": "duplicate", "target_content_id": parent_id, "confidence": 0.99, "reason": "same event"}
+
+    monkeypatch.setattr(normalization, "call_llm_json", model)
+    async with progress_db() as db:
+        result = await normalize_recent_events_with_lease(db, mode="write", idempotency_key="provisional-race")
+        await db.commit()
+        assert result["skipped_conflicts"] == 2
+        assert set(result["skipped_content_ids"]) == {parent_id, child_id}
+        assert result["created_events"] == result["created_members"] == result["matched"] == result["standalone"] == 0
+        assert result["completed_content_ids"] == result["standalone_content_ids"] == []
+        assert await db.scalar(select(func.count()).select_from(ContentEventMember)) == 0
+        assert await db.scalar(select(func.count()).select_from(ContentEventGroup)) == 1

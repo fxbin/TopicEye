@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import re
 import time
@@ -41,6 +42,7 @@ from app.services.content_event_service import (
 from app.services.llm import call_llm_json
 
 CLASSIFIER_VERSION = "event-normalizer-v2"
+logger = logging.getLogger(__name__)
 _VALID_RELATIONS = {
     EventRelationType.DUPLICATE.value,
     EventRelationType.CORROBORATION.value,
@@ -142,6 +144,8 @@ class _Prediction:
     llm_used: bool = False
     llm_failed: bool = False
     llm_error: str | None = None
+    application_status: str | None = None
+    application_reason: str | None = None
 
     def audit_dict(self) -> dict[str, Any]:
         return {
@@ -157,6 +161,8 @@ class _Prediction:
             "llm_used": self.llm_used,
             "llm_failed": self.llm_failed,
             "llm_error": self.llm_error,
+            "application_status": self.application_status,
+            "application_reason": self.application_reason,
         }
 
 
@@ -858,10 +864,26 @@ async def normalize_recent_events_with_lease(
     try:
         now = datetime.now(UTC)
         read_repo = ContentEventNormalizationRepository(db)
+        retry_max = _bounded_int("EVENT_NORMALIZATION_RETRY_MAX_ATTEMPTS", 3, maximum=10)
+        retry_base = _bounded_int("EVENT_NORMALIZATION_RETRY_BASE_SECONDS", 900, maximum=86400)
+        retry_states = await read_repo.latest_retry_states(
+            scope_key=claim.scope_key,
+            mode=normalized_mode,
+            classifier_version=CLASSIFIER_VERSION,
+            since=now - timedelta(hours=bounded_hours),
+        )
+        blocked_ids = {
+            content_id
+            for content_id, state in retry_states.items()
+            if state["attempts"] >= retry_max or datetime.fromisoformat(state["retry_after"]) > now
+        }
         recent_rows = await read_repo.list_recent_unassigned(
             owner_user_id=owner_user_id,
             since=now - timedelta(hours=bounded_hours),
             limit=limits.max_items,
+            shadow_classifier_version=(CLASSIFIER_VERSION if normalized_mode == "shadow" else None),
+            exclude_ids=sorted(blocked_ids),
+            retry_ids=sorted(retry_states.keys() - blocked_ids),
         )
         history_limit = min(
             limits.max_items * limits.max_candidates * 4,
@@ -880,6 +902,19 @@ async def normalize_recent_events_with_lease(
             )
             for row in historical_rows
         ]
+        if normalized_mode == "shadow":
+            known_ids = {entry.canonical.id for entry in candidates}
+            shadow_rows = await read_repo.list_shadow_canonicals(
+                owner_user_id=owner_user_id,
+                since=now - timedelta(days=limits.lookback_days),
+                classifier_version=CLASSIFIER_VERSION,
+                limit=history_limit,
+            )
+            candidates.extend(
+                _Candidate(event_id=None, canonical=_snapshot(content))
+                for content in shadow_rows
+                if content.id not in known_ids
+            )
         # Do not hold a read transaction while waiting on the model pool.
         await db.rollback()
 
@@ -969,12 +1004,28 @@ async def normalize_recent_events_with_lease(
 
         await flush_boundary_batch()
         predictions = [predictions_by_index[index] for index in range(len(recent))]
-        standalone = sum(prediction.decision == "standalone" for prediction in predictions)
-        pending = sum(
-            prediction.decision != "standalone" and prediction.review_status == EventReviewStatus.PENDING.value
-            for prediction in predictions
-        )
-        matched = len(predictions) - standalone - pending
+
+        def is_transient(prediction: _Prediction) -> bool:
+            return prediction.llm_failed or prediction.match_method == "llm-cap-fallback"
+
+        next_retries = []
+        for prediction in predictions:
+            if not is_transient(prediction):
+                continue
+            previous = retry_states.get(prediction.content_id, {})
+            # A budget deferral is not a failed model attempt.
+            attempts = int(previous.get("attempts", 0)) + int(prediction.llm_failed)
+            next_retries.append(
+                {
+                    "content_id": prediction.content_id,
+                    "attempts": attempts,
+                    "retry_after": (now + timedelta(seconds=retry_base * (2 ** max(0, attempts - 1)))).isoformat(),
+                    "cause": "model_unavailable" if prediction.llm_failed else "budget_deferred",
+                }
+            )
+        exhausted = sum(state["attempts"] >= retry_max for state in next_retries)
+        if exhausted:
+            logger.warning("Event normalization exhausted retries for %s items in %s", exhausted, claim.scope_key)
 
         # All LLM work is complete. Renew the committed metadata lease before
         # opening the short business write transaction.
@@ -983,33 +1034,61 @@ async def normalize_recent_events_with_lease(
             event_service = ContentEventService(db)
             provisional_events: dict[int, int] = {}
             for prediction in predictions:
-                if prediction.decision == "standalone":
-                    group = await event_service.create_event(
-                        [prediction.content_id],
-                        owner_user_id=owner_user_id,
-                        classifier_version=CLASSIFIER_VERSION,
-                    )
-                    provisional_events[prediction.content_id] = group.id
-                    prediction.target_event_id = group.id
-                    created_events += 1
+                # Technical failures are scheduling state, not event facts.
+                # No member row means recovery can reclassify against the
+                # current pool without touching human-reviewed relationships.
+                if is_transient(prediction):
                     continue
+                try:
+                    # Preserve the rest of the batch if a human claimed this
+                    # article while the model was running. The domain service
+                    # checks assignment under its content/group write locks.
+                    async with db.begin_nested():
+                        if prediction.decision == "standalone":
+                            group = await event_service.create_event(
+                                [prediction.content_id],
+                                owner_user_id=owner_user_id,
+                                classifier_version=CLASSIFIER_VERSION,
+                            )
+                            provisional_events[prediction.content_id] = group.id
+                            prediction.target_event_id = group.id
+                            created_events += 1
+                            continue
 
-                target_event_id = prediction.target_event_id
-                if target_event_id is None and prediction.target_content_id is not None:
-                    target_event_id = provisional_events.get(prediction.target_content_id)
-                if target_event_id is not None:
-                    await event_service.add_member(
-                        target_event_id,
-                        prediction.content_id,
-                        relation_type=(prediction.relation_type or EventRelationType.DUPLICATE.value),
-                        confidence=prediction.confidence,
-                        match_method=prediction.match_method,
-                        detector_version=CLASSIFIER_VERSION,
-                        reason=prediction.reason,
-                        review_status=(prediction.review_status or EventReviewStatus.PENDING.value),
-                    )
-                    prediction.target_event_id = target_event_id
-                    created_members += 1
+                        target_event_id = prediction.target_event_id
+                        if target_event_id is None and prediction.target_content_id is not None:
+                            target_event_id = provisional_events.get(prediction.target_content_id)
+                        if target_event_id is None:
+                            raise ContentEventConflictError("provisional event target changed during classification")
+                        await event_service.add_member(
+                            target_event_id,
+                            prediction.content_id,
+                            relation_type=(prediction.relation_type or EventRelationType.DUPLICATE.value),
+                            confidence=prediction.confidence,
+                            match_method=prediction.match_method,
+                            detector_version=CLASSIFIER_VERSION,
+                            reason=prediction.reason,
+                            review_status=(prediction.review_status or EventReviewStatus.PENDING.value),
+                            only_if_unassigned=True,
+                        )
+                        prediction.target_event_id = target_event_id
+                        created_members += 1
+                except ContentEventConflictError as exc:
+                    prediction.application_status = "skipped_conflict"
+                    prediction.application_reason = str(exc)[:500]
+
+        applied_predictions = [
+            prediction for prediction in predictions if prediction.application_status != "skipped_conflict"
+        ]
+        skipped_ids = [
+            prediction.content_id for prediction in predictions if prediction.application_status == "skipped_conflict"
+        ]
+        standalone = sum(prediction.decision == "standalone" for prediction in applied_predictions)
+        pending = sum(
+            prediction.decision != "standalone" and prediction.review_status == EventReviewStatus.PENDING.value
+            for prediction in applied_predictions
+        )
+        matched = len(applied_predictions) - standalone - pending
 
         result = {
             "run_id": claim.run_id,
@@ -1024,6 +1103,20 @@ async def normalize_recent_events_with_lease(
             "created_events": created_events,
             "created_members": created_members,
             "llm_calls": llm_calls,
+            "skipped_conflicts": len(skipped_ids),
+            "skipped_content_ids": skipped_ids,
+            # Complete, compact scan ledger commits atomically with run success.
+            # The detailed prediction audit may truncate independently.
+            "scanned_content_ids": [prediction.content_id for prediction in predictions],
+            "completed_content_ids": [
+                prediction.content_id for prediction in applied_predictions if not is_transient(prediction)
+            ],
+            "standalone_content_ids": [
+                prediction.content_id for prediction in applied_predictions if prediction.decision == "standalone"
+            ],
+            "retry_states": next_retries,
+            "retry_pending": len(next_retries) - exhausted,
+            "retry_exhausted": exhausted,
         }
         await _finish_in_business_transaction(
             db,

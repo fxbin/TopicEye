@@ -186,7 +186,7 @@ verdict 段落记录独立复核结论（复核者不得是同一实现过程）
 - **前端 npm audit 口径为生产依赖**（`--omit=dev`，#105）：dev 工具链的 braces 链
   （GHSA-vfj7-8cjw-p6xm，`eslint-config-next` → `fast-glob` → `micromatch` → `braces`）
   覆盖 braces 全部已发布版本、上游无补丁，且只在 eslint dev 依赖里（DoS 级），不挡门；
-  生产依赖维持 high 级严格门禁（next 16.3.8 / sharp / brace-expansion 等已随 #101 修复）。
+  生产依赖维持 high 级严格门禁（next / sharp / brace-expansion 的此前告警已随 #101 修复；Next.js 16.3.8 后续命中 GHSA-2464-fhr4-w9xw / GHSA-p3m5-59mp-jv5r / GHSA-673q-mjm6-r5xr，已在 #142 升至 16.4.1）。
   braces 上游发布补丁（>3.0.3）后：`npm audit fix` 并去掉 workflow 里的 `--omit=dev`
   恢复全量口径。force 降级 `eslint-config-next@14.2.35` 的方案仍维持否决，依据见
   [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。

@@ -164,6 +164,25 @@ class ContentEventConsumptionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def read_cache_revision(self, *, visible_user_id: int | None) -> str:
+        """Read committed event generations before looking in a process-local L1.
+
+        Every domain mutation increments group.version in its own transaction.
+        Count and latest update also cover group creation/lifecycle changes.
+        No process-local memoization: another worker's correction must be seen
+        by the next request, including when its own L1 was just warmed.
+        """
+        count, version_sum, updated_at = (
+            await self.db.execute(
+                select(
+                    func.count(ContentEventGroup.id),
+                    func.coalesce(func.sum(ContentEventGroup.version), 0),
+                    func.max(ContentEventGroup.updated_at),
+                ).where(_visible_group_clause(visible_user_id))
+            )
+        ).one()
+        return f"{count}:{version_sum}:{updated_at.isoformat()}" if count else ""
+
     async def resolve_today_pick_assignments(
         self,
         content_ids: Iterable[int],

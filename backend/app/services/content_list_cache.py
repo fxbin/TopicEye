@@ -31,6 +31,7 @@ class ContentListCacheParams:
     tag: str | None = None
     user_id: int | None = None  # None = anonymous (public-only), int = user-scoped
     group_events: bool = False
+    event_revision: str = ""
 
     @property
     def cacheable(self) -> bool:
@@ -58,6 +59,7 @@ class ContentListCacheParams:
             "hours": self.hours,
             "recommend_level": self.recommend_level,
             "tag": (self.tag or "").strip(),
+            "event_revision": self.event_revision,
         }
         params.update({key: value for key, value in optional.items() if value not in (None, "")})
         return CONTENT_LIST_CACHE_PREFIX + urlencode(params)

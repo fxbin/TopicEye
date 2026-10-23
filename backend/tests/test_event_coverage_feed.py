@@ -349,3 +349,95 @@ async def test_rejecting_a_member_immediately_restores_it_in_cached_home_feed(fe
         restored = next(item for item in after.json()["items"] if item["id"] == reports[4].id)
         assert "normalization" not in restored
     invalidate_content_list_cache()
+
+
+@pytest.mark.asyncio
+async def test_event_cache_correction_crosses_a_real_process_boundary(feed_db):
+    """Worker B keeps its own L1 cache while worker A commits a correction.
+
+    Picks builder uses the real grouped projection so this isolates the two
+    endpoint cache paths; scoring itself is covered by test_today_picks.
+    """
+    import asyncio
+    import json
+    import sys
+    import textwrap
+
+    reports, group, _, _ = await seed_feed(feed_db)
+    member = await feed_db.scalar(select(ContentEventMember).where(ContentEventMember.content_id == reports[4].id))
+    member_id, version = member.id, group.version
+    await feed_db.commit()
+    script = textwrap.dedent("""
+        import asyncio, json, os, sys
+        import httpx
+        from fastapi import FastAPI
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+        from sqlalchemy.pool import NullPool
+        import app.models
+        from app.api.v1 import contents as api
+        from app.core.database import get_db
+        from app.repositories.content_repo import ContentRepo
+        from app.services import today_picks
+        async def main():
+            engine = create_async_engine(os.environ["DATABASE_URL"], poolclass=NullPool)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async def session():
+                async with factory() as db:
+                    yield db
+            async def build(db, **kwargs):
+                rows, total = await ContentRepo(db).list_paginated_with_analyses(public_only=True, group_events=True)
+                return {"items": [{"id": row.id} for row in rows], "total": total}
+            today_picks.build_today_picks = build
+            api.async_session = factory
+            app = FastAPI()
+            app.include_router(api.router)
+            app.dependency_overrides[get_db] = session
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://worker-b") as client:
+                while await asyncio.to_thread(sys.stdin.readline):
+                    result = {}
+                    for path, header in (("/contents?group_events=true", "x-content-list-cache"), ("/contents/today-picks", "x-today-picks-cache")):
+                        response = await client.get(path)
+                        result[path] = {"status": response.status_code, "total": response.json().get("total"), "cache": response.headers.get(header)}
+                    print(json.dumps(result), flush=True)
+            await engine.dispose()
+        asyncio.run(main())
+    """)
+    child = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        script,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    async def read():
+        child.stdin.write(b"read\n")
+        await child.stdin.drain()
+        raw = await asyncio.wait_for(child.stdout.readline(), 30)
+        assert raw, (await child.stderr.read()).decode()
+        return json.loads(raw)
+
+    try:
+        first = await read()
+        second = await read()
+        for value in first.values():
+            assert value["status"] == 200 and value["total"] == 3, first
+            assert value["cache"] == "MISS", first
+        for value in second.values():
+            assert value["cache"].startswith("HIT"), second
+        await ContentEventService(feed_db).review_relation(
+            member_id, decision="reject", relation_type=None, reason="different real event", expected_version=version
+        )
+        await feed_db.commit()
+        after = await read()
+        for value in after.values():
+            assert value["status"] == 200 and value["total"] == 4, after
+            assert value["cache"] == "MISS", after
+    finally:
+        child.stdin.close()
+        try:
+            await asyncio.wait_for(child.wait(), 10)
+        except TimeoutError:
+            child.kill()
+            await child.wait()

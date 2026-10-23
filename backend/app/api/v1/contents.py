@@ -164,6 +164,16 @@ async def list_contents(
     if group_events and sort_by == "curation_score":
         raise HTTPException(400, "group_events 暂只支持 created_at / published_at / crawled_at 排序")
 
+    from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
+
+    event_revision = (
+        await ContentEventConsumptionRepository(db).read_cache_revision(
+            visible_user_id=current_user.id if current_user is not None else None
+        )
+        if group_events
+        else ""
+    )
+
     cache_params = ContentListCacheParams(
         page=page,
         page_size=page_size,
@@ -182,6 +192,7 @@ async def list_contents(
         tag=tag,
         user_id=current_user.id if current_user is not None else None,
         group_events=group_events,
+        event_revision=event_revision,
     )
     if cache_params.cacheable and not include_raw_content:
         cached = get_cached_content_list(cache_params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
@@ -291,20 +302,29 @@ async def today_picks(
         limit=limit,
         user_id=current_user.id if current_user is not None else None,
     )
-    cached = get_cached_today_picks(params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
-    if cached:
-        content, age_seconds = cached
-        return Response(
-            content=content,
-            media_type="application/json",
-            headers={
-                "X-Analytics-Backend": "duckdb",
-                "X-Today-Picks-Cache": f"HIT; age={age_seconds:.3f}s",
-            },
-        )
-
     try:
         async with async_session() as db:
+            from dataclasses import replace
+
+            from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
+
+            params = replace(
+                params,
+                event_revision=await ContentEventConsumptionRepository(db).read_cache_revision(
+                    visible_user_id=current_user.id if current_user is not None else None
+                ),
+            )
+            cached = get_cached_today_picks(params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
+            if cached:
+                content, age_seconds = cached
+                return Response(
+                    content=content,
+                    media_type="application/json",
+                    headers={
+                        "X-Analytics-Backend": "duckdb",
+                        "X-Today-Picks-Cache": f"HIT; age={age_seconds:.3f}s",
+                    },
+                )
             build_kwargs = {
                 "category": category,
                 "content_type": content_type,

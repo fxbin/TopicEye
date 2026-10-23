@@ -24,6 +24,7 @@ class TodayPicksCacheParams:
     limit: int | None = None
     # None = anonymous public pool; int = public pool plus this user's private content.
     user_id: int | None = None
+    event_revision: str = ""
 
     @property
     def key(self) -> str:
@@ -35,6 +36,8 @@ class TodayPicksCacheParams:
         if self.limit:
             params["limit"] = self.limit
         params["user_id"] = "" if self.user_id is None else str(self.user_id)
+        if self.event_revision:
+            params["event_revision"] = self.event_revision
         return TODAY_PICKS_CACHE_PREFIX + urlencode(params)
 
 

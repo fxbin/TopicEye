@@ -39,6 +39,11 @@ def _event_truth_without_assignments(monkeypatch):
     async def resolve(_self, _ids, *, visible_user_id):
         return {}
 
+    async def revision(_self, *, visible_user_id):
+        return ""
+
+    monkeypatch.setattr(ContentEventConsumptionRepository, "read_cache_revision", revision)
+
     async def load_groups(
         _self,
         _event_group_ids,

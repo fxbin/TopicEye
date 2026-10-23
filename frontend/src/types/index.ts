@@ -523,6 +523,7 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
   page_size: number;
+  feed_snapshot?: string;
 }
 
 // ─── Favorites (通用收藏) ───
@@ -575,6 +576,8 @@ export interface ContentFilterParams {
   hours?: number;
   include_trend_sources?: boolean;
   group_events?: boolean;
+  stable_feed?: boolean;
+  feed_snapshot?: string;
   source_type?: string;
   keyword?: string;
   q?: string; // enhanced full-text search (title + summary + raw_content + tags + AI analysis fields)

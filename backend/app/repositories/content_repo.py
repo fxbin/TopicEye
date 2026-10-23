@@ -16,12 +16,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import Text, and_, case, cast, exists, func, literal, or_, select, union_all, update
+from sqlalchemy import Text, and_, case, cast, exists, func, literal, or_, select, true, union_all, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload, with_expression
 
 from app.core.config import settings
+from app.core.content_feed import ContentFeedChangedError, GroupedFeedPage, ordered_feed_digest
 from app.core.database import database_profile
 from app.core.scoring_caliber import CONFIG
 from app.core.time import naive_utc_now
@@ -532,7 +533,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         recommend_level: str | None = None,
         tag: str | None = None,
         group_events: bool = False,
-    ) -> tuple[Sequence[ContentItem], int]:
+        snapshot_binding: str | None = None,
+        expected_snapshot_digest: str | None = None,
+    ) -> tuple[Sequence[ContentItem], int] | GroupedFeedPage:
         """Like list_paginated but eager-loads analyses relation.
 
         When ``visible_user_id`` is provided, restrict to content that is either
@@ -626,6 +629,7 @@ class ContentRepo(BaseRepository[ContentItem]):
             stmt = stmt.where(tag_match)
             count_stmt = count_stmt.where(tag_match)
 
+        filtered_stmt = stmt
         if group_events:
             # Group AFTER all filters, BEFORE pagination. A source/search/time
             # filter can therefore retain a matching member even when its
@@ -642,8 +646,55 @@ class ContentRepo(BaseRepository[ContentItem]):
                 .where(representatives.c.report_rank == 1)
             )
 
-        total_result = await self.db.execute(count_stmt)
-        total = total_result.scalar() or 0
+        snapshot_ids = None
+        snapshot_digest = None
+        snapshot_page_rows = None
+        if snapshot_binding is not None:
+            if not group_events:
+                raise ValueError("feed snapshots require grouped events")
+            # Only identifiers and sort values cross the wire for the full
+            # matching feed; article bodies/analyses remain page-bounded.
+            snapshot_order = (
+                (representatives.c.event_order.desc().nulls_last(), representatives.c.event_key.desc())
+                if sort_order == "desc"
+                else (representatives.c.event_order.asc().nulls_last(), representatives.c.event_key.asc())
+            )
+            rows = (
+                await self.db.execute(
+                    select(representatives.c.content_id, representatives.c.event_key, representatives.c.event_order)
+                    .where(representatives.c.report_rank == 1)
+                    .order_by(*snapshot_order)
+                )
+            ).all()
+            snapshot_digest = ordered_feed_digest(rows, binding=snapshot_binding)
+            if expected_snapshot_digest is not None and snapshot_digest != expected_snapshot_digest:
+                raise ContentFeedChangedError("内容顺序已更新，请刷新列表后继续浏览。")
+            total = len(rows)
+            snapshot_page_rows = rows[(page - 1) * page_size : page * page_size]
+            snapshot_ids = [row.content_id for row in snapshot_page_rows]
+            # The full ordered identifier set has already been checked. For
+            # the payload read, rank only reports of the selected events,
+            # retaining the original filters and every competing report.
+            event_ids = [int(row.event_key[6:]) for row in snapshot_page_rows if row.event_key.startswith("event:")]
+            standalone_ids = [row.content_id for row in snapshot_page_rows if row.event_key.startswith("content:")]
+            related_ids = union_all(
+                select(ContentEventGroup.canonical_content_id).where(ContentEventGroup.id.in_(event_ids)),
+                select(ContentEventMember.content_id).where(ContentEventMember.event_group_id.in_(event_ids)),
+            )
+            page_filtered = filtered_stmt.where(or_(self.model.id.in_(related_ids), self.model.id.in_(standalone_ids)))
+            representatives = self._event_representatives(page_filtered, sort_by=sort_by, sort_order=sort_order)
+            stmt = (
+                select(self.model, representatives.c.event_key, representatives.c.event_order)
+                .options(
+                    selectinload(self.model.analyses),
+                    with_expression(self.model.event_activity_at, representatives.c.event_order),
+                )
+                .join(representatives, representatives.c.content_id == self.model.id)
+                .where(representatives.c.report_rank == 1)
+            )
+        else:
+            total_result = await self.db.execute(count_stmt)
+            total = total_result.scalar() or 0
 
         sort_col = getattr(self.model, sort_by, self.model.created_at)
         # id 作决胜键：created_at/crawled_at 大量并列时，仅按时间排序在
@@ -660,11 +711,22 @@ class ContentRepo(BaseRepository[ContentItem]):
         else:
             stmt = stmt.order_by(sort_col.asc(), self.model.id.asc())
 
-        offset = (page - 1) * page_size
-        stmt = stmt.offset(offset).limit(page_size)
+        if snapshot_ids is not None:
+            stmt = stmt.where(self.model.id.in_(snapshot_ids))
+        else:
+            offset = (page - 1) * page_size
+            stmt = stmt.offset(offset).limit(page_size)
         stmt = stmt.execution_options(populate_existing=True)
 
         result = await self.db.execute(stmt)
+        if snapshot_ids is not None:
+            payload_rows = result.unique().all()
+            items = [row[0] for row in payload_rows]
+            if [(row[0].id, row.event_key, row.event_order) for row in payload_rows] != [
+                tuple(row) for row in snapshot_page_rows
+            ]:
+                raise ContentFeedChangedError("内容顺序已更新，请刷新列表后继续浏览。")
+            return GroupedFeedPage(items=items, total=total, digest=snapshot_digest)
         items = result.scalars().unique().all()
         return items, total
 
@@ -713,7 +775,20 @@ class ContentRepo(BaseRepository[ContentItem]):
                 owner_matches(member),
             )
         )
-        assignments = union_all(canonicals, members).subquery()
+        if self.db.bind.dialect.name == "postgresql":
+            # Keep both UNION branches keyed by the outer article. With a
+            # generic prepared plan the time filter can be estimated as one
+            # row, causing an uncorrelated UNION to be rescanned for every
+            # matching article. These predicates use the unique canonical /
+            # member indexes even under that estimate.
+            assignments = union_all(
+                canonicals.where(canonical.id == self.model.id).correlate(self.model),
+                members.where(member.id == self.model.id).correlate(self.model),
+            ).lateral()
+            assignment_join = true()
+        else:
+            assignments = union_all(canonicals, members).subquery()
+            assignment_join = assignments.c.content_id == self.model.id
         matching_ids = filtered.with_only_columns(self.model.id).order_by(None).subquery()
         event_key = case(
             (assignments.c.event_id.is_not(None), literal("event:") + cast(assignments.c.event_id, Text)),
@@ -756,7 +831,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 .label("report_rank"),
             )
             .join(matching_ids, matching_ids.c.id == self.model.id)
-            .outerjoin(assignments, assignments.c.content_id == self.model.id)
+            .outerjoin(assignments, assignment_join)
             .outerjoin(AiAnalysis, AiAnalysis.id == latest_analysis_id_subquery(self.model, AiAnalysis))
             .outerjoin(SourceEvidenceProfile, SourceEvidenceProfile.source_id == self.model.source_id)
             .subquery()

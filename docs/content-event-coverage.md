@@ -24,6 +24,13 @@ local_fallback 内容继续留在待复核区，不占正式精选名额。
   `curation_score` 与事件折叠组合会明确返回 400。
   `event_activity_at` 是当前筛选范围中事件用于排序的时间，前端时间流据此展示；
   原文章 `published_at` 保留。它是 ORM query_expression 读取投影，不是新增数据库列。
+- 首页使用 `group_events=true&stable_feed=true` 开始浏览，响应增加 `feed_snapshot`。
+  后续页必须原样携带该值，并保持页大小、筛选条件和用户身份不变。快照固定滚动时间窗，
+  绑定筛选后的完整有序集合（代表 ID、事件键和排序时间），有效期 30 分钟。
+  新内容、归并纠错或展示代表变化导致该顺序改变时返回 409；前端保留已加载内容，
+  提供“刷新列表”从第一页重新开始，不能把新顺序的下一页追加到旧列表。
+  这是浏览一致性令牌，不是鉴权凭据，也不保存正文历史版本。
+  该路径每页重新核对有序 ID 集合，不使用普通列表的 L1 缓存；当前尚无生产大结果集性能结论。
 - `GET /api/v1/contents/{id}/event`：保留原有 canonical + members 契约。
 - `GET /api/v1/contents/{id}/event/coverage`：相对 `{id}` 返回其它报道；
   `member_offset` 默认 0，`member_limit` 默认 20、上限 20。

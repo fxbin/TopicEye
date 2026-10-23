@@ -11,7 +11,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from sqlalchemy import select
+from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -20,7 +20,7 @@ from app.api.v1.auth import get_current_admin_user
 from app.core.database import get_db
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
-from app.models.content_event import ContentEventMember
+from app.models.content_event import ContentEventGroup, ContentEventMember
 from app.models.source import Source
 from app.models.source_evidence_profile import SourceEvidenceProfile
 from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
@@ -133,6 +133,97 @@ async def test_group_before_page_counts_once_and_keeps_unaccepted_reports(feed_d
     assert article_total == 9
     own, own_total = await repo.list_paginated_with_analyses(visible_user_id=user.id, group_events=True)
     assert own_total == 4 and private.id in {item.id for item in own}
+
+
+@pytest.mark.asyncio
+async def test_grouped_snapshot_survives_generic_prepared_plan_at_scale(feed_db):
+    """A generic time-cutoff estimate must not rescan all event assignments per article."""
+    now = datetime.now(UTC)
+    report_count = 10000
+    ids = list(
+        (
+            await feed_db.execute(
+                insert(ContentItem).returning(ContentItem.id),
+                [
+                    {
+                        "title": f"prepared report {i}",
+                        "url": f"https://prepared.invalid/{i}",
+                        "source_type": "RSS",
+                        "status": ContentStatus.ANALYZED,
+                        "created_at": now - timedelta(seconds=i),
+                        "crawled_at": now - timedelta(seconds=i),
+                    }
+                    for i in range(report_count)
+                ],
+            )
+        ).scalars()
+    )
+    groups = list(
+        (
+            await feed_db.execute(
+                insert(ContentEventGroup).returning(ContentEventGroup.id),
+                [
+                    {
+                        "canonical_content_id": ids[i],
+                        "first_occurrence_at": now - timedelta(seconds=i + 3),
+                        "last_occurrence_at": now - timedelta(seconds=i),
+                    }
+                    for i in range(0, report_count, 4)
+                ],
+            )
+        ).scalars()
+    )
+    await feed_db.execute(
+        insert(ContentEventMember),
+        [
+            {
+                "event_group_id": group,
+                "content_id": ids[i * 4 + offset],
+                "review_status": "confirmed",
+                "confidence": 1.0,
+                "match_method": "fixture",
+            }
+            for i, group in enumerate(groups)
+            for offset in (1, 2, 3)
+        ],
+    )
+    await feed_db.execute(
+        insert(AiAnalysis),
+        [{"content_id": content_id, "summary_source": "llm", "quality_score": 75} for content_id in ids],
+    )
+    for table in ("content_items", "content_event_groups", "content_event_members", "ai_analyses"):
+        await feed_db.execute(text(f"ANALYZE {table}"))
+    await feed_db.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
+    # Reproduce the observed nested-loop plan independently of fixture row
+    # width and statistics. Each UNION branch must remain an indexed lookup
+    # even when hash/merge joins and a materialized rescan are unavailable.
+    await feed_db.execute(text("SET LOCAL enable_hashjoin = off"))
+    await feed_db.execute(text("SET LOCAL enable_mergejoin = off"))
+    await feed_db.execute(text("SET LOCAL enable_material = off"))
+    # This is a query termination guard, not the separate 500ms benchmark SLA.
+    await feed_db.execute(text("SET LOCAL statement_timeout = '3000ms'"))
+    repo = ContentRepo(feed_db)
+    first = await repo.list_paginated_with_analyses(
+        public_only=True,
+        group_events=True,
+        page_size=40,
+        time_cutoff=now - timedelta(hours=24),
+        snapshot_binding="generic-plan-regression",
+        exclude_source_types={"DouyinHot"},
+    )
+    second = await repo.list_paginated_with_analyses(
+        public_only=True,
+        group_events=True,
+        page=2,
+        page_size=40,
+        time_cutoff=now - timedelta(hours=24),
+        snapshot_binding="generic-plan-regression",
+        expected_snapshot_digest=first.digest,
+        exclude_source_types={"DouyinHot"},
+    )
+    assert first.total == second.total == report_count // 4
+    assert len(first.items) == len(second.items) == 40
+    assert not {item.id for item in first.items} & {item.id for item in second.items}
 
 
 @pytest.mark.asyncio
@@ -441,3 +532,89 @@ async def test_event_cache_correction_crosses_a_real_process_boundary(feed_db):
         except TimeoutError:
             child.kill()
             await child.wait()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["insert", "review", "representative"])
+async def test_grouped_feed_snapshot_refuses_to_mix_changed_pages(feed_db, change):
+    reports, group, _, _ = await seed_feed(feed_db)
+    app = FastAPI()
+    app.include_router(contents_api.router)
+
+    async def session():
+        yield feed_db
+
+    app.dependency_overrides[get_db] = session
+    invalidate_content_list_cache()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.get("/contents", params={"group_events": "true", "stable_feed": "true", "page_size": 1})
+        assert first.status_code == 200, first.text
+        token = first.json()["feed_snapshot"]
+        if change == "insert":
+            feed_db.add(
+                ContentItem(
+                    title="new headline",
+                    url="https://new.example/new",
+                    status=ContentStatus.ANALYZED,
+                    source_type="RSS",
+                )
+            )
+            await feed_db.flush()
+        elif change == "review":
+            member = await feed_db.scalar(
+                select(ContentEventMember).where(ContentEventMember.content_id == reports[4].id)
+            )
+            await ContentEventService(feed_db).review_relation(
+                member.id,
+                decision="reject",
+                relation_type=None,
+                reason="not this event",
+                expected_version=group.version,
+            )
+        else:
+            await ContentEventService(feed_db).set_canonical(
+                group.id,
+                reports[3].id,
+                former_canonical_relation_type="duplicate",
+                reason="better article",
+                expected_version=group.version,
+            )
+        next_page = await client.get(
+            "/contents",
+            params={"group_events": "true", "stable_feed": "true", "page": 2, "page_size": 1, "feed_snapshot": token},
+        )
+        assert next_page.status_code == 409, next_page.text
+    invalidate_content_list_cache()
+
+
+@pytest.mark.asyncio
+async def test_grouped_feed_snapshot_traversal_and_filter_binding(feed_db):
+    await seed_feed(feed_db)
+    app = FastAPI()
+    app.include_router(contents_api.router)
+
+    async def session():
+        yield feed_db
+
+    app.dependency_overrides[get_db] = session
+    invalidate_content_list_cache()
+    params = {"group_events": "true", "stable_feed": "true", "page_size": 1, "hours": 24}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        first = (await client.get("/contents", params=params)).json()
+        token = first["feed_snapshot"]
+        ids = [first["items"][0]["id"]]
+        for page in (2, 3):
+            response = await client.get("/contents", params={**params, "page": page, "feed_snapshot": token})
+            assert response.status_code == 200, response.text
+            assert response.json()["feed_snapshot"] == token
+            ids.append(response.json()["items"][0]["id"])
+        assert len(ids) == len(set(ids)) == 3
+        changed_filter = await client.get(
+            "/contents", params={**params, "page": 2, "feed_snapshot": token, "q": "report"}
+        )
+        assert changed_filter.status_code == 409
+        no_token = await client.get("/contents", params={**params, "page": 2})
+        assert no_token.status_code == 400
+        malformed = await client.get("/contents", params={**params, "feed_snapshot": "malformed"})
+        assert malformed.status_code == 409
+    invalidate_content_list_cache()

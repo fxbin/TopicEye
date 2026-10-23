@@ -20,7 +20,7 @@ OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官�
   不一定相同；旧 `content_relations.same_event` 只是相似关联，不能用于隐藏文章。
   shadow 进度与技术故障重试在运行审计中；自动写入在锁内复查归属，不覆盖模型等待期间新增的人工关系，
   冲突项显式报告并保留后续扫描资格。
-  普通事件列表和精选的 L1 缓存以 PG 事件版本分隔。
+  首页浏览快照变化返回 409，需从第一页刷新；普通事件列表和精选的 L1 缓存以 PG 事件版本分隔。
   读取、分页版本及 off → shadow → write 启用门槛见
   [`docs/content-event-coverage.md`](docs/content-event-coverage.md)。
 - **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见

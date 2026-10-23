@@ -80,6 +80,8 @@ export default function HomePage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRequestSequence = useRef(0);
   const moreRequestPending = useRef(false);
+  const feedSnapshot = useRef<string | undefined>(undefined);
+  const [feedChanged, setFeedChanged] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +111,8 @@ export default function HomePage() {
     let cancelled = false;
     const sequence = ++contentRequestSequence.current;
     moreRequestPending.current = false;
+    feedSnapshot.current = undefined;
+    setFeedChanged(false);
     const invalidateSequence = () => {
       if (contentRequestSequence.current === sequence) ++contentRequestSequence.current;
     };
@@ -128,10 +132,12 @@ export default function HomePage() {
           q: searchQuery.trim() || undefined,
           include_trend_sources: false,
           group_events: true,
+          stable_feed: true,
           recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
           tag: activeTag === '全部' ? undefined : activeTag,
         });
         if (!cancelled) {
+          feedSnapshot.current = res.feed_snapshot;
           setItems(res.items || []);
           setTotalAvailable(res.total ?? (res.items || []).length);
           reportContentTotal(res.total ?? 0);
@@ -188,7 +194,12 @@ export default function HomePage() {
   }, []);
 
   const handleLoadMore = useCallback(async () => {
-    if (moreRequestPending.current) return;
+    if (moreRequestPending.current || feedChanged) return;
+    if (!feedSnapshot.current) {
+      setFeedChanged(true);
+      setLoadMoreError('列表快照不可用，请刷新列表后继续浏览。');
+      return;
+    }
     moreRequestPending.current = true;
     const sequence = contentRequestSequence.current;
     setLoadingMore(true);
@@ -205,22 +216,33 @@ export default function HomePage() {
         q: searchQuery.trim() || undefined,
         include_trend_sources: false,
         group_events: true,
+        stable_feed: true,
+        feed_snapshot: feedSnapshot.current,
         recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
         tag: activeTag === '全部' ? undefined : activeTag,
       });
       if (sequence !== contentRequestSequence.current) return;
+      if (res.feed_snapshot !== feedSnapshot.current) {
+        setFeedChanged(true);
+        setLoadMoreError('内容顺序已更新，请刷新列表后继续浏览。');
+        return;
+      }
       setItems((prev) => mergeItemsById(prev, res.items || []));
       setTotalAvailable((prev) => res.total ?? prev);
       setNextPage((prev) => prev + 1);
     } catch (err) {
-      if (sequence === contentRequestSequence.current) setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
+      if (sequence === contentRequestSequence.current) {
+        const changed = (err as { status?: number })?.status === 409;
+        setFeedChanged(changed);
+        setLoadMoreError(changed ? '内容顺序已更新，请刷新列表后继续浏览。' : err instanceof Error ? err.message : '加载更多失败，请重试');
+      }
     } finally {
       if (sequence === contentRequestSequence.current) {
         moreRequestPending.current = false;
         setLoadingMore(false);
       }
     }
-  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
+  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, feedChanged]);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -540,17 +562,15 @@ export default function HomePage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={handleLoadMore}
+                  onClick={feedChanged ? () => setReloadRevision((value) => value + 1) : handleLoadMore}
                   disabled={loadingMore}
                 >
-                  {loadingMore ? '加载中…' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
+                  {loadingMore ? '加载中…' : feedChanged ? '刷新列表' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
                 </Button>
                 {loadMoreError && !loadingMore && (
-                  <div className="mt-2 text-[12px] text-red-500">
-                    加载失败：{loadMoreError}
-                    <button type="button" className="ml-2 underline underline-offset-2" onClick={handleLoadMore}>
-                      重试
-                    </button>
+                  <div className={cx('mt-2 text-[12px]', feedChanged ? 'text-gray-600' : 'text-red-500')} role={feedChanged ? 'status' : 'alert'}>
+                    {feedChanged ? loadMoreError : `加载失败：${loadMoreError}`}
+                    {!feedChanged && <button type="button" className="ml-2 underline underline-offset-2" onClick={handleLoadMore}>重试</button>}
                   </div>
                 )}
                 <div className="mt-2 text-xs text-gray-500">同一事件合并展示，其它报道可在卡片内展开。</div>

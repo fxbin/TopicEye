@@ -101,6 +101,31 @@ expected（same_event / different_event / unknown）、label_source。
 标记 `model_accuracy_measured=false`、`write_rollout_eligible=false`。
 它逐对检查已给定候选，不测完整历史池中前 8 名候选的竞争，也不测实际模型输出。
 
+`scripts/evaluate_event_pool.py` 补充对给定候选池的前 K 名竞争、生产分类器响应解析与预算失败检查：
+
+```bash
+cd backend
+# 默认只测召回，不调用模型、不访问数据库
+uv run python scripts/evaluate_event_pool.py --dataset /path/to/pool.json --output /path/to/report.json
+# 响应回放验证解析与错误路径；不能当作真实模型效果
+uv run python scripts/evaluate_event_pool.py --dataset /path/to/pool.json --replay /path/to/responses.json --max-model-calls 20
+# 只有明确选择 live 才调用实际模型；仍不写事件事实
+uv run python scripts/evaluate_event_pool.py --dataset /path/to/holdout.json --live --max-model-calls 20
+```
+
+数据集包含 `dataset_id`、`split`、`pool_kind`、同一 owner 范围的 `candidates` 和 `queries`。
+每个 candidate 是带唯一 `id`、标题及显式时间戳的内容投影，可带 `event_id`。
+每个 query 包含 `query_id`、`incoming`、`expected`、`expected_target_ids`、
+`target_labels_exhaustive` 与 `label_source`。正例可以只标已知目标；未标全的其它命中记为未知，
+不能直接算误归并。`different_event` 必须针对整个给定池完成负例标注，单对负例不适用。
+回放文件以 query_id 为键，值为 `{"response": {...}}` 或 `{"error": "..."}`。
+
+输出绑定输入和分类器摘要，分别报告召回、误归并、弃权、失败、缺少回放与预算耗尽；
+失败和 pending 留在全部已标注查询的分母。调用上限的单位是分类器请求，不代表底层 Provider
+重试/切换的物理请求数或费用上限。解析接口没有返回确切模型身份和费用时，相关字段保持未知。
+声明“完整池”或“人工标注”本身不构成验证；工具始终保持 `write_rollout_eligible=false`。
+当前公开文章池压力样本也不等于实际历史 canonical 池或独立人工留出集。
+
 建议的启用顺序与首轮验收门槛（尚未验证通过，不代表生产现状）：
 
 1. 先完成隔离回归，再在经授权的环境用 shadow 收集真实输出。保持模型预算和幂等键；

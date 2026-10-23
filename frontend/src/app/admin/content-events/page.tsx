@@ -568,6 +568,7 @@ export default function ContentEventsAdminPage() {
     },
     {
       key: 'draft',
+      mobileAlwaysVisible: true,
       header: '审核意见',
       width: 330,
       render: (item) => {

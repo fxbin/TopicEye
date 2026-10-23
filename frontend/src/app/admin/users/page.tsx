@@ -282,9 +282,9 @@ export default function UsersAdminPage() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[760px]">
+              <div className="md:min-w-[760px]">
               {/* 表头 */}
-              <div className="grid grid-cols-[1.6fr_88px_88px_88px_120px_150px] gap-2 border-b border-gray-100 bg-gray-50/60 px-4 py-2.5 text-[11px] font-black uppercase tracking-wide text-gray-500">
+              <div className="hidden grid-cols-[1.6fr_88px_88px_88px_120px_150px] gap-2 md:grid border-b border-gray-100 bg-gray-50/60 px-4 py-2.5 text-[11px] font-black uppercase tracking-wide text-gray-500">
                 <div>邮箱</div>
                 <div>角色</div>
                 <div>套餐</div>
@@ -297,32 +297,41 @@ export default function UsersAdminPage() {
                 return (
                   <div
                     key={u.id}
-                    className="grid grid-cols-[1.6fr_88px_88px_88px_120px_150px] items-center gap-2 border-b border-gray-50 px-4 py-3 text-[13px] last:border-b-0 hover:bg-gray-50/40"
+                    data-user-id={u.id}
+                    className="grid grid-cols-3 items-start gap-3 md:grid-cols-[1.6fr_88px_88px_88px_120px_150px] md:items-center md:gap-2 border-b border-gray-50 px-4 py-3 text-[13px] last:border-b-0 hover:bg-gray-50/40"
                   >
-                    <div className="min-w-0">
-                      <div className="truncate font-bold text-gray-900">{u.email}{isSelf && <span className="ml-1 text-[11px] text-primary">（你）</span>}</div>
+                    <div className="col-span-3 min-w-0 md:col-span-1">
+                      <div className="break-all font-bold text-gray-900 md:truncate">{u.email}{isSelf && <span className="ml-1 text-[11px] text-primary">（你）</span>}</div>
                       {u.display_name && <div className="truncate text-[11px] text-gray-400">{u.display_name}</div>}
                     </div>
                     <div>
+                      <span className="mb-1 block text-xs text-gray-500 md:hidden">角色</span>
                       <Badge tone={u.role === 'admin' ? 'primary' : 'neutral'}>
                         {u.role === 'admin' ? '管理员' : '用户'}
                       </Badge>
                     </div>
                     <div>
+                      <span className="mb-1 block text-xs text-gray-500 md:hidden">套餐</span>
                       <Badge tone={u.plan === 'pro' ? 'teal' : 'neutral'}>{u.plan}</Badge>
                     </div>
                     <div>
+                      <span className="mb-1 block text-xs text-gray-500 md:hidden">状态</span>
                       <Badge tone={u.is_active ? 'teal' : 'red'}>
                         {u.is_active ? '启用' : '停用'}
                       </Badge>
                     </div>
-                    <div className="text-[11px] text-gray-500">
-                      {u.oauth_providers.length > 0 ? u.oauth_providers.join(' / ') : u.has_password ? '密码' : '—'}
-                    </div>
-                    <div className="text-[11px] text-gray-400">{u.created_at ? formatDateTime(u.created_at) : '—'}</div>
+                    <details className="col-span-3 md:hidden">
+                      <summary className="min-h-10 cursor-pointer py-2 text-xs text-gray-600 md:hidden">账户详情</summary>
+                      <div className="space-y-2 pb-1 text-xs leading-6 text-gray-600">
+                        <div><span className="mr-2 text-gray-500 md:hidden">登录方式</span>{u.oauth_providers.length > 0 ? u.oauth_providers.join(' / ') : u.has_password ? '密码' : '—'}</div>
+                        <div><span className="mr-2 text-gray-500 md:hidden">注册时间</span>{u.created_at ? formatDateTime(u.created_at) : '—'}</div>
+                      </div>
+                    </details>
+                    <div className="hidden text-xs text-gray-500 md:block">{u.oauth_providers.length > 0 ? u.oauth_providers.join(' / ') : u.has_password ? '密码' : '—'}</div>
+                    <div className="hidden text-xs text-gray-500 md:block">{u.created_at ? formatDateTime(u.created_at) : '—'}</div>
 
                     {/* 操作行（占整行，跨列） */}
-                    <div className="col-span-6 -mt-1 flex flex-wrap gap-1.5 pb-1">
+                    <div className="col-span-3 grid grid-cols-2 gap-2 pb-1 md:col-span-6 md:-mt-1 md:flex md:flex-wrap md:gap-1.5 [&_button]:min-h-10">
                       <Button
                         type="button"
                         variant="secondary"

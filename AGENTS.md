@@ -114,6 +114,8 @@ make test-backend                         # 或直接跑全量
 
 ### 3.3 其它命令
 
+- 事件真实样本与试点评估：流程、只读导出、调用预算和人工门槛见 [docs/content-event-coverage.md](docs/content-event-coverage.md)。`backend/scripts/export_event_pool.py` 只读导出公开 owner；`backend/scripts/prepare_event_shadow_dataset.py` 准备未知标签标注包；`backend/scripts/evaluate_event_pool.py` 默认不调用模型，live 需逻辑/物理/费用上限及价格依据；`backend/scripts/assess_event_pilot.py` 只生成 HOLD 或所有者复核材料，绝不授权生产 write。
+
 - Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
 - Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
 - Shell scripts: `bash -n <script>`

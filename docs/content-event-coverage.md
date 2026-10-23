@@ -110,7 +110,8 @@ uv run python scripts/evaluate_event_pool.py --dataset /path/to/pool.json --outp
 # 响应回放验证解析与错误路径；不能当作真实模型效果
 uv run python scripts/evaluate_event_pool.py --dataset /path/to/pool.json --replay /path/to/responses.json --max-model-calls 20
 # 只有明确选择 live 才调用实际模型；仍不写事件事实
-uv run python scripts/evaluate_event_pool.py --dataset /path/to/holdout.json --live --max-model-calls 20
+uv run python scripts/evaluate_event_pool.py --dataset /path/to/holdout.json --live --max-model-calls 20 \
+  --max-physical-attempts 20 --max-cost-usd 0.50 --pricing-evidence /path/to/reviewed-pricing.json
 ```
 
 数据集包含 `dataset_id`、`split`、`pool_kind`、同一 owner 范围的 `candidates` 和 `queries`。
@@ -122,7 +123,7 @@ uv run python scripts/evaluate_event_pool.py --dataset /path/to/holdout.json --l
 
 输出绑定输入和分类器摘要，分别报告召回、误归并、弃权、失败、缺少回放与预算耗尽；
 失败和 pending 留在全部已标注查询的分母。调用上限的单位是分类器请求，不代表底层 Provider
-重试/切换的物理请求数或费用上限。解析接口没有返回确切模型身份和费用时，相关字段保持未知。
+重试/切换的物理请求数。live 还必须设置物理调用和 USD 费用上限；调用前按整个声明上下文窗口与输出上限保守预留，不在失败后释放未知费用。没有已知单价、明确 USD 币种（`extra_params.pricing_currency=USD`，零价除外）或上下文上限时拒绝发送。价格证据文件只绑定人工核对材料，本身不是价格有效性的证明；不能拿任意文件绕过实际配置检查。代理内部重试不在 LiteLLM 客户端物理计数内，需另行核对上游计费。
 声明“完整池”或“人工标注”本身不构成验证；工具始终保持 `write_rollout_eligible=false`。
 当前公开文章池压力样本也不等于实际历史 canonical 池或独立人工留出集。
 
@@ -150,3 +151,31 @@ cd frontend && npm run test -- src/lib/event-coverage.test.ts src/lib/__tests__/
 ```
 
 禁止直接把后端 pytest 指向开发库；全局 fixture 会清空它指向的 PostgreSQL。
+
+
+## 只读导出与标注包
+
+使用新 session，在 PostgreSQL `REPEATABLE READ, READ ONLY` 事务中导出公开 owner 的实际 active canonical 池与未分组 incoming；正文、URL 与私有内容不导出。`as_of` 限定内容入池时间，事件事实来自 `snapshot_at`，不冒充历史回放。池或 incoming 超过上限时明确标记截断。
+
+```bash
+cd backend
+uv run python scripts/export_event_pool.py --environment production-public --as-of 2026-10-24T00:00:00Z --output /path/to/public-pool.json
+uv run python scripts/prepare_event_shadow_dataset.py --dataset /path/to/public-pool.json --output-dir /path/to/review-packet
+# 实际 canonical 池为空时，仅可显式准备本地冷启动假设；不会写入事件
+uv run python scripts/prepare_event_shadow_dataset.py --dataset /path/to/public-pool.json --bootstrap-empty-pool --output-dir /path/to/bootstrap-packet
+```
+
+导出标签一律 unknown。标注包的 calibration/holdout 是按查询 ID 分配的工作计划；须由独立人工检查事件族跨集泄漏。bootstrap 使用较早公开文章提出临时代表，种子与查询分离，不能证明实际 canonical 池召回或满足 write 门槛。
+
+## 用量关联与试点检查
+
+每个归一化运行/评估查询有独立逻辑 ID，LiteLLM 每次实际尝试的唯一 `request_id` 对应现有 `LlmCallLog`。记录请求模型、Provider 返回模型、重试与切换、token、缓存来源和日志落库状态。缓存沿用原始请求身份，本次增量费用为 0；无来源的旧缓存不算真实用量证据。缺少用量、日志或币种时费用保持未知；现有日志金额是单价估算，不能当作供应商账单。
+
+```bash
+cd backend
+uv run python scripts/assess_event_pilot.py --dataset /path/to/holdout.json --evaluation /path/to/live-report.json --human-review /path/to/independent-review.json --output /path/to/pilot-readiness.json
+```
+
+人工复核文件绑定评估 SHA256，包含 `reviewer_id`、`reviewed_at`、`reviewer_kind=human`、`independent_of_implementation`、`evidence`、`pool_completeness_verified`、`event_family_split_verified` 与 `labels`。每条 label 包含 query_id、expected、expected_target_ids、target_labels_exhaustive、evidence，整池难负例另标 hard_negative。工具从逐条结果重新统计，不信任汇总样本数；拒绝重复 ID、摘要不匹配、回放、bootstrap、未知标签和未穷尽负例。全部机器条件满足也只输出 `OWNER_REVIEW_REQUIRED`，始终 `write_authorized=false`；复核来源、准确候选、备份和回退仍须所有者审核。
+
+首次试点建议固定候选、公开 owner、1 小时窗口、最多 20 条与 5 次逻辑模型调用，并单独限制物理尝试和费用。先备份并在隔离 PG 验证版本化拒绝关系能恢复独立展示；`off` 只停止新识别，不撤销已有事实。任何误归并、可见性越界或版本冲突都停止新 write，使用后台带 expected_version 的拒绝/主报道修正，保留原文与运行审计。一次通过不授权定时 write。

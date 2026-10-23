@@ -832,7 +832,17 @@ class ContentRepo(BaseRepository[ContentItem]):
             )
             .join(matching_ids, matching_ids.c.id == self.model.id)
             .outerjoin(assignments, assignment_join)
-            .outerjoin(AiAnalysis, AiAnalysis.id == latest_analysis_id_subquery(self.model, AiAnalysis))
+            # An unassigned article is its own partition and cannot lose the
+            # representative election. Avoid probing its latest analysis here;
+            # the page still loads its real analyses through selectinload.
+            .outerjoin(
+                AiAnalysis,
+                AiAnalysis.id
+                == case(
+                    (assignments.c.event_id.is_not(None), latest_analysis_id_subquery(self.model, AiAnalysis)),
+                    else_=None,
+                ),
+            )
             .outerjoin(SourceEvidenceProfile, SourceEvidenceProfile.source_id == self.model.source_id)
             .subquery()
         )

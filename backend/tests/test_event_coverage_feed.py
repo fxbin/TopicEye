@@ -136,6 +136,37 @@ async def test_group_before_page_counts_once_and_keeps_unaccepted_reports(feed_d
 
 
 @pytest.mark.asyncio
+async def test_unassigned_reports_keep_latest_analysis_in_snapshot_payload(feed_db):
+    reports, _, _, _ = await seed_feed(feed_db)
+    feed_db.add(
+        AiAnalysis(
+            content_id=reports[7].id,
+            summary="New independent report assessment",
+            quality_score=99,
+            curation_score=99,
+            summary_source="llm",
+            recommend_level="不建议追",
+            created_at=datetime.now(UTC) + timedelta(seconds=1),
+        )
+    )
+    await feed_db.flush()
+    page = await ContentRepo(feed_db).list_paginated_with_analyses(
+        public_only=True, group_events=True, snapshot_binding="singleton-analysis"
+    )
+    standalone = next(item for item in page.items if item.id == reports[7].id)
+    assert page.total == 3
+    assert len(standalone.analyses) == 2
+    assert max(standalone.analyses, key=lambda analysis: analysis.created_at).quality_score == 99
+    filtered = await ContentRepo(feed_db).list_paginated_with_analyses(
+        public_only=True,
+        group_events=True,
+        recommend_level="不建议追",
+        snapshot_binding="singleton-filter",
+    )
+    assert filtered.total == 1 and [item.id for item in filtered.items] == [reports[7].id]
+
+
+@pytest.mark.asyncio
 async def test_grouped_snapshot_survives_generic_prepared_plan_at_scale(feed_db):
     """A generic time-cutoff estimate must not rescan all event assignments per article."""
     now = datetime.now(UTC)

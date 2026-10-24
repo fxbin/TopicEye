@@ -115,7 +115,8 @@ class PicksMixin:
                     ELSE (COALESCE(a.creator_score, 0) + COALESCE(a.viral_score, 0)) / 2.0
                          + (COALESCE(s.weight, 3) - 3) * {weight_bonus}
                          + LEAST({feedback_max}, GREATEST({feedback_min}, COALESCE(f.feedback_score, 0))) * {feedback_weight}
-                END AS adjusted_curation_score
+                END AS adjusted_curation_score,
+                c.raw_content
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
@@ -187,6 +188,7 @@ class PicksMixin:
             "source_weight_db",
             "feedback_score",
             "adjusted_curation_score",
+            "raw_content",
         ]
 
         items: list[dict[str, Any]] = []

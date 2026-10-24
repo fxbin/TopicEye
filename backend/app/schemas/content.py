@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, field_serializer
 
 from app.schemas.analysis import AiAnalysisResponse
+from app.services.content_evidence import readable_content_title
 from app.services.content_summary import clean_content_summary
 from app.services.zhihu_url import normalize_zhihu_url
 
@@ -35,6 +36,10 @@ class ContentResponse(BaseModel):
     analysis: AiAnalysisResponse | None = None
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("title")
+    def serialize_title(self, value: str) -> str:
+        return readable_content_title(value, self.summary, self.raw_content)
 
     @field_serializer("url")
     def serialize_url(self, value: str) -> str:

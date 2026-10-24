@@ -162,6 +162,20 @@ created_at TIMESTAMP
     conn.execute("INSERT INTO oltp_db.content_event_members VALUES (1, 1, 2, 'confirmed')")
     assert [row["id"] for row in analytics._query_stats_scored_items() if row["selected"]] == [2]
     assert analytics.query_stats_overview(days=7)["curated"] == 1
+    # Reassess source evidence when the attached schema supplies it; keep
+    # compatibility for the old text-less snapshot exercised above.
+    conn.execute("ALTER TABLE oltp_db.content_items ADD COLUMN title VARCHAR")
+    conn.execute("ALTER TABLE oltp_db.content_items ADD COLUMN summary VARCHAR")
+    conn.execute("ALTER TABLE oltp_db.content_items ADD COLUMN raw_content VARCHAR")
+    conn.execute("UPDATE oltp_db.content_items SET title='https://example.com/only', summary='阅读原文'")
+    conn.execute("UPDATE oltp_db.ai_analyses SET summary_source='llm_pro'")
+    conn.execute("UPDATE oltp_db.content_items SET raw_content='真实正文支持编码测试与复现步骤。' WHERE id=2")
+    assert [row["id"] for row in analytics._query_stats_scored_items() if row["selected"]] == [2]
+    assert analytics.query_stats_overview(days=7)["curated"] == 1
+    conn.execute("UPDATE oltp_db.content_items SET raw_content=NULL")
+    assert analytics._query_stats_scored_items() == []
+    assert analytics.query_stats_overview(days=7)["curated"] == 0
+
     conn.close()
 
 
@@ -481,6 +495,23 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     assert rows[0]["analysis_source_weight"] == 0.0
     assert rows[0]["recommended_reason"] == "新理由"
     assert rows[0]["adjusted_curation_score"] == 106.0
+
+    # Captured body must survive the analytical adapter. A URL title may
+    # have real prose, or a high-scoring AI summary with no source evidence.
+    body = "工具提供可复现的基准测试。开发者可以检查实测结果。"
+    conn.execute(
+        "UPDATE oltp_db.content_items SET title=?, summary=?, raw_content=? WHERE id=1",
+        ["https://example.com/original", "阅读原文", body],
+    )
+    rows = analytics.query_today_picks(hours=48, curation_threshold=0)
+    assert rows[0]["raw_content"] == body
+    from app.services.today_picks import _row_to_content_payload, _score_rows
+
+    scored = _score_rows(rows)
+    assert len(scored) == 1
+    assert _row_to_content_payload(scored[0][1], scored[0][0])["title"] == "工具提供可复现的基准测试。"
+    conn.execute("UPDATE oltp_db.content_items SET raw_content=NULL WHERE id=1")
+    assert _score_rows(analytics.query_today_picks(hours=48, curation_threshold=0)) == []
 
     conn.close()
 

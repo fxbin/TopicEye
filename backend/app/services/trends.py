@@ -7,47 +7,22 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import and_, exists, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.analysis import AiAnalysis
-from app.models.content import ContentItem
-from app.models.content_event import (
-    ContentEventGroup,
-    ContentEventMember,
-    EventReviewStatus,
-    EventStatus,
-)
 from app.models.content_evidence import ContentEvidenceMark
-from app.models.source import Source
-from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend, TopicTrendMember
-from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
 from app.repositories.trend_repo import TrendRepository
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput, score_items
 from app.services.scoring_event_selection import event_candidate_ids
 
 logger = logging.getLogger(__name__)
 
-TREND_CALCULATION_VERSION = "trend-v3"
+TREND_CALCULATION_VERSION = "trend-v4"
 EvidenceFilter = Literal["all", "selected", "evidenced"]
-
-
-def _accepted_event_member_exists():
-    return exists(
-        select(ContentEventMember.id)
-        .join(
-            ContentEventGroup,
-            ContentEventGroup.id == ContentEventMember.event_group_id,
-        )
-        .where(
-            ContentEventMember.content_id == ContentItem.id,
-            ContentEventGroup.status == EventStatus.ACTIVE,
-            ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
-        )
-    )
 
 
 def _time_basis(row) -> str:
@@ -71,7 +46,9 @@ def _member_values(
         "position": position,
         "score": round(score, 1) if score is not None else None,
         "selected": selected,
-        "title_snapshot": row.title or "",
+        "title_snapshot": readable_content_title(
+            row.title, getattr(row, "source_summary", None), getattr(row, "raw_content", None)
+        ),
         "url_snapshot": row.url or "",
         "source_id_snapshot": row.source_id,
         "source_name_snapshot": row.source_name,
@@ -107,53 +84,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
     repo = TrendRepository(db)
     await repo.delete_by_date(target_date)
 
-    latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
-    trend_row_columns = (
-        ContentItem.id,
-        ContentItem.title,
-        ContentItem.url,
-        ContentItem.category,
-        ContentItem.source_id,
-        ContentItem.source_name,
-        ContentItem.source_type,
-        ContentItem.platform,
-        ContentItem.published_at,
-        ContentItem.crawled_at,
-        ContentItem.created_at,
-    )
-
-    topic_rows_result = await db.execute(
-        select(
-            ContentItem.topic_id,
-            TopicGroup.name.label("topic_name"),
-            *trend_row_columns,
-            AiAnalysis.curation_score,
-            AiAnalysis.summary_source,
-            AiAnalysis.info_density,
-            AiAnalysis.actionability,
-            AiAnalysis.source_weight.label("analysis_source_weight"),
-            AiAnalysis.creator_score,
-            AiAnalysis.viral_score,
-            AiAnalysis.freshness_score,
-            AiAnalysis.quality_score,
-            AiAnalysis.hot_score,
-            AiAnalysis.risk_score,
-            Source.weight.label("source_weight_db"),
-        )
-        .select_from(ContentItem)
-        .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-        .outerjoin(Source, Source.id == ContentItem.source_id)
-        .outerjoin(TopicGroup, TopicGroup.id == ContentItem.topic_id)
-        .where(
-            and_(
-                ContentItem.owner_user_id.is_(None),
-                ContentItem.topic_id.isnot(None),
-                ContentItem.created_at >= start_dt,
-                ContentItem.created_at < end_dt,
-            )
-        )
-    )
-    candidate_rows = list(topic_rows_result)
+    candidate_rows = await repo.list_topic_snapshot_candidates(start_dt, end_dt)
     assignments = await ContentEventConsumptionRepository(db).resolve_today_pick_assignments(
         [row.id for row in candidate_rows],
         visible_user_id=None,
@@ -211,22 +142,11 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
         created_snapshots.append(snapshot)
         topic_count += 1
 
-    keyword_rows_result = await db.execute(
-        select(*trend_row_columns, AiAnalysis.tags)
-        .select_from(ContentItem)
-        .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-        .where(
-            and_(
-                ContentItem.owner_user_id.is_(None),
-                AiAnalysis.tags.isnot(None),
-                ~_accepted_event_member_exists(),
-                ContentItem.created_at >= start_dt,
-                ContentItem.created_at < end_dt,
-            )
-        )
-    )
+    keyword_rows_result = await repo.list_keyword_snapshot_candidates(start_dt, end_dt)
     keyword_items: dict[str, list] = {}
     for row in keyword_rows_result:
+        if not has_readable_content(row.title, row.source_summary, row.raw_content):
+            continue
         for keyword in _parse_distinct_tags(row.tags):
             keyword_items.setdefault(keyword, []).append(row)
 
@@ -277,6 +197,9 @@ def _trend_row_to_scoring_input(row, feedback_score: float = 0) -> ScoringInput:
     return ScoringInput(
         content_id=row.id,
         title=row.title or "",
+        content_evidence=has_readable_content(
+            row.title, getattr(row, "source_summary", None), getattr(row, "raw_content", None)
+        ),
         category=row.category,
         summary_source=getattr(row, "summary_source", None),
         source_id=row.source_id,

@@ -22,6 +22,7 @@ from app.services.analysis_jobs import (
     get_analysis_job,
     run_analysis_job,
 )
+from app.services.content_evidence import has_readable_content
 
 router = APIRouter(prefix="/analyses", tags=["analyses"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
@@ -37,9 +38,12 @@ async def analyze_single(
     analysis_repo = AnalysisRepository(db)
 
     try:
-        await content_repo.get_by_id_or_raise(content_id, "Content")
+        content = await content_repo.get_by_id_or_raise(content_id, "Content")
     except NotFoundError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+    if not has_readable_content(content.title, content.summary, content.raw_content):
+        raise HTTPException(status_code=422, detail="尚未采集到可读原文，暂不能分析")
 
     # Check if already analyzed
     existing = await analysis_repo.get_by_content_id(content_id)

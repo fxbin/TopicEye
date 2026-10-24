@@ -41,6 +41,7 @@ class ScoringInput:
     __slots__ = (
         "content_id",
         "title",
+        "content_evidence",  # captured source evidence, not generated analysis
         "category",
         "source_id",
         "source_name",
@@ -67,7 +68,11 @@ class ScoringInput:
 
     def __init__(self, **kwargs):
         for slot in self.__slots__:
-            if slot == "feedback_score":
+            if slot == "content_evidence":
+                # HTTP callers score caller-supplied dimensions without source
+                # text. Internal adapters must explicitly assess captured text.
+                setattr(self, slot, kwargs.get(slot, True))
+            elif slot == "feedback_score":
                 setattr(self, slot, kwargs.get(slot, 0))
             elif slot in ("published_at", "crawled_at", "summary_source"):
                 # datetime 字段默认 None（表示"没有"），不能是 0（int），
@@ -370,7 +375,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     now = datetime.now(UTC)
 
     # Phase 1: Filter extreme-risk items
-    safe_items = [it for it in items if (it.risk_score or 0) <= cfg["risk_threshold"]]
+    safe_items = [it for it in items if it.content_evidence and (it.risk_score or 0) <= cfg["risk_threshold"]]
 
     # Phase 2: Compute base score + source bonus + quality/risk/time factors
     prelim_scores: list[float] = []

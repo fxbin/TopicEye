@@ -21,6 +21,7 @@ from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.llm import call_llm_json
 from app.services.scoring_engine import ScoringInput, score_items
@@ -413,10 +414,12 @@ async def cluster_topics(
     items = []
     scoring_inputs = []
     for content, analysis, source_weight_db in rows:
+        if not has_readable_content(content.title, content.summary, content.raw_content):
+            continue
         items.append(
             {
                 "id": content.id,
-                "title": content.title,
+                "title": readable_content_title(content.title, content.summary, content.raw_content),
                 "summary": analysis.summary or "",
                 "tags": analysis.tags,
                 "curation_score": analysis.curation_score or 0,
@@ -428,6 +431,7 @@ async def cluster_topics(
             ScoringInput(
                 content_id=content.id,
                 title=content.title,
+                content_evidence=has_readable_content(content.title, content.summary, content.raw_content),
                 category=content.category,
                 source_id=content.source_id,
                 source_name=content.source_name,
@@ -449,8 +453,9 @@ async def cluster_topics(
         )
 
     adjusted_scores = {item.content_id: breakdown.final_score for breakdown, item in score_items(scoring_inputs)}
+    items = [item for item in items if item["id"] in adjusted_scores]
     for item in items:
-        item["adjusted_score"] = adjusted_scores.get(item["id"], item["curation_score"])
+        item["adjusted_score"] = adjusted_scores[item["id"]]
 
     # 2. Incremental: do NOT clear old topic assignments.
     #    Only new TopicGroups are inserted; existing ones are preserved.

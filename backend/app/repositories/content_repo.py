@@ -359,6 +359,26 @@ class ContentRepo(BaseRepository[ContentItem]):
         await self.db.flush()
         return bool(result.rowcount)
 
+    async def skip_analysis_claim(self, content_id: int, fencing_token: str, *, reason: str) -> bool:
+        """Mark an unusable captured item skipped only while owning its lease."""
+        result = await self.db.execute(
+            update(self.model)
+            .where(self.model.id == content_id)
+            .where(self.model.analysis_claim_token == fencing_token)
+            .where(self.model.status == ContentStatus.ANALYZING)
+            .values(
+                status=ContentStatus.PENDING,
+                skip_analysis=True,
+                skip_reason=reason,
+                updated_at=naive_utc_now(),
+                analysis_claim_token=None,
+                analysis_lease_expires_at=None,
+                analysis_next_retry_at=None,
+            )
+        )
+        await self.db.flush()
+        return bool(result.rowcount)
+
     async def fail_analysis_claim(
         self,
         content_id: int,
@@ -1280,6 +1300,7 @@ class ContentRepo(BaseRepository[ContentItem]):
                 self.model.source_name,
                 self.model.category,
                 self.model.summary,
+                self.model.raw_content,
                 self.model.tags,
                 self.model.is_favorited,
                 self.model.published_at,

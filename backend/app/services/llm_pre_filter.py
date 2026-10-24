@@ -22,6 +22,7 @@ import re
 from typing import Optional
 
 from app.models.content import ContentItem
+from app.services.content_evidence import has_readable_content
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,9 @@ def should_skip_analysis(content: ContentItem) -> tuple[bool, Optional[str]]:
 
     if _is_hard_low_signal(text):
         return True, "hard_low_signal"
+
+    if not has_readable_content(content.title, content.summary, content.raw_content):
+        return True, "no_readable_content"
 
     if _is_soft_low_signal(text):
         return True, "self_promo"

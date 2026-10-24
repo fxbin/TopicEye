@@ -139,7 +139,7 @@ These content endpoints accept an optional Bearer token. Anonymous reads are pub
 - `GET /api/v1/contents/{id}/event/coverage?member_offset=0&member_limit=20` lists other accepted reports relative to the displayed article. It returns event ID, version, stable canonical ID, representative ID, descriptive source count, member count and `next_offset`. Pass `expected_event_id` and `expected_version` on subsequent pages; HTTP 409 means reload from offset zero. A missing/non-visible article returns 404; an ungrouped visible article returns `event: null`.
 - `GET /api/v1/contents/{id}/event` retains the original canonical-plus-members contract.
 
-Source counts are not independent-corroboration counts. Topic/tag relations do not authorize event folding. See [event contracts and rollout gates](docs/content-event-coverage.md).
+Source counts are not independent-corroboration counts. Topic/tag relations do not authorize event folding. See [event contracts and rollout gates](.agents/notes/implemented/feature/2026-10-24-content-event-contract.md).
 
 ## curl examples
 
@@ -227,7 +227,7 @@ Tool-level scopes are enforced by a central fail-closed gate (`TOOL_REQUIRED_SCO
 
 Operational notes:
 
-- OAuth client cleanup and its retention/backup boundaries are documented in [MCP OAuth operations](docs/mcp-oauth-operations.md).
+- OAuth client cleanup and its retention/backup boundaries are documented in [MCP OAuth operations](.agents/notes/implemented/architecture/2026-10-24-mcp-client-gc-history.md).
 
 - `MCP_ENABLED=false` disables the whole MCP surface (no route mounted; startup logs state it explicitly). `MCP_OAUTH_ENABLED=false` disables only the OAuth endpoints (static tokens keep working).
 - Rate limits: 60 req/min per IP on `/mcp`; 30/min on `/authorize` and `/token`; 10/min on `/register`.

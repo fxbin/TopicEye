@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -29,6 +31,15 @@ def test_plan_catalog_declares_free_and_paid_boundaries():
     assert catalog["free_area"]
     assert catalog["paid_area"]
     assert "未完成能力只作为路线图展示，不作为当前可用承诺" in catalog["paid_area"]
+
+
+
+def test_plan_catalog_source_resolves_to_maintained_heading():
+    source, separator, heading = get_plan_catalog()["source"].partition("#")
+    assert separator and heading
+    document = Path(__file__).resolve().parents[2] / source
+    assert document.is_file(), f"Plan source document is missing: {source}"
+    assert f"## {heading}" in document.read_text(encoding="utf-8").splitlines()
 
 
 def test_plan_catalog_resolves_current_user_tier():

@@ -9,7 +9,7 @@ Status: proposed — 记录真实验证的依据与后续验收条件；当前�
 ## Decision
 
 采用独立的真实样本验证与有界试点路径。参数、启用步骤和停止条件的权威在
-[docs/content-event-coverage.md](../../../../docs/content-event-coverage.md)，当前进展和决定在
+[事件合同与启用边界](../../implemented/feature/2026-10-24-content-event-contract.md)，当前进展和决定在
 [#140](https://github.com/fxbin/TopicEye/issues/140)。本篇是薄指针，不复制门槛或维护另一份 HOLD 状态。
 
 ## Alternatives considered

@@ -13,10 +13,10 @@ TopicEye 是内容创作者的选题雷达。agent 接口见 [AGENT_API.md](AGEN
 
 | 范围 | 入口 |
 |---|---|
-| 事件归并、分页与生产启用门槛 | [docs/content-event-coverage.md](docs/content-event-coverage.md) |
-| MCP OAuth 与 client 清理运维 | [docs/mcp-oauth-operations.md](docs/mcp-oauth-operations.md) |
-| SelectBench 手动抽样、校准与导入 | [docs/selectbench.md](docs/selectbench.md) |
-| 依赖审计口径与例外复核 | [docs/dependency-audit.md](docs/dependency-audit.md) |
+| 事件归并、分页与生产启用门槛 | [事件合同与启用边界](.agents/notes/implemented/feature/2026-10-24-content-event-contract.md) |
+| MCP OAuth 与 client 清理运维 | [client 清理理由与运行合同](.agents/notes/implemented/architecture/2026-10-24-mcp-client-gc-history.md) |
+| SelectBench 手动抽样、校准与导入 | [离线校准与导入合同](.agents/notes/implemented/verification/2026-10-24-selectbench-contract.md) |
+| 依赖审计口径与例外复核 | [审计口径与例外复核](.agents/notes/implemented/risk/2026-10-24-dependency-audit-contract.md) |
 
 本文只写仓库特有的事实与约束，与通用 skill 规则冲突时以本文为准。
 
@@ -145,7 +145,7 @@ CI 作业以 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 为准，工
 PR 的 Verification 段记录本地命令、结果与覆盖范围；承载行为变更的 PR 还需独立复核结论，复核者不得是同一实现过程。
 合并后核对 main push CI 与关联 issue 状态，不凭 PR merged 推断 issue 已关闭。
 
-依赖扫描遵守 [审计口径](docs/dependency-audit.md)，不得为通过检查而降低安全门槛。
+依赖扫描遵守 [审计口径](.agents/notes/implemented/risk/2026-10-24-dependency-audit-contract.md)，不得为通过检查而降低安全门槛。
 本地测试、CI、浏览器、真实 Provider 和生产证据分开记录，不能相互替代。
 
 ## 五、文档与决策如何收尾
@@ -153,9 +153,9 @@ PR 的 Verification 段记录本地命令、结果与覆盖范围；承载行为
 `AGENTS.md` 是低频变化的协作契约：只放权限、安全、架构边界、验证入口和交付约定。
 每个 PR 核对是否影响这些约定；仅约定本身、稳定入口或原文准确性发生变化时修改。普通实现变更默认不改本文件。
 
-功能行为与运维参数放对应 docs；任务状态放 GitHub；决策理由放 notes；机器输出、截图和本轮证据放本地 `.vidt/`，不得随代码提交。
+功能合同、运维参数与决策理由放对应 owning note 或指定的长期文档；任务状态放 GitHub；机器输出、截图和本轮证据放本地 `.vidt/`，不得随代码提交。
 
 收尾明确给出一种 notes 处理结果：新建笔记、更新已有 owning note、或“无长期结论”及简短理由。
 范围裁剪、否决方案、接受残余风险、验证不足与其它长期取舍按 [notes 约定](.agents/notes/README.md) 记录；机械改动不必逐次造笔记。
-已有权威设计文档时使用薄指针，不复制另一份规则；notes 不承载当前 ship/hold 或 issue 状态真源。
+已有权威原文仍保留时使用薄指针；原文退役前将有效合同迁到 owning note 并更新引用，保持单一维护入口。notes 不承载当前 ship/hold 或 issue 状态真源。
 涉及 notes 时按启用 skill 的 agent-notes 契约校验目录、Status 和链接；不要把历史叙述中的旧路径当当前命令逐项追着改。

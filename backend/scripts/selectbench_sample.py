@@ -16,22 +16,25 @@ from __future__ import annotations  # noqa: E402
 import argparse  # noqa: E402
 import asyncio  # noqa: E402
 import csv  # noqa: E402
+import hashlib
 import json  # noqa: E402
 import logging  # noqa: E402
 import os  # noqa: E402
 import random  # noqa: E402
 import sys  # noqa: E402
 from datetime import UTC, datetime, timedelta  # noqa: E402
+from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core.database import async_session  # noqa: E402
 from app.models.source import Source  # noqa: E402
 from app.repositories.content_repo import ContentRepo  # noqa: E402
+from app.services.content_serialization import latest_analysis_from_item  # noqa: E402
 from app.services.scoring_engine import score_items  # noqa: E402
 from app.services.scoring_inputs import build_scoring_inputs  # noqa: E402
 
@@ -43,17 +46,19 @@ def _take(rows: list[dict], n: int, rng: random.Random) -> list[dict]:
     return rng.sample(rows, min(n, len(rows)))
 
 
-async def load_non_aihot_layer(quota: int, rng: random.Random) -> list[dict]:
+async def load_non_aihot_layer(quota: int, rng: random.Random, metadata: dict | None = None) -> list[dict]:
     """非 AIHOT 信源的全池分层样本：按最终名次分位抽（覆盖头/中/尾段）。
 
     用名次（而非 curation 分数）分层——curation 是扫描目标变量的一部分，
     直接按它分层会人为制造近可分金标。
     """
     async with async_session() as db:
+        await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
         aihot_ids = set((await db.execute(select(Source.id).where(Source.url.ilike("%aihot%")))).scalars().all())
         items, total = await ContentRepo(db).list_for_scoring(
             time_cutoff=datetime.now(UTC) - timedelta(days=14),
             limit=5000,
+            public_only=True,
         )
         scoring_inputs, item_map, _ = await build_scoring_inputs(db, items)
         scored = score_items(scoring_inputs)
@@ -61,7 +66,7 @@ async def load_non_aihot_layer(quota: int, rng: random.Random) -> list[dict]:
         for rank, (bd, item) in enumerate(scored):
             if item.source_id in aihot_ids:
                 continue
-            analysis = item_map[item.content_id].analyses[-1] if item_map.get(item.content_id) else None
+            analysis = latest_analysis_from_item(item_map[item.content_id]) if item_map.get(item.content_id) else None
             rows.append(
                 {
                     "content_id": item.content_id,
@@ -75,14 +80,21 @@ async def load_non_aihot_layer(quota: int, rng: random.Random) -> list[dict]:
                     "summary_source": analysis.summary_source if analysis else None,
                 }
             )
+        if metadata is not None:
+            metadata.update(pool_total=total, pool_loaded=len(items), pool_truncated=total > len(items))
         if not rows:
             return []
-        # 名次三分层（头 20% / 中 30-60% / 尾 80% 后），各抽 1/3
         n = len(rows)
-        bands = (rows[: max(1, n // 5)], rows[n // 3 : n * 3 // 5], rows[n * 4 // 5 :])
-        picked: list[dict] = []
+        bands = (rows[: max(1, n // 5)], rows[max(1, n // 5) : n * 4 // 5], rows[n * 4 // 5 :])
+        picked = []
+        chosen = set()
         for band in bands:
-            picked.extend(_take(band, quota // 3, rng))
+            available = [r for r in band if r["content_id"] not in chosen]
+            for row in _take(available, quota // 3, rng):
+                picked.append(row)
+                chosen.add(row["content_id"])
+        remaining = [r for r in rows if r["content_id"] not in chosen]
+        picked.extend(_take(remaining, max(0, quota - len(picked)), rng))
         for row in picked:
             row["quadrant"] = "non_aihot_pool"
         logger.info("非 AIHOT 全池分层：候选 %d 条（总池 %d），抽 %d", len(rows), total, len(picked))
@@ -96,8 +108,11 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", default="data/selectbench", help="输出目录")
     args = parser.parse_args()
+    if not 1 <= args.total <= 10000:
+        parser.error("total must be 1..10000")
 
     out_dir = os.path.join(_ROOT, args.out)
+    os.makedirs(out_dir, exist_ok=True)
     if args.matrix:
         matrix_path = args.matrix
     else:
@@ -107,6 +122,8 @@ def main() -> None:
         matrix_path = os.path.join(out_dir, candidates[-1])
     with open(matrix_path, encoding="utf-8") as f:
         matrix = json.load(f)
+    if matrix.get("owner_user_id", "missing") is not None or matrix.get("aihot_absence_is_unknown") is not True:
+        raise ValueError("matrix must be a public-scope snapshot that preserves unknown AIHOT absence")
 
     rng = random.Random(args.seed)
     detail = matrix["detail"]
@@ -126,9 +143,15 @@ def main() -> None:
         logger.info("%-11s 配额 %3d → 实际 %3d", quadrant, quota, len(picked))
 
     non_aihot_quota = args.total - len(rows)
+    pool_meta = {}
     if non_aihot_quota > 0:
-        rows.extend(asyncio.run(load_non_aihot_layer(non_aihot_quota, rng)))
+        rows.extend(asyncio.run(load_non_aihot_layer(non_aihot_quota, rng, pool_meta)))
+    if len({int(row["content_id"]) for row in rows}) != len(rows):
+        raise ValueError("duplicate content IDs in sample")
 
+    for row in rows:
+        row["label"] = ""
+        row["notes"] = ""
     fieldnames = [
         "content_id",
         "quadrant",
@@ -142,11 +165,25 @@ def main() -> None:
         "label",
         "notes",
     ]
-    out_path = os.path.join(out_dir, f"annotation_batch_{datetime.now(UTC):%Y%m%d}.csv")
-    with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
+    out_path = os.path.join(out_dir, f"annotation_batch_{datetime.now(UTC):%Y%m%d_%H%M%S_%f}.csv")
+    with open(out_path, "x", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+    with open(out_path + ".manifest.json", "x", encoding="utf-8") as manifest:
+        json.dump(
+            {
+                "matrix_sha256": hashlib.sha256(Path(matrix_path).read_bytes()).hexdigest(),
+                "requested": args.total,
+                "actual": len(rows),
+                "seed": args.seed,
+                "pool": pool_meta,
+                "gold_labels_verified": False,
+            },
+            manifest,
+            ensure_ascii=False,
+            indent=2,
+        )
     logger.info("标注候选 %d 条已导出 %s（label 列留空待人工填写）", len(rows), out_path)
 
 

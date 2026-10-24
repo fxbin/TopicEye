@@ -6,7 +6,7 @@
     双高一致（都选）   → 高置信正样本候选
     分歧 1（AIHOT 选、TopicEye 未选）→ 人工重点标注（漏选归因）
     分歧 2（TopicEye 选、AIHOT 未选）→ 人工重点标注（口径差异归因）
-    双低一致（都不选） → 高置信负样本候选
+    未在有限精选feed中观察到 → 待人工判断，不是负样本
 
 用途边界（所有者决定，2026-10-11）：AIHOT 精选信号仅用于内部一致性对照与
 标注样本排序——不作为金标标签、不导入为新数据源、不分发其内容、不用于
@@ -37,12 +37,13 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 import httpx  # noqa: E402
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core.database import async_session  # noqa: E402
 from app.models.source import Source  # noqa: E402
 from app.repositories.content_repo import ContentRepo  # noqa: E402
-from app.services.scoring_engine import score_items  # noqa: E402
+from app.services.content_serialization import latest_analysis_from_item  # noqa: E402
+from app.services.scoring_engine import CONFIG, score_items  # noqa: E402
 from app.services.scoring_inputs import build_scoring_inputs  # noqa: E402
 
 logger = logging.getLogger("selectbench_matrix")
@@ -89,6 +90,9 @@ def _parse_rss_date(value: str) -> datetime | None:
 
 
 async def build_matrix(days: int, out_dir: str) -> dict:
+    if not 1 <= days <= 365:
+        raise ValueError("days must be 1..365")
+    as_of = datetime.now(UTC)
     feed_items = await fetch_aihot_selected()
     if not feed_items:
         raise SystemExit("AIHOT 精选 feed 为空，中止")
@@ -103,6 +107,7 @@ async def build_matrix(days: int, out_dir: str) -> dict:
     )
 
     async with async_session() as db:
+        await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
         aihot_sources = (await db.execute(select(Source).where(Source.url.ilike("%aihot%")))).scalars().all()
         if not aihot_sources:
             raise SystemExit("信源表中未找到 AIHOT 信源（url 含 aihot）")
@@ -113,6 +118,7 @@ async def build_matrix(days: int, out_dir: str) -> dict:
         items, total = await repo.list_for_scoring(
             time_cutoff=window_start,
             limit=5000,
+            public_only=True,
         )
         scoring_inputs, item_map, _ = await build_scoring_inputs(db, items)
         scored = score_items(scoring_inputs)
@@ -151,12 +157,13 @@ async def build_matrix(days: int, out_dir: str) -> dict:
                 quadrant = "te_only"
             else:
                 quadrant = "neither"
-            analysis = it.analyses[-1] if it.analyses else None
+            analysis = latest_analysis_from_item(it)
             row = {
                 "content_id": it.id,
                 "guid": guid,
                 "title": (it.title or "")[:100],
-                "aihot_selected": aihot_sel,
+                "aihot_selected": True if aihot_sel else None,
+                "aihot_observation": "selected" if aihot_sel else "not_observed_in_finite_feed",
                 "te_selected": te_sel,
                 "te_rank": rank_by_id.get(it.id),
                 "curation_score": float(analysis.curation_score)
@@ -169,7 +176,6 @@ async def build_matrix(days: int, out_dir: str) -> dict:
     feed_only = selected_guids - matched_guids  # AIHOT 精选但库内未对齐（空窗/回溯）
     n_aihot = len(aihot_items)
     n_scored = n_aihot - len(quadrants["outside_feed_window"])
-    n_agree = len(quadrants["both"]) + len(quadrants["neither"])
     report = {
         "generated_at": datetime.now(UTC).isoformat(),
         "feed_items": len(feed_items),
@@ -178,7 +184,16 @@ async def build_matrix(days: int, out_dir: str) -> dict:
         "matched_selected": len(matched_guids),
         "feed_only_unmatched": sorted(feed_only),
         "quadrants": {k: len(v) for k, v in quadrants.items()},
-        "agreement_rate": round(n_agree / n_scored, 3) if n_scored else None,
+        "agreement_rate": None,
+        "observed_positive_overlap_rate": len(quadrants["both"]) / len(matched_guids) if matched_guids else None,
+        "aihot_absence_is_unknown": True,
+        "owner_user_id": None,
+        "pool_total": total,
+        "pool_loaded": len(items),
+        "pool_truncated": total > len(items),
+        "as_of": as_of.isoformat(),
+        "scoring_config": dict(CONFIG),
+        "gold_labels_verified": False,
         "n_in_window": n_scored,
         "detail": quadrants,
     }
@@ -189,7 +204,7 @@ async def build_matrix(days: int, out_dir: str) -> dict:
         ("both", "双高一致（都选）→ 正样本候选"),
         ("aihot_only", "分歧：AIHOT 选、TopicEye 未选 → 漏选归因重点"),
         ("te_only", "分歧：TopicEye 选、AIHOT 未选 → 口径差异重点"),
-        ("neither", "双低一致（都不选）→ 负样本候选"),
+        ("neither", "未观察到精选且TE未选 → 仍须人工判断"),
         ("outside_feed_window", "窗口外（AIHOT 判定未知，不计入一致率）"),
     ):
         logger.info("  %-11s %4d 条  %s", key, len(quadrants[key]), desc)
@@ -198,8 +213,8 @@ async def build_matrix(days: int, out_dir: str) -> dict:
         logger.info("AIHOT 精选但库内未对齐 %d 条（抓取空窗/回溯补选）", len(feed_only))
 
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"matrix_{datetime.now(UTC):%Y%m%d}.json")
-    with open(out_path, "w", encoding="utf-8") as f:
+    out_path = os.path.join(out_dir, f"matrix_{datetime.now(UTC):%Y%m%d_%H%M%S_%f}.json")
+    with open(out_path, "x", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     logger.info("明细已写入 %s", out_path)
     return report

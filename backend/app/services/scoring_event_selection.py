@@ -9,12 +9,13 @@ from app.services.scoring_engine import ScoringInput, score_items
 
 def event_candidate_ids(items: list[ScoringInput], assignments: dict[int, EventAssignment]) -> set[int]:
     """Preserve event identity while allowing a reviewed member to stand in for a fallback canonical."""
+    unsupported_ids = {item.content_id for item in items if not item.content_evidence}
     items = [item for item in items if item.content_evidence]
     fallback_ids = {item.content_id for item in items if item.summary_source == "local_fallback"}
     fallback_groups = {
         a.event_group_id
         for a in assignments.values()
-        if a.canonical_summary_source == "local_fallback" or a.canonical_content_id in fallback_ids
+        if a.canonical_summary_source == "local_fallback" or a.canonical_content_id in fallback_ids | unsupported_ids
     }
     replacements: dict[int, int] = {}
     members = [

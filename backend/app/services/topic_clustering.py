@@ -414,6 +414,8 @@ async def cluster_topics(
     items = []
     scoring_inputs = []
     for content, analysis, source_weight_db in rows:
+        if not has_readable_content(content.title, content.summary, content.raw_content):
+            continue
         items.append(
             {
                 "id": content.id,
@@ -451,8 +453,9 @@ async def cluster_topics(
         )
 
     adjusted_scores = {item.content_id: breakdown.final_score for breakdown, item in score_items(scoring_inputs)}
+    items = [item for item in items if item["id"] in adjusted_scores]
     for item in items:
-        item["adjusted_score"] = adjusted_scores.get(item["id"], item["curation_score"])
+        item["adjusted_score"] = adjusted_scores[item["id"]]
 
     # 2. Incremental: do NOT clear old topic assignments.
     #    Only new TopicGroups are inserted; existing ones are preserved.

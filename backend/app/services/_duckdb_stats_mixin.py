@@ -61,6 +61,10 @@ class StatsMixin:
             if self._oltp_column_exists(conn, "ai_analyses", "summary_source")
             else "CAST(NULL AS VARCHAR)"
         )
+        has_title = self._oltp_column_exists(conn, "content_items", "title")
+        title_expr = "c.title" if has_title else "NULL"
+        summary_expr = "c.summary" if self._oltp_column_exists(conn, "content_items", "summary") else "NULL"
+        body_expr = "c.raw_content" if self._oltp_column_exists(conn, "content_items", "raw_content") else "NULL"
         rows = conn.execute(
             f"""
             WITH {LATEST_ANALYSIS_CTE},
@@ -97,7 +101,9 @@ class StatsMixin:
                 COALESCE(s.weight, 3) AS source_weight_db,
                 COALESCE(f.feedback_score, 0) AS feedback_score,
                 event_assignment.event_group_id, event_assignment.canonical_content_id,
-                event_assignment.is_canonical, {canonical_source_expr} AS canonical_summary_source
+                event_assignment.is_canonical, {canonical_source_expr} AS canonical_summary_source,
+                {title_expr} AS title, {summary_expr} AS source_summary,
+                {body_expr} AS raw_content, {str(has_title).upper()} AS source_text_available
             FROM latest_analysis a
             JOIN oltp_db.content_items c ON c.id = a.content_id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
@@ -136,6 +142,10 @@ class StatsMixin:
             "canonical_content_id",
             "is_canonical",
             "canonical_summary_source",
+            "title",
+            "source_summary",
+            "raw_content",
+            "source_text_available",
         ]
         item_rows = [dict(zip(columns, row, strict=False)) for row in rows]
         row_map = {row["id"]: row for row in item_rows}

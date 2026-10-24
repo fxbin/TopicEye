@@ -6,14 +6,19 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
-from sqlalchemy import String, and_, case, cast, delete, func, or_, select
+from sqlalchemy import String, and_, case, cast, delete, exists, func, or_, select
 
+from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
+from app.models.content_event import ContentEventGroup, ContentEventMember, EventReviewStatus, EventStatus
 from app.models.content_evidence import ContentEvidenceMark
+from app.models.source import Source
+from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend, TopicTrendMember
+from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -23,6 +28,102 @@ class TrendRepository(BaseRepository[TopicTrend]):
     """TopicTrend repository with date-range and deletion helpers."""
 
     model = TopicTrend
+
+    async def list_topic_snapshot_candidates(self, start_dt: datetime, end_dt: datetime):
+        """Read public latest analyses with captured source evidence for topic snapshots."""
+        latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
+        trend_row_columns = (
+            ContentItem.id,
+            ContentItem.title,
+            ContentItem.summary.label("source_summary"),
+            ContentItem.raw_content,
+            ContentItem.url,
+            ContentItem.category,
+            ContentItem.source_id,
+            ContentItem.source_name,
+            ContentItem.source_type,
+            ContentItem.platform,
+            ContentItem.published_at,
+            ContentItem.crawled_at,
+            ContentItem.created_at,
+        )
+
+        topic_rows_result = await self.db.execute(
+            select(
+                ContentItem.topic_id,
+                TopicGroup.name.label("topic_name"),
+                *trend_row_columns,
+                AiAnalysis.curation_score,
+                AiAnalysis.summary_source,
+                AiAnalysis.info_density,
+                AiAnalysis.actionability,
+                AiAnalysis.source_weight.label("analysis_source_weight"),
+                AiAnalysis.creator_score,
+                AiAnalysis.viral_score,
+                AiAnalysis.freshness_score,
+                AiAnalysis.quality_score,
+                AiAnalysis.hot_score,
+                AiAnalysis.risk_score,
+                Source.weight.label("source_weight_db"),
+            )
+            .select_from(ContentItem)
+            .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
+            .outerjoin(Source, Source.id == ContentItem.source_id)
+            .outerjoin(TopicGroup, TopicGroup.id == ContentItem.topic_id)
+            .where(
+                and_(
+                    ContentItem.owner_user_id.is_(None),
+                    ContentItem.topic_id.isnot(None),
+                    ContentItem.created_at >= start_dt,
+                    ContentItem.created_at < end_dt,
+                )
+            )
+        )
+        return list(topic_rows_result)
+
+    async def list_keyword_snapshot_candidates(self, start_dt: datetime, end_dt: datetime):
+        """Read public source rows; accepted event members retain existing folding semantics."""
+        latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
+        trend_row_columns = (
+            ContentItem.id,
+            ContentItem.title,
+            ContentItem.summary.label("source_summary"),
+            ContentItem.raw_content,
+            ContentItem.url,
+            ContentItem.category,
+            ContentItem.source_id,
+            ContentItem.source_name,
+            ContentItem.source_type,
+            ContentItem.platform,
+            ContentItem.published_at,
+            ContentItem.crawled_at,
+            ContentItem.created_at,
+        )
+
+        accepted_member = exists(
+            select(ContentEventMember.id)
+            .join(ContentEventGroup, ContentEventGroup.id == ContentEventMember.event_group_id)
+            .where(
+                ContentEventMember.content_id == ContentItem.id,
+                ContentEventGroup.status == EventStatus.ACTIVE,
+                ContentEventMember.review_status.in_((EventReviewStatus.AUTO, EventReviewStatus.CONFIRMED)),
+            )
+        )
+        keyword_rows_result = await self.db.execute(
+            select(*trend_row_columns, AiAnalysis.tags)
+            .select_from(ContentItem)
+            .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
+            .where(
+                and_(
+                    ContentItem.owner_user_id.is_(None),
+                    AiAnalysis.tags.isnot(None),
+                    ~accepted_member,
+                    ContentItem.created_at >= start_dt,
+                    ContentItem.created_at < end_dt,
+                )
+            )
+        )
+        return list(keyword_rows_result)
 
     async def get_by_date_range(
         self,

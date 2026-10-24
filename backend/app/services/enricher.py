@@ -34,6 +34,7 @@ from app.repositories.analysis_queries import (
     latest_analysis_id_for_content_id,
     latest_analysis_id_subquery,
 )
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.enrichment import ENRICHMENT_PROMPT, SYSTEM_PROMPT
@@ -91,6 +92,8 @@ async def enrich_content(
         raise ValueError(f"No analysis found for content_id={content_id}")
 
     analysis, content, _topic = row[0], row[1], row[2]
+    if not has_readable_content(content.title, content.summary, content.raw_content):
+        raise ValueError("no_readable_content")
 
     # Fetch related items from same topic group
     related_items: list[dict] = []
@@ -110,10 +113,12 @@ async def enrich_content(
             .limit(5)
         )
         for rel_content, rel_analysis in rel_result.all():
+            if not has_readable_content(rel_content.title, rel_content.summary, rel_content.raw_content):
+                continue
             related_items.append(
                 {
                     "id": rel_content.id,
-                    "title": rel_content.title,
+                    "title": readable_content_title(rel_content.title, rel_content.summary, rel_content.raw_content),
                     "summary": rel_analysis.summary or "",
                 }
             )
@@ -134,7 +139,9 @@ async def enrich_content(
         {
             "role": "user",
             "content": ENRICHMENT_PROMPT.format(
-                title=sanitize_prompt_input(content.title, max_chars=500),
+                title=sanitize_prompt_input(
+                    readable_content_title(content.title, content.summary, content.raw_content), max_chars=500
+                ),
                 summary=sanitize_prompt_input(analysis.summary or "无", max_chars=500),
                 tags=sanitize_prompt_input(tags_str or "无", max_chars=200),
                 curation_score=analysis.curation_score or 0,

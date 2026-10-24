@@ -634,6 +634,11 @@ async def get_enrichment(
     analysis = await repo.get_by_content_id(content_id)
     if not analysis:
         raise HTTPException(404, "No analysis found for this content")
+    from app.services.content_evidence import has_readable_content
+
+    content = await ContentRepo(db).get_by_id_or_raise(content_id, "Content")
+    if not has_readable_content(content.title, content.summary, content.raw_content):
+        raise HTTPException(422, "尚未采集到可读原文，暂不能增强分析")
     if analysis.enrichment_status == "completed" and analysis.enrichment:
         return {"content_id": content_id, "status": "completed", "enrichment": analysis.enrichment}
     if analysis.enrichment_status == "processing":

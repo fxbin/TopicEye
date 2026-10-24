@@ -13,13 +13,19 @@ from __future__ import annotations
 from typing import Any
 
 from app.services._duckdb_sql import STATS_CURATION_FALLBACK_THRESHOLD
+from app.services.content_evidence import has_readable_content
 from app.services.scoring_engine import ScoringInput
 
 
 def stats_row_to_scoring_input(row: dict[str, Any]) -> ScoringInput:
     return ScoringInput(
         content_id=row["id"],
-        title="",
+        title=row.get("title") or "",
+        # Old read-only analytics snapshots without source text cannot be
+        # reassessed. The current production schema always supplies it.
+        content_evidence=has_readable_content(row.get("title"), row.get("source_summary"), row.get("raw_content"))
+        if row.get("source_text_available", True)
+        else True,
         category=row.get("category"),
         summary_source=row.get("summary_source"),
         source_id=row.get("source_id"),

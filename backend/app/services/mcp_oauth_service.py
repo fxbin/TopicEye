@@ -30,6 +30,7 @@ from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
     AuthorizationParams,
+    AuthorizeError,
     RefreshToken,
     TokenError,
     construct_redirect_uri,
@@ -38,6 +39,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from app.core.config import settings
 from app.models.mcp_oauth import MCPOAuthAuthorization, MCPOAuthToken
+from app.repositories.app_setting_repo import AppSettingRepository
 from app.repositories.mcp_oauth_authorization_repo import MCPOAuthAuthorizationRepository
 from app.repositories.mcp_oauth_client_repo import MCPOAuthClientRepository
 from app.repositories.mcp_oauth_token_repo import MCPOAuthTokenRepository
@@ -45,6 +47,10 @@ from app.services.auth_service import hash_token
 from app.services.secret_store import decrypt_secret, encrypt_secret
 
 logger = logging.getLogger(__name__)
+
+_CLIENT_GC_START_KEY = "mcp_oauth_client_gc_started_at"
+_CLIENT_GC_RETENTION_DAYS = 7
+_CLIENT_GC_BATCH_SIZE = 500
 
 
 def _now() -> datetime:
@@ -123,6 +129,8 @@ async def create_authorization_request(
     路由解析并经 contextvar 传入）；后续 info/approve/deny 只允许发起者
     本人操作，堵住「攻击者发起、诱导受害者批准」的同意页 CSRF 路径。
     """
+    if await MCPOAuthClientRepository(db).lock_by_client_id(client_id) is None:
+        raise AuthorizeError("unauthorized_client", "client registration expired; register again")
     request_id = str(uuid.uuid4())
     row = MCPOAuthAuthorization(
         request_id=request_id,
@@ -245,6 +253,11 @@ async def _issue_token_pair(
     family_id: str | None = None,
 ) -> OAuthToken:
     """签发 access + refresh 一对（同一 family），raw 值只出现在返回值里。"""
+    client = await MCPOAuthClientRepository(db).lock_by_client_id(client_id)
+    if client is None:
+        raise TokenError("invalid_client", "client registration no longer exists")
+    # Retained permanently even when authorization/token history is cleaned up.
+    client.last_seen_at = _now()
     family_id = family_id or str(uuid.uuid4())
     now = _now()
     access_raw = secrets.token_urlsafe(32)
@@ -291,6 +304,8 @@ async def exchange_authorization_code(db, auth_code: AuthorizationCode) -> OAuth
     if auth_code.code_challenge != row.code_challenge:
         # load 只从本行构造模型，challenge 不一致即伪造
         raise TokenError("invalid_grant", "authorization code challenge mismatch")
+    if await MCPOAuthClientRepository(db).lock_by_client_id(row.client_id) is None:
+        raise TokenError("invalid_client", "client registration no longer exists")
     if not await authz_repo.consume(row.request_id):
         raise TokenError("invalid_grant", "authorization code already used")
     return await _issue_token_pair(
@@ -330,6 +345,8 @@ async def exchange_refresh_token(db, refresh_token: RefreshToken, scopes: list[s
     row = await token_repo.get_by_token_hash(hash_token(refresh_token.token))
     if row is None or row.token_type != "refresh" or row.user_id is None:
         raise TokenError("invalid_grant", "refresh token does not exist")
+    if await MCPOAuthClientRepository(db).lock_by_client_id(row.client_id) is None:
+        raise TokenError("invalid_client", "client registration no longer exists")
     if not await token_repo.revoke_by_id_if_active(row.id):
         # 并发轮换：另一路已消费掉这枚 refresh
         raise TokenError("invalid_grant", "refresh token has been rotated")
@@ -403,10 +420,38 @@ async def revoke_token_by_raw(db, token: str) -> None:
 
 
 async def cleanup_expired(db) -> dict[str, int]:
-    """删除过期授权行与已撤销且过期的 token 行（保留 1 天排障窗口）。"""
-    cutoff = _now() - timedelta(days=1)
+    """Keep success evidence, GC provably unused clients, then purge old history.
+
+    The first run persists a non-backdated registration boundary. Unknown legacy
+    clients remain intact; eligibility starts only after deployment and 7 days.
+    All changes share the caller's commit/rollback transaction.
+    """
+    now = _now()
+    policy = await AppSettingRepository(db).get_or_create_setting(
+        _CLIENT_GC_START_KEY, now.isoformat(), "MCP client GC start; immutable, do not backdate"
+    )
+    try:
+        registered_since = datetime.fromisoformat(policy.value or "")
+        if registered_since.tzinfo is None or registered_since > now:
+            raise ValueError("GC start must be timezone-aware and not in the future")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid MCP client GC start boundary; cleanup aborted") from exc
+    client_repo = MCPOAuthClientRepository(db)
+    remembered = await client_repo.remember_authorized_clients(now)
+    clients = await client_repo.delete_stale(
+        registered_since=registered_since,
+        older_than=now - timedelta(days=_CLIENT_GC_RETENTION_DAYS),
+        limit=_CLIENT_GC_BATCH_SIZE,
+    )
+    cutoff = now - timedelta(days=1)
     authorizations = await MCPOAuthAuthorizationRepository(db).delete_stale(cutoff)
     tokens = await MCPOAuthTokenRepository(db).delete_stale(cutoff)
-    if authorizations or tokens:
-        logger.info("MCP OAuth 过期数据清理：authorizations=%d tokens=%d", authorizations, tokens)
-    return {"authorizations": authorizations, "tokens": tokens}
+    logger.info(
+        "MCP OAuth 清理：clients=%d authorizations=%d tokens=%d remembered=%d gc_since=%s",
+        clients,
+        authorizations,
+        tokens,
+        remembered,
+        registered_since.isoformat(),
+    )
+    return {"authorizations": authorizations, "tokens": tokens, "clients": clients}

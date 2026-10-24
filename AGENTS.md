@@ -190,4 +190,4 @@ verdict 段落记录独立复核结论（复核者不得是同一实现过程）
   braces 上游发布补丁（>3.0.3）后：`npm audit fix` 并去掉 workflow 里的 `--omit=dev`
   恢复全量口径。force 降级 `eslint-config-next@14.2.35` 的方案仍维持否决，依据见
   [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。
-  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复——**security-scan 再红即新问题**。
+  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复；`filelock 4.0.1` 的三条新告警已随 #144 升至 4.2.1——**security-scan 再红即新问题**。

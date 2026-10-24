@@ -8,7 +8,7 @@
 - **应杀**：合成违例文件（模块级 / 函数内局部 / `import app.services.x` 三形态）
   必须被抓到。
 - **豁免**：allowlist 内的前缀放行、前缀外的仍杀（棘轮语义——豁免是
-  模块粒度不是文件粒度，analysis_repo 若新增第三个 services 依赖照样红）。
+  模块粒度不是文件粒度；用临时注入检查匹配行为，真实仓库豁免必须为空）。
 - **契约**：对真实仓库默认调用退出码为 0（CI 依赖命令行 + 退出码契约）。
 
 本文件是纯 stdlib + subprocess，不碰数据库（外层 conftest 的 DB fixture 与它无关）。
@@ -96,11 +96,12 @@ def test_non_services_import_is_fine(cl, tmp_path: Path) -> None:
 # ── 豁免（棘轮语义）──
 
 
-def test_allowlisted_module_passes_and_prefix_escape_is_caught(cl, tmp_path: Path) -> None:
+def test_allowlisted_module_passes_and_prefix_escape_is_caught(cl, tmp_path: Path, monkeypatch) -> None:
     """豁免按 文件名+模块前缀 生效：allowlist 外的 services 依赖仍然杀。"""
     allowed = "from app.services.scoring_engine import score_items\n"
     escaped = "from app.services.duckdb_service import run_query\n"
-    # 同名文件才走 analysis_repo 的豁免
+    monkeypatch.setattr(cl, "REPO_SERVICES_IMPORT_ALLOWLIST", {"analysis_repo.py": {"app.services.scoring_engine"}})
+    # 仅测试匹配机制，真实仓库没有豁免
     target = tmp_path / "analysis_repo.py"
     target.write_text(allowed + escaped, encoding="utf-8")
     violations = cl.check_repo_services_imports(target)
@@ -118,6 +119,6 @@ def test_real_repo_default_invocation_passes() -> None:
 
 
 def test_allowlist_only_shrinks() -> None:
-    """allowlist 只减不增：当前仅剩 analysis_repo 一条（#122 清空）。"""
+    """#122 清空后禁止重新增加任何 repository→services 豁免。"""
     cl = load_cl()
-    assert set(cl.REPO_SERVICES_IMPORT_ALLOWLIST) == {"analysis_repo.py"}
+    assert cl.REPO_SERVICES_IMPORT_ALLOWLIST == {}

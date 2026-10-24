@@ -37,6 +37,7 @@ from app.services.content_list_cache import (
 )
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.content_serialization import content_with_latest_analysis, latest_analysis_from_item
+from app.services.enrichment_selection import claim_pending_enrichment_ids
 from app.services.favorite_cache import invalidate_favorite_cache
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
 from app.services.scoring_flow import (
@@ -667,7 +668,7 @@ async def enrich_top_items(
     """Batch-enrich top curated items (scheduler-friendly)."""
     from app.services.enricher import enrich_batch
 
-    ids = await AnalysisRepository(db).claim_pending_enrichment_ids(min_score, limit)
+    ids = await claim_pending_enrichment_ids(db, min_score, limit)
     await db.commit()
     if not ids:
         return {"message": "No items need enrichment", "processed": []}

@@ -16,6 +16,7 @@ import json
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.app_setting import (
     DEFAULT_FEATURE_FLAGS,
@@ -34,6 +35,18 @@ class AppSettingRepository(BaseRepository[AppSetting]):
         """按 key 查询单条配置，不存在返回 None。"""
         result = await self.db.execute(select(AppSetting).where(AppSetting.key == key))
         return result.scalar_one_or_none()
+
+    async def get_or_create_setting(self, key: str, value: str, description: str) -> AppSetting:
+        """Initialize once atomically; concurrent callers never overwrite the winner."""
+        await self.db.execute(
+            pg_insert(AppSetting)
+            .values(key=key, value=value, description=description)
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+        row = await self.get_by_key(key)
+        if row is None:
+            raise RuntimeError("setting initialization did not persist a row")
+        return row
 
     async def upsert_setting(
         self,

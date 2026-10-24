@@ -82,6 +82,13 @@ Enum、依赖注入同模块，自动判定会误报，只能人工看。`app/mc
 `DailyReportRepository`；OAuth provider 的业务编排在
 `app/services/mcp_oauth_service.py`，同意页 REST 端点在 `app/api/v1/mcp_oauth.py`）。
 
+MCP client 清理（#147）复用每日 03:55 `cleanup_mcp_oauth`：首次运行持久保存
+`app_settings.mcp_oauth_client_gc_started_at`（不可回拨）；仅清理此后注册、超过 7 天、
+无成功标记且无授权/token 行的 client，每批最多 500 条。历史不明的旧注册保留；
+签发 token 会持久更新既有 `last_seen_at`，旧成功证据先转存再清理。授权创建/兑换
+先锁 client，清理跳过锁并在删除前复查；PG 清理要求 READ COMMITTED，其他隔离级别显式拒绝。复用现有表、无迁移。生产首次启用前按高风险
+删除要求备份；本地测试通过不代表已授权或执行生产清理。损坏的启用边界显式报错并记录 FAILED，禁止重置为过去时间。
+
 ### 2.3 迁移与高风险变更
 
 - **前置备份**：`cd backend && ./scripts/backup_db.sh`（PG pg_dump，默认保留 7 份）。

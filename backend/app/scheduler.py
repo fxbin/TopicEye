@@ -806,10 +806,10 @@ async def _cleanup_email_verification_codes() -> None:
     "cleanup_mcp_oauth",
     name="MCP OAuth 过期数据清理",
     timeout=60,
-    description="每日03:55清理过期的 MCP OAuth 授权行与已撤销过期的 token（终态行保留 1 天排障）",
+    description="每日03:55清理过期授权、撤销过期token，以及清理启用后注册且超过7天未授权的闲置client（最多500条）",
 )
 async def _cleanup_mcp_oauth() -> None:
-    """清理过期的 MCP OAuth 授权行与已撤销过期的 token（daily）。
+    """清理过期授权/token与可证明闲置的client（daily）。
 
     授权码 / pending 授权请求 10 分钟过期，access 60 分钟过期；这里删的是
     超过 1 天排障保留期的终态行（见 mcp_oauth_service.cleanup_expired）。
@@ -825,6 +825,7 @@ async def _cleanup_mcp_oauth() -> None:
         return removed
     except Exception:
         logger.exception("Scheduler: cleanup_mcp_oauth failed")
+        raise
 
 
 @track_job(

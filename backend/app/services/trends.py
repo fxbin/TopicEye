@@ -23,13 +23,15 @@ from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend, TopicTrendMember
 from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
 from app.repositories.trend_repo import TrendRepository
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput, score_items
+from app.services.scoring_event_selection import event_candidate_ids
 
 logger = logging.getLogger(__name__)
 
-TREND_CALCULATION_VERSION = "trend-v2"
+TREND_CALCULATION_VERSION = "trend-v3"
 EvidenceFilter = Literal["all", "selected", "evidenced"]
 
 
@@ -126,6 +128,7 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
             TopicGroup.name.label("topic_name"),
             *trend_row_columns,
             AiAnalysis.curation_score,
+            AiAnalysis.summary_source,
             AiAnalysis.info_density,
             AiAnalysis.actionability,
             AiAnalysis.source_weight.label("analysis_source_weight"),
@@ -145,19 +148,29 @@ async def snapshot_daily_trends(db: AsyncSession, target_date: date | None = Non
             and_(
                 ContentItem.owner_user_id.is_(None),
                 ContentItem.topic_id.isnot(None),
-                ~_accepted_event_member_exists(),
                 ContentItem.created_at >= start_dt,
                 ContentItem.created_at < end_dt,
             )
         )
     )
+    candidate_rows = list(topic_rows_result)
+    assignments = await ContentEventConsumptionRepository(db).resolve_today_pick_assignments(
+        [row.id for row in candidate_rows],
+        visible_user_id=None,
+    )
+    feedback_scores = await get_feedback_scores(db, [row.id for row in candidate_rows])
+    visible_ids = event_candidate_ids(
+        [_trend_row_to_scoring_input(row, feedback_scores.get(row.id, 0)) for row in candidate_rows],
+        assignments,
+    )
     topic_items: dict[int, list] = {}
     content_ids: list[int] = []
-    for row in topic_rows_result:
+    for row in candidate_rows:
+        if row.id not in visible_ids:
+            continue
         topic_items.setdefault(row.topic_id, []).append(row)
         content_ids.append(row.id)
 
-    feedback_scores = await get_feedback_scores(db, content_ids)
     topic_count = 0
     created_snapshots: list[TopicTrend] = []
     for topic_id, rows in topic_items.items():
@@ -265,6 +278,7 @@ def _trend_row_to_scoring_input(row, feedback_score: float = 0) -> ScoringInput:
         content_id=row.id,
         title=row.title or "",
         category=row.category,
+        summary_source=getattr(row, "summary_source", None),
         source_id=row.source_id,
         source_name=row.source_name,
         published_at=row.published_at,

@@ -14,3 +14,13 @@ def invalidate_content_read_caches() -> None:
     invalidate_content_list_cache()
     invalidate_scoring_flow_cache()
     invalidate_today_picks_cache()
+
+
+def invalidate_normalized_event_caches(result: dict, *, mode: str) -> None:
+    """Call only AFTER the normalization transaction commits successfully.
+
+    Replayed writes may safely repeat this idempotent invalidation, including
+    recovery after a process stopped between commit and cache invalidation.
+    """
+    if mode == "write" and (result.get("created_events") or result.get("created_members")):
+        invalidate_content_read_caches()

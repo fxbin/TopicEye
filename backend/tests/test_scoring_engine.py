@@ -3,7 +3,6 @@ from datetime import UTC, datetime, timedelta
 from app.services.scoring_engine import (
     CONFIG,
     ScoringInput,
-    _compute_percentile_threshold,
     score_items,
 )
 
@@ -217,52 +216,39 @@ def test_diversity_promotes_other_source_over_same_source_run():
     assert final_ids.index(99) < final_ids.index(2)
 
 
-def test_local_fallback_fake_scores_do_not_displace_real_selections():
-    """#90（2026-10-09 名次截断语义）：假分参与排序与展示，但中低分假分
-    不得挤占真实内容的入选名额——真实内容的入选集合与无假分批次一致。
-    """
-
-    def _scored(content_id: int, curation: int, **extra) -> ScoringInput:
-        return _item(content_id, curation_score=curation, **extra)
-
-    real = [_scored(1, 90), _scored(2, 80), _scored(3, 70)]
+def test_local_fallback_does_not_affect_real_selection_or_diversity():
+    real = [_item(i, source_id=1, category="AI", curation_score=90 - i) for i in range(1, 11)]
     fake = [
-        _scored(98, 85, summary_source="local_fallback"),
-        _scored(99, 75, summary_source="local_fallback"),
+        _item(i, source_id=1, category="AI", curation_score=100, summary_source="local_fallback")
+        for i in range(100, 200)
     ]
-
-    baseline_selected = {bd.content_id for bd, _ in score_items(list(real)) if bd.selected}
-    mixed = score_items(real + fake)
-    mixed_real_selected = {bd.content_id for bd, it in mixed if bd.selected and it.summary_source != "local_fallback"}
-
-    assert baseline_selected == {1}
-    assert mixed_real_selected == {1}, "85/75 的假分不得挤掉真实头名的入选名额"
-    # 假分按分数参与排序（85 排第二），但 keep=1 截断不入——宁缺毋滥
+    baseline = {bd.content_id: bd.to_dict() for bd, _ in score_items(real)}
+    mixed = score_items(fake + real)
+    assert {bd.content_id: bd.to_dict() for bd, it in mixed if it.summary_source != "local_fallback"} == baseline
     assert all(not bd.selected for bd, it in mixed if it.summary_source == "local_fallback")
+    assert len([bd for bd, _ in mixed if bd.selected]) == 3
 
 
-def test_all_fallback_batch_falls_back_to_full_scores():
-    """全候选皆降级时，门槛仍由本批实际分数决定，不退回全局默认阈值。
-
-    这个分支不是防御性冗余：真实分为空时若直接把空列表交给
-    ``_compute_percentile_threshold``，它会返回 ``CONFIG["curation_threshold"]``
-    （55），而降级内容的 final_score 普遍低于该值，结果是整批一条都选不出来。
-    """
-    fallback_items = [_item(i, summary_source="local_fallback", curation_score=62) for i in range(1, 5)]
-    scored = score_items(fallback_items)
+def test_all_fallback_batch_remains_readable_but_never_selected():
+    scored = score_items([_item(i, summary_source="local_fallback", curation_score=100) for i in range(1, 5)])
     assert len(scored) == 4
+    assert all(not bd.selected for bd, _ in scored)
 
-    thresholds = {bd.threshold_used for bd, _ in scored}
-    assert len(thresholds) == 1
-    threshold = thresholds.pop()
 
-    own_scores = [bd.final_score for bd, _ in scored]
-    assert threshold == _compute_percentile_threshold(own_scores, 70), "门槛应由本批实际分数决定"
-
-    # 守门断言：门槛退回全局默认时本批会全部低于阈值、页面一条都不出。
-    # 删掉 score_items 里的 `or [bd.final_score ...]` 回退分支，本测试必红。
-    assert threshold != CONFIG["curation_threshold"]
-    assert any(bd.selected for bd, _ in scored), "门槛来自本批分数时至少应选出一条"
+def test_fixed_mode_excludes_fallback_and_reanalysis_can_enter(monkeypatch):
+    monkeypatch.setitem(CONFIG, "curation_mode", "fixed")
+    fallback = _item(
+        1,
+        summary_source="local_fallback",
+        curation_score=100,
+        crawled_at=datetime.now(UTC),
+        published_at=datetime.now(UTC),
+    )
+    reviewed = _item(
+        1, summary_source="llm_lite", curation_score=100, crawled_at=datetime.now(UTC), published_at=datetime.now(UTC)
+    )
+    assert not score_items([fallback])[0][0].selected
+    assert score_items([reviewed])[0][0].selected
 
 
 def test_scoring_input_defaults_summary_source_none():

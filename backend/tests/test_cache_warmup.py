@@ -143,7 +143,7 @@ async def test_warmup_read_caches_populates_hot_read_cache_keys(cache_warmup_ses
     expected_warmed = {
         "sources:list:1:20",
         "contents:list:1:40:24",
-        "contents:today-picks:v3:hours=24&limit=40",
+        "contents:today-picks:v5:hours=24&limit=40",
         "contents:favorites:list:1:20",
     }
     expected_warmed.update(STATS_WORKSPACE_CACHE_KEYS)
@@ -162,6 +162,32 @@ async def test_warmup_read_caches_populates_hot_read_cache_keys(cache_warmup_ses
         assert get_cached_json(key, ttl_seconds=ttl) is not None
     for hours, limit in SCORING_FLOW_WARMUP_TARGETS:
         assert get_cached_scoring_flow_json(hours=hours, limit=limit) is not None
+
+
+@pytest.mark.asyncio
+async def test_grouped_home_warmup_excludes_private_content(cache_warmup_session):
+    async with cache_warmup_session() as db:
+        db.add(
+            ContentItem(
+                title="private warmup report",
+                url="https://private.example/story",
+                owner_user_id=99,
+                source_name="Private",
+                source_type="RSS",
+                status=ContentStatus.ANALYZED,
+                crawled_at=datetime.now(UTC),
+            )
+        )
+        await db.commit()
+    async with cache_warmup_session() as db:
+        await cache_warmup.warmup_content_list(db)
+    cached = get_cached_json(home_content_list_cache_params().key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
+    assert cached is not None
+    import json
+
+    payload = json.loads(cached[0])
+    assert payload["total"] == 1
+    assert all(item["title"] != "private warmup report" for item in payload["items"])
 
 
 @pytest.mark.asyncio

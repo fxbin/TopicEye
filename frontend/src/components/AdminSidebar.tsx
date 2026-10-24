@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   Activity,
   BarChart3,
@@ -72,9 +73,8 @@ const NAV_GROUPS: { key: 'content' | 'eval' | 'users' | 'system'; items: AdminNa
 
 const PINNED_ITEM = ADMIN_NAV_ITEMS[0]; // 概览
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentUser } = useAppContext();
 
   const isActive = (href: string) => {
@@ -86,15 +86,15 @@ export default function AdminSidebar() {
     const active = isActive(item.href);
     const Icon = item.icon;
     return (
-      <button
+      <Link
         key={item.id}
-        type="button"
+        href={item.href}
         aria-current={active ? 'page' : undefined}
-        onClick={() => router.push(item.href)}
+        onClick={onNavigate}
         className={cx(
           // #121 规格：14px/高 36px/内距 12px/圆角 6px；hover ink-800；
           // active = 2px 橙左边条 + 文字最高亮度，不叠背景块（避免与徽章抢面积）。
-          'relative flex w-full items-center gap-2.5 rounded-xs px-3 py-2 text-left text-sm transition',
+          'relative flex min-h-10 w-full items-center gap-2.5 rounded-xs px-3 py-2 text-left text-sm transition',
           active
             ? 'font-medium text-white'
             : 'font-normal text-ink-500 hover:bg-ink-800 hover:text-white',
@@ -108,12 +108,12 @@ export default function AdminSidebar() {
         )}
         <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={active ? 'text-admin-accent' : undefined} />
         <span>{item.label}</span>
-      </button>
+      </Link>
     );
   };
 
   return (
-    <div className="relative flex h-screen shrink-0 select-none flex-col bg-ink-900 text-ink-500" style={{ width: 220 }}>
+    <div className="relative flex h-full shrink-0 select-none flex-col bg-ink-900 text-ink-500" style={{ width: 220 }}>
       {/* Brand */}
       <div className="px-5 pb-5 pt-6">
         <div className="flex items-center gap-2.5">

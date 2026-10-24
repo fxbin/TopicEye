@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import {
   BookOpen,
   RefreshCw,
@@ -83,6 +84,7 @@ export default function WeReadPage() {
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [discoverKeyword, setDiscoverKeyword] = useState('');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discoverRequests = useRef(createRequestGuard());
 
   const { data, loading, error, refetch } = useFetch(
     () => contentsApi.list({
@@ -95,7 +97,7 @@ export default function WeReadPage() {
     [],
   );
 
-  const allItems = data?.items ?? [];
+  const allItems = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? 0;
 
   // 解析所有 items 的 WeRead 元数据
@@ -118,12 +120,15 @@ export default function WeReadPage() {
 
   // 发现模式：防抖搜索微信读书全网书库
   useEffect(() => {
-    if (activeTab !== 'discover') return;
+    const guard = discoverRequests.current;
+    const active = guard.begin();
+    setDiscoverLoading(false);
+    if (activeTab !== 'discover') return () => guard.invalidate();
     const keyword = discoverKeyword.trim();
     if (!keyword) {
       setDiscoverResults([]);
       setDiscoverError(null);
-      return;
+      return () => guard.invalidate();
     }
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(async () => {
@@ -131,15 +136,18 @@ export default function WeReadPage() {
       setDiscoverError(null);
       try {
         const result = await integrationsApi.searchWeRead(keyword, 20);
+        if (!active()) return;
         setDiscoverResults(result.books);
       } catch (err) {
+        if (!active()) return;
         setDiscoverError(err instanceof Error ? err.message : '搜索失败');
         setDiscoverResults([]);
       } finally {
-        setDiscoverLoading(false);
+        if (active()) setDiscoverLoading(false);
       }
     }, 500);
     return () => {
+      guard.invalidate();
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, [discoverKeyword, activeTab]);

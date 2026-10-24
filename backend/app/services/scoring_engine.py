@@ -402,41 +402,32 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
         )
         breakdowns.append(bd)
 
-    # Phase 3+4: Diversity-aware greedy ranking, then final score in that order.
-    # 最终顺序由贪心重排直接给出（每条入选时固定 diversity 系数），
-    # 这里按最终顺序组装结果，无需二次 sort。
-    order, diversity_factors = _compute_diversity_order(safe_items, prelim_scores)
+    # Phase 3+4: Rank reviewed and local-fallback pools independently. A fallback
+    # must not consume a real item's source/category diversity allowance.
     results: list[tuple[ScoreBreakdown, ScoringInput]] = []
-    for i in order:
-        bd = breakdowns[i]
-        item = safe_items[i]
-        bd.diversity_factor = round(diversity_factors[i], 4)
-        bd.final_score = round(prelim_scores[i] * diversity_factors[i], 2)
-        results.append((bd, item))
+    for is_fallback in (False, True):
+        indices = [i for i, item in enumerate(safe_items) if (item.summary_source == "local_fallback") == is_fallback]
+        pool = [safe_items[i] for i in indices]
+        order, factors = _compute_diversity_order(pool, [prelim_scores[i] for i in indices])
+        for position in order:
+            i = indices[position]
+            bd = breakdowns[i]
+            bd.diversity_factor = round(factors[position], 4)
+            bd.final_score = round(prelim_scores[i] * factors[position], 2)
+            results.append((bd, safe_items[i]))
+    results.sort(key=lambda pair: pair[0].final_score, reverse=True)
 
-    # Phase 5: Determine threshold and mark selected
+    # Phase 5: Only reviewed analyses can enter the formal selection. Legacy
+    # analyses with no provenance retain their existing eligibility.
+    eligible = [(bd, item) for bd, item in results if item.summary_source != "local_fallback"]
     if cfg["curation_mode"] == "percentile":
-        # P70 门槛只由真实 LLM 评分决定：local_fallback 的确定性假分
-        # （curation 收敛 61-64 窄带）不得污染百分位门槛、挤掉真实内容。
-        # 降级项仍参与 selected 判定与展示（前端带「本地速览」标记），
-        # 由 requeue job 尽快换回真实分析（#90）。全候选皆降级时改用全量分数：
-        # 空列表会被 _compute_percentile_threshold 回退到全局默认阈值（55），
-        # 而降级内容的 final_score 普遍低于它，那样整批一条都选不出来。
-        # 名次截断（2026-10-09 精选率层 2 修复）：按 final_score 降序取
-        # top-(100-percentile)%，取代旧「nearest-rank 门槛 + >= 比较」。
-        # 旧口径放行 n-rank+1 条（n=100 的 P70 下 31%>目标 30%），且门槛值
-        # 上的并列块被整块放行（假分钉门槛时精选率达 55% 的机制之一）；
-        # 纯 > 比较则会把小批次与均匀并列批次打到一条不选。名次截断在
-        # 并列块处按展示序截断（不放大也不全灭），小批次至少保底 1 条
-        # （须过下方质量 gate——保底不是无条件下限）。
-        ordered = sorted(results, key=lambda pair: pair[0].final_score, reverse=True)
-        n = len(ordered)
+        n = len(eligible)
         rank = min(math.ceil(cfg["curation_percentile"] / 100.0 * n), n)
         keep = max(1, n - rank) if n else 0
-        cutoff_score = ordered[keep - 1][0].final_score if keep else 0.0
-
-        for position, (bd, _item) in enumerate(ordered):
+        cutoff_score = eligible[keep - 1][0].final_score if keep else 0.0
+        for bd, _item in results:
             bd.threshold_used = round(cutoff_score, 2)
+        for position, (bd, _item) in enumerate(eligible):
             bd.selected = (
                 position < keep
                 and bd.base_score >= cfg["min_selected_base_score"]
@@ -448,6 +439,7 @@ def score_items(items: list[ScoringInput]) -> list[tuple[ScoreBreakdown, Scoring
     actual_threshold = cfg["curation_threshold"]
     for bd, _item in results:
         bd.threshold_used = round(actual_threshold, 2)
+    for bd, _item in eligible:
         # fixed 模式是绝对质量线：>= 语义正确（达到线即入选），无百分位
         # rank 的 off-by-one 问题。
         bd.selected = (

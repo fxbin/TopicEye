@@ -8,9 +8,8 @@
  * 语义色（amber / primary）一律走项目 token，数字用 font-mono / tabular-nums。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  ChevronLeft,
   Clock,
   Coins,
   FileCode2,
@@ -22,9 +21,9 @@ import {
 import { useAppContext } from '@/components/ClientLayout';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner, AdminModal } from '@/components/admin-ui';
-import { LoadingState, EmptyState } from '@/components/StateView';
+import { LoadingState, EmptyState, ErrorState } from '@/components/StateView';
 import { adminPromptsApi } from '@/lib/api';
-import type { PromptRegistryItem, PromptDetailResponse } from '@/lib/api';
+import { useFetch } from '@/hooks/useFetch';
 import { formatDateTime } from '@/lib/datetime';
 
 const SCENE_FILTERS = ['', 'analysis', 'classification', 'creation_explore', 'creation_focus', 'creation_converge'];
@@ -39,45 +38,20 @@ const SCENE_LABELS: Record<string, string> = {
 
 export default function PromptsAdminPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [items, setItems] = useState<PromptRegistryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [sceneFilter, setSceneFilter] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [detail, setDetail] = useState<PromptDetailResponse | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  const fetchPrompts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await adminPromptsApi.list(sceneFilter || undefined);
-      setItems(res.items);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [sceneFilter]);
-
-  useEffect(() => {
-    if (!authLoading && currentUser?.role === 'admin') {
-      void fetchPrompts();
-    }
-  }, [fetchPrompts, authLoading, currentUser]);
-
-  const fetchDetail = useCallback(async (id: number) => {
-    setDetailLoading(true);
-    setDetail(null);
-    try {
-      const res = await adminPromptsApi.detail(id);
-      setDetail(res);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '加载详情失败');
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
+  const { data: registry, loading, error, refetch: fetchPrompts } = useFetch(
+    () => adminPromptsApi.list(sceneFilter || undefined),
+    [sceneFilter],
+    { enabled: !authLoading && currentUser?.role === 'admin' },
+  );
+  const items = registry?.items ?? [];
+  const { data: detailResponse, loading: detailLoading, error: detailError, refetch: fetchDetail } = useFetch(
+    async () => ({ id: selectedId, detail: await adminPromptsApi.detail(selectedId!) }),
+    [selectedId],
+    { enabled: selectedId !== null, initialLoading: false },
+  );
+  const detail = detailResponse?.id === selectedId ? detailResponse.detail : null;
 
   if (authLoading) return <LoadingState label="加载中..." />;
   if (currentUser?.role !== 'admin') {
@@ -102,8 +76,6 @@ export default function PromptsAdminPage() {
         }
       />
 
-      {error && <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>}
-
       {/* Scene filter */}
       <div className="flex flex-wrap items-center gap-2">
         {SCENE_FILTERS.map((s) => (
@@ -111,6 +83,7 @@ export default function PromptsAdminPage() {
             key={s}
             type="button"
             onClick={() => setSceneFilter(s)}
+            aria-pressed={sceneFilter === s}
             className={cx(
               'rounded-full px-3 py-1 text-[12px] font-semibold transition',
               sceneFilter === s
@@ -125,6 +98,8 @@ export default function PromptsAdminPage() {
 
       {loading ? (
         <LoadingState label="加载 Prompt 列表..." />
+      ) : error ? (
+        <ErrorState error={error} onRetry={() => void fetchPrompts()} panel />
       ) : items.length === 0 ? (
         <EmptyState icon={ScrollText} title="暂无 Prompt 记录" desc="启动时自动同步" />
       ) : (
@@ -132,12 +107,9 @@ export default function PromptsAdminPage() {
           {items.map((item) => (
             <Panel
               key={item.id}
-              className="cursor-pointer p-4 transition hover:border-primary/30 hover:shadow-sm"
-              onClick={() => {
-                setSelectedId(item.id);
-                void fetchDetail(item.id);
-              }}
+              className="p-0 transition hover:border-primary/30 hover:shadow-sm focus-within:ring-2 focus-within:ring-primary-border"
             >
+              <button type="button" onClick={() => setSelectedId(item.id)} aria-label={`查看 ${item.name} 的 Prompt 详情`} className="block w-full rounded-sm p-4 text-left focus-visible:outline-none">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-center gap-2">
@@ -178,6 +150,7 @@ export default function PromptsAdminPage() {
                   )}
                 </div>
               </div>
+              </button>
             </Panel>
           ))}
         </div>
@@ -189,11 +162,10 @@ export default function PromptsAdminPage() {
           title="Prompt 详情"
           onClose={() => {
             setSelectedId(null);
-            setDetail(null);
           }}
           maxWidth={800}
         >
-          {detailLoading ? (
+          {detailLoading || (!detail && !detailError) ? (
             <div className="py-8 text-center">
               <Loader2 size={20} className="mx-auto mb-2 animate-spin text-ink-500" />
               <span className="text-[13px] text-ink-500">加载中...</span>
@@ -216,7 +188,7 @@ export default function PromptsAdminPage() {
               </div>
 
               {/* 30-day stats */}
-              <div className="grid grid-cols-4 gap-3 rounded-sm bg-ink-100 p-3">
+              <div className="grid grid-cols-2 gap-3 rounded-sm bg-ink-100 p-3 sm:grid-cols-4">
                 <StatBox label="30天调用" value={String(detail.stats_30d.call_count)} />
                 <StatBox label="总费用" value={`$${detail.stats_30d.total_cost.toFixed(2)}`} />
                 <StatBox label="输入Token" value={detail.stats_30d.total_input_tokens.toLocaleString()} />
@@ -253,7 +225,7 @@ export default function PromptsAdminPage() {
               </div>
             </div>
           ) : (
-            <div className="py-8 text-center text-[13px] text-ink-500">加载失败</div>
+            <div role="alert" className="py-8 text-center text-[13px] text-ink-700">{detailError || '加载失败'}<button type="button" className="ml-3 underline" onClick={() => void fetchDetail()}>重试详情</button></div>
           )}
         </AdminModal>
       )}

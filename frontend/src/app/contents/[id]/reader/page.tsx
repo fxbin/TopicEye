@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, BookOpen, ExternalLink, FileWarning, RefreshCw } from 'lucide-react';
 import { Button, Panel } from '@/components/ui';
@@ -98,8 +99,10 @@ export default function ContentReaderPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requests = useRef(createRequestGuard());
 
   const load = useCallback(async (refresh = false) => {
+    const active = requests.current.begin();
     if (!Number.isFinite(contentId) || contentId <= 0) {
       setError('内容编号无效');
       setLoading(false);
@@ -110,18 +113,29 @@ export default function ContentReaderPage() {
     setError(null);
     try {
       const item = await contentsApi.get(contentId);
+      if (!active()) return;
       setContent(item);
       const reader = await contentsApi.reader(contentId, refresh);
+      if (!active()) return;
       setSnapshot(reader);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '暂时无法提取原文');
+      if (active()) setError(err instanceof Error ? err.message : '暂时无法提取原文');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (active()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [contentId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const guard = requests.current;
+    setContent(null);
+    setSnapshot(null);
+    setRefreshing(false);
+    void load();
+    return () => guard.invalidate();
+  }, [load]);
 
   const body = useMemo(
     () => snapshot?.content_blocks?.length ? snapshot.content_blocks : legacyBlocks(snapshot?.text_content || ''),

@@ -58,7 +58,7 @@ export function Button({
     <button
       {...props}
       className={cx(
-        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-sm border px-3 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60',
+        'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border px-3 py-2 text-sm font-bold transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60',
         variantClass[variant],
         className,
       )}
@@ -145,12 +145,12 @@ export function PanelTitle({
   className?: string;
 }) {
   return (
-    <div className={cx('mb-3 flex items-center justify-between gap-3', className)}>
+    <div className={cx('mb-3 flex flex-wrap items-center justify-between gap-3', className)}>
       <div className="flex min-w-0 items-center gap-2">
         {Icon && <Icon size={15} className="text-primary" strokeWidth={2.2} />}
         <span className="text-sm font-black text-gray-900">{title}</span>
       </div>
-      {hint && <span className="whitespace-nowrap text-[11px] text-gray-400">{hint}</span>}
+      {hint && <span className="text-xs leading-5 text-gray-600">{hint}</span>}
     </div>
   );
 }
@@ -176,12 +176,12 @@ export function Surface({
 }) {
   return (
     <Panel className={cx('p-4.5 sm:p-5', className)}>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {Icon && <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />}
-          <span className="truncate text-sm font-black text-gray-900">{title}</span>
+          <span className="text-sm font-black text-gray-900">{title}</span>
         </div>
-        {hint && <span className="shrink-0 text-[11px] text-gray-400">{hint}</span>}
+        {hint && <span className="text-xs leading-5 text-gray-600">{hint}</span>}
       </div>
       {children}
     </Panel>
@@ -217,7 +217,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(item.value)}
             aria-pressed={selected}
             className={cx(
-              'rounded-xs border border-transparent py-1.5 text-[11px] transition',
+              'rounded-xs border border-transparent px-2 py-2 text-sm transition',
               selected
                 ? 'bg-white font-black text-primary shadow-sm'
                 : 'bg-transparent font-bold text-gray-500 hover:text-gray-800',

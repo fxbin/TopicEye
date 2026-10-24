@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
+import { ErrorState } from '@/components/StateView';
 import Header from '@/components/Header';
 import CategoryChip from '@/components/CategoryChip';
 import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
@@ -42,7 +43,6 @@ import { mergeItemsById } from '@/lib/utils';
 import ContentAnalysisPanel from '@/components/ContentAnalysisPanel';
 import { startContentWorkflow } from '@/lib/workflow';
 import {
-  parseUTC,
   formatClock as formatTime,
   timeAgo,
   isToday,
@@ -63,8 +63,11 @@ export default function HomePage() {
   const [categoryOptions, setCategoryOptions] = useState<string[]>(['全部']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadRevision, setReloadRevision] = useState(0);
   const [activeCategory, setActiveCategory] = useState('全部');
   const [categoryExpanded, setCategoryExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [activeRecommendLevel, setActiveRecommendLevel] = useState<RecommendLevel | '全部'>('全部');
   const [activeTag, setActiveTag] = useState('全部');
   const [tagFacets, setTagFacets] = useState<Array<{ tag: string; count: number }>>([]);
@@ -75,6 +78,10 @@ export default function HomePage() {
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRequestSequence = useRef(0);
+  const moreRequestPending = useRef(false);
+  const feedSnapshot = useRef<string | undefined>(undefined);
+  const [feedChanged, setFeedChanged] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,10 +109,18 @@ export default function HomePage() {
   // Fetch data
   useEffect(() => {
     let cancelled = false;
+    const sequence = ++contentRequestSequence.current;
+    moreRequestPending.current = false;
+    feedSnapshot.current = undefined;
+    setFeedChanged(false);
+    const invalidateSequence = () => {
+      if (contentRequestSequence.current === sequence) ++contentRequestSequence.current;
+    };
 
     (async () => {
       try {
         setLoading(true);
+        setLoadingMore(false);
         setNextPage(2);
         setLoadMoreError(null);
         setError(null);
@@ -116,10 +131,13 @@ export default function HomePage() {
           category: activeCategory === '全部' ? undefined : activeCategory,
           q: searchQuery.trim() || undefined,
           include_trend_sources: false,
+          group_events: true,
+          stable_feed: true,
           recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
           tag: activeTag === '全部' ? undefined : activeTag,
         });
         if (!cancelled) {
+          feedSnapshot.current = res.feed_snapshot;
           setItems(res.items || []);
           setTotalAvailable(res.total ?? (res.items || []).length);
           reportContentTotal(res.total ?? 0);
@@ -143,8 +161,9 @@ export default function HomePage() {
 
     return () => {
       cancelled = true;
+      invalidateSequence();
     };
-  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
+  }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, reloadRevision, reportContentTotal, currentUser?.id]);
 
   // 标签统计与基础口径联动（时间/来源/分类/搜索），覆盖口径内全部内容；
   // 等级/标签筛选不改变 chips 本身，只改变列表结果。
@@ -175,6 +194,14 @@ export default function HomePage() {
   }, []);
 
   const handleLoadMore = useCallback(async () => {
+    if (moreRequestPending.current || feedChanged) return;
+    if (!feedSnapshot.current) {
+      setFeedChanged(true);
+      setLoadMoreError('列表快照不可用，请刷新列表后继续浏览。');
+      return;
+    }
+    moreRequestPending.current = true;
+    const sequence = contentRequestSequence.current;
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
@@ -188,18 +215,34 @@ export default function HomePage() {
         category: activeCategory === '全部' ? undefined : activeCategory,
         q: searchQuery.trim() || undefined,
         include_trend_sources: false,
+        group_events: true,
+        stable_feed: true,
+        feed_snapshot: feedSnapshot.current,
         recommend_level: activeRecommendLevel === '全部' ? undefined : activeRecommendLevel,
         tag: activeTag === '全部' ? undefined : activeTag,
       });
+      if (sequence !== contentRequestSequence.current) return;
+      if (res.feed_snapshot !== feedSnapshot.current) {
+        setFeedChanged(true);
+        setLoadMoreError('内容顺序已更新，请刷新列表后继续浏览。');
+        return;
+      }
       setItems((prev) => mergeItemsById(prev, res.items || []));
       setTotalAvailable((prev) => res.total ?? prev);
       setNextPage((prev) => prev + 1);
     } catch (err) {
-      setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
+      if (sequence === contentRequestSequence.current) {
+        const changed = (err as { status?: number })?.status === 409;
+        setFeedChanged(changed);
+        setLoadMoreError(changed ? '内容顺序已更新，请刷新列表后继续浏览。' : err instanceof Error ? err.message : '加载更多失败，请重试');
+      }
     } finally {
-      setLoadingMore(false);
+      if (sequence === contentRequestSequence.current) {
+        moreRequestPending.current = false;
+        setLoadingMore(false);
+      }
     }
-  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag]);
+  }, [nextPage, activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, feedChanged]);
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
@@ -211,7 +254,7 @@ export default function HomePage() {
       setItems((prev) => prev.filter((item) => item.id !== id));
       refreshCounts?.();
     } catch (err) {
-      console.error('Ignore failed:', err);
+      setActionError(err instanceof Error ? err.message : '忽略内容失败，请重试');
     }
   }, [currentUser, refreshCounts, router]);
 
@@ -230,11 +273,8 @@ export default function HomePage() {
   // 客户端只负责按发布时间排序展示。
   const filtered = useMemo(() => {
     const result = [...items];
-    result.sort((a, b) => {
-      const ta = parseUTC(getContentTime(a)).getTime() || 0;
-      const tb = parseUTC(getContentTime(b)).getTime() || 0;
-      return tb - ta;
-    });
+    // The server paginates the same event order used for totals. Re-sorting
+    // representatives by their own article date would undo that ordering.
     return result;
   }, [items]);
 
@@ -255,7 +295,7 @@ export default function HomePage() {
 
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
     setWorkflowPendingId(item.id);
-    setError(null);
+    setActionError(null);
     try {
       await startContentWorkflow({
         contentId: item.id,
@@ -267,7 +307,7 @@ export default function HomePage() {
       contentFavoriteState.refresh();
       refreshCounts?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '推进选题失败');
+      setActionError(err instanceof Error ? err.message : '推进选题失败');
     } finally {
       setWorkflowPendingId(null);
     }
@@ -308,14 +348,14 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-10 py-8">
+    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
       {/* Header */}
       <Header
         title="今日选题"
         date={dateStr}
         stats={[
-          { label: '总内容', value: displayedTotalCount, color: 'var(--color-primary-text)' },
-          { label: '今日新增', value: todayCount, color: 'var(--color-teal-text)' },
+          { label: '选题事件', value: displayedTotalCount, color: 'var(--color-primary-text)' },
+          { label: '今日已加载', value: todayCount, color: 'var(--color-teal-text)' },
         ]}
       />
 
@@ -323,13 +363,14 @@ export default function HomePage() {
       <div className="mb-4 max-w-[820px]">
         <input
           type="text"
+          aria-label="搜索选题内容"
           placeholder="搜索标题、摘要、标签、AI分析..."
           value={searchQuery}
           onChange={(e) => {
             resetPagination();
             setSearchQuery(e.target.value);
           }}
-          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-primary"
+          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-base text-gray-900 sm:text-sm outline-none transition focus:border-primary"
         />
       </div>
 
@@ -337,18 +378,19 @@ export default function HomePage() {
       <div className="mb-3 max-w-[820px]">
         <Toolbar className="gap-3">
           {/* Time range */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-gray-500">时间</span>
             {['24h', '48h', '7d', '全部'].map((range) => (
               <button
                 key={range}
+                aria-pressed={activeTimeRange === range}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveTimeRange(range);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeTimeRange === range
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -359,20 +401,21 @@ export default function HomePage() {
             ))}
           </div>
           {/* Divider */}
-          <div className="h-5 w-px bg-gray-200" />
+          <div className="hidden h-5 w-px bg-gray-200 sm:block" />
           {/* Source type */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className={cx('flex-wrap items-center gap-1.5', filtersExpanded ? 'flex' : 'hidden sm:flex')}>
             <span className="text-xs font-medium text-gray-500">来源</span>
             {['全部', 'RSS', 'RSSHub', '网站', 'Reddit', 'Zhihu'].map((type) => (
               <button
                 key={type}
+                aria-pressed={activeSourceType === type}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveSourceType(type);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeSourceType === type
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -385,6 +428,12 @@ export default function HomePage() {
         </Toolbar>
       </div>
 
+      <button type="button" aria-expanded={filtersExpanded} aria-controls="content-filters" onClick={() => setFiltersExpanded(value => !value)}
+        className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-sm border border-gray-200 bg-white px-3 text-sm text-gray-700 sm:hidden">
+        {filtersExpanded ? '收起筛选' : '更多筛选'}
+        <ChevronDown size={16} className={filtersExpanded ? 'rotate-180 transition' : 'transition'} />
+      </button>
+      <div id="content-filters" className={cx(filtersExpanded ? 'block' : 'hidden', 'sm:block')}>
       {/* Filters - Category (first row + expand) */}
       <div className="mb-3 max-w-[820px]">
         <div className="flex flex-wrap items-center gap-2">
@@ -407,6 +456,7 @@ export default function HomePage() {
           {categoryOptions.length > 6 && (
             <button
               type="button"
+              aria-expanded={categoryExpanded}
               onClick={() => setCategoryExpanded((v) => !v)}
               className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-normal text-gray-500 transition hover:border-primary-border hover:text-primary-text"
             >
@@ -424,13 +474,14 @@ export default function HomePage() {
             {RECOMMEND_FILTERS.map((level) => (
               <button
                 key={level}
+                aria-pressed={activeRecommendLevel === level}
                 type="button"
                 onClick={() => {
                   resetPagination();
                   setActiveRecommendLevel(level);
                 }}
                 className={cx(
-                  'rounded-xs px-2.5 py-1 text-xs transition',
+                  'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                   activeRecommendLevel === level
                     ? 'bg-primary-light font-semibold text-primary-text'
                     : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -452,13 +503,14 @@ export default function HomePage() {
               return (
                 <button
                   key={tag}
+                aria-pressed={activeTag === tag}
                   type="button"
                   onClick={() => {
                     resetPagination();
                     setActiveTag(tag);
                   }}
                   className={cx(
-                    'rounded-xs px-2.5 py-1 text-xs transition',
+                    'min-h-9 whitespace-nowrap rounded-xs px-2.5 py-1.5 text-[13px] transition',
                     activeTag === tag
                       ? 'bg-teal-light font-semibold text-teal-text'
                       : 'bg-gray-50 font-normal text-gray-500 hover:bg-gray-100',
@@ -472,18 +524,16 @@ export default function HomePage() {
         </Toolbar>
       </div>
 
+      </div>
+      {actionError && <div className="mb-4 max-w-[820px]"><ErrorState error={actionError} onDismiss={() => setActionError(null)} /></div>}
       {/* Error state */}
-      {error && (
-        <div className="mb-5 max-w-[820px] rounded-lg border border-red bg-red-light px-5 py-4 text-sm text-red">
-          加载失败：{error}
-        </div>
-      )}
+      {error && <div className="mb-4 max-w-[820px]"><ErrorState error={error} onRetry={() => setReloadRevision(value => value + 1)} /></div>}
 
       {/* Loading state */}
       {loading && (
         <div className="max-w-[820px] py-[60px] text-center">
           <Spinner />
-          <div className="mt-3 text-[13px] text-gray-400">加载中...</div>
+          <div className="mt-3 text-sm text-gray-600">加载中...</div>
         </div>
       )}
 
@@ -496,9 +546,11 @@ export default function HomePage() {
               isFavorited={contentFavoriteState.isFavorited}
               onToggleFav={async (id) => {
                 const wasFav = contentFavoriteState.isFavorited(id);
-                await toggleFavorite(id);
-                contentFavoriteState.refresh();
-                contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+                try {
+                  await toggleFavorite(id);
+                  contentFavoriteState.refresh();
+                  contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+                } catch (err) { setActionError(err instanceof Error ? err.message : '收藏失败，请重试'); }
               }}
               onIgnore={handleIgnore}
               onShowAnalysis={(a) => setSelectedAnalysis(a)}
@@ -510,20 +562,18 @@ export default function HomePage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={handleLoadMore}
+                  onClick={feedChanged ? () => setReloadRevision((value) => value + 1) : handleLoadMore}
                   disabled={loadingMore}
                 >
-                  {loadingMore ? '加载中…' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
+                  {loadingMore ? '加载中…' : feedChanged ? '刷新列表' : `加载更多（还有 ${totalAvailable - items.length} 条）`}
                 </Button>
                 {loadMoreError && !loadingMore && (
-                  <div className="mt-2 text-[12px] text-red-500">
-                    加载失败：{loadMoreError}
-                    <button type="button" className="ml-2 underline underline-offset-2" onClick={handleLoadMore}>
-                      重试
-                    </button>
+                  <div className={cx('mt-2 text-[12px]', feedChanged ? 'text-gray-600' : 'text-red-500')} role={feedChanged ? 'status' : 'alert'}>
+                    {feedChanged ? loadMoreError : `加载失败：${loadMoreError}`}
+                    {!feedChanged && <button type="button" className="ml-2 underline underline-offset-2" onClick={handleLoadMore}>重试</button>}
                   </div>
                 )}
-                <div className="mt-2 text-[11px] text-gray-400">首屏优先展示最新内容，按需继续展开。</div>
+                <div className="mt-2 text-xs text-gray-500">同一事件合并展示，其它报道可在卡片内展开。</div>
               </div>
             )}
             {filtered.length === 0 && (

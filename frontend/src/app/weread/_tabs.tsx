@@ -115,6 +115,7 @@ export function ShelfTab({
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
+            aria-label="搜索书名、作者或笔记"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="搜索书名 / 作者 / 笔记…"
@@ -126,6 +127,7 @@ export function ShelfTab({
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-bold text-gray-400">排序</span>
           <select
+            aria-label="书架排序方式"
             value={sortKey}
             onChange={(e) => onSortKeyChange(e.target.value as SortKey)}
             className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs font-bold text-gray-700 focus:border-primary-border focus:outline-none"
@@ -148,6 +150,7 @@ export function ShelfTab({
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-bold text-gray-400">分组</span>
           <select
+            aria-label="书架分组方式"
             value={groupKey}
             onChange={(e) => onGroupKeyChange(e.target.value as GroupKey)}
             className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs font-bold text-gray-700 focus:border-primary-border focus:outline-none"
@@ -319,6 +322,7 @@ export function DiscoverTab({
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
+            aria-label="搜索微信读书书库"
             value={keyword}
             onChange={(e) => onKeywordChange(e.target.value)}
             placeholder="搜索微信读书书库：书名 / 作者 / 关键词…"

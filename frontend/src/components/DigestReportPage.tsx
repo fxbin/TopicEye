@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRequestGuard } from '@/lib/request-guard';
 import {
   AlertTriangle,
   ArrowDown,
@@ -102,8 +103,6 @@ export interface DigestPeriodSummary {
 interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends DigestPeriodSummary> {
   title: string;
   badge: string;
-  heroLabel: string;
-  heroTitle: React.ReactNode;
   sidebarTitle: string;
   emptyHistoryText: string;
   emptyText: string;
@@ -111,7 +110,6 @@ interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends D
   generatingText: string;
   latestButtonLabel: string;
   periodName: string;
-  periodCodeLabel: string;
   topPicksTitle: string;
   actionTitle: string;
   overviewTitle: string;
@@ -136,28 +134,28 @@ interface DigestReportPageProps<TDigest extends DigestRecord, TSummary extends D
   getSummaryKey: (summary: TSummary) => string;
   getSummaryLabel: (summary: TSummary) => string;
   onDigestChange?: (digest: TDigest | null) => void;
+  children?: React.ReactNode;
 }
 
-function DigestStat({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: React.ReactNode;
-  tone?: 'primary' | 'teal' | 'amber' | 'neutral';
-}) {
-  const toneClass = {
-    primary: 'border-primary-border bg-primary-light text-primary',
-    teal: 'border-teal-border bg-teal-light text-teal',
-    amber: 'border-amber-border bg-amber-light text-amber',
-    neutral: 'border-gray-200 bg-gray-50 text-gray-900',
-  }[tone];
+function DigestStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div><dt className="text-xs text-gray-500">{label}</dt><dd className="mt-1 font-mono text-lg font-bold text-gray-800">{value}</dd></div>;
+}
 
+function DigestPickRow({ pick, rank, onRead, lead = false }: { pick: DigestPick; rank: number; onRead: (id: number) => void; lead?: boolean }) {
   return (
-    <div className={cx('min-w-0 rounded-sm border px-3 py-3', toneClass)}>
-      <div className="mb-1.5 text-[11px] text-gray-500">{label}</div>
-      <div className="font-mono text-[21px] font-black leading-none">{value}</div>
+    <div className={cx('grid grid-cols-[24px_minmax(0,1fr)] items-start gap-3', !lead && 'border-t border-gray-100 py-4 first:border-t-0')}>
+      <span className={cx('flex h-6 w-6 items-center justify-center rounded-full font-mono text-xs font-bold', lead ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600')}>{rank}</span>
+      <div className="min-w-0">
+        <h3 className={cx('font-bold leading-6 text-gray-900', lead ? 'text-[17px]' : 'text-[15px]')}>{pick.title}</h3>
+        {pick.reason && <p className="mt-2 text-sm leading-6 text-gray-600">{pick.reason}</p>}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+          {pick.source && <span>{pick.source}</span>}
+          {pick.category && <span>{pick.category}</span>}
+          {(pick.platforms ?? []).map((platform, index) => <span key={`${platform}-${index}`}>{platform}</span>)}
+          {pick.score ? <span className="font-mono text-primary">{pick.score} 分</span> : null}
+        </div>
+        {pick.content_id && <button type="button" onClick={() => onRead(pick.content_id!)} aria-label={`阅读：${pick.title}`} className="mt-2 inline-flex min-h-10 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"><BookOpen size={15} />阅读原文</button>}
+      </div>
     </div>
   );
 }
@@ -202,8 +200,6 @@ function parseJson<T>(val: unknown, fallback: T): T {
 export default function DigestReportPage<TDigest extends DigestRecord, TSummary extends DigestPeriodSummary>({
   title,
   badge,
-  heroLabel,
-  heroTitle,
   sidebarTitle,
   emptyHistoryText,
   emptyText,
@@ -211,7 +207,6 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   generatingText,
   latestButtonLabel,
   periodName,
-  periodCodeLabel,
   topPicksTitle,
   actionTitle,
   overviewTitle,
@@ -228,24 +223,35 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   getSummaryKey,
   getSummaryLabel,
   onDigestChange,
+  children,
 }: DigestReportPageProps<TDigest, TSummary>) {
   const [digest, setDigest] = useState<TDigest | null>(null);
   const [periods, setPeriods] = useState<TSummary[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [latestPeriod, setLatestPeriod] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodsLoading, setPeriodsLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [periodsError, setPeriodsError] = useState<string | null>(null);
+  const requests = useRef(createRequestGuard());
+  const historyRequests = useRef(createRequestGuard());
+  const mobileHistory = useRef<HTMLDetailsElement>(null);
   // 站内阅读：点选题标题旁的 BookOpen 打开全局 ReaderDrawer（挂在 ClientLayout，全站单实例）
   const { openReader } = useAppContext();
 
 
   const loadPeriods = useCallback(async () => {
+    const active = historyRequests.current.begin();
     try {
       setPeriodsLoading(true);
-      setPeriods(await api.listPeriods());
+      setPeriodsError(null);
+      const list = await api.listPeriods();
+      if (active()) setPeriods(list);
+    } catch (err) {
+      if (active()) setPeriodsError(err instanceof Error ? err.message : '历史期刊加载失败');
     } finally {
-      setPeriodsLoading(false);
+      if (active()) setPeriodsLoading(false);
     }
   }, [api]);
 
@@ -256,14 +262,22 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
   }, []);
 
   const fetchDigest = useCallback(async (periodKey?: string) => {
+    const active = requests.current.begin();
     try {
       setLoading(true);
+      setGenerating(false);
       setError(null);
+      setDigest(null);
+      setSelectedPeriod(periodKey || null);
+      onDigestChange?.(null);
       const data = periodKey ? await api.getByPeriod(periodKey) : await api.getCurrent();
+      if (!active()) return;
       setDigest(data);
       setSelectedPeriod(getDigestKey(data));
+      if (!periodKey) setLatestPeriod(getDigestKey(data));
       onDigestChange?.(data);
     } catch (err: unknown) {
+      if (!active()) return;
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg?.includes('404') || errMsg?.includes('not found')) {
         setDigest(null);
@@ -273,40 +287,51 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         setError(errMsg || '加载失败');
       }
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
-  }, [api, getDigestKey, periodName]);
+  }, [api, getDigestKey, periodName, onDigestChange]);
 
   // 仅 mount 时加载当前期——不依赖 fetchDigest（其依赖 api/getDigestKey 是父组件
   // 内联传参，每次 render 新引用，若放依赖会重跑此 effect 拉回 current 覆盖用户切换）。
   // 后续切换由 handlePeriodSelect 主动调 fetchDigest(periodKey)。
   useEffect(() => {
+    const guard = requests.current;
+    const historyGuard = historyRequests.current;
     void fetchDigest();
+    return () => { guard.invalidate(); historyGuard.invalidate(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePeriodSelect = useCallback((periodKey: string) => {
-    if (periodKey === selectedPeriod) return;
+    if (periodKey === selectedPeriod && !error) return;
+    if (mobileHistory.current) mobileHistory.current.open = false;
     void fetchDigest(periodKey);
-  }, [fetchDigest, selectedPeriod]);
+  }, [fetchDigest, selectedPeriod, error]);
 
   const handleRegenerate = async (periodKey?: string) => {
+    if (generating || loading) return;
+    const active = requests.current.begin();
     try {
       setGenerating(true);
+      setError(null);
       const data = await api.generate(periodKey);
+      if (!active()) return;
       setDigest(data);
       setSelectedPeriod(getDigestKey(data));
+      if (!periodKey) setLatestPeriod(getDigestKey(data));
+      onDigestChange?.(data);
       await loadPeriods();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '生成失败');
+      if (active()) setError(err instanceof Error ? err.message : '生成失败');
     } finally {
-      setGenerating(false);
+      if (active()) setGenerating(false);
     }
   };
 
   const keywords = parseJson<string[]>(digest?.keywords, []);
   const trends = parseJson<DigestTrend[]>(digest?.trends, []);
   const topPicks = parseJson<DigestPick[]>(digest?.top_picks, []);
+  const headlineText = digest?.takeaway || digest?.overview || `${periodName}内容已完成归档，等待进一步分析。`;
   const categorySummary = parseJson<Record<string, DigestCategoryInfo>>(digest?.category_summary, {});
   const platformTips = parseJson<Record<string, string[]>>(digest?.platform_tips, {});
   const topicClusters = parseJson<DigestCluster[]>(digest?.topic_clusters, []);
@@ -344,15 +369,14 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
 
   const actionItems = parseJson<DigestActionItem[]>(digest?.action_items, []);
   const visiblePeriods = useMemo(() => periods, [periods]);
-  const currentKey = digest ? getDigestKey(digest) : undefined;
+  const currentKey = digest ? getDigestKey(digest) : selectedPeriod || undefined;
 
-  return (
-    <div className="flex h-full overflow-hidden">
-      <aside className="flex w-[260px] min-w-[260px] flex-col overflow-hidden border-r border-gray-200 bg-white">
+  const historyControls = (
+    <>
         <ReportSidebarHeader icon={HistoryIcon} title={sidebarTitle} countText={`共 ${periods.length} 期`} />
 
         <div className="px-3 pb-1 pt-2">
-          <CurrentPeriodButton active={!selectedPeriod || selectedPeriod === currentKey} icon={Pin} onClick={() => fetchDigest()}>
+          <CurrentPeriodButton active={!selectedPeriod || selectedPeriod === latestPeriod} icon={Pin} onClick={() => { if (mobileHistory.current) mobileHistory.current.open = false; void fetchDigest(); }}>
             {latestButtonLabel}
           </CurrentPeriodButton>
         </div>
@@ -360,6 +384,11 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         <div className="flex-1 overflow-y-auto px-3 pb-3 pt-1">
           {periodsLoading ? (
             <div className="px-2 py-5 text-center text-xs text-gray-400">加载中...</div>
+          ) : periodsError ? (
+            <div role="alert" className="px-2 py-3 text-sm text-red">
+              {periodsError}
+              <Button type="button" variant="secondary" className="mt-2" onClick={() => void loadPeriods()}>重试加载历史</Button>
+            </div>
           ) : visiblePeriods.length === 0 ? (
             <div className="px-2 py-5 text-center text-xs text-gray-400">{emptyHistoryText}</div>
           ) : (
@@ -370,6 +399,7 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
                 <button
                   key={periodKey}
                   type="button"
+                  aria-current={isActive ? 'true' : undefined}
                   onClick={() => handlePeriodSelect(periodKey)}
                   className={cx(
                     'mb-0.5 block w-full rounded-xs border-l-3 px-3 py-2.5 text-left text-[13px] transition',
@@ -389,22 +419,32 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
             })
           )}
         </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden lg:flex-row">
+      <details ref={mobileHistory} className="shrink-0 border-b border-gray-200 bg-white lg:hidden">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-gray-700">选择期刊 · {digest ? getDigestLabel(digest) : sidebarTitle}</summary>
+        <div className="flex max-h-[45dvh] flex-col overflow-y-auto">{historyControls}</div>
+      </details>
+      <aside className="hidden w-[260px] shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white lg:flex">
+        {historyControls}
       </aside>
 
-      <main className="flex-1 overflow-y-auto px-10 py-7 pb-16">
-        <header className="mb-4 flex items-start justify-between gap-5">
-          <div>
-            <div className="mb-2 flex flex-wrap items-center gap-2.5">
-              <h1 className="m-0 text-[26px] font-black text-gray-900">{title}</h1>
-              <ReportBadge>{badge}</ReportBadge>
-              {digest && <ReportBadge tone="history">{periodName}归档</ReportBadge>}
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 pb-16 sm:px-6 lg:px-10 lg:py-7">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="m-0 text-[24px] font-black text-gray-900 sm:text-[26px]">{title}</h1>
+              <span className="font-mono text-xs text-gray-500">{currentKey || selectedPeriod}</span>
+              <span className="hidden lg:inline-flex"><ReportBadge>{badge}</ReportBadge></span>
             </div>
-            <p className="m-0 text-[13px] text-gray-500">
-              {digest ? `${getDigestLabel(digest)}（${getDigestStart(digest)} ~ ${getDigestEnd(digest)}）` : '加载中...'}
-              {digest?.content_count ? ` · 基于 ${digest.content_count} 条内容分析` : ''}
+            <p className="mb-0 mt-1 text-xs leading-6 text-gray-500">
+              {digest ? `${getDigestStart(digest)} ~ ${getDigestEnd(digest)}` : loading ? '加载中...' : selectedPeriod || `暂无${periodName}`}
             </p>
           </div>
-          <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating} icon={RefreshCw}>
+          <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating || loading} loadingText={loading ? '加载中...' : '生成中...'} icon={RefreshCw}>
             重新生成
           </ReportActionButton>
         </header>
@@ -412,13 +452,13 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
         {loading ? (
           <ReportStatusPanel icon={HistoryIcon}>{loadingText}</ReportStatusPanel>
         ) : error ? (
-          <ReportStatusPanel icon={AlertTriangle} tone="error">{error}</ReportStatusPanel>
+          <ReportStatusPanel icon={AlertTriangle} tone="error" action={<Button type="button" variant="secondary" onClick={() => void fetchDigest(selectedPeriod || undefined)}>重试加载</Button>}>{error}</ReportStatusPanel>
         ) : digest?.status === 'ERROR' ? (
           <div className="grid min-h-[360px] place-items-center p-10 text-center">
             <div>
               <AlertTriangle size={30} className="mx-auto mb-3 text-red" strokeWidth={1.9} />
               <div className="mb-3 text-sm text-gray-500">{digest.overview}</div>
-              <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating} icon={RefreshCw}>
+              <ReportActionButton onClick={() => handleRegenerate(currentKey)} loading={generating || loading} loadingText={loading ? '加载中...' : '生成中...'} icon={RefreshCw}>
                 重试生成
               </ReportActionButton>
             </div>
@@ -436,38 +476,27 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
           </ReportStatusPanel>
         ) : digest ? (
           <article className="max-w-[900px]">
-            <Panel className="relative mb-4.5 overflow-hidden p-6 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--color-primary),var(--color-teal))]" />
-              <div className="relative grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_132px]">
-                <div className="min-w-0">
-                  <div className="mb-4 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-primary-border bg-primary-light px-2.5 py-1 font-mono text-[11px] font-black text-primary">
-                      {heroLabel}
-                    </span>
-                    <span className="text-xs text-gray-500">{getDigestLabel(digest)}</span>
-                  </div>
-                  <h2 className="mb-3.5 text-[34px] font-black leading-none text-gray-900">
-                    {heroTitle}
-                  </h2>
-                  <p className="max-w-[620px] text-base font-bold leading-7 text-gray-700">
-                    {digest.takeaway || digest.overview || `${periodName}内容已完成归档，等待进一步分析。`}
-                  </p>
-                </div>
-                <div className="min-w-[122px] rounded-sm border border-primary-border bg-primary-light px-3.5 py-3 text-right">
-                  <div className="mb-1.5 text-[11px] text-gray-500">{periodCodeLabel}</div>
-                  <div className="font-mono text-[22px] font-black text-primary">{currentKey}</div>
-                  <div className="mt-1 text-[11px] text-gray-500">{getDigestStart(digest)} ~ {getDigestEnd(digest)}</div>
-                </div>
-              </div>
-              <div className="relative mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                <DigestStat label="内容样本" value={digest.content_count || 0} tone="primary" />
-                <DigestStat label="完成分析" value={digest.analyzed_count || 0} tone="teal" />
-                <DigestStat label="推荐选题" value={topPicks.length || 0} tone="amber" />
-                <DigestStat label="信源覆盖" value={digest.source_count || 0} />
-              </div>
+            <Panel className="mb-4.5 p-4 sm:p-6">
+              <div className="mb-2 text-xs font-semibold text-primary">本期判断</div>
+              <h2 className="mb-4 text-balance text-[22px] font-bold leading-[1.4] text-gray-900 sm:text-[26px]">
+                {headlineText}
+              </h2>
+              {topPicks[0] && <section className="border-t border-gray-200 pt-4" aria-label="头号选题">
+                <div className="mb-3 text-xs font-semibold text-gray-500">头号选题</div>
+                <DigestPickRow pick={topPicks[0]} rank={1} onRead={openReader} lead />
+              </section>}
+              <details className="mt-4 border-t border-gray-100 pt-2">
+                <summary className="min-h-10 cursor-pointer py-2 text-xs leading-6 text-gray-500">分析依据 · {digest.content_count || 0} 条内容 · {digest.source_count || 0} 个信源</summary>
+                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3 pb-1 sm:grid-cols-4">
+                  <DigestStat label="内容样本" value={digest.content_count || 0} />
+                  <DigestStat label="完成分析" value={digest.analyzed_count || 0} />
+                  <DigestStat label="推荐选题" value={topPicks.length} />
+                  <DigestStat label="信源覆盖" value={digest.source_count || 0} />
+                </dl>
+              </details>
             </Panel>
 
-            {digest.overview && (
+            {digest.overview && digest.overview !== headlineText && (
               <Panel className="mb-4.5 p-5">
                 <ReportSectionTitle icon={Newspaper} title={overviewTitle} />
                 <p className="text-sm leading-8 text-gray-600">{digest.overview}</p>
@@ -529,42 +558,11 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
 
             {!clusterFirst && clustersSection}
 
-            {topPicks.length > 0 && (
+            {topPicks.length > 1 && (
               <Panel className="mb-4.5 p-5">
                 <ReportSectionTitle icon={Target} title={topPicksTitle} />
                 <div className="flex flex-col gap-2.5">
-                  {topPicks.map((pick, index) => (
-                    <div key={`${pick.title}-${index}`} className="grid grid-cols-[32px_minmax(0,1fr)_52px] items-start gap-3 border-t border-gray-100 py-4 first:border-t-0">
-                      <div className={cx('flex h-6.5 w-6.5 items-center justify-center rounded-full font-mono text-xs font-black', index === 0 ? 'bg-primary text-white' : index === 1 ? 'bg-amber text-white' : 'bg-gray-100 text-gray-600')}>
-                        {index + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-start gap-2">
-                          <div className="min-w-0 flex-1 text-[15px] font-black leading-6 text-gray-900">{pick.title}</div>
-                          {/* 站内阅读：有 content_id 时点开 ReaderDrawer；历史数据无 content_id 不显示入口 */}
-                          {pick.content_id && (
-                            <button
-                              type="button"
-                              onClick={() => openReader(pick.content_id!)}
-                              className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
-                              title="站内阅读"
-                            >
-                              <BookOpen size={15} />
-                            </button>
-                          )}
-                        </div>
-                        <div className="mt-1 text-xs leading-5 text-gray-500">{pick.reason}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {pick.source && <span className="text-[10px] text-gray-400">信源 {pick.source}</span>}
-                          {pick.category && <span className="rounded bg-teal-light px-2 py-0.5 text-[10px] text-teal">{pick.category}</span>}
-                          {(pick.platforms ?? []).map((platform, platformIndex) => (
-                            <span key={`${platform}-${platformIndex}`} className="rounded bg-teal-light px-2 py-0.5 text-[10px] text-teal">{platform}</span>
-                          ))}
-                        </div>
-                      </div>
-                      {pick.score && <div className="text-right font-mono text-[21px] font-black text-primary">{pick.score}</div>}
-                    </div>
-                  ))}
+                  {topPicks.slice(1).map((pick, index) => <DigestPickRow key={`${pick.title}-${index}`} pick={pick} rank={index + 2} onRead={openReader} />)}
                 </div>
               </Panel>
             )}
@@ -633,7 +631,8 @@ export default function DigestReportPage<TDigest extends DigestRecord, TSummary 
               </Panel>
             )}
 
-            <div className="flex flex-wrap gap-6 border-t border-gray-200 pt-3.5 text-xs text-gray-400">
+            {children}
+            <div className="mt-4 flex flex-wrap gap-6 border-t border-gray-200 pt-3.5 text-xs text-gray-400">
               <ReportFooterStat icon={CalendarDays}>{getDigestLabel(digest)}</ReportFooterStat>
               <ReportFooterStat icon={BarChart3}>分析 {digest.analyzed_count} 条内容</ReportFooterStat>
               <ReportFooterStat icon={RadioTower}>来自 {digest.source_count} 个信源</ReportFooterStat>

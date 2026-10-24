@@ -6,6 +6,7 @@ import { ArrowRight, KeyRound, LockKeyhole, Mail, Radar, UserRound } from 'lucid
 import { useAppContext } from '@/components/ClientLayout';
 import { authApi } from '@/lib/api';
 import { sanitizeReturnTo } from '@/lib/navigation';
+import { rememberOauthReturnTo } from '@/app/oauth/_return-to';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 
 type AuthMode = 'login' | 'register';
@@ -72,8 +73,14 @@ export default function LoginPage() {
   const enabledOauth = (['google', 'github'] as const).filter((p) => oauthProviders.includes(p));
 
   const handleOauthLogin = (provider: 'google' | 'github') => {
+    try {
+      rememberOauthReturnTo(window.sessionStorage, returnTo);
+    } catch {
+      setError('无法保存登录后的返回地址，请允许站点存储后重试');
+      return;
+    }
     // 整页跳转到后端，后端 302 到 provider 授权页
-    window.location.href = authApi.oauthLoginUrl(provider);
+    window.location.assign(authApi.oauthLoginUrl(provider));
   };
 
   const handleSendCode = async () => {
@@ -116,7 +123,7 @@ export default function LoginPage() {
       if (returnTo && returnTo !== '/') {
         // returnTo 可能指向后端路径（如 /authorize，经 next rewrite 代理），
         // 必须整页导航——客户端路由推不到 rewrite 目标
-        window.location.href = returnTo;
+        window.location.assign(returnTo);
       } else {
         router.push('/');
       }

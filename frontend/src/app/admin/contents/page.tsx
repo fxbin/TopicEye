@@ -94,6 +94,7 @@ export default function ContentsPage() {
   const [pageSize, setPageSize] = useState(initial.pageSize);
   const [category, setCategory] = useState(initial.category);
   const [q, setQ] = useState(initial.q);
+  const [searchResetKey, setSearchResetKey] = useState(0);
   const [didRestore, setDidRestore] = useState(false);
 
   // 挂载后恢复 URL 状态（两段式的第二段），随后放行首拉
@@ -167,6 +168,7 @@ export default function ContentsPage() {
   };
 
   const clearAllFilters = () => {
+    setSearchResetKey((current) => current + 1);
     setQ('');
     setCategory('全部');
     setPage(1);
@@ -321,6 +323,7 @@ export default function ContentsPage() {
         <AdminFilters
           searchPlaceholder="搜索标题 / 标签 / 正文…"
           searchValue={q}
+          resetKey={searchResetKey}
           onSearchChange={handleSearchChange}
           actions={
             !loading && items.length > 0 ? (

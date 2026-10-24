@@ -229,6 +229,8 @@ class Settings(BaseSettings):
     EVENT_NORMALIZATION_LOOKBACK_DAYS: int = 180
     EVENT_NORMALIZATION_AUTO_ACCEPT_CONFIDENCE: float = 0.88
     EVENT_NORMALIZATION_PREDICTION_AUDIT_MAX_BYTES: int = 65_536
+    EVENT_NORMALIZATION_RETRY_BASE_SECONDS: int = 900
+    EVENT_NORMALIZATION_RETRY_MAX_ATTEMPTS: int = 3
 
     # ── Model catalog (models.dev 开放目录) ──
     # 目录是参考数据：仅用于管理端表单预填与展示，不影响运行时路由与计费。

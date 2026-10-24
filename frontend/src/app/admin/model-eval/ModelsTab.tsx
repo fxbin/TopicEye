@@ -17,7 +17,7 @@
  * showAdd / editing 状态控制其显示；添加保存成功后自动对该模型触发一次连接测试。
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   KeyRound,
   Plus,
@@ -33,11 +33,14 @@ import type { LlmModelItem } from '@/lib/api';
 import { formatPerMillion } from './_model-eval-utils';
 import { ModelEditForm } from './ModelEditForm';
 
-export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRefresh: () => void }) {
+export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRefresh: () => Promise<void> }) {
   const [editing, setEditing] = useState<LlmModelItem | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<Record<number, { status: string; response?: string; note?: string; error?: string; duration_ms: number }>>({});
   const [showAdd, setShowAdd] = useState(false);
+  const [actionErrors, setActionErrors] = useState<Record<number, string>>({});
+  const [actingIds, setActingIds] = useState<Set<number>>(new Set());
+  const pendingActions = useRef(new Set<number>());
 
   const handleTest = async (id: number) => {
     setTesting(id);
@@ -50,15 +53,29 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
     setTesting(null);
   };
 
-  const handleToggle = async (m: LlmModelItem) => {
-    await modelsApi.update(m.id, { enabled: !m.enabled });
-    onRefresh();
+  const runAction = async (id: number, action: () => Promise<unknown>) => {
+    if (pendingActions.current.has(id)) return;
+    pendingActions.current.add(id);
+    setActingIds(new Set(pendingActions.current));
+    setActionErrors((current) => { const next = { ...current }; delete next[id]; return next; });
+    try {
+      await action();
+      await onRefresh();
+    } catch (error) {
+      setActionErrors((current) => ({ ...current, [id]: error instanceof Error ? error.message : '操作失败，请重试' }));
+    } finally {
+      pendingActions.current.delete(id);
+      setActingIds(new Set(pendingActions.current));
+    }
+  };
+
+  const handleToggle = (m: LlmModelItem) => {
+    void runAction(m.id, () => modelsApi.update(m.id, { enabled: !m.enabled }));
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('确定删除该模型配置？')) return;
-    await modelsApi.delete(id);
-    onRefresh();
+    await runAction(id, () => modelsApi.delete(id));
   };
 
   const enabledCount = models.filter((m) => m.enabled).length;
@@ -82,7 +99,7 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
         <ModelEditForm
           onClose={(saved, createdId) => {
             setShowAdd(false);
-            onRefresh();
+            void onRefresh().catch(() => {}); // 页面显示刷新错误。
             if (saved && createdId) void handleTest(createdId);
           }}
         />
@@ -92,7 +109,7 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
           model={editing}
           onClose={() => {
             setEditing(null);
-            onRefresh();
+            void onRefresh().catch(() => {}); // 页面显示刷新错误。
           }}
         />
       )}
@@ -173,16 +190,17 @@ export function ModelsTab({ models, onRefresh }: { models: LlmModelItem[]; onRef
             )}
 
             <Toolbar className="border-t border-ink-100 pt-3">
-              <Button type="button" variant="secondary" onClick={() => handleToggle(m)}>{m.enabled ? '禁用' : '启用'}</Button>
+              <Button type="button" variant="secondary" onClick={() => handleToggle(m)} disabled={actingIds.has(m.id)}>{actingIds.has(m.id) ? '处理中…' : m.enabled ? '禁用' : '启用'}</Button>
               <Button type="button" variant="secondary" onClick={() => handleTest(m.id)} disabled={testing === m.id} className="text-primary">
                 {testing === m.id ? '测试中...' : '测试'}
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setEditing(m)}>编辑</Button>
-              <Button type="button" variant="danger" onClick={() => handleDelete(m.id)}>
+              <Button type="button" variant="secondary" onClick={() => setEditing(m)} disabled={actingIds.has(m.id)}>编辑</Button>
+              <Button type="button" variant="danger" onClick={() => handleDelete(m.id)} disabled={actingIds.has(m.id)}>
                 <Trash2 size={12} strokeWidth={2.2} />
                 删除
               </Button>
             </Toolbar>
+            {actionErrors[m.id] && <p role="alert" className="text-sm text-red-700">{actionErrors[m.id]}</p>}
           </Panel>
         ))}
       </div>

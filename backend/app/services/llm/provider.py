@@ -43,6 +43,7 @@ from app.services.llm._rate_limit import (
     reset_model_rate_limiters,
     reset_token_rate_limiter,
 )
+from app.services.llm.call_trace import current_trace
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +149,13 @@ async def call_llm_with_metadata(
     cache = get_llm_cache()
     cache_scope = _cache_scope(routing_group, scene)
     if not bypass_response_cache:
-        cached = cache.get(messages, temperature, max_tokens, model=cache_scope)
+        cached = cache.get_with_metadata(messages, temperature, max_tokens, model=cache_scope)
         if cached is not None:
-            return cached, {"cache_hit": True}
+            raw, origin_metadata = cached
+            metadata = {**origin_metadata, "cache_hit": True}
+            if (trace := current_trace()) is not None:
+                trace.route = metadata
+            return raw, metadata
 
     # Budget fuse: reject paid calls once a rolling budget window is exhausted.
     # Checked after the response cache on purpose — cache hits are free and
@@ -169,14 +174,26 @@ async def call_llm_with_metadata(
             response_format=response_format,
         )
         await breaker.record_success()
+        metadata = {**result[1], "cache_hit": False}
+        if (trace := current_trace()) is not None:
+            if trace.attempts:
+                origin = trace.attempts[-1]
+                metadata["origin_request_id"] = origin["request_id"]
+                metadata["origin_log_id"] = origin.get("log_id")
+                metadata["provider_reported_model"] = (origin.get("usage") or {}).get("actual_model")
+                metadata["origin_usage_linkage_verified"] = bool(
+                    origin["persisted"] and (origin["usage"] or {}).get("actual_model")
+                )
+            trace.route = metadata
         cache.set(
             messages,
             temperature,
             max_tokens,
             model=cache_scope,
             raw_response=result[0],
+            metadata=metadata,
         )
-        return result
+        return result[0], metadata
     except Exception as exc:
         # 输入或内容策略错误不反映模型可用性，不能污染全局熔断器。
         from app.services.llm.budget_guard import LlmBudgetExceededError

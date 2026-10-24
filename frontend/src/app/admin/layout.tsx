@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, useCallback } from 'react';
+import NavigationDrawer from '@/components/NavigationDrawer';
+import { useRouter, usePathname } from 'next/navigation';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import AdminSidebar from '@/components/AdminSidebar';
@@ -16,6 +17,9 @@ export default function AdminLayout({
 }) {
   const { currentUser, authLoading } = useAppContext();
   const router = useRouter();
+  const pathname = usePathname();
+  const [drawerPath, setDrawerPath] = useState<string | null>(null);
+  const closeDrawer = useCallback(() => setDrawerPath(null), []);
 
   // 未登录跳转放 effect：渲染期调 router.replace 会触发
   // 「Cannot update a component (Router) while rendering」（React 19 报错），
@@ -77,9 +81,12 @@ export default function AdminLayout({
   // 管理员：渲染 admin 专属壳
   return (
     <div className="flex h-dvh overflow-hidden">
-      <AdminSidebar />
+      <div className="hidden h-full shrink-0 md:block"><AdminSidebar /></div>
+      <NavigationDrawer open={drawerPath === pathname} onClose={closeDrawer} label="管理后台导航">
+        <div className="h-full [&>div]:!w-full"><AdminSidebar onNavigate={closeDrawer} /></div>
+      </NavigationDrawer>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">
-        <AdminTopBar />
+        <AdminTopBar onMenuOpen={() => setDrawerPath(pathname)} />
         <div className="min-h-0 flex-1 overflow-auto">
           {children}
         </div>

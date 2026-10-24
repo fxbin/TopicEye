@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { AlertTriangle, RotateCw } from 'lucide-react';
 import { Panel, cx } from '@/components/ui';
 import { AdminEmptyState } from './AdminEmptyState';
@@ -36,6 +36,15 @@ import { AdminTableSkeleton } from './AdminSkeleton';
  * ```
  */
 
+const narrowQuery = '(width < 48rem)';
+const subscribeNarrow = (listener: () => void) => {
+  const media = window.matchMedia(narrowQuery);
+  media.addEventListener('change', listener);
+  return () => media.removeEventListener('change', listener);
+};
+const getNarrowSnapshot = () => window.matchMedia(narrowQuery).matches;
+const getServerSnapshot = () => false;
+
 export interface AdminTableColumn<T> {
   key: string;
   header: React.ReactNode;
@@ -44,6 +53,8 @@ export interface AdminTableColumn<T> {
   align?: 'left' | 'right' | 'center';
   /** 操作列：右侧粘性。每张表至多一列。 */
   sticky?: 'right';
+  /** 手机卡片中保持可见的行内编辑区。 */
+  mobileAlwaysVisible?: boolean;
   className?: string;
 }
 
@@ -83,6 +94,7 @@ export function AdminTable<T>({
   minWidth?: number;
   className?: string;
 }) {
+  const narrow = useSyncExternalStore(subscribeNarrow, getNarrowSnapshot, getServerSnapshot);
   const allKeys = rows.map((row, index) => rowKey(row, index));
   const allSelected = selectable && rows.length > 0 && allKeys.every((key) => selected.has(key));
 
@@ -112,6 +124,13 @@ export function AdminTable<T>({
   if (stickyCount > 1) {
     throw new Error('AdminTable: 至多一列可声明 sticky: "right"（操作列）');
   }
+
+  const titleColumn = columns[0];
+  const actionColumn = columns.find(column => column.sticky === 'right');
+  const bodyColumns = columns.slice(1).filter(column => column !== actionColumn);
+  const summaryColumns = bodyColumns.slice(0, 2).filter(column => !column.mobileAlwaysVisible);
+  const detailColumns = bodyColumns.filter(column => !summaryColumns.includes(column) && !column.mobileAlwaysVisible);
+  const editorColumns = bodyColumns.filter(column => column.mobileAlwaysVisible);
 
   const emptyNode =
     empty === undefined || typeof empty === 'string' ? (
@@ -146,6 +165,38 @@ export function AdminTable<T>({
           </div>
         ) : rows.length === 0 ? (
           emptyNode
+        ) : narrow ? (
+          <div className="divide-y divide-ink-200">
+            {selectable && (
+              <label className="flex min-h-11 items-center gap-2 bg-ink-100 px-4 text-xs text-ink-700">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 accent-[var(--color-primary-solid)]" />
+                全选本页
+              </label>
+            )}
+            {rows.map((row, index) => {
+              const key = rowKey(row, index);
+              return (
+                <article key={key} data-row-key={key} className={cx('min-w-0 space-y-3 p-4 [&_.truncate]:whitespace-normal [&_.truncate]:break-words [&_.truncate]:text-clip [&_*]:max-w-full', selected.has(key) && 'bg-primary/[0.06]')}>
+                  <div className="flex items-start gap-3">
+                    {selectable && <input type="checkbox" checked={selected.has(key)} onChange={() => toggleOne(key)} aria-label={`选择第 ${index + 1} 行`} className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-primary-solid)]" />}
+                    <div className="min-w-0 flex-1 break-words">{titleColumn?.render(row, index)}</div>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3 text-sm">
+                    {summaryColumns.map(column => <div key={column.key} className="min-w-0"><dt className="mb-1 text-xs text-ink-500">{column.header}</dt><dd className="break-words">{column.render(row, index)}</dd></div>)}
+                  </dl>
+                  {detailColumns.length > 0 && <details className="text-sm">
+                    <summary className="min-h-10 cursor-pointer py-2 text-xs font-medium text-ink-600">更多详情</summary>
+                    <dl className="space-y-3 pb-1 pt-2">{detailColumns.map(column => <div key={column.key} className="min-w-0"><dt className="mb-1 text-xs text-ink-500">{column.header}</dt><dd className="break-words">{column.render(row, index)}</dd></div>)}</dl>
+                  </details>}
+                  {editorColumns.map(column => <div key={column.key} className="min-w-0 [&_input]:min-h-10 [&_select]:min-h-10"><div className="mb-1 text-xs text-ink-500">{column.header}</div>{column.render(row, index)}</div>)}
+                  {(actionColumn || onRowClick) && <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 [&_button]:min-h-10 [&_a]:min-h-10">
+                    {actionColumn?.render(row, index)}
+                    {onRowClick && <button type="button" onClick={() => onRowClick(row)} className="text-xs font-medium text-primary">查看详情</button>}
+                  </div>}
+                </article>
+              );
+            })}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm tabular-nums" style={{ minWidth }}>

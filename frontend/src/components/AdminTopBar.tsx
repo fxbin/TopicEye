@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronRight, ExternalLink, LogOut, ShieldCheck, UserRound } from 'lucide-react';
+import { Menu, ChevronRight, ExternalLink, LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { findAdminPageLabel } from '@/lib/admin-nav';
 
@@ -11,7 +11,7 @@ import { findAdminPageLabel } from '@/lib/admin-nav';
  * 职责边界——面包屑（你在哪）+ 返回前台 + 账号菜单（会话操作）。
  * 页面级操作按钮一律不进顶栏：那是各页自己的事，混进来会拖慢任务路径。
  */
-export default function AdminTopBar() {
+export default function AdminTopBar({ onMenuOpen }: { onMenuOpen?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useAppContext();
@@ -47,12 +47,13 @@ export default function AdminTopBar() {
   };
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between border-b border-ink-200 bg-white px-6">
+    <div className="flex h-14 shrink-0 items-center justify-between border-b border-ink-200 bg-white px-3 sm:px-6">
       {/* Breadcrumb：分隔符 ink-300，当前项 ink-900（#121 规格） */}
-      <nav aria-label="面包屑" className="flex items-center gap-1.5 text-[13px]">
-        <span className="font-bold text-admin-accent">管理后台</span>
-        <ChevronRight size={14} className="text-ink-300" strokeWidth={2.2} aria-hidden="true" />
-        <span className="font-medium text-ink-900">{pageLabel}</span>
+      <nav aria-label="面包屑" className="flex min-w-0 items-center gap-1.5 text-sm">
+        <button type="button" onClick={onMenuOpen} aria-label="打开管理导航" aria-haspopup="dialog" className="grid h-11 w-11 shrink-0 place-items-center rounded-sm hover:bg-ink-100 md:hidden"><Menu size={20} /></button>
+        <span className="hidden font-bold text-admin-accent sm:inline">管理后台</span>
+        <ChevronRight size={14} className="hidden text-ink-300 sm:block" strokeWidth={2.2} aria-hidden="true" />
+        <span className="truncate font-medium text-ink-900">{pageLabel}</span>
       </nav>
 
       <div className="flex items-center gap-2">
@@ -60,10 +61,11 @@ export default function AdminTopBar() {
         <button
           type="button"
           onClick={() => router.push('/')}
-          className="flex items-center gap-1.5 rounded-xs border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-300 hover:text-ink-900"
+          aria-label="返回前台"
+          className="flex min-h-10 items-center gap-1.5 rounded-xs border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-300 hover:text-ink-900"
         >
           <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
-          返回前台
+          <span className="hidden sm:inline">返回前台</span>
         </button>
 
         {/* 账号菜单：会话操作收敛于此（侧栏底部只留身份展示） */}
@@ -72,12 +74,13 @@ export default function AdminTopBar() {
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
+              aria-label="账号菜单"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
-              className="flex items-center gap-1.5 rounded-xs px-2 py-1.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100 hover:text-ink-900"
+              className="flex min-h-10 items-center gap-1.5 rounded-xs px-2 py-1.5 text-xs font-medium text-ink-700 transition hover:bg-ink-100 hover:text-ink-900"
             >
               <UserRound size={14} strokeWidth={2} aria-hidden="true" />
-              <span className="max-w-[160px] truncate">
+              <span className="hidden max-w-[160px] truncate lg:inline">
                 {currentUser.display_name || currentUser.email}
               </span>
               <ShieldCheck size={12} className="text-admin-accent" strokeWidth={2.4} aria-hidden="true" />

@@ -146,6 +146,22 @@ created_at TIMESTAMP
     assert daily_trend["trend"][0]["curated_count"] == 1
     assert daily_trend["trend"][0]["analyzed_count"] == 1
 
+    # Provenance must reach the scorer, including older snapshots that lack it.
+    conn.execute("ALTER TABLE oltp_db.ai_analyses ADD COLUMN summary_source VARCHAR")
+    conn.execute("UPDATE oltp_db.ai_analyses SET summary_source = 'local_fallback' WHERE id = 2")
+    assert analytics.query_stats_overview(days=7)["curated"] == 0
+    conn.execute("UPDATE oltp_db.ai_analyses SET summary_source = 'llm_lite' WHERE id = 2")
+    assert analytics.query_stats_overview(days=7)["curated"] == 1
+    # A fallback canonical cannot suppress its reviewed event representative.
+    conn.execute("UPDATE oltp_db.ai_analyses SET summary_source = 'local_fallback' WHERE id = 2")
+    conn.execute("INSERT INTO oltp_db.content_items VALUES (2, 1, '测试信源', 'AI', ?)", [now])
+    conn.execute(
+        "INSERT INTO oltp_db.ai_analyses VALUES (3, 2, 90, 90, 90, 80, 90, 90, 90, 90, 90, 0, ?, 'llm_lite')", [now]
+    )
+    conn.execute("INSERT INTO oltp_db.content_event_groups VALUES (1, 1, 'active')")
+    conn.execute("INSERT INTO oltp_db.content_event_members VALUES (1, 1, 2, 'confirmed')")
+    assert [row["id"] for row in analytics._query_stats_scored_items() if row["selected"]] == [2]
+    assert analytics.query_stats_overview(days=7)["curated"] == 1
     conn.close()
 
 

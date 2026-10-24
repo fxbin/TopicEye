@@ -8,7 +8,7 @@
  * 正负反馈用 teal / amber 语义 token，数字用 font-mono / tabular-nums。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   Heart,
@@ -24,7 +24,7 @@ import { Badge, Panel, cx } from '@/components/ui';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { LoadingState, EmptyState } from '@/components/StateView';
 import { scoringDashboardApi } from '@/lib/api';
-import type { ScoringDashboardResponse } from '@/lib/api';
+import { useFetch } from '@/hooks/useFetch';
 
 const PERIOD_OPTIONS = [7, 14, 30];
 
@@ -39,29 +39,13 @@ const FEEDBACK_LABELS: Record<string, string> = {
 
 export default function ScoringDashboardPage() {
   const { currentUser, authLoading } = useAppContext();
-  const [data, setData] = useState<ScoringDashboardResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(7);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await scoringDashboardApi.get(days);
-      setData(res);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => {
-    if (!authLoading && currentUser?.role === 'admin') {
-      void fetchData();
-    }
-  }, [fetchData, authLoading, currentUser]);
+  const { data, loading, error, refetch: fetchData } = useFetch(
+    () => scoringDashboardApi.get(days),
+    [days],
+    { enabled: !authLoading && currentUser?.role === 'admin' },
+  );
 
   if (authLoading) return <LoadingState label="加载中..." />;
   if (currentUser?.role !== 'admin') {
@@ -89,6 +73,7 @@ export default function ScoringDashboardPage() {
                 key={d}
                 type="button"
                 onClick={() => setDays(d)}
+                aria-pressed={days === d}
                 className={cx(
                   'rounded-full px-3 py-1 text-[12px] font-semibold transition',
                   days === d ? 'bg-primary text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200',
@@ -110,11 +95,11 @@ export default function ScoringDashboardPage() {
         }
       />
 
-      {error && <AdminNoticeBanner tone="red" onClose={() => setError(null)}>{error}</AdminNoticeBanner>}
+      {error && <AdminNoticeBanner tone="red">{error}<button type="button" onClick={() => void fetchData()} className="ml-3 underline">重试</button></AdminNoticeBanner>}
 
       {loading ? (
         <LoadingState label="加载看板数据..." />
-      ) : !data || !summary ? (
+      ) : error ? null : !data || !summary ? (
         <EmptyState icon={BarChart3} title="暂无数据" />
       ) : (
         <div className="space-y-5">

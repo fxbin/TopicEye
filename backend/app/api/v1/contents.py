@@ -29,6 +29,7 @@ from app.repositories.content_repo import ContentRepo
 from app.repositories.favorite_repo import FavoriteRepo
 from app.schemas.analysis import AiAnalysisResponse
 from app.schemas.content import ArticleReaderResponse, ContentListResponse, ContentResponse
+from app.services.content_event_coverage import attach_event_coverage
 from app.services.content_list_cache import (
     ContentListCacheParams,
     get_cached_content_list,
@@ -150,6 +151,9 @@ async def list_contents(
     sort_by: str = Query("created_at", pattern=r"^(created_at|published_at|crawled_at|curation_score)$"),
     sort_order: str = Query("desc", pattern=r"^(asc|desc)$"),
     admin_view: bool = Query(False, description="Return management fields; admin only"),
+    group_events: bool = Query(False, description="按已接受的事件关系折叠报道；筛选后按事件分页，仅支持时间排序"),
+    stable_feed: bool = Query(False, description="绑定浏览快照；列表顺序变化返回 409"),
+    feed_snapshot: str | None = Query(None, max_length=200),
     current_user: User | None = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -159,6 +163,29 @@ async def list_contents(
 
     require_admin_view(admin_view, current_user)
     include_raw_content = is_admin(current_user)
+    from app.core.content_feed import ContentFeedChangedError, FeedSnapshot, GroupedFeedPage
+
+    use_snapshot = stable_feed or feed_snapshot is not None
+    if use_snapshot and not group_events:
+        raise HTTPException(400, "浏览快照只适用于 group_events=true")
+    if use_snapshot and page > 1 and not feed_snapshot:
+        raise HTTPException(400, "继续浏览需要第一页返回的 feed_snapshot")
+    try:
+        snapshot = FeedSnapshot.parse(feed_snapshot, now=datetime.now(UTC)) if use_snapshot else None
+    except ContentFeedChangedError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if group_events and sort_by == "curation_score":
+        raise HTTPException(400, "group_events 暂只支持 created_at / published_at / crawled_at 排序")
+
+    from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
+
+    event_revision = (
+        await ContentEventConsumptionRepository(db).read_cache_revision(
+            visible_user_id=current_user.id if current_user is not None else None
+        )
+        if group_events and not use_snapshot
+        else ""
+    )
 
     cache_params = ContentListCacheParams(
         page=page,
@@ -177,8 +204,11 @@ async def list_contents(
         recommend_level=recommend_level,
         tag=tag,
         user_id=current_user.id if current_user is not None else None,
+        group_events=group_events,
+        event_revision=event_revision,
     )
-    if cache_params.cacheable and not include_raw_content:
+    use_read_cache = cache_params.cacheable and not include_raw_content and not use_snapshot
+    if use_read_cache:
         cached = get_cached_content_list(cache_params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
         if cached:
             content, age_seconds = cached
@@ -203,7 +233,7 @@ async def list_contents(
 
     time_cutoff = None
     if hours:
-        time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        time_cutoff = (snapshot.anchor if snapshot else datetime.now(UTC)) - timedelta(hours=hours)
 
     ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
@@ -232,28 +262,49 @@ async def list_contents(
 
     # ── Standard SQL sort path ─────────────────────────────────────────
     repo = ContentRepo(db)
-    items, total = await repo.list_paginated_with_analyses(
-        page=page,
-        page_size=page_size,
-        filters=filters or None,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        exclude_ids=ignored_ids,
-        exclude_source_types=exclude_source_types,
-        time_cutoff=time_cutoff,
-        visible_user_id=current_user.id if current_user is not None else None,
-        public_only=current_user is None,
-        search_query=q,
-        recommend_level=recommend_level,
-        tag=tag,
+    from dataclasses import replace
+
+    snapshot_binding = (
+        replace(cache_params, page=1, event_revision="").key + "|" + snapshot.anchor.isoformat() if snapshot else None
     )
+    try:
+        result = await repo.list_paginated_with_analyses(
+            page=page,
+            page_size=page_size,
+            filters=filters or None,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            exclude_ids=ignored_ids,
+            exclude_source_types=exclude_source_types,
+            time_cutoff=time_cutoff,
+            visible_user_id=current_user.id if current_user is not None else None,
+            public_only=current_user is None,
+            search_query=q,
+            recommend_level=recommend_level,
+            tag=tag,
+            group_events=group_events,
+            snapshot_binding=snapshot_binding,
+            expected_snapshot_digest=snapshot.digest if snapshot else None,
+        )
+    except ContentFeedChangedError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if isinstance(result, GroupedFeedPage):
+        items, total = result.items, result.total
+    else:
+        items, total = result
     payload = {
         "items": [content_with_latest_analysis(i, include_raw_content=include_raw_content) for i in items],
         "total": total,
         "page": page,
         "page_size": page_size,
     }
-    if cache_params.cacheable and not include_raw_content:
+    if group_events:
+        await attach_event_coverage(
+            db, payload["items"], visible_user_id=current_user.id if current_user is not None else None
+        )
+    if snapshot and isinstance(result, GroupedFeedPage):
+        payload["feed_snapshot"] = snapshot.token(result.digest)
+    if use_read_cache:
         content = set_cached_content_list(cache_params, payload)
         return Response(
             content=content,
@@ -281,20 +332,29 @@ async def today_picks(
         limit=limit,
         user_id=current_user.id if current_user is not None else None,
     )
-    cached = get_cached_today_picks(params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
-    if cached:
-        content, age_seconds = cached
-        return Response(
-            content=content,
-            media_type="application/json",
-            headers={
-                "X-Analytics-Backend": "duckdb",
-                "X-Today-Picks-Cache": f"HIT; age={age_seconds:.3f}s",
-            },
-        )
-
     try:
         async with async_session() as db:
+            from dataclasses import replace
+
+            from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
+
+            params = replace(
+                params,
+                event_revision=await ContentEventConsumptionRepository(db).read_cache_revision(
+                    visible_user_id=current_user.id if current_user is not None else None
+                ),
+            )
+            cached = get_cached_today_picks(params, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
+            if cached:
+                content, age_seconds = cached
+                return Response(
+                    content=content,
+                    media_type="application/json",
+                    headers={
+                        "X-Analytics-Backend": "duckdb",
+                        "X-Today-Picks-Cache": f"HIT; age={age_seconds:.3f}s",
+                    },
+                )
             build_kwargs = {
                 "category": category,
                 "content_type": content_type,
@@ -329,7 +389,7 @@ async def today_count(current_user: User | None = Depends(get_optional_current_u
 
     from app.services.json_cache import get_cached_json, set_cached_json
 
-    cache_key = f"today_count:v3:user={current_user.id if current_user is not None else 'public'}"
+    cache_key = f"today_count:v4:user={current_user.id if current_user is not None else 'public'}"
     cached = get_cached_json(cache_key, ttl_seconds=settings.READ_CACHE_TTL_SECONDS)
     if cached:
         return Response(

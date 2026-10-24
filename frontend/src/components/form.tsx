@@ -30,7 +30,7 @@ export function FieldLabel({
   htmlFor?: string;
 }) {
   return (
-    <label htmlFor={htmlFor} className={cx('mb-1 block text-xs font-bold text-gray-500', className)}>
+    <label htmlFor={htmlFor} className={cx('mb-1 block text-sm font-medium text-gray-700', className)}>
       {children}
       {required && <span className="text-red"> *</span>}
     </label>
@@ -44,7 +44,7 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cx(
-        'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-[13px] text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'h-11 w-full sm:h-10 rounded-xs border border-gray-200 bg-white px-3 text-base sm:text-sm text-gray-800 outline-none transition placeholder:text-gray-500 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />
@@ -58,7 +58,7 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
     <textarea
       {...props}
       className={cx(
-        'min-h-[104px] w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 text-[13px] leading-6 text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'min-h-[104px] w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 text-base sm:text-sm leading-6 text-gray-800 outline-none transition placeholder:text-gray-500 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />
@@ -72,7 +72,7 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cx(
-        'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-[13px] font-bold text-gray-700 outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'h-11 w-full sm:h-10 rounded-xs border border-gray-200 bg-white px-3 text-base sm:text-sm font-bold text-gray-700 outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />

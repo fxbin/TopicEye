@@ -50,3 +50,4 @@ class ScoringContentRow:
     quality_score: float | None
     hot_score: float | None
     risk_score: float | None
+    summary_source: str | None = None

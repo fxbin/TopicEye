@@ -495,8 +495,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             </div>
           )}
           <div>
-            <FieldLabel>描述</FieldLabel>
-            <TextInput value={form.description} onChange={(e) => patchForm({ description: e.target.value })} placeholder="可选备注" />
+            <FieldLabel htmlFor="model-description">描述</FieldLabel>
+            <TextInput id="model-description" value={form.description} onChange={(e) => patchForm({ description: e.target.value })} placeholder="可选备注" />
           </div>
           <div className="grid grid-cols-3 gap-2 rounded-xs border border-ink-200 bg-ink-100 p-2.5">
             <InfoCell label="稳定度" value={formatPresetValue(form.temperature)} />
@@ -538,8 +538,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               {catalog?.help.advanced_tip || '这些参数只在你明确知道要调整模型行为时再改；不确定时点“恢复推荐默认”。'}
             </div>
             <div>
-              <FieldLabel required>Provider</FieldLabel>
-              <SelectInput value={providerSelectKey || 'custom'} onChange={(e) => handleProviderSelect(e.target.value)}>
+              <FieldLabel htmlFor="model-provider" required>Provider</FieldLabel>
+              <SelectInput id="model-provider" value={providerSelectKey || 'custom'} onChange={(e) => handleProviderSelect(e.target.value)}>
                 {Array.from(new Set(providerOptions.map((o) => o.group))).map((group) => (
                   <optgroup key={group} label={group}>
                     {providerOptions.filter((o) => o.group === group).map((o) => (
@@ -554,16 +554,16 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>路由组</FieldLabel>
-              <TextInput value={form.routing_group} onChange={(e) => patchForm({ routing_group: e.target.value || 'default' })} placeholder="default" />
+              <FieldLabel htmlFor="model-routing-group">路由组</FieldLabel>
+              <TextInput id="model-routing-group" value={form.routing_group} onChange={(e) => patchForm({ routing_group: e.target.value || 'default' })} placeholder="default" />
             </div>
             <div>
-              <FieldLabel>路由优先级</FieldLabel>
-              <TextInput type="number" value={form.routing_priority} onChange={(e) => patchForm({ routing_priority: parseInt(e.target.value, 10) || 100 })} />
+              <FieldLabel htmlFor="model-routing-priority">路由优先级</FieldLabel>
+              <TextInput id="model-routing-priority" type="number" value={form.routing_priority} onChange={(e) => patchForm({ routing_priority: parseInt(e.target.value, 10) || 100 })} />
             </div>
             <div>
-              <FieldLabel>失败冷却秒数</FieldLabel>
-              <TextInput type="number" value={form.cooldown_seconds} onChange={(e) => patchForm({ cooldown_seconds: parseInt(e.target.value, 10) || 300 })} />
+              <FieldLabel htmlFor="model-cooldown-seconds">失败冷却秒数</FieldLabel>
+              <TextInput id="model-cooldown-seconds" type="number" value={form.cooldown_seconds} onChange={(e) => patchForm({ cooldown_seconds: parseInt(e.target.value, 10) || 300 })} />
               <div className="mt-1 text-[10px] leading-4 text-ink-500">
                 <span className="font-bold text-ink-700">{parameterMeta(catalog, 'cooldown_seconds')}</span>
                 <br />
@@ -577,16 +577,16 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>模型家族</FieldLabel>
-              <TextInput value={form.model_family} onChange={(e) => patchForm({ model_family: e.target.value })} placeholder="如 deepseek / qwen / glm" />
+              <FieldLabel htmlFor="model-model-family">模型家族</FieldLabel>
+              <TextInput id="model-model-family" value={form.model_family} onChange={(e) => patchForm({ model_family: e.target.value })} placeholder="如 deepseek / qwen / glm" />
             </div>
             <div>
-              <FieldLabel>渠道名</FieldLabel>
-              <TextInput value={form.channel_name} onChange={(e) => patchForm({ channel_name: e.target.value })} placeholder="如 official / opencode / openrouter" />
+              <FieldLabel htmlFor="model-channel-name">渠道名</FieldLabel>
+              <TextInput id="model-channel-name" value={form.channel_name} onChange={(e) => patchForm({ channel_name: e.target.value })} placeholder="如 official / opencode / openrouter" />
             </div>
             <div>
-              <FieldLabel>稳定度</FieldLabel>
-              <TextInput type="number" step="0.1" value={form.temperature} onChange={(e) => patchForm({ temperature: parseFloat(e.target.value) || 0.3 })} />
+              <FieldLabel htmlFor="model-temperature">稳定度</FieldLabel>
+              <TextInput id="model-temperature" type="number" step="0.1" value={form.temperature} onChange={(e) => patchForm({ temperature: parseFloat(e.target.value) || 0.3 })} />
               <div className="mt-1 text-[10px] leading-4 text-ink-500">
                 <span className="font-bold text-ink-700">{parameterMeta(catalog, 'temperature')}</span>
                 <br />
@@ -600,8 +600,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>输出长度</FieldLabel>
-              <TextInput type="number" value={form.max_tokens} onChange={(e) => patchForm({ max_tokens: parseInt(e.target.value, 10) || 2000 })} />
+              <FieldLabel htmlFor="model-max-tokens">输出长度</FieldLabel>
+              <TextInput id="model-max-tokens" type="number" value={form.max_tokens} onChange={(e) => patchForm({ max_tokens: parseInt(e.target.value, 10) || 2000 })} />
               <div className="mt-1 text-[10px] leading-4 text-ink-500">
                 <span className="font-bold text-ink-700">{parameterMeta(catalog, 'max_tokens')}</span>
                 <br />
@@ -615,8 +615,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>上下文窗口</FieldLabel>
-              <TextInput
+              <FieldLabel htmlFor="model-context-window">上下文窗口</FieldLabel>
+              <TextInput id="model-context-window"
                 type="number"
                 value={form.context_window?.toString() ?? ''}
                 onChange={(e) => patchForm({ context_window: parseOptionalNumber(e.target.value) })}
@@ -627,8 +627,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>每分钟请求数</FieldLabel>
-              <TextInput type="number" value={form.requests_per_minute} onChange={(e) => patchForm({ requests_per_minute: parseInt(e.target.value, 10) || 30 })} />
+              <FieldLabel htmlFor="model-requests-per-minute">每分钟请求数</FieldLabel>
+              <TextInput id="model-requests-per-minute" type="number" value={form.requests_per_minute} onChange={(e) => patchForm({ requests_per_minute: parseInt(e.target.value, 10) || 30 })} />
               <div className="mt-1 text-[10px] leading-4 text-ink-500">
                 <span className="font-bold text-ink-700">{parameterMeta(catalog, 'requests_per_minute')}</span>
                 <br />
@@ -642,16 +642,16 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
               </div>
             </div>
             <div>
-              <FieldLabel>输入未命中单价 / 百万 Tokens</FieldLabel>
-              <TextInput type="number" step="0.001" value={form.cost_per_1m_input} onChange={(e) => patchForm({ cost_per_1m_input: e.target.value })} placeholder="如 1" />
+              <FieldLabel htmlFor="model-cost-per-1m-input">输入未命中单价 / 百万 Tokens</FieldLabel>
+              <TextInput id="model-cost-per-1m-input" type="number" step="0.001" value={form.cost_per_1m_input} onChange={(e) => patchForm({ cost_per_1m_input: e.target.value })} placeholder="如 1" />
             </div>
             <div>
-              <FieldLabel>输出单价 / 百万 Tokens</FieldLabel>
-              <TextInput type="number" step="0.001" value={form.cost_per_1m_output} onChange={(e) => patchForm({ cost_per_1m_output: e.target.value })} placeholder="如 2" />
+              <FieldLabel htmlFor="model-cost-per-1m-output">输出单价 / 百万 Tokens</FieldLabel>
+              <TextInput id="model-cost-per-1m-output" type="number" step="0.001" value={form.cost_per_1m_output} onChange={(e) => patchForm({ cost_per_1m_output: e.target.value })} placeholder="如 2" />
             </div>
             <div>
-              <FieldLabel>输入缓存命中 / 百万 Tokens</FieldLabel>
-              <TextInput type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
+              <FieldLabel htmlFor="model-cost-per-1m-input-cache-hit">输入缓存命中 / 百万 Tokens</FieldLabel>
+              <TextInput id="model-cost-per-1m-input-cache-hit" type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
             </div>
             <div className="flex items-end">
               <div className="w-full rounded-xs border border-ink-200 bg-ink-100 px-2.5 py-2 text-[11px] leading-4 text-ink-500">

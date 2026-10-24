@@ -129,7 +129,7 @@ def test_content_list_cache_key_and_invalidation():
     )
     key = params.key
     assert key == (
-        "contents:list:page=1&page_size=50&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&hours=48"
+        "contents:list:page=1&page_size=50&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&group_events=0&hours=48"
     )
 
     set_cached_json(key, {"items": [], "total": 0})
@@ -147,18 +147,29 @@ def test_home_content_list_startup_cache_matches_default_screen_request():
     assert params.page == 1
     assert params.page_size == HOME_CONTENT_LIST_INITIAL_PAGE_SIZE == 40
     assert params.hours == 24
+    assert params.group_events is True
     assert params.key == (
-        "contents:list:page=1&page_size=40&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&hours=24"
+        "contents:list:page=1&page_size=40&include_trend_sources=0&sort_by=created_at&sort_order=desc&user_id=&group_events=1&hours=24"
     )
+
+
+def test_event_list_cache_is_separate_from_article_list_and_user_scope():
+    params = {"page": 1, "page_size": 40, "hours": 24}
+    keys = {
+        ContentListCacheParams(**params).key,
+        ContentListCacheParams(**params, group_events=True).key,
+        ContentListCacheParams(**params, group_events=True, user_id=42).key,
+    }
+    assert len(keys) == 3
 
 
 def test_today_picks_cache_key_and_invalidation():
     invalidate_json_cache()
     params = TodayPicksCacheParams(hours=48, category="AI", limit=80)
     key = params.key
-    assert key == "contents:today-picks:v3:hours=48&category=AI&limit=80&user_id="
+    assert key == "contents:today-picks:v5:hours=48&category=AI&limit=80&user_id="
     assert TodayPicksCacheParams(hours=48, category="AI", limit=80, user_id=42).key == (
-        "contents:today-picks:v3:hours=48&category=AI&limit=80&user_id=42"
+        "contents:today-picks:v5:hours=48&category=AI&limit=80&user_id=42"
     )
 
     set_cached_json(key, {"items": [], "total": 0})
@@ -175,7 +186,7 @@ def test_today_picks_startup_cache_matches_default_screen_request():
 
     assert params.hours == 24
     assert params.limit == TODAY_PICKS_INITIAL_LIMIT == 40
-    assert params.key == "contents:today-picks:v3:hours=24&limit=40&user_id="
+    assert params.key == "contents:today-picks:v5:hours=24&limit=40&user_id="
 
 
 def test_source_list_cache_key_and_invalidation():

@@ -143,8 +143,8 @@ function reporterLabel(issue: IssueFeedbackItem): string {
   return issue.reporter_name || issue.reporter_email || (issue.user_id ? `用户 ${issue.user_id}` : '匿名用户');
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="mb-1 block text-xs font-bold text-gray-500">{children}</label>;
+function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+  return <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium text-gray-700">{children}</label>;
 }
 
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -152,7 +152,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cx(
-        'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-[13px] text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'h-11 w-full sm:h-10 rounded-xs border border-gray-200 bg-white px-3 text-base text-gray-800 sm:text-sm outline-none transition placeholder:text-gray-500 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />
@@ -164,7 +164,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       {...props}
       className={cx(
-        'min-h-[104px] w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 text-[13px] leading-6 text-gray-800 outline-none transition placeholder:text-gray-300 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'min-h-[104px] w-full resize-y rounded-xs border border-gray-200 bg-white px-3 py-2 text-[13px] leading-6 text-gray-800 outline-none transition placeholder:text-gray-500 focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />
@@ -176,7 +176,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cx(
-        'h-9 w-full rounded-xs border border-gray-200 bg-white px-3 text-[13px] font-bold text-gray-700 outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light',
+        'h-11 w-full sm:h-10 rounded-xs border border-gray-200 bg-white px-3 text-[13px] font-bold text-gray-700 outline-none transition focus:border-primary-border focus:ring-2 focus:ring-primary-light',
         props.className,
       )}
     />
@@ -836,8 +836,9 @@ export default function FeedbackPage() {
           <Surface title="提交问题反馈" hint="问题越具体，越容易定位和修复" icon={<MessageSquareWarning size={16} />}>
             <form className="space-y-3" onSubmit={submitIssue}>
               <div>
-                <FieldLabel>标题</FieldLabel>
+                <FieldLabel htmlFor="issue-title">标题</FieldLabel>
                 <TextInput
+                  id="issue-title"
                   value={issueForm.title}
                   onChange={(event) => setIssueForm((prev) => ({ ...prev, title: event.target.value }))}
                   placeholder="例如：新进来的选题一直 pending"
@@ -845,9 +846,10 @@ export default function FeedbackPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <FieldLabel>模块</FieldLabel>
+                  <FieldLabel htmlFor="issue-area">模块</FieldLabel>
                   <Select
-                    value={issueForm.area}
+                    id="issue-area"
+                  value={issueForm.area}
                     onChange={(event) => setIssueForm((prev) => ({ ...prev, area: event.target.value }))}
                   >
                     {AREA_OPTIONS.map((area) => (
@@ -856,9 +858,10 @@ export default function FeedbackPage() {
                   </Select>
                 </div>
                 <div>
-                  <FieldLabel>影响程度</FieldLabel>
+                  <FieldLabel htmlFor="issue-severity">影响程度</FieldLabel>
                   <Select
-                    value={issueForm.severity}
+                    id="issue-severity"
+                  value={issueForm.severity}
                     onChange={(event) => setIssueForm((prev) => ({ ...prev, severity: event.target.value as IssueFeedbackSeverity }))}
                   >
                     <option value="low">低</option>
@@ -869,8 +872,9 @@ export default function FeedbackPage() {
                 </div>
               </div>
               <div>
-                <FieldLabel>问题描述</FieldLabel>
+                <FieldLabel htmlFor="issue-description">问题描述</FieldLabel>
                 <TextArea
+                  id="issue-description"
                   value={issueForm.description}
                   onChange={(event) => setIssueForm((prev) => ({ ...prev, description: event.target.value }))}
                   placeholder="描述复现路径、预期结果、实际结果，或者你看到的异常状态。"

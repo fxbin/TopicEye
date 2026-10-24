@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from urllib.parse import urlsplit, urlunsplit
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -322,6 +323,7 @@ async def update_email_provider_config(
 class WebhookItemResponse(BaseModel):
     """单个 webhook 配置响应（URL 脱敏）。"""
 
+    id: str
     name: str = ""
     enabled: bool = False
     webhook_url_configured: bool = False
@@ -339,10 +341,11 @@ class NotificationWebhookConfigResponse(BaseModel):
 class WebhookItemUpdateRequest(BaseModel):
     """单个 webhook 配置更新请求。
 
-    webhook_url 为空字符串时保留原值（不修改），非空时覆盖。
-    用于标识已有 webhook 的 index 由列表顺序决定。
+    已有条目必须回传 GET 返回的 id；空 URL 只保留该 id 的原值。
+    省略 id 仅支持携带完整 URL 的新建/替换，不能猜测保留哪个秘密。
     """
 
+    id: str = ""
     name: str = ""
     enabled: bool = False
     webhook_url: str = ""
@@ -354,7 +357,7 @@ class NotificationWebhookConfigUpdateRequest(BaseModel):
     """通知推送 webhook 配置更新请求（webhooks 列表）。
 
     整体替换：传入的 webhooks 列表完全替换现有配置。
-    每条 webhook_url 为空时保留原值（用于更新其他字段不改 URL）。
+    每条 webhook_url 为空时按 id 保留原值（用于更新其他字段不改 URL）。
     """
 
     webhooks: list[WebhookItemUpdateRequest] = []
@@ -396,6 +399,34 @@ def _normalize_stored_config_to_webhooks(cfg: dict) -> list[dict]:
     return []
 
 
+def _webhooks_with_ids(webhooks: list[dict]) -> list[dict]:
+    """Give legacy rows stable read-only identities until their next save.
+
+    Derive legacy IDs from the complete stored entry rather than its position:
+    removing or reordering another entry must not change which secret it owns.
+    Identical legacy entries get separate occurrence IDs. PUT persists all IDs,
+    so later renames and URL changes keep the same identity.
+    """
+    identified = []
+    seen: set[str] = set()
+    occurrences: dict[str, int] = {}
+    for webhook in webhooks:
+        stored_id = webhook.get("id")
+        webhook_id = stored_id.strip() if isinstance(stored_id, str) else ""
+        if not webhook_id:
+            serialized = json.dumps(webhook, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            occurrence = occurrences.get(serialized, 0)
+            occurrences[serialized] = occurrence + 1
+            webhook_id = (
+                f"legacy-{uuid5(NAMESPACE_URL, f'topiceye:notification-webhook:{serialized}:{occurrence}').hex}"
+            )
+        if webhook_id in seen:
+            raise HTTPException(status_code=409, detail="现有 Webhook 标识重复，无法安全保留接收地址")
+        seen.add(webhook_id)
+        identified.append({**webhook, "id": webhook_id})
+    return identified
+
+
 @router.get("/notification-webhook", response_model=NotificationWebhookConfigResponse)
 async def get_notification_webhook_config(db: AsyncSession = Depends(get_db)):
     """获取当前通知推送 webhook 配置（webhooks 列表）。webhook_url 不返回明文，仅返回脱敏预览。"""
@@ -412,12 +443,13 @@ async def get_notification_webhook_config(db: AsyncSession = Depends(get_db)):
 
     from app.services.secret_store import decrypt_secret
 
-    raw_webhooks = _normalize_stored_config_to_webhooks(config)
+    raw_webhooks = _webhooks_with_ids(_normalize_stored_config_to_webhooks(config))
     webhooks: list[WebhookItemResponse] = []
     for wh in raw_webhooks:
         webhook_plain = decrypt_secret(wh.get("webhook_url", "")) or ""
         webhooks.append(
             WebhookItemResponse(
+                id=wh["id"],
                 name=wh.get("name", ""),
                 enabled=bool(wh.get("enabled", False)),
                 webhook_url_configured=bool(webhook_plain),
@@ -436,7 +468,8 @@ async def update_notification_webhook_config(
 ):
     """更新通知推送 webhook 配置（webhooks 列表，整体替换）。
 
-    每条 webhook_url 为空时保留原值，非空时校验并加密覆盖。
+    每条 webhook_url 为空时仅按已有 id 保留原值，非空时校验并加密覆盖。
+    旧客户端没有 id 时必须重新提供完整 URL；不按顺序或名称继承秘密。
     """
     from app.services.alerting import DEFAULT_EVENT_TYPES, EVENT_TYPES
     from app.services.secret_store import encrypt_secret
@@ -450,12 +483,24 @@ async def update_notification_webhook_config(
             existing_config = json.loads(existing.value)
         except json.JSONDecodeError:
             existing_config = {}
-        existing_webhooks = _normalize_stored_config_to_webhooks(existing_config)
+        existing_webhooks = _webhooks_with_ids(_normalize_stored_config_to_webhooks(existing_config))
+    existing_by_id = {webhook["id"]: webhook for webhook in existing_webhooks}
 
     # 构建新的 webhooks 列表
     new_webhooks: list[dict] = []
+    seen_ids: set[str] = set()
     for i, wh in enumerate(payload.webhooks):
-        # webhook_url 处理：空值保留原值（按 index 对齐），非空值校验+加密覆盖
+        webhook_id = wh.id.strip()
+        if webhook_id:
+            if webhook_id in seen_ids:
+                raise HTTPException(status_code=409, detail=f"webhook #{i + 1}: Webhook 标识重复")
+            if webhook_id not in existing_by_id:
+                raise HTTPException(status_code=409, detail=f"webhook #{i + 1}: Webhook 标识已失效，请重新加载配置")
+        else:
+            webhook_id = uuid4().hex
+        seen_ids.add(webhook_id)
+
+        # Empty URLs only retain the secret belonging to the supplied identity.
         new_url_raw = wh.webhook_url.strip()
         if new_url_raw:
             try:
@@ -463,11 +508,13 @@ async def update_notification_webhook_config(
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=f"webhook #{i + 1}: {exc}") from exc
             webhook_url_stored = encrypt_secret(validated_url) or ""
-        elif i < len(existing_webhooks):
-            # 保留原值（按 index 对齐）
-            webhook_url_stored = existing_webhooks[i].get("webhook_url", "")
+        elif wh.id.strip():
+            webhook_url_stored = existing_by_id[webhook_id].get("webhook_url", "")
         else:
-            webhook_url_stored = ""
+            raise HTTPException(
+                status_code=400,
+                detail=f"webhook #{i + 1}: 保留接收地址需要 Webhook 标识，请重新加载配置或填写完整 URL",
+            )
 
         # event_types 处理：过滤非法值，空列表回退默认
         raw_event_types = wh.event_types or []
@@ -477,6 +524,7 @@ async def update_notification_webhook_config(
 
         new_webhooks.append(
             {
+                "id": webhook_id,
                 "name": wh.name.strip(),
                 "enabled": bool(wh.enabled),
                 "webhook_url": webhook_url_stored,

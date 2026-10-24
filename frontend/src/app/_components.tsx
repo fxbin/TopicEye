@@ -37,6 +37,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/components/ClientLayout';
 import SourceBadge from '@/components/SourceBadge';
+import EventCoverage from '@/components/EventCoverage';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { feedbackApi } from '@/lib/api';
 import type { FeedbackType } from '@/lib/api';
@@ -101,13 +102,13 @@ export function ContentTimeline({
             <span className="font-mono text-xs text-gray-500">{group.entries.length}</span>
           </div>
           <div className="relative flex flex-col gap-3.5">
-            <div className="absolute bottom-[9px] left-[58px] top-[9px] w-px bg-gray-200" />
+            <div className="absolute hidden sm:block bottom-[9px] left-[58px] top-[9px] w-px bg-gray-200" />
             {group.entries.map(({ item, level }) => (
-              <div key={item.id} className="relative grid grid-cols-[50px_18px_minmax(0,1fr)] items-start gap-2.5">
-                <div className="pt-0.5 text-right font-mono text-xs font-extrabold text-gray-700">
+              <div key={item.id} className="relative grid grid-cols-1 sm:grid-cols-[50px_18px_minmax(0,1fr)] items-start gap-2.5">
+                <div className="hidden whitespace-nowrap pt-0.5 sm:block text-right font-mono text-xs font-extrabold text-gray-700">
                   {timeAgo(getContentTime(item))}
                 </div>
-                <span style={{
+                <span className="hidden sm:block" style={{
                   position: 'relative',
                   zIndex: 1,
                   width: 12,
@@ -232,14 +233,14 @@ export function EditorialItem({
         item.url ? 'cursor-pointer' : 'cursor-default',
       )}
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-xs text-gray-300">/</span>
-          <span className="shrink-0 text-xs text-gray-500">{timeLabel || time}</span>
+          <span className="shrink-0 text-xs text-gray-500">{item.event_activity_at && (item.normalization?.member_count ?? 0) > 0 ? '事件更新 ' : ''}{timeLabel || time}</span>
           {level && <RecommendBadge level={level} />}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           {item.category && (
             <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600">
               {item.category}
@@ -249,8 +250,10 @@ export function EditorialItem({
       </div>
 
       <h3 className="mb-2 text-base font-semibold leading-[1.55] text-gray-900">
-        {item.title}
+        <button type="button" className="text-left hover:text-primary-text" onClick={event => { event.stopPropagation(); handleCardClick(); }}>{item.title}</button>
       </h3>
+
+      <EventCoverage item={item} />
 
       {recommendation && (
         <div className="line-clamp-2 mb-3 border-l-[3px] border-primary py-1.5 pl-3 text-[13px] leading-7 text-gray-600">
@@ -258,7 +261,7 @@ export function EditorialItem({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {item.analysis && (
             <React.Fragment>
@@ -266,7 +269,6 @@ export function EditorialItem({
               <ScoreBadge label="创作" score={item.analysis.creator_score} tone="primary" />
               <ScoreBadge label="爆文" score={item.analysis.viral_score} tone="neutral" />
               <ScoreBadge label="质量" score={item.analysis.quality_score} tone="neutral" />
-              <RecommendBadge level={explainRecommendation(item.analysis).level} />
               <DeepReadBadge enrichment={item.analysis.enrichment} />
             </React.Fragment>
           )}
@@ -278,12 +280,12 @@ export function EditorialItem({
               ))
             : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           {item.analysis && (
             <Button
               type="button"
               variant="secondary"
-              className="min-h-0 px-2 py-1 text-xs opacity-0 group-hover:opacity-100"
+              className="min-h-9 px-2 py-1.5 text-xs"
               onClick={(e) => {
                 e.stopPropagation();
                 onShowAnalysis(item.analysis as ContentAnalysis);
@@ -297,7 +299,7 @@ export function EditorialItem({
             type="button"
             variant="primary"
             disabled={workflowPending}
-            className="min-h-0 px-2 py-1 text-xs opacity-0 group-hover:opacity-100"
+            className="min-h-9 px-2 py-1.5 text-xs"
             onClick={(e) => {
               e.stopPropagation();
               onStartWorkflow(item, isFav);
@@ -311,7 +313,7 @@ export function EditorialItem({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); openReader(item.id); }}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary-text transition hover:border-primary-text"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-xs border border-primary-border bg-primary-light px-2 py-1 text-xs font-bold text-primary-text transition hover:border-primary-text"
               title="在系统内阅读提取后的正文"
             >
               <BookOpen size={13} strokeWidth={2} />
@@ -324,7 +326,7 @@ export function EditorialItem({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-teal-border bg-teal-light px-2 py-1 text-xs font-bold text-teal-text no-underline transition hover:border-teal-text"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-xs border border-teal-border bg-teal-light px-2 py-1 text-xs font-bold text-teal-text no-underline transition hover:border-teal-text"
               title="查看原文"
             >
               <ExternalLink size={13} strokeWidth={2} />
@@ -338,7 +340,7 @@ export function EditorialItem({
               e.stopPropagation();
               onToggleFav(item.id);
             }}
-            className={cx('inline-flex border-0 bg-transparent p-0.5 transition', isFav ? 'text-primary' : 'text-gray-300 hover:text-primary')}
+            className={cx('inline-flex min-h-9 min-w-9 items-center justify-center border-0 bg-transparent p-1 transition', isFav ? 'text-primary' : 'text-gray-300 hover:text-primary')}
             title={isFav ? '取消收藏' : '收藏'}
           >
             <Star size={16} strokeWidth={2} fill={isFav ? '#FF6B35' : 'none'} />
@@ -349,7 +351,7 @@ export function EditorialItem({
               e.stopPropagation();
               onIgnore(item.id);
             }}
-            className="inline-flex border-0 bg-transparent p-0.5 text-gray-300 transition hover:text-gray-500"
+            className="inline-flex min-h-9 min-w-9 items-center justify-center border-0 bg-transparent p-1 text-gray-300 transition hover:text-gray-500"
             title="不感兴趣"
           >
             <X size={15} strokeWidth={2} />
@@ -443,26 +445,31 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
   const router = useRouter();
   const [activeFeedback, setActiveFeedback] = useState<FeedbackType | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFeedback = async (type: FeedbackType) => {
-    if (activeFeedback === type) return;
+    if (activeFeedback === type || pending) return;
     if (!currentUser) {
       router.push('/login');
       return;
     }
+    setPending(true);
+    setError(null);
     try {
       await feedbackApi.submit(contentId, type);
       setActiveFeedback(type);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg?.includes('409') && !msg?.includes('Conflict')) {
-        console.error('Feedback failed:', err);
+        setError(msg || '反馈失败，请重试');
       }
-    }
+    } finally { setPending(false); }
   };
 
   return (
     <div className="relative flex items-center gap-0.5">
+      {error && <span role="alert" className="absolute bottom-full right-0 z-10 mb-2 w-52 rounded-sm border border-red bg-white p-2 text-xs text-red">{error}</span>}
       {FEEDBACK_OPTIONS.slice(0, 2).map(({ type, icon: Icon, label, color }) => (
         <button
           key={type}
@@ -472,8 +479,11 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
             handleFeedback(type);
           }}
           title={label}
+          aria-label={label}
+          aria-pressed={activeFeedback === type}
+          disabled={pending}
           className={cx(
-            'inline-flex items-center justify-center rounded border-0 bg-transparent min-h-[24px] min-w-[24px] p-1 transition',
+            'inline-flex items-center justify-center rounded border-0 bg-transparent min-h-9 min-w-9 p-1 transition',
             activeFeedback === type ? 'cursor-default' : 'cursor-pointer',
             activeFeedback && activeFeedback !== type ? 'opacity-30' : 'opacity-100',
           )}
@@ -489,8 +499,9 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
             e.stopPropagation();
             setShowMore(!showMore);
           }}
-          className={cx('inline-flex items-center justify-center cursor-pointer rounded border-0 min-h-[24px] min-w-[24px] p-1 text-gray-500 transition hover:text-gray-700', showMore ? 'bg-gray-100' : 'bg-transparent')}
+          className={cx('inline-flex items-center justify-center cursor-pointer rounded border-0 min-h-9 min-w-9 p-1 text-gray-500 transition hover:text-gray-700', showMore ? 'bg-gray-100' : 'bg-transparent')}
           title="更多反馈"
+          aria-label="更多反馈" aria-expanded={showMore}
         >
           <ChevronDown size={13} strokeWidth={2.2} />
         </button>
@@ -503,6 +514,7 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
               <button
                 key={type}
                 type="button"
+                disabled={pending}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleFeedback(type);

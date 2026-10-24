@@ -39,12 +39,18 @@ def _event_truth_without_assignments(monkeypatch):
     async def resolve(_self, _ids, *, visible_user_id):
         return {}
 
+    async def revision(_self, *, visible_user_id):
+        return ""
+
+    monkeypatch.setattr(ContentEventConsumptionRepository, "read_cache_revision", revision)
+
     async def load_groups(
         _self,
         _event_group_ids,
         *,
         visible_user_id,
         member_limit,
+        representatives,
     ):
         return {}
 
@@ -469,6 +475,7 @@ async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkey
 
     assert payload == {
         "items": [],
+        "pending_review": {"items": [], "total": 0},
         "total": 0,
         "event_members_hidden": 0,
         "topics": [],
@@ -940,7 +947,7 @@ def _fake_scored(rows: list[dict]):
     pairs = []
     for row in rows:
         final = 101 - row["id"]  # 基础序 = id 升序
-        pairs.append((ScoreBreakdown(content_id=row["id"], final_score=float(final)), row))
+        pairs.append((ScoreBreakdown(content_id=row["id"], final_score=float(final), selected=True), row))
     return pairs
 
 
@@ -948,9 +955,9 @@ def _patch_scoring(monkeypatch, rows: list[dict]):
     from app.repositories.ignored_repo import IgnoredRepo
 
     monkeypatch.setattr(today_picks, "query_today_picks", lambda **_kwargs: rows)
-    monkeypatch.setattr(today_picks, "_score_rows", lambda _rows: _fake_scored(rows))
+    monkeypatch.setattr(today_picks, "_score_rows", lambda _rows, **_kwargs: _fake_scored(_rows))
 
-    async def _topics():
+    def _topics():
         return []
 
     async def _no_personal_ignored(_self, _user_id):
@@ -1056,3 +1063,73 @@ async def test_build_today_picks_boost_failure_falls_back_to_base_order(monkeypa
 
     assert ids == list(range(1, 41))
     assert all(item["personalization_boost"] == 0.0 for item in payload["items"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_oltp", [False, True])
+async def test_pending_fallback_candidates_are_separate_and_reanalysis_returns_to_picks(monkeypatch, use_oltp):
+    rows = _duckdb_rows()
+    rows[0]["summary_source"] = "local_fallback"
+
+    def query(**kwargs):
+        if use_oltp:
+            raise RuntimeError("analytical layer unavailable")
+        return rows
+
+    async def oltp(*args, **kwargs):
+        return rows
+
+    monkeypatch.setattr(today_picks, "query_today_picks", query)
+    monkeypatch.setattr(today_picks, "_build_today_picks_via_oltp", oltp)
+    monkeypatch.setattr(today_picks, "query_topics", lambda: [])
+    pending = await today_picks.build_today_picks(FailingSession(), limit=1)
+    assert pending["total"] == 0
+    assert pending["items"] == []
+    assert pending["topics"] == []
+    assert pending["pending_review"] == {
+        "total": 1,
+        "items": [{"id": 1, "title": rows[0]["title"], "source_name": rows[0]["source_name"]}],
+    }
+    # Same content ID moves to formal picks only after the latest analysis is real.
+    rows[0]["summary_source"] = "llm_lite"
+    reviewed = await today_picks.build_today_picks(FailingSession(), limit=1)
+    assert reviewed["total"] == 1
+    assert [item["id"] for item in reviewed["items"]] == [1]
+    assert reviewed["pending_review"] == {"items": [], "total": 0}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("canonical_in_window", [False, True])
+async def test_fallback_event_canonical_cannot_hide_reviewed_representative(monkeypatch, canonical_in_window):
+    from app.repositories.content_event_consumption_repo import EventAssignment
+
+    rows = []
+    for i in (1, 2, 3):
+        row = {**_duckdb_rows()[0], "id": i, "curation_score": 100 - i}
+        row["summary_source"] = "local_fallback" if i == 1 else "llm_lite"
+        if i != 1 or canonical_in_window:
+            rows.append(row)
+
+    async def resolve(*args, **kwargs):
+        return {i: EventAssignment(i, 10, 1, i == 1, canonical_summary_source="local_fallback") for i in (1, 2, 3)}
+
+    monkeypatch.setattr(today_picks, "query_today_picks", lambda **kwargs: rows)
+    monkeypatch.setattr(today_picks, "query_topics", lambda: [])
+    monkeypatch.setattr(ContentEventConsumptionRepository, "resolve_today_pick_assignments", resolve)
+    payload = await today_picks.build_today_picks(FailingSession())
+    assert [item["id"] for item in payload["items"]] == [2]
+    assert payload["total"] == 1
+    assert payload["pending_review"]["total"] == int(canonical_in_window)
+    assert payload["event_members_hidden"] == 1
+
+
+def test_thin_primary_report_cannot_hide_a_curatable_member():
+    from app.repositories.content_event_consumption_repo import EventAssignment
+
+    rows = [{**_duckdb_rows()[0], "id": i, "summary_source": "llm_lite"} for i in (1, 2)]
+    rows[0]["quality_score"] = 10
+    assignments = {
+        1: EventAssignment(1, 10, 1, True, canonical_locked=True, display_is_primary=True),
+        2: EventAssignment(2, 10, 1, False, canonical_locked=True),
+    }
+    assert [item["id"] for item in today_picks._apply_event_assignments(rows, assignments)] == [2]

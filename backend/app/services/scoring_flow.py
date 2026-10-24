@@ -31,7 +31,7 @@ SCORING_FLOW_WARMUP_TARGETS = (
 # Cache delegates to the shared json_cache with a "scoring_flow:" prefix.
 # Eviction is invalidation-based (no TTL) — callers call
 # invalidate_scoring_flow_cache() when content changes.
-SCORING_FLOW_CACHE_PREFIX = "scoring_flow:"
+SCORING_FLOW_CACHE_PREFIX = "scoring_flow:v2:"
 # Eviction is invalidation-based; TTL is effectively infinite.
 SCORING_FLOW_CACHE_TTL = float("inf")
 
@@ -261,6 +261,7 @@ async def build_scoring_inputs_from_rows(
                 content_id=item.id,
                 title=item.title,
                 category=item.category,
+                summary_source=item.summary_source,
                 source_id=item.source_id,
                 source_name=item.source_name,
                 published_at=item.published_at,

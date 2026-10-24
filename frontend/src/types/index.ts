@@ -238,6 +238,7 @@ export interface UpdateSourceRequest {
 // ─── Content (内容) ───
 
 export type ContentNormalizationRelationType =
+  | 'canonical'
   | 'duplicate'
   | 'corroboration'
   | 'update';
@@ -257,13 +258,27 @@ export interface ContentNormalizationMember {
 }
 
 export interface ContentNormalizationSummary {
+  event_id?: number;
+  version?: number;
+  representative_id?: number;
   canonical_id: number;
-  /** 直接附属消息数，不包含主消息。 */
+  /** 当前展示报道以外的已接受报道数。 */
   member_count: number;
   /** 主消息与附属消息涉及的描述性去重来源数，不代表独立证据数。 */
   source_count: number;
+  update_count?: number;
+  member_offset?: number;
+  next_offset?: number;
   has_more: boolean;
   members: ContentNormalizationMember[];
+}
+
+export interface ContentEventCoverage extends ContentNormalizationSummary {
+  event_id: number;
+  version: number;
+  representative_id: number;
+  member_offset: number;
+  next_offset: number;
 }
 
 export interface ContentItem {
@@ -276,6 +291,8 @@ export interface ContentItem {
   platform?: string | null;
   author?: string;
   published_at: string;
+  /** 筛选后事件的排序时间；不覆盖主报道原始发布时间。 */
+  event_activity_at?: string | null;
   crawled_at: string;
   content_hash?: string;
   summary?: string;
@@ -506,6 +523,7 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
   page_size: number;
+  feed_snapshot?: string;
 }
 
 // ─── Favorites (通用收藏) ───
@@ -557,6 +575,9 @@ export interface ContentFilterParams {
   pageSize?: number;
   hours?: number;
   include_trend_sources?: boolean;
+  group_events?: boolean;
+  stable_feed?: boolean;
+  feed_snapshot?: string;
   source_type?: string;
   keyword?: string;
   q?: string; // enhanced full-text search (title + summary + raw_content + tags + AI analysis fields)

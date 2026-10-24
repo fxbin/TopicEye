@@ -38,6 +38,8 @@ export default function TopicDetailPage() {
     async function fetchData() {
       setLoading(true);
       setError(null);
+      setItem(null);
+      setAnalysis(null);
 
       try {
         const content = await contentsApi.get(contentId);
@@ -64,8 +66,11 @@ export default function TopicDetailPage() {
       }
     }
 
-    if (contentId && !isNaN(contentId)) {
+    if (Number.isInteger(contentId) && contentId > 0) {
       fetchData();
+    } else {
+      setError('内容编号无效');
+      setLoading(false);
     }
 
     return () => { cancelled = true; };
@@ -89,7 +94,7 @@ export default function TopicDetailPage() {
   // ── Render: Loading ──
   if (loading) {
     return (
-      <div className="h-full overflow-y-auto px-10 py-8">
+      <div className="h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
         <div className="max-w-[760px]">
           <Panel className="mb-5 p-8">
             <div className="mb-4 flex gap-2.5">
@@ -122,7 +127,7 @@ export default function TopicDetailPage() {
   // ── Render: Error ──
   if (error || !item) {
     return (
-      <div className="h-full overflow-y-auto px-10 py-8">
+      <div className="h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
         <div className="max-w-[760px]">
           <Button
             type="button"
@@ -165,7 +170,7 @@ export default function TopicDetailPage() {
   const keyPoints = extractKeyPoints(analysis);
 
   return (
-    <div className="fade-in h-full overflow-y-auto px-10 py-8">
+    <div className="fade-in h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
       {/* Back */}
       <Button
         type="button"
@@ -314,7 +319,7 @@ export default function TopicDetailPage() {
         )}
 
         {/* Creation Plan Generator */}
-        {analysis && <TopicCreationGenerator contentId={contentId} />}
+        {analysis && <TopicCreationGenerator key={contentId} contentId={contentId} />}
 
         {/* No analysis hint */}
         {!analysis && (

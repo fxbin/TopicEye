@@ -1,20 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bookmark, CheckCircle2, Eye, XCircle, ExternalLink } from 'lucide-react';
-import { Panel, cx } from '@/components/ui';
+import { Button, Panel, cx } from '@/components/ui';
 import { weeklyDigestApi } from '@/lib/api';
+import { createWeeklyTrackingLoader, type WeeklyTrackingData } from './_weekly-tracking-loader';
 import { EDITION_LABELS } from '@/lib/edition-naming';
-
-interface PickTrackMark {
-  pick_title: string;
-  action: 'write' | 'watch' | 'skip';
-  mark_date: string;
-  pick_category: string | null;
-  appearances_in_week: number;
-  appearance_dates: string[];
-  pick_source_url: string | null;
-}
 
 const ACTION_META: Record<string, { label: string; icon: typeof Bookmark; color: string; bg: string }> = {
   write: { label: '已选', icon: CheckCircle2, color: 'text-primary', bg: 'bg-primary-light' },
@@ -29,33 +20,32 @@ const ACTION_META: Record<string, { label: string; icon: typeof Bookmark; color:
  * 金字塔压缩的独特价值：日报只看当天，周报看跨日持续性。
  */
 export default function WeeklyPickTracking({ weekKey }: { weekKey: string | undefined }) {
-  const [marks, setMarks] = useState<PickTrackMark[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [weekRange, setWeekRange] = useState('');
-
-  const fetch = useCallback(async () => {
-    if (!weekKey) return;
-    try {
-      setLoading(true);
-      const resp = await weeklyDigestApi.pickTracking(weekKey);
-      setMarks(resp.marks);
-      setWeekRange(resp.week_range);
-    } catch {
-      // 静默失败（游客无 token 等）
-    } finally {
-      setLoading(false);
-    }
-  }, [weekKey]);
-
+  const [data, setData] = useState<WeeklyTrackingData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loader = useMemo(() => createWeeklyTrackingLoader(weeklyDigestApi.pickTracking, {
+    data: setData, pending: setLoading, error: setError,
+  }), []);
   useEffect(() => {
-    void fetch();
-  }, [fetch]);
+    void loader.load(weekKey);
+    return () => loader.cancel();
+  }, [loader, weekKey]);
+  const marks = data?.marks ?? [];
+  const weekRange = data?.week_range ?? '';
+  if (!weekKey) return null;
+  if (error) {
+    return <Panel className="mt-3 p-4">
+      <h2 className="mb-2 text-sm font-black text-gray-700">选题追踪</h2>
+      <p role="alert" className="mb-3 text-sm text-red">{error}</p>
+      <Button type="button" variant="secondary" onClick={() => void loader.load(weekKey)}>重试加载追踪</Button>
+    </Panel>;
+  }
 
   if (loading) {
     return (
       <Panel className="mt-3 p-4">
         <div className="mb-2 text-sm font-black text-gray-700">选题追踪</div>
-        <div className="text-xs text-gray-400">加载中...</div>
+        <div role="status" className="text-sm text-gray-500">加载中...</div>
       </Panel>
     );
   }
@@ -99,6 +89,7 @@ export default function WeeklyPickTracking({ weekKey }: { weekKey: string | unde
                   {mark.pick_source_url && (
                     <a
                       href={mark.pick_source_url}
+                      aria-label={`打开「${mark.pick_title}」原文`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-0.5 shrink-0 text-gray-300 hover:text-primary"
@@ -107,7 +98,7 @@ export default function WeeklyPickTracking({ weekKey }: { weekKey: string | unde
                     </a>
                   )}
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-400">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
                   <span>标记于 {mark.mark_date}</span>
                   <span>·</span>
                   {isPersistent ? (

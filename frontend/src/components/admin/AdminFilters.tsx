@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { cx } from '@/components/ui';
+import { createDebouncedSearch } from './_search-debounce';
 
 /**
  * 后台统一筛选行（#121 圆桌规范）：
@@ -20,6 +21,7 @@ export function AdminFilters({
   onSearchChange,
   debounceMs = 300,
   searchClassName,
+  resetKey,
   children,
   actions,
   className,
@@ -30,6 +32,8 @@ export function AdminFilters({
   onSearchChange?: (value: string) => void;
   debounceMs?: number;
   searchClassName?: string;
+  /** 外部清空时递增；已提交搜索本就为空时也取消尚未提交的草稿。 */
+  resetKey?: number;
   /** 筛选下拉等控件。 */
   children?: React.ReactNode;
   /** 右侧动作区（如导出按钮）。 */
@@ -37,31 +41,32 @@ export function AdminFilters({
   className?: string;
 }) {
   const [local, setLocal] = useState(searchValue);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchRef = useRef(onSearchChange);
+  useEffect(() => { onSearchRef.current = onSearchChange; }, [onSearchChange]);
+  const searchRef = useRef<ReturnType<typeof createDebouncedSearch> | null>(null);
+  useEffect(() => {
+    const search = createDebouncedSearch((value) => onSearchRef.current?.(value), debounceMs);
+    searchRef.current = search;
+    return () => { search.cancel(); searchRef.current = null; };
+  }, [debounceMs]);
   const hasSearch = searchValue !== undefined && onSearchChange !== undefined;
 
   // 外部清空（如「清空全部」）时同步输入框
   useEffect(() => {
+    searchRef.current?.cancel();
     if (hasSearch) setLocal(searchValue ?? '');
-  }, [searchValue, hasSearch]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+  }, [searchValue, hasSearch, resetKey, debounceMs]);
 
   const handleInput = (value: string) => {
     setLocal(value);
     if (!onSearchChange) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => onSearchChange(value), debounceMs);
+    searchRef.current?.schedule(value);
   };
 
   return (
     <div className={cx('flex flex-wrap items-center gap-2', className)}>
       {hasSearch && (
-        <div className={cx('relative', searchClassName)}>
+        <div className={cx('relative max-w-full', searchClassName)}>
           <Search
             size={14}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
@@ -74,7 +79,7 @@ export function AdminFilters({
             onChange={(e) => handleInput(e.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder ?? '搜索'}
-            className="h-9 w-56 rounded-xs border border-ink-200 bg-white pl-8 pr-3 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
+            className="h-10 w-56 max-w-full rounded-xs border border-ink-200 bg-white pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
           />
         </div>
       )}

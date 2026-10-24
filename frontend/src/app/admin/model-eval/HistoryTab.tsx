@@ -14,37 +14,25 @@
  * _components.tsx 复用。
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { History } from 'lucide-react';
-import { EmptyState, LoadingState } from '@/components/StateView';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { modelsApi } from '@/lib/api';
-import type { EvalResult, EvalRun } from '@/lib/api';
+import { useFetch } from '@/hooks/useFetch';
 import { cx } from '@/components/ui';
 import { promptTypeLabel } from './_model-eval-utils';
 import { StatusPill, Surface } from './_components';
 
 export function HistoryTab() {
-  const [runs, setRuns] = useState<EvalRun[]>([]);
-  const [loading, setLoading] = useState(true);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
-  const [runDetail, setRunDetail] = useState<{ results: EvalResult[] } | null>(null);
-
-  useEffect(() => {
-    modelsApi.listEvalRuns(30).then((res) => {
-      setRuns(res.runs);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  const handleExpand = async (runId: string) => {
-    if (expandedRun === runId) {
-      setExpandedRun(null);
-      return;
-    }
-    setExpandedRun(runId);
-    const detail = await modelsApi.getEvalRun(runId);
-    setRunDetail(detail);
-  };
+  const { data, loading, error, refetch } = useFetch(() => modelsApi.listEvalRuns(30), []);
+  const runs = data?.runs ?? [];
+  const { data: detail, loading: detailLoading, error: detailError, refetch: refetchDetail } = useFetch(
+    async () => ({ runId: expandedRun, ...(await modelsApi.getEvalRun(expandedRun!)) }),
+    [expandedRun],
+    { enabled: expandedRun !== null, initialLoading: false },
+  );
+  const runDetail = detail?.runId === expandedRun ? detail : null;
 
   if (loading) {
     return (
@@ -57,7 +45,7 @@ export function HistoryTab() {
   if (runs.length === 0) {
     return (
       <Surface title="测评历史" icon={History}>
-        <EmptyState panel={false} minHeight="220px" title="暂无测评记录，去 A/B 测评页开始第一次测评" />
+        {error ? <ErrorState error={error} onRetry={() => void refetch()} panel={false} /> : <EmptyState panel={false} minHeight="220px" title="暂无测评记录，去 A/B 测评页开始第一次测评" />}
       </Surface>
     );
   }
@@ -69,8 +57,10 @@ export function HistoryTab() {
           <div key={run.eval_run_id}>
             <button
               type="button"
-              onClick={() => handleExpand(run.eval_run_id)}
-              className="flex w-full items-center justify-between gap-3 rounded-sm border border-ink-200 bg-white px-4 py-3 text-left transition hover:border-primary-border"
+              onClick={() => setExpandedRun((current) => current === run.eval_run_id ? null : run.eval_run_id)}
+              aria-expanded={expandedRun === run.eval_run_id}
+              aria-controls={`evaluation-run-${run.eval_run_id}`}
+              className="flex w-full flex-wrap items-center justify-between gap-3 rounded-sm border border-ink-200 bg-white px-4 py-3 text-left transition hover:border-primary-border"
             >
               <div className="min-w-0">
                 <span className="text-[13px] font-black text-ink-900">{promptTypeLabel[run.prompt_type] || run.prompt_type}</span>
@@ -83,9 +73,9 @@ export function HistoryTab() {
                 {run.fail_count > 0 && <StatusPill tone="red">{run.fail_count} 失败</StatusPill>}
               </div>
             </button>
-            {expandedRun === run.eval_run_id && runDetail && (
-              <div className="rounded-b-sm border border-t-0 border-ink-200 bg-ink-100 px-4 py-2">
-                {runDetail.results.map((r) => (
+            {expandedRun === run.eval_run_id && (
+              <div id={`evaluation-run-${run.eval_run_id}`} className="rounded-b-sm border border-t-0 border-ink-200 bg-ink-100 px-4 py-2">
+                {detailLoading || (!runDetail && !detailError) ? <LoadingState label="加载本次测评结果…" minHeight="80px" panel={false} /> : detailError ? <ErrorState error={detailError} onRetry={() => void refetchDetail()} panel={false} /> : runDetail?.results.map((r) => (
                   <div key={r.id} className="flex flex-wrap gap-3 border-b border-ink-100 py-2 last:border-b-0">
                     <span className="min-w-20 text-[13px] font-bold text-ink-900">{r.model_name}</span>
                     <span className={cx('text-xs tabular-nums', r.status === 'DONE' ? 'text-teal' : 'text-red')}>

@@ -179,23 +179,33 @@ export default function FanqiePage() {
   }, [heiyanBooks, heiyanShelfFilter]);
 
   const [weeklyDays, setWeeklyDays] = useState(7);
+  const platformRequestRef = useRef(0);
+  const weeklyRequestRef = useRef(0);
+  useEffect(() => () => { platformRequestRef.current += 1; weeklyRequestRef.current += 1; }, []);
+
   const fetchWeeklyReport = useCallback(async (days: number = 7) => {
+    const request = ++weeklyRequestRef.current;
     setWeeklyLoading(true);
     setError(null);
     try {
-      setWeeklyReport(await webnovelReportsApi.weekly(days));
+      const report = await webnovelReportsApi.weekly(days);
+      if (request !== weeklyRequestRef.current) return;
+      setWeeklyReport(report);
     } catch (err) {
+      if (request !== weeklyRequestRef.current) return;
       setError(err instanceof Error ? err.message : '网文周报加载失败');
     } finally {
-      setWeeklyLoading(false);
+      if (request === weeklyRequestRef.current) setWeeklyLoading(false);
     }
   }, []);
 
   const fetchFanqieData = useCallback(async (rt: string, isInit = false) => {
+    const request = ++platformRequestRef.current;
     if (isInit) setInitLoading(true); else setSwitching(true);
     setError(null);
     try {
       const cats = categories.length ? categories : await fanqieApi.categories();
+      if (request !== platformRequestRef.current) return;
       if (isInit || categories.length === 0) setCategories(cats);
 
       const fallbackCat = cats.find((cat) => cat.group === groupTab)?.fanqie_id || cats[0]?.fanqie_id || '';
@@ -204,65 +214,79 @@ export default function FanqiePage() {
 
       if (catId) {
         const result = await fanqieApi.categoryBooks(catId, { rank_type: rt });
+        if (request !== platformRequestRef.current) return;
         setBooksMap((prev) => ({ ...prev, [`${catId}|${rt}`]: result.books }));
       }
     } catch (err) {
+      if (request !== platformRequestRef.current) return;
       setError(err instanceof Error ? err.message : '番茄榜单加载失败');
     } finally {
-      setInitLoading(false);
-      setSwitching(false);
+      if (request === platformRequestRef.current) setInitLoading(false);
+      if (request === platformRequestRef.current) setSwitching(false);
     }
   }, [activeCat, categories, groupTab]);
 
   const fetchQimaoData = useCallback(async () => {
+    const request = ++platformRequestRef.current;
     setQimaoLoading(true);
     setError(null);
     try {
       const result = await qimaoApi.list(qimaoChannel, qimaoRank);
+      if (request !== platformRequestRef.current) return;
       setQimaoBooks(result.books);
     } catch (err) {
+      if (request !== platformRequestRef.current) return;
       setError(err instanceof Error ? err.message : '七猫榜单加载失败');
     } finally {
-      setQimaoLoading(false);
+      if (request === platformRequestRef.current) setQimaoLoading(false);
     }
   }, [qimaoChannel, qimaoRank]);
 
   const fetchZhihuData = useCallback(async () => {
+    const request = ++platformRequestRef.current;
     setZhihuLoading(true);
     setError(null);
     try {
       const result = await zhihuApi.list(zhihuSort, '故事', zhihuSubcat || undefined);
+      if (request !== platformRequestRef.current) return;
       setZhihuAlbums(result.albums);
     } catch (err) {
+      if (request !== platformRequestRef.current) return;
       setError(err instanceof Error ? err.message : '知乎盐选加载失败');
     } finally {
-      setZhihuLoading(false);
+      if (request === platformRequestRef.current) setZhihuLoading(false);
     }
   }, [zhihuSort, zhihuSubcat]);
 
   const fetchHeiyanData = useCallback(async () => {
+    const request = ++platformRequestRef.current;
     setHeiyanLoading(true);
     setError(null);
     try {
       const items = await trendingApi.list({ source: 'heiyan', limit: 100 });
+      if (request !== platformRequestRef.current) return;
       setHeiyanBooks(items);
     } catch (err) {
+      if (request !== platformRequestRef.current) return;
       setError(err instanceof Error ? err.message : '黑岩榜单加载失败');
     } finally {
-      setHeiyanLoading(false);
+      if (request === platformRequestRef.current) setHeiyanLoading(false);
     }
   }, []);
 
   const fetchIshuguiData = useCallback(async () => {
+    const request = ++platformRequestRef.current;
     setIshuguiLoading(true);
     setError(null);
     try {
       const items = await trendingApi.list({ source: 'ishugui', limit: 100 });
+      if (request !== platformRequestRef.current) return;
       setIshuguiBooks(items);
     } catch (err) {
+      if (request !== platformRequestRef.current) return;
       setError(err instanceof Error ? err.message : '点众榜单加载失败');
     } finally {
-      setIshuguiLoading(false);
+      if (request === platformRequestRef.current) setIshuguiLoading(false);
     }
   }, []);
 
@@ -508,7 +532,15 @@ export default function FanqiePage() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => { setPlatform(key); setQuery(''); }}
+                  onClick={() => {
+                    if (key !== platform) {
+                      platformRequestRef.current += 1;
+                      setError(null);
+                      setInitLoading(false); setSwitching(false); setQimaoLoading(false);
+                      setZhihuLoading(false); setHeiyanLoading(false); setIshuguiLoading(false);
+                    }
+                    setPlatform(key); setQuery('');
+                  }}
                   className={cx('flex min-w-28 cursor-pointer flex-col items-start gap-0.5 rounded-xs border-0 px-2.5 py-2 transition', active ? 'bg-white shadow-sm' : 'bg-transparent text-gray-500 hover:bg-white/60')}
                   style={{ color: active ? meta.color : undefined }}
                 >
@@ -764,6 +796,7 @@ export default function FanqiePage() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                aria-label="搜索书名、作者、简介"
                 placeholder="搜索书名、作者、简介"
                 className="w-full rounded-sm border border-gray-200 py-2 pl-8 pr-9 text-[13px] text-gray-800 outline-none transition focus:border-primary"
               />

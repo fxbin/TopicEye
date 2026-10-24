@@ -136,12 +136,12 @@ function MetricValue({ tone, children }: { tone: TriageTone; children: React.Rea
 /* ─── 四格取数与判定 ─── */
 
 function SourceHealthCard() {
-  const { data, loading, error, refetch } = useFetch<{ items: BackendSource[]; total: number }>(
+  const { data, loading, error, refetch } = useFetch<{ items: BackendSource[]; total: number; checkedAt: number }>(
     async () => {
       // 分诊只需要全量信源的状态分布；后端上限 page_size=100，
       // 信源量级 ~24 远小于上限（超 100 时以 total 提示、计数按前 100 近似）
       const res = await sourcesApi.list({ page: 1, page_size: 100 });
-      return { items: (res?.items || []) as BackendSource[], total: res?.total ?? 0 };
+      return { items: (res?.items || []) as BackendSource[], total: res?.total ?? 0, checkedAt: Date.now() };
     },
     [],
   );
@@ -150,7 +150,7 @@ function SourceHealthCard() {
   const errorCount = enabled.filter((s) => s.status === 'error').length;
   const noUpdate24h = enabled.filter((s) => {
     if (!s.last_sync_at) return true;
-    return Date.now() - new Date(s.last_sync_at).getTime() > 24 * 3_600_000;
+    return (data?.checkedAt ?? 0) - new Date(s.last_sync_at).getTime() > 24 * 3_600_000;
   }).length;
   const tone: TriageTone = errorCount > 0 ? 'danger' : noUpdate24h > 0 ? 'warn' : 'ok';
 
@@ -344,7 +344,7 @@ export default function AdminDashboardPage() {
       <AdminPageHeader
         title="管理后台概览"
         icon={LayoutDashboard}
-        description="第一屏回答：今天有没有异常、去哪处理。各格独立取数，单格失败可就地重试。"
+        description="查看信源与任务状态，处理待办和异常。"
       />
 
       {/* 分诊台四格：2×2，容器窄于 640 折单列（圆桌规格 gap16/最小宽280） */}

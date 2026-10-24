@@ -19,12 +19,9 @@ export default function WeeklyDigestPage() {
   useReadTracking('weekly_digest', currentWeekKey);
 
   return (
-    <>
       <DigestReportPage<WeeklyDigest, WeeklyDigestWeekSummary>
         title={EDITION_LABELS.weekly}
         badge="WEEKLY INTELLIGENCE"
-        heroLabel="TOPIC RADAR WEEKLY"
-        heroTitle={<>选题雷达<br />{EDITION_LABELS.weekly}</>}
         sidebarTitle={`历史${EDITION_LABELS.weekly}`}
         emptyHistoryText={`暂无历史${EDITION_LABELS.weekly}`}
         emptyText={`暂无${EDITION_LABELS.weekly}数据`}
@@ -32,8 +29,7 @@ export default function WeeklyDigestPage() {
         generatingText={`${EDITION_LABELS.weekly}生成中，请稍候...`}
         latestButtonLabel={`最新${EDITION_LABELS.weekly}`}
         periodName={EDITION_LABELS.weekly}
-        periodCodeLabel="WEEK"
-        topPicksTitle="精选选题 TOP 5"
+        topPicksTitle="更多推荐选题"
         actionTitle="下周创作行动清单"
         overviewTitle="本周概述"
         keywordTitle="本周关键词"
@@ -53,8 +49,8 @@ export default function WeeklyDigestPage() {
         getSummaryKey={(summary) => summary.week_key}
         getSummaryLabel={(summary) => summary.week_label}
         onDigestChange={handleDigestChange}
-      />
-      <WeeklyPickTracking weekKey={currentWeekKey} />
-    </>
+      >
+        <WeeklyPickTracking weekKey={currentWeekKey} />
+      </DigestReportPage>
   );
 }

@@ -15,6 +15,14 @@ OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官�
 - **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
   `app/repositories/`，日报版本/归属/选题标记也在 PG）；DuckDB 承担分析聚合查询（picks / stats / topics / reports，见
   `app/services/duckdb_service.py` 及其 mixin）。跨层读写时先确认自己在哪一套里。
+- **事件归并与展示分开**：PG `content_event_groups` / `content_event_members` 是事实源，
+  只有 active + auto/confirmed 关系参与首页与精选折叠。持久化 canonical 与当前展示报道
+  不一定相同；旧 `content_relations.same_event` 只是相似关联，不能用于隐藏文章。
+  shadow 进度与技术故障重试在运行审计中；自动写入在锁内复查归属，不覆盖模型等待期间新增的人工关系，
+  冲突项显式报告并保留后续扫描资格。
+  首页浏览快照变化返回 409，需从第一页刷新；普通事件列表和精选的 L1 缓存以 PG 事件版本分隔。
+  读取、分页版本及 off → shadow → write 启用门槛见
+  [`docs/content-event-coverage.md`](docs/content-event-coverage.md)。
 - **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见
   [`.agents/notes/`](.agents/notes/)，跑测守则见第三节。
 
@@ -106,6 +114,8 @@ make test-backend                         # 或直接跑全量
 
 ### 3.3 其它命令
 
+- 事件真实样本与试点评估：流程、只读导出、调用预算和人工门槛见 [docs/content-event-coverage.md](docs/content-event-coverage.md)。`backend/scripts/export_event_pool.py` 只读导出公开 owner；`backend/scripts/prepare_event_shadow_dataset.py` 准备未知标签标注包；`backend/scripts/evaluate_event_pool.py` 默认不调用模型，live 需逻辑/物理/费用上限及价格依据；`backend/scripts/assess_event_pilot.py` 只生成 HOLD 或所有者复核材料，绝不授权生产 write。
+
 - Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
 - Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
 - Shell scripts: `bash -n <script>`
@@ -176,8 +186,8 @@ verdict 段落记录独立复核结论（复核者不得是同一实现过程）
 - **前端 npm audit 口径为生产依赖**（`--omit=dev`，#105）：dev 工具链的 braces 链
   （GHSA-vfj7-8cjw-p6xm，`eslint-config-next` → `fast-glob` → `micromatch` → `braces`）
   覆盖 braces 全部已发布版本、上游无补丁，且只在 eslint dev 依赖里（DoS 级），不挡门；
-  生产依赖维持 high 级严格门禁（next 16.3.8 / sharp / brace-expansion 等已随 #101 修复）。
+  生产依赖维持 high 级严格门禁（next / sharp / brace-expansion 的此前告警已随 #101 修复；Next.js 16.3.8 后续命中 GHSA-2464-fhr4-w9xw / GHSA-p3m5-59mp-jv5r / GHSA-673q-mjm6-r5xr，已在 #142 升至 16.4.1）。
   braces 上游发布补丁（>3.0.3）后：`npm audit fix` 并去掉 workflow 里的 `--omit=dev`
   恢复全量口径。force 降级 `eslint-config-next@14.2.35` 的方案仍维持否决，依据见
   [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。
-  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复——**security-scan 再红即新问题**。
+  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复；`filelock 4.0.1` 的三条新告警已随 #144 升至 4.2.1——**security-scan 再红即新问题**。

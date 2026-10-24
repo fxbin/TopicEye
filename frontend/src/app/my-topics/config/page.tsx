@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
 import { FieldLabel } from '@/components/form';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
+import { runTopicMutation } from './_mutation';
 import { useAppContext } from '@/components/ClientLayout';
 
 /* ── helpers ── */
@@ -31,11 +32,13 @@ function TopicCard({
   onDelete,
 }: {
   topic: MotherTopic;
-  onSave: (updated: Partial<MotherTopic>) => void;
+  onSave: (updated: Partial<MotherTopic>) => Promise<void>;
   onDelete: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const fieldId = useId();
   const isSystem = isSystemTemplate(topic);
   const [form, setForm] = useState({
     name: topic.name,
@@ -49,9 +52,14 @@ function TopicCard({
   });
 
   const handleSave = async () => {
-    setSaving(true);
+    if (saving) return;
+    setSaveError(null);
+    if (!form.name.trim() || !Number.isFinite(form.weight) || form.weight < 0.1 || form.weight > 3) {
+      setSaveError('请填写母题名称，权重应在 0.1 到 3 之间');
+      return;
+    }
     const keywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
-    await onSave({
+    await runTopicMutation(() => onSave({
       name: form.name,
       description: form.description || undefined,
       keywords,
@@ -60,9 +68,11 @@ function TopicCard({
       target_reader: form.target_reader || undefined,
       is_active: form.is_active,
       display_order: form.display_order,
+    }), {
+      pending: setSaving,
+      error: setSaveError,
+      success: () => setEditing(false),
     });
-    setSaving(false);
-    setEditing(false);
   };
 
   const contentTypeColor: Record<string, string> = {
@@ -103,36 +113,40 @@ function TopicCard({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">权重 {topic.weight}</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="whitespace-nowrap text-xs text-gray-400">权重 {topic.weight}</span>
           {!topic.is_active && (
-            <Badge tone="red" className="rounded-sm px-2 py-0.5 text-[11px]">已停用</Badge>
+            <Badge tone="red" className="whitespace-nowrap rounded-sm px-2 py-0.5 text-xs">已停用</Badge>
           )}
         </div>
       </div>
 
+      {saveError && <p role="alert" className="mb-3 text-sm text-red">{saveError}</p>}
       {editing ? (
         /* edit form */
-        <div className="flex flex-col gap-3">
+        <fieldset disabled={saving} className="min-w-0 flex flex-col gap-3">
           <div>
-            <FieldLabel>名称</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-name`}>名称</FieldLabel>
             <input
+              id={`${fieldId}-name`}
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
               className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
             />
           </div>
           <div>
-            <FieldLabel>描述</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-description`}>描述</FieldLabel>
             <input
+              id={`${fieldId}-description`}
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
               className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
             />
           </div>
           <div>
-            <FieldLabel>关键词（逗号分隔）</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-keywords`}>关键词（逗号分隔）</FieldLabel>
             <textarea
+              id={`${fieldId}-keywords`}
               value={form.keywords}
               onChange={e => setForm({ ...form, keywords: e.target.value })}
               rows={4}
@@ -144,20 +158,22 @@ function TopicCard({
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <FieldLabel>权重乘数</FieldLabel>
+              <FieldLabel htmlFor={`${fieldId}-weight`}>权重乘数</FieldLabel>
               <input
                 type="number"
                 step="0.1"
                 min="0.1"
                 max="3"
+                id={`${fieldId}-weight`}
                 value={form.weight}
                 onChange={e => setForm({ ...form, weight: parseFloat(e.target.value) })}
                 className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
               />
             </div>
             <div className="flex-1">
-              <FieldLabel>目标读者</FieldLabel>
+              <FieldLabel htmlFor={`${fieldId}-target_reader`}>目标读者</FieldLabel>
               <input
+                id={`${fieldId}-target_reader`}
                 value={form.target_reader}
                 onChange={e => setForm({ ...form, target_reader: e.target.value })}
                 className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
@@ -183,7 +199,7 @@ function TopicCard({
               取消
             </Button>
           </Toolbar>
-        </div>
+        </fieldset>
       ) : (
         /* view mode */
         <>
@@ -218,8 +234,13 @@ function TopicCard({
               <>
                 <Button
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    setForm({ name: topic.name, description: topic.description || '', keywords: topic.keywords.join(', '), weight: topic.weight, content_type: topic.content_type || '', target_reader: topic.target_reader || '', is_active: topic.is_active, display_order: topic.display_order });
+                    setSaveError(null);
+                    setEditing(true);
+                  }}
                   variant="primary"
+                  disabled={saving}
                   className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
                 >
                   编辑
@@ -236,7 +257,14 @@ function TopicCard({
                 ) : (
                   <Button
                     type="button"
-                    onClick={() => onSave({ is_active: true })}
+                    onClick={async () => {
+                      setSaving(true);
+                      setSaveError(null);
+                      try { await onSave({ is_active: true }); }
+                      catch (err) { setSaveError(err instanceof Error ? err.message : '启用失败，请重试'); }
+                      finally { setSaving(false); }
+                    }}
+                    disabled={saving}
                     variant="success"
                     className="min-h-0 px-3.5 py-1.5 text-xs font-medium"
                   >
@@ -255,8 +283,10 @@ function TopicCard({
 /* ── New Topic Form ── */
 
 function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => Promise<void> }) {
+  const fieldId = useId();
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -266,24 +296,29 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
   });
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) return;
-    setSaving(true);
-    try {
-      const keywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
-      await onCreate({
-        name: form.name.trim(),
-        description: form.description || undefined,
-        keywords,
-        weight: form.weight,
-        target_reader: form.target_reader || undefined,
-        is_active: true,
-        display_order: 99,
-      });
-      setForm({ name: '', description: '', keywords: '', weight: 1.0, target_reader: '' });
-      setExpanded(false);
-    } finally {
-      setSaving(false);
+    if (!form.name.trim() || saving) return;
+    setCreateError(null);
+    if (!Number.isFinite(form.weight) || form.weight < 0.1 || form.weight > 3) {
+      setCreateError('权重应在 0.1 到 3 之间');
+      return;
     }
+    const keywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
+    await runTopicMutation(() => onCreate({
+      name: form.name.trim(),
+      description: form.description || undefined,
+      keywords,
+      weight: form.weight,
+      target_reader: form.target_reader || undefined,
+      is_active: true,
+      display_order: 99,
+    }), {
+      pending: setSaving,
+      error: setCreateError,
+      success: () => {
+        setForm({ name: '', description: '', keywords: '', weight: 1.0, target_reader: '' });
+        setExpanded(false);
+      },
+    });
   };
 
   if (!expanded) {
@@ -305,10 +340,12 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
       <div className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900">
         <Plus size={16} className="text-primary" /> 新建母题
       </div>
-      <div className="flex flex-col gap-3">
+      <fieldset disabled={saving} className="min-w-0 flex flex-col gap-3">
+        {createError && <p role="alert" className="text-sm text-red">{createError}</p>}
         <div>
-          <FieldLabel>名称 *</FieldLabel>
+          <FieldLabel htmlFor={`${fieldId}-name`}>名称 *</FieldLabel>
           <input
+            id={`${fieldId}-name`}
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
             placeholder="如：AI 工具评测"
@@ -316,8 +353,9 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
           />
         </div>
         <div>
-          <FieldLabel>关键词（逗号分隔）</FieldLabel>
+          <FieldLabel htmlFor={`${fieldId}-keywords`}>关键词（逗号分隔）</FieldLabel>
           <textarea
+            id={`${fieldId}-keywords`}
             value={form.keywords}
             onChange={e => setForm({ ...form, keywords: e.target.value })}
             rows={3}
@@ -327,20 +365,22 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
         </div>
         <div className="flex gap-3">
           <div className="flex-1">
-            <FieldLabel>权重乘数</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-weight`}>权重乘数</FieldLabel>
             <input
               type="number"
               step="0.1"
               min="0.1"
               max="3"
+              id={`${fieldId}-weight`}
               value={form.weight}
               onChange={e => setForm({ ...form, weight: parseFloat(e.target.value) })}
               className="w-full rounded-xs border border-gray-300 px-2.5 py-1.5 text-[13px] outline-none focus:border-primary"
             />
           </div>
           <div className="flex-1">
-            <FieldLabel>目标读者</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-target_reader`}>目标读者</FieldLabel>
             <input
+              id={`${fieldId}-target_reader`}
               value={form.target_reader}
               onChange={e => setForm({ ...form, target_reader: e.target.value })}
               placeholder="对效率提升有兴趣的创作者"
@@ -367,7 +407,7 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
             取消
           </Button>
         </Toolbar>
-      </div>
+      </fieldset>
     </Panel>
   );
 }
@@ -379,7 +419,7 @@ export default function MyTopicsConfigPage() {
   const { currentUser } = useAppContext();
   const isAdmin = currentUser?.role === 'admin';
 
-  const { data, loading, error, refetch } = useFetch<{
+  const { data, loading, error, refetch, setData } = useFetch<{
     topics: MotherTopic[];
     hasOwnTopics: boolean;
   }>(async () => {
@@ -398,31 +438,40 @@ export default function MyTopicsConfigPage() {
   }, []);
 
   const [forking, setForking] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleForkDefaults = useCallback(async () => {
     setForking(true);
+    setActionError(null);
     try {
       await motherTopicsApi.forkDefaults();
       await refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '复制模板失败，请重试');
     } finally {
       setForking(false);
     }
   }, [refetch]);
 
   const handleSave = async (id: number, updated: Partial<MotherTopic>) => {
-    await motherTopicsApi.update(id, updated);
-    await refetch();
+    const saved = await motherTopicsApi.update(id, updated);
+    setData(prev => prev ? { ...prev, topics: prev.topics.map(topic => topic.id === id ? saved : topic) } : prev);
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('确认停用此母题？停用后相关推荐将不再出现。')) return;
-    await motherTopicsApi.delete(id);
-    await refetch();
+    setActionError(null);
+    try {
+      await motherTopicsApi.delete(id);
+      setData(prev => prev ? { ...prev, topics: prev.topics.map(topic => topic.id === id ? { ...topic, is_active: false } : topic) } : prev);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '停用失败，请重试');
+    }
   };
 
   const handleCreate = async (data: Partial<MotherTopic>) => {
-    await motherTopicsApi.create(data as Parameters<typeof motherTopicsApi.create>[0]);
-    await refetch();
+    const created = await motherTopicsApi.create(data as Parameters<typeof motherTopicsApi.create>[0]);
+    setData(prev => prev ? { ...prev, topics: [...prev.topics, created], hasOwnTopics: prev.hasOwnTopics || created.owner_user_id !== null } : prev);
   };
 
   const topics = data?.topics ?? [];
@@ -454,6 +503,7 @@ export default function MyTopicsConfigPage() {
       </header>
 
       <main className="mx-auto mt-5 max-w-[860px]">
+        {actionError && <p role="alert" className="mb-4 rounded-sm bg-red-light p-3 text-sm text-red">{actionError}</p>}
         {/* Info box */}
         <Panel className="mb-6 border-teal-border bg-teal-light px-4 py-3 text-[13px] leading-6 text-teal">
           <b>打分规则:</b> 母题匹配分 × 权重 + 新鲜度加成 <ArrowRight size={13} strokeWidth={2} className="inline align-[-2px]" /> 最终得分<br/>
@@ -504,13 +554,13 @@ export default function MyTopicsConfigPage() {
           <LoadingState label="加载中…" minHeight="160px" />
         ) : (
           <>
+            {!isAdmin && <NewTopicForm onCreate={handleCreate} />}
             {/* 我的母题 */}
             {myTopics.length > 0 && (
               <section className="mb-6">
                 <h2 className="mb-3 text-sm font-bold text-gray-700">
                   我的母题 ({myTopics.length})
                 </h2>
-                {!isAdmin && <NewTopicForm onCreate={handleCreate} />}
                 {myTopics.map(topic => (
                   <TopicCard
                     key={topic.id}

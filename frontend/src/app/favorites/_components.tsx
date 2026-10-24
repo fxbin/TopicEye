@@ -372,6 +372,8 @@ export function FavoriteCard({
       {editing && (
         <div className="mb-2.5 rounded-sm border border-primary-border bg-primary-light/35 p-2">
           <textarea
+            aria-label="收藏备注"
+            disabled={editPending}
             value={editNote}
             onChange={(event) => onEditNote(event.target.value)}
             rows={3}
@@ -379,6 +381,8 @@ export function FavoriteCard({
             placeholder="写下选题判断、创作角度或待验证问题"
           />
           <input
+            aria-label="收藏标签"
+            disabled={editPending}
             value={editTags}
             onChange={(event) => onEditTags(event.target.value)}
             className="mb-2 h-8 w-full rounded-xs border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-primary-border"
@@ -440,6 +444,7 @@ export function FavoriteCard({
 
       <div className="flex flex-wrap gap-1.5">
         <select
+          aria-label={`「${item.title}」的创作状态`}
           value={item.status}
           disabled={pending}
           onChange={(event) => onStatus(item, event.target.value as FavoriteStatus)}
@@ -489,7 +494,7 @@ export function FavoriteCard({
         )}
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || editPending}
           onClick={() => (editing ? onCancelEdit() : onStartEdit(item))}
           className="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-200 bg-white px-2 text-xs font-bold text-gray-500 hover:text-primary disabled:cursor-wait disabled:opacity-60"
         >
@@ -500,11 +505,11 @@ export function FavoriteCard({
           type="button"
           disabled={pending}
           onClick={() => onRemove(item)}
-          aria-label={item.status === 'archived' ? '删除收藏' : '归档收藏'}
+          aria-label="删除收藏"
           className="inline-flex h-8 items-center gap-1 rounded-sm border border-red-light bg-red-light px-2 text-xs font-bold text-red disabled:cursor-wait disabled:opacity-60"
           title="删除收藏"
         >
-          {item.status === 'archived' ? <Archive size={13} /> : <Trash2 size={13} />}
+          <Trash2 size={13} />
         </button>
       </div>
     </article>
@@ -588,6 +593,7 @@ export function FiltersBar({
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
           <select
+            aria-label="按创作状态筛选收藏"
             value={status}
             onChange={(event) => setStatus(event.target.value as FavoriteStatus | '')}
             className="h-9 rounded-sm border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none focus:border-primary-border"
@@ -599,6 +605,7 @@ export function FiltersBar({
           <div className="flex min-w-0 items-center rounded-sm border border-gray-200 bg-white px-2 focus-within:border-primary-border">
             <Search size={14} className="shrink-0 text-gray-400" />
             <input
+              aria-label="搜索收藏标题"
               value={draftKeyword}
               onChange={(event) => setDraftKeyword(event.target.value)}
               onKeyDown={(event) => {

@@ -20,7 +20,7 @@ export type StateAction = {
 };
 
 const ACTION_TITLE_CLS = 'text-[15px] font-black text-gray-700';
-const ACTION_DESC_CLS = 'mt-1.5 text-xs text-gray-400';
+const ACTION_DESC_CLS = 'mt-1.5 text-sm leading-relaxed text-gray-600';
 const ICON_CLS = 'text-gray-300';
 
 type WrapperProps = {
@@ -59,7 +59,7 @@ export function LoadingState({
 }) {
   return (
     <StateWrapper panel={panel} minHeight={minHeight} className={className}>
-      <div className="flex items-center justify-center gap-2.5 text-gray-400">
+      <div role="status" className="flex items-center justify-center gap-2.5 text-gray-600">
         <Loader2 size={18} className="animate-spin" />
         <span className="text-[13px]">{label}</span>
       </div>
@@ -129,7 +129,7 @@ export function ErrorState({
       <div
         role="alert"
         className={cx(
-          'flex w-full items-center justify-between gap-3 rounded-sm bg-red-light px-4 py-2.5 text-[13px] text-red',
+          'flex w-full flex-wrap items-center justify-between gap-3 rounded-sm bg-red-light px-4 py-2.5 text-sm text-red',
         )}
       >
         <span className="flex items-center gap-2">
@@ -147,7 +147,7 @@ export function ErrorState({
             </button>
           )}
           {onDismiss && (
-            <button type="button" onClick={onDismiss} aria-label="关闭">
+            <button type="button" onClick={onDismiss} aria-label="关闭错误提示" className="grid h-10 w-10 place-items-center">
               <X size={14} />
             </button>
           )}

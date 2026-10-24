@@ -4,7 +4,7 @@ TopicEye exposes its scoring engine as a stable HTTP API so other agents, CLIs, 
 
 ## Authentication
 
-All endpoints require a Bearer token. You can use either:
+Scoring and skill endpoints require a Bearer token. Content-read authentication is described in the event coverage section. You can use either:
 
 1. **Personal API token** (recommended for agents/scripts) — create one in the app at **Profile → API tokens**, or via `POST /api/v1/me/api-tokens`. The token is shown once.
 2. **Browser session token** — useful for testing in the docs UI.
@@ -129,6 +129,17 @@ Returns `{days, topics, keywords}`. Backed by the DuckDB analytical layer — re
 ```bash
 curl "$BASE/api/v1/skill/trends?days=7" -H "Authorization: Bearer $TOKEN"
 ```
+
+## Event coverage (content read endpoints)
+
+These content endpoints accept an optional Bearer token. Anonymous reads are public-only; authenticated reads may also include the caller's own private content.
+
+- `GET /api/v1/contents?group_events=true` folds accepted reports before pagination. `total` counts events and ungrouped articles within the requested filters. The default `false` preserves article pagination. Grouping supports time sorting; combining it with `curation_score` returns 400.
+- Add `stable_feed=true` on the first grouped page to receive `feed_snapshot`. Send it unchanged on later pages with the same filters, page size, and identity. The token anchors the rolling time window and ordered representatives for up to 30 minutes. HTTP 409 means preserve existing rows and refresh from page one; do not append a page from a changed ordering. It is a consistency token, not an authorization credential.
+- `GET /api/v1/contents/{id}/event/coverage?member_offset=0&member_limit=20` lists other accepted reports relative to the displayed article. It returns event ID, version, stable canonical ID, representative ID, descriptive source count, member count and `next_offset`. Pass `expected_event_id` and `expected_version` on subsequent pages; HTTP 409 means reload from offset zero. A missing/non-visible article returns 404; an ungrouped visible article returns `event: null`.
+- `GET /api/v1/contents/{id}/event` retains the original canonical-plus-members contract.
+
+Source counts are not independent-corroboration counts. Topic/tag relations do not authorize event folding. See [event contracts and rollout gates](docs/content-event-coverage.md).
 
 ## curl examples
 

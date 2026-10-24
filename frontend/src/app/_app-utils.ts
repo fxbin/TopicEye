@@ -4,7 +4,7 @@
  * 从 app/page.tsx 抽出：
  * - TIME_RANGE_HOURS    时间范围筛选（24h/48h/7d/全部）
  * - RECOMMEND_FILTERS   推荐等级筛选（全部/强烈建议写/值得观察/适合深挖/适合蹭热点/信号不足）
- * - getContentTime      取条目最早可用时间字段
+ * - getContentTime      事件视图取筛选后事件时间，否则回退到原文章时间
  * - normalizeTags       兼容 array / 逗号字符串 / null 三种 tags 格式
  * - getItemTags         合并 content.tags + analysis.tags + analyses[0].tags（规范化键去重）
  * - formatShanghaiToday 上海时区今日日期
@@ -34,7 +34,7 @@ export const RECOMMEND_FILTERS: Array<RecommendLevel | '全部'> = [
 ];
 
 export function getContentTime(item: ContentItem): string {
-  return item.published_at || item.crawled_at || item.created_at || '';
+  return item.event_activity_at || item.published_at || item.crawled_at || item.created_at || '';
 }
 
 /** 兼容 array / 逗号字符串 / null 三种 tags 格式（保留原始形态，仅供展示兜底）。 */

@@ -1,4 +1,14 @@
-# 同事件归并与报道阅读
+# Agent Note: 同事件归并与报道阅读合同
+
+Status: implemented — #151 按所有者明确要求迁移既有入口；不改变运行或生产授权
+
+## Problem
+
+事件读取、归属、展示、扫描重试和生产试点共用一份合同。原 docs 路径退役后，必须保留完整约束，不能把工程合并等同真实验证。
+
+## Decision
+
+本篇维护下列合同；修改对应行为时同步核对，参数与安全边界沿用迁移前原文。
 
 ## 事件事实与展示报道
 
@@ -179,3 +189,11 @@ uv run python scripts/assess_event_pilot.py --dataset /path/to/holdout.json --ev
 人工复核文件绑定评估 SHA256，包含 `reviewer_id`、`reviewed_at`、`reviewer_kind=human`、`independent_of_implementation`、`evidence`、`pool_completeness_verified`、`event_family_split_verified` 与 `labels`。每条 label 包含 query_id、expected、expected_target_ids、target_labels_exhaustive、evidence，整池难负例另标 hard_negative。工具从逐条结果重新统计，不信任汇总样本数；拒绝重复 ID、摘要不匹配、回放、bootstrap、未知标签和未穷尽负例。全部机器条件满足也只输出 `OWNER_REVIEW_REQUIRED`，始终 `write_authorized=false`；复核来源、准确候选、备份和回退仍须所有者审核。
 
 首次试点建议固定候选、公开 owner、1 小时窗口、最多 20 条与 5 次逻辑模型调用，并单独限制物理尝试和费用。先备份并在隔离 PG 验证版本化拒绝关系能恢复独立展示；`off` 只停止新识别，不撤销已有事实。任何误归并、可见性越界或版本冲突都停止新 write，使用后台带 expected_version 的拒绝/主报道修正，保留原文与运行审计。一次通过不授权定时 write。
+
+## Alternatives considered
+
+只删除文档而保留断链或省略合同：不采用，入口收敛不能丢失使用边界。
+
+## Consequences
+
+本次只迁移文档。真实人工留出与试点进展仍看 GitHub #140；本地通过、OWNER_REVIEW_REQUIRED 和 write_authorized=false 的边界均不改变。

@@ -9,7 +9,7 @@ secret_store.encrypt_secret/decrypt_secret，本脚本把存量明文行加密�
     python scripts/migrate_llm_api_keys.py --apply    # 真写库
 
 前置（必须）：
-    1. 配好 INTEGRATION_SECRET_KEY（见 docs/SECRET_MANAGEMENT.md）。
+    1. 配好 INTEGRATION_SECRET_KEY（见 .agents/notes/implemented/risk/2026-10-24-credential-encryption-and-rotation.md）。
        生产环境若用默认 key，secret_store 会直接 raise RuntimeError。
     2. 备份数据库：
        ./scripts/backup_db.sh

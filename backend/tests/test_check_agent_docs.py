@@ -7,7 +7,7 @@
 - **应杀**：注入坏引用必须让脚本退出码为 1。
 - **已知盲区**：CI 作业名、分支名同形，无法无歧义判定，明确**杀不掉**。
   这些用例的作用是锁住这个决定——防止有人把不可靠的 `check_ci_jobs` 加回来。
-  背景见 `.agents/notes/rejected/2026-10-04-agent-docs-ci-job-name-check.md`。
+  背景见 `.agents/notes/rejected/process/2026-10-04-agent-docs-ci-job-name-check.md`。
 
 本文件是纯 stdlib + subprocess，不碰数据库（外层 conftest 的 DB fixture 与它无关）。
 """

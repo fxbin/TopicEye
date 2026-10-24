@@ -128,7 +128,7 @@ def get_plan_catalog() -> dict[str, Any]:
         "free_area": FREE_AREA,
         "paid_area": PAID_AREA,
         "currency": "CNY",
-        "source": "docs/创作者选题雷达_1_0_prd_融合版.md#商业模式初稿",
+        "source": ".agents/notes/proposed/feature/2026-10-24-commercial-plan-hypotheses.md#商业模式初稿",
     }
 
 

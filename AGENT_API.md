@@ -139,7 +139,7 @@ These content endpoints accept an optional Bearer token. Anonymous reads are pub
 - `GET /api/v1/contents/{id}/event/coverage?member_offset=0&member_limit=20` lists other accepted reports relative to the displayed article. It returns event ID, version, stable canonical ID, representative ID, descriptive source count, member count and `next_offset`. Pass `expected_event_id` and `expected_version` on subsequent pages; HTTP 409 means reload from offset zero. A missing/non-visible article returns 404; an ungrouped visible article returns `event: null`.
 - `GET /api/v1/contents/{id}/event` retains the original canonical-plus-members contract.
 
-Source counts are not independent-corroboration counts. Topic/tag relations do not authorize event folding. See [event contracts and rollout gates](docs/content-event-coverage.md).
+Source counts are not independent-corroboration counts. Topic/tag relations do not authorize event folding. See [event contracts and rollout gates](.agents/notes/implemented/feature/2026-10-24-content-event-contract.md).
 
 ## curl examples
 
@@ -223,9 +223,11 @@ The authorization server (AS) lives at the site root, with `issuer = SITE_BASE_U
 
 The consent page itself (`/mcp/authorize` on the frontend) talks to three session-authenticated REST endpoints: `GET /api/v1/mcp-oauth/authorize-info`, `POST /api/v1/mcp-oauth/approve`, `POST /api/v1/mcp-oauth/deny` — all three initiator-only. Authorization codes are single-use and expire in 10 minutes. The consent page marks every DCR-registered client as an unvetted third-party app (client names are self-declared).
 
-Tool-level scopes are enforced by a central fail-closed gate (`TOOL_REQUIRED_SCOPES` in `app/mcp/scopes.py`); all four current tools are read-only and require no scopes. Adding any new tool (especially the first write tool) must register it there — a CI assertion keeps the tool set and the gate registry in lockstep, and the full scope model is the tracked precondition for the first write tool (issue #118).
+Tool-level scopes are enforced by a central fail-closed gate (`TOOL_REQUIRED_SCOPES` in `app/mcp/scopes.py`); none of the four current tools requires a scope. The product does not plan additional explicit business-write tools; this does not remove the daily-report generation side effect described above. Adding any new tool must register it in the gate — a CI assertion keeps the tool set and the gate registry in lockstep, and the full scope model must be reviewed before introducing an explicit business-write tool (see the [scope decision](.agents/notes/implemented/scope/2026-10-24-mcp-tool-scope.md) and the reopening conditions in issue #118).
 
 Operational notes:
+
+- OAuth client cleanup and its retention/backup boundaries are documented in [MCP OAuth operations](.agents/notes/implemented/architecture/2026-10-24-mcp-client-gc-history.md).
 
 - `MCP_ENABLED=false` disables the whole MCP surface (no route mounted; startup logs state it explicitly). `MCP_OAUTH_ENABLED=false` disables only the OAuth endpoints (static tokens keep working).
 - Rate limits: 60 req/min per IP on `/mcp`; 30/min on `/authorize` and `/token`; 10/min on `/register`.

@@ -1,34 +1,24 @@
 # Agent Guidelines
 
-## 一、这个仓库是什么
+## 一、仓库与稳定入口
 
-TopicEye 是给内容创作者用的选题雷达：持续抓取 25+ 信源（RSS / Reddit / YouTube /
-播客 / newsletter / 趋势榜），用可解释的六维引擎给每条内容打分，挑出今天值得写的题目。
+TopicEye 是内容创作者的选题雷达。agent 接口见 [AGENT_API.md](AGENT_API.md)。
 
-对外有两条 agent 入口：REST（`AGENT_API.md` 文档化的 skill/scoring 端点）与 MCP
-server（`app/mcp/`，挂载在 `/mcp`，Bearer token 认证——静态个人 token 或动态
-OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官方 `mcp` SDK 实现
-2026-07-28 无状态协议）。
+- Postgres 保存事务数据；DuckDB 用于分析聚合。跨层读写前确认事实源，不能以聚合结果代替事务归属或版本判断。
+- 事件事实与展示代表分开；只折叠可见且已接受的关系，不用相似关联隐藏文章，不覆盖人工关系。
+- 入口层薄、业务编排在 service、ORM 查询在 repository；后端分层见第二节。
+- 缺陷与交付状态看 GitHub，决策理由看 [`.agents/notes/`](.agents/notes/)，原始运行证据留本地 `.vidt/`。
 
-两件不看代码就会踩空的事：
+修改相关功能前按需读取其长期合同；具体参数、算法、协议版本和运维步骤由这些文档维护：
 
-- **两套存储分工明确**：Postgres 存事务数据（content / user / auth，见
-  `app/repositories/`，日报版本/归属/选题标记也在 PG）；DuckDB 承担分析聚合查询（picks / stats / topics / reports，见
-  `app/services/duckdb_service.py` 及其 mixin）。跨层读写时先确认自己在哪一套里。
-- **事件归并与展示分开**：PG `content_event_groups` / `content_event_members` 是事实源，
-  只有 active + auto/confirmed 关系参与首页与精选折叠。持久化 canonical 与当前展示报道
-  不一定相同；旧 `content_relations.same_event` 只是相似关联，不能用于隐藏文章。
-  shadow 进度与技术故障重试在运行审计中；自动写入在锁内复查归属，不覆盖模型等待期间新增的人工关系，
-  冲突项显式报告并保留后续扫描资格。
-  首页浏览快照变化返回 409，需从第一页刷新；普通事件列表和精选的 L1 缓存以 PG 事件版本分隔。
-  读取、分页版本及 off → shadow → write 启用门槛见
-  [`docs/content-event-coverage.md`](docs/content-event-coverage.md)。
-- **缺陷状态看 GitHub**（`gh issue view <n> --json state,closedAt`），根因判定见
-  [`.agents/notes/`](.agents/notes/)，跑测守则见第三节。
+| 范围 | 入口 |
+|---|---|
+| 事件归并、分页与生产启用门槛 | [docs/content-event-coverage.md](docs/content-event-coverage.md) |
+| MCP OAuth 与 client 清理运维 | [docs/mcp-oauth-operations.md](docs/mcp-oauth-operations.md) |
+| SelectBench 手动抽样、校准与导入 | [docs/selectbench.md](docs/selectbench.md) |
+| 依赖审计口径与例外复核 | [docs/dependency-audit.md](docs/dependency-audit.md) |
 
-**AGENTS.md 即模型接口**：本文件喂给 agent，命令、路径、门禁清单过期等于静默的错误。遇到
-文中描述与代码不符时以代码为准并顺手修正本文件；承载行为变更的 PR 必须同步核对相关段落。
-本文只写本仓库特有的事实与约束，与通用 skill 规则冲突时以本文为准。
+本文只写仓库特有的事实与约束，与通用 skill 规则冲突时以本文为准。
 
 ## 二、动手前：权限与不可违背的约定
 
@@ -40,101 +30,65 @@ OAuth 2.1（授权码 + PKCE + DCR，AS 端点挂站点根路径）两可，官�
 
 ### 2.1 安全不变量
 
-skill 的通用机制不覆盖以下四条：
-
-- **教训必须机器化**：事故/缺陷的复盘结论只有落成测试或 CI 门禁才算关闭，只写进文档不算（现状范例：`backend-layering` 与 `agent-docs` 两个作业，以及每条缺陷配套的回归测试）。
-- **中断重试纪律**：被中断的副作用操作（迁移、远端写入、发布）不得盲目重试——先核实外部状态（迁移版本、远端 ref、受影响数据行）或问所有者；仅只读/幂等操作可直接重试。
-- **安全关键依赖的采用度门槛**：承担安全不变量的依赖（加密、认证协议、沙箱类）必须有被证明的采用度与维护活跃度；其余位置优先选成熟依赖而非手写。
-- **禁止安静的失败**：启动期任何组件「挂起等待/未挂载/被跳过」必须显式报错或记 warning；静默 PENDING 按缺陷处理（先例：健康与生命周期加固波，#71~#73）。
+- **教训必须机器化**：事故/缺陷只有落成回归测试或 CI 门禁才算关闭，notes 记录理由，不能代替修复和验证。
+- **中断重试纪律**：被中断的副作用操作不得盲目重试；先核实外部状态。只有只读或幂等操作可直接重试。
+- **安全关键依赖**：加密、认证协议、沙箱等依赖必须有被证明的采用度与维护活跃度；其余位置也优先使用成熟依赖。
+- **禁止安静失败**：启动组件等待、未挂载或跳过必须显式报错或 warning，静默 PENDING 按缺陷处理。
 
 ### 2.2 后端分层
 
-依赖方向严格单向，禁止逆向或跨层：
-
-```text
-api/v1/ ──► services/ ──► repositories/ ──► models/ ──► sqlalchemy
-```
+依赖方向：入口 → services → repositories → models → sqlalchemy。
 
 | 层 | 允许 | 禁止 |
 |---|---|---|
-| `api/v1/` | 路由声明、请求校验、调用 service / repository、response shaping | `import sqlalchemy`；`from app.models import <ORMModel>`；直接 `select(...)` / `db.execute(...)` / `db.add(...)` |
-| `services/` | 业务编排、事务边界、调用 repository、跨 repo 组合 | 无（允许直接 import sqlalchemy / app.models） |
-| `repositories/` | ORM 唯一入口，CRUD + 复杂查询封装，继承 `BaseRepository[ModelType]` 或独立类 | 互相 `import`（repo 之间不依赖）；写业务逻辑（业务逻辑属于 service） |
-| `models/` | 纯 ORM 声明、字段定义、`__table_args__` | 业务方法、副作用、IO 操作 |
-| `schemas/` | Pydantic 请求/响应模型、序列化 | ORM import、DB 访问 |
+| `api/v1/` | 路由、校验、调用 service/repository、响应整形 | ORM 模型导入、直接构造 SQL 或执行 session CRUD |
+| `services/` | 业务编排、事务边界、跨 repository 组合 | 不得把业务编排反向放入 repository |
+| `repositories/` | ORM 查询与 CRUD；继承 BaseRepository 或使用独立类 | 互相依赖、导入 services、承载业务编排 |
+| `models/` | ORM 声明、字段、表约束 | 业务方法、副作用、IO |
+| `schemas/` | Pydantic 请求/响应与序列化 | ORM 导入、DB 访问 |
 
-**例外**（允许 api 层 import，因为它们是值对象或依赖注入需要，不是 ORM 模型）：
-`app.models.<X>` 中的 Enum 类、`AsyncSession` 类型注解、`app.core.database.get_db`、
-`IntegrityError` 等异常类。
-
-**机器强制的边界**：`make layering`（等价于 `cd backend && uv run python
-scripts/check_layering.py`，CI 作业 `backend-layering`）作用于两个目录，共三条规则。
-`app/api/v1/` 认两条：禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` /
-`sqlalchemy.exc` 除外），禁止直接写 `select/insert/update/delete` 构造与
-`db.execute/db.add/db.scalars/db.scalar`。`app/repositories/` 认一条（#113）：
-禁止 import `app.services.*`（函数内局部 import 同样抓）；#122 已将增强候选评分编排
-上移到 `app/services/enrichment_selection.py`，repository 只保留取数与行锁领取，
-allowlist 已清空，测试禁止重新增加。跨层共享的口径常量（`scoring_caliber.py`、
-`tag_normalization.py`）已落 `app/core/`，repositories 从 core 取用是合法向下依赖。
-上表其余禁止项机器查不出——`from app.models import <ORMModel>` 与 api 层合法要用的
-Enum、依赖注入同模块，自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的
-入口层，不在机器检查范围内，按上表 api 行的纪律人工把关（当前只调 services 与
-`DailyReportRepository`；OAuth provider 的业务编排在
-`app/services/mcp_oauth_service.py`，同意页 REST 端点在 `app/api/v1/mcp_oauth.py`）。
-
-MCP client 清理（#147）复用每日 03:55 `cleanup_mcp_oauth`：首次运行持久保存
-`app_settings.mcp_oauth_client_gc_started_at`（不可回拨）；仅清理此后注册、超过 7 天、
-无成功标记且无授权/token 行的 client，每批最多 500 条。历史不明的旧注册保留；
-签发 token 会持久更新既有 `last_seen_at`，旧成功证据先转存再清理。授权创建/兑换
-先锁 client，清理跳过锁并在删除前复查；PG 清理要求 READ COMMITTED，其他隔离级别显式拒绝。复用现有表、无迁移。生产首次启用前按高风险
-删除要求备份；本地测试通过不代表已授权或执行生产清理。损坏的启用边界显式报错并记录 FAILED，禁止重置为过去时间。
+API 层可使用 Enum 值对象、AsyncSession 类型注解、get_db 依赖注入与 IntegrityError 等异常类。
+跨层共享的纯常量放 core。`app/mcp/` 与 API 同属入口层，遵守同样纪律。
+`make layering` 的机器覆盖范围以 `backend/scripts/check_layering.py` 为准；豁免不得新增，机器检查不能代替表中其余边界的人工复核。
 
 ### 2.3 迁移与高风险变更
 
 - **前置备份**：`cd backend && ./scripts/backup_db.sh`（PG pg_dump，默认保留 7 份）。
-- **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。会先自动备份，再执行 `alembic downgrade <target>`（`target` 可选，默认 `-1` 回退一格；也可传具体 revision 或 `base`）。
-- **验证**：先在测试环境跑 `alembic downgrade -1`，确认上一版 schema 被恢复且应用能启动，再到生产执行。
-- `alembic/env.py` 的 `render_as_batch=True` 对 PostgreSQL 无害，保留 batch 模式备用。
+- **回滚**：`cd backend && ./scripts/rollback_migration.sh [target]`。先自动备份，再执行 downgrade；target 默认 `-1`，也可指定 revision 或 `base`。
+- **验证**：先在测试环境执行 downgrade，确认上一版 schema 恢复且应用能启动，再执行已获批准的生产操作。
+- 备份、回滚验证与执行权限各自成立；本地测试或代码合并不等于生产操作授权。
 
 ## 三、怎么验
 
-### 3.1 跑测试前必读
+### 3.1 数据库测试安全
 
-`backend/tests/conftest.py` 有 autouse `clean_tables` fixture，会对 `DATABASE_URL`
-指向的库执行 `TRUNCATE ... CASCADE` 并终止其它连接。**直接对开发库跑 `pytest tests/`
-会清空数据。**
+`backend/tests/conftest.py` 的 autouse fixture 会对 DATABASE_URL 指向的库执行 TRUNCATE CASCADE 并终止其它连接。
+**不得直接对开发库或生产库跑 pytest；即使是纯函数测试，也必须避开外层 fixture 的破坏性副作用。**
 
-| 场景 | 命令 |
+| 场景 | 命令与边界 |
 |---|---|
-| 后端全量（推荐） | `make test-backend` —— 自动起一次性 PG 容器（127.0.0.1:5433），跑完即删；`TEST_PG_PORT` 可换端口并行 |
-| 针对性 PG 测试 | 自建一次性库（`CREATE DATABASE ..._tmp`），`DATABASE_URL` 指向运行，用完 `DROP DATABASE` |
-| OAuth 隔离测试 | `DATABASE_URL='postgresql+asyncpg://dummy:dummy@localhost:5432/never_connect' uv run --no-sync python -m pytest tests_oauth_patch/` —— 全 mock 不连库；**必须 `python -m`**（该目录无 `__init__.py`，裸 `pytest` 解析不到 `app` 包） |
+| 后端全量 | `make test-backend`：自动创建一次性 PG，结束后清理；TEST_PG_PORT 可换端口 |
+| 后端针对性 | `bash backend/scripts/test_full_local.sh <pytest参数>`，或明确指定自建一次性库 |
+| OAuth 全 mock 目录 | `cd backend` 后执行 `DATABASE_URL='postgresql+asyncpg://dummy:dummy@localhost:5432/never_connect' uv run --no-sync python -m pytest tests_oauth_patch/`；必须使用 python -m |
 
-### 3.2 改了什么，就验什么
+pytest 的 `-k` 对本次指定的所有文件生效，不只作用于紧邻的文件。依赖事实源为 pyproject.toml + uv.lock，由 uv 管理。
 
-```bash
-git log --name-only -5 -- <改动的文件>   # 历史上和它一起改过的测试
-make test-backend                         # 或直接跑全量
-```
+### 3.2 按改动选择验证
 
-挑着跑时盯住改动有没有跨到存储分工上——读写落在 Postgres 还是 DuckDB，跨错了口径会静默不一致。
+先查同路径历史相关测试：`git log --name-only -5 -- <改动的文件>`。挑测时注意 PG/DuckDB 分工。
+文档调整验证内容、引用和契约；代码调整跑相关行为回归。仅在变更、失败或未解决风险需要时扩大验证。
 
-### 3.3 其它命令
-
-- 事件真实样本与试点评估：流程、只读导出、调用预算和人工门槛见 [docs/content-event-coverage.md](docs/content-event-coverage.md)。`backend/scripts/export_event_pool.py` 只读导出公开 owner；`backend/scripts/prepare_event_shadow_dataset.py` 准备未知标签标注包；`backend/scripts/evaluate_event_pool.py` 默认不调用模型，live 需逻辑/物理/费用上限及价格依据；`backend/scripts/assess_event_pilot.py` 只生成 HOLD 或所有者复核材料，绝不授权生产 write。
-
-- SelectBench 离线校准：`backend/scripts/selectbench_matrix.py` / `backend/scripts/selectbench_sample.py` 只读公开样本，有限精选 feed 中未出现不是负样本；`backend/scripts/selectbench_eval.py` 仅比较给定批次，不能宣称独立留出效果。`backend/scripts/selectbench_import_labels.py` 默认只验证；写入需显式 `--apply --reviewer-user-id <active-admin-id>`，操作者声明不等于独立人工复核，生产导入另按审批和备份边界执行。
-
-- Backend Python syntax: `cd backend && uv run python -m py_compile <changed-python-files>`
-- Backend tests: `cd backend && uv run python -m pytest <relevant-tests> -q` —— `-k` 是 pytest 的**全局**过滤器，`pytest a.py b.py -k x` 会同时筛两个文件，不限于 a.py；要只筛某个文件就分开跑（依赖由 uv 管理：`uv sync` 安装，事实源为 pyproject.toml + uv.lock）
-- Shell scripts: `bash -n <script>`
-- Layering: `make layering`
-- Scoring mirror: `cd backend && uv run python scripts/check_scoring_mirror.py`（前端镜像口径对比 CONFIG，CI 作业 `scoring-mirror`）
-- Edition naming: `cd backend && uv run python scripts/check_edition_naming.py`（刊物种属词族前后端对账「情报正族」，CI 作业 `edition-naming`）
-- AGENTS.md 引用: `cd backend && uv run python scripts/check_agent_docs.py`（校验本文引用的路径与 make 目标，CI 作业 `agent-docs`）
-- Frontend type check: `cd frontend && npx tsc --noEmit`
-- Frontend tests: `cd frontend && npm run test:coverage`（含覆盖率门禁，对应 CI `frontend-tests`）
-- Full quality gate: `make lint`（ruff + 分层检查 + 口径一致（评分镜像 + 刊物种属对账） + 前端类型检查）
+| 检查 | 命令 |
+|---|---|
+| Python 语法 | `cd backend && uv run python -m py_compile <changed-python-files>` |
+| Shell 语法 | `bash -n <script>` |
+| 分层 | `make layering` |
+| 评分镜像 | `cd backend && uv run python scripts/check_scoring_mirror.py` |
+| 刊物命名口径 | `cd backend && uv run python scripts/check_edition_naming.py` |
+| AGENTS 引用 | `cd backend && uv run python scripts/check_agent_docs.py` |
+| 前端类型 | `cd frontend && npx tsc --noEmit` |
+| 前端测试及覆盖率 | `cd frontend && npm run test:coverage` |
+| 完整静态质量门 | `make lint`；它不替代行为测试或真实环境验收 |
 
 ## 四、怎么交
 
@@ -187,16 +141,21 @@ docs: 跑测前必读补上 OAuth 隔离测试为什么必须 python -m
 
 ### 4.4 Verifier 契约
 
-CI 八项检查（types / tests / lint / layering / scoring-mirror / edition-naming / agent-docs / security-scan）是机器
-Verifier，全绿是合并前提；预存红必须显式处置并留记录。PR 描述须附 Worker 证据（本地
-验证命令 + 结果，见 PR 模板 Verification 段）。承载行为变更的 PR 还需在模板 Verifier
-verdict 段落记录独立复核结论（复核者不得是同一实现过程）。
+CI 作业以 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 为准，工作流检查全绿是合并前提；预存红必须显式处置并留记录。
+PR 的 Verification 段记录本地命令、结果与覆盖范围；承载行为变更的 PR 还需独立复核结论，复核者不得是同一实现过程。
+合并后核对 main push CI 与关联 issue 状态，不凭 PR merged 推断 issue 已关闭。
 
-- **前端 npm audit 口径为生产依赖**（`--omit=dev`，#105）：dev 工具链的 braces 链
-  （GHSA-vfj7-8cjw-p6xm，`eslint-config-next` → `fast-glob` → `micromatch` → `braces`）
-  覆盖 braces 全部已发布版本、上游无补丁，且只在 eslint dev 依赖里（DoS 级），不挡门；
-  生产依赖维持 high 级严格门禁（next / sharp / brace-expansion 的此前告警已随 #101 修复；Next.js 16.3.8 后续命中 GHSA-2464-fhr4-w9xw / GHSA-p3m5-59mp-jv5r / GHSA-673q-mjm6-r5xr，已在 #142 升至 16.4.1）。
-  braces 上游发布补丁（>3.0.3）后：`npm audit fix` 并去掉 workflow 里的 `--omit=dev`
-  恢复全量口径。force 降级 `eslint-config-next@14.2.35` 的方案仍维持否决，依据见
-  [`.agents/notes/rejected/`](.agents/notes/rejected/2026-09-28-npm-audit-force-downgrades-eslint-stack.md)。
-  后端 pip-audit 曾因 `multidict 6.9.0` 转红，已随 #99 修复；`filelock 4.0.1` 的三条新告警已随 #144 升至 4.2.1——**security-scan 再红即新问题**。
+依赖扫描遵守 [审计口径](docs/dependency-audit.md)，不得为通过检查而降低安全门槛。
+本地测试、CI、浏览器、真实 Provider 和生产证据分开记录，不能相互替代。
+
+## 五、文档与决策如何收尾
+
+`AGENTS.md` 是低频变化的协作契约：只放权限、安全、架构边界、验证入口和交付约定。
+每个 PR 核对是否影响这些约定；仅约定本身、稳定入口或原文准确性发生变化时修改。普通实现变更默认不改本文件。
+
+功能行为与运维参数放对应 docs；任务状态放 GitHub；决策理由放 notes；机器输出、截图和本轮证据放本地 `.vidt/`，不得随代码提交。
+
+收尾明确给出一种 notes 处理结果：新建笔记、更新已有 owning note、或“无长期结论”及简短理由。
+范围裁剪、否决方案、接受残余风险、验证不足与其它长期取舍按 [notes 约定](.agents/notes/README.md) 记录；机械改动不必逐次造笔记。
+已有权威设计文档时使用薄指针，不复制另一份规则；notes 不承载当前 ship/hold 或 issue 状态真源。
+涉及 notes 时按启用 skill 的 agent-notes 契约校验目录、Status 和链接；不要把历史叙述中的旧路径当当前命令逐项追着改。

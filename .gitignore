@@ -54,6 +54,9 @@ Thumbs.db
 # 但 docs/ 下仍可能出现需入库的设计文档
 docs/*
 !docs/content-event-coverage.md
+!docs/mcp-oauth-operations.md
+!docs/selectbench.md
+!docs/dependency-audit.md
 !docs/screenshots/
 !docs/images/
 !docs/quality/

@@ -12,6 +12,7 @@ from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend
 from app.repositories.analysis_repo import AnalysisRepository
 from app.services import creation, topic_clustering
+from app.services.enrichment_selection import claim_pending_enrichment_ids, get_pending_enrichment_ids
 from app.services.trends import snapshot_daily_trends
 
 
@@ -55,7 +56,7 @@ async def test_analysis_repository_reads_and_filters_latest_rows_only():
 
         repo = AnalysisRepository(db)
         latest = await repo.get_by_content_id(1)
-        pending_ids = await repo.get_pending_enrichment_ids(min_score=70, limit=10)
+        pending_ids = await get_pending_enrichment_ids(db, min_score=70, limit=10)
         high_score_items, total = await repo.list_with_score_filter(min_creator_score=70)
 
         assert latest is not None
@@ -129,7 +130,7 @@ async def test_pending_enrichment_uses_unified_scorer_not_raw_curation_score():
         )
         await db.commit()
 
-        pending_ids = await AnalysisRepository(db).get_pending_enrichment_ids(min_score=55, limit=10)
+        pending_ids = await get_pending_enrichment_ids(db, min_score=55, limit=10)
 
         assert pending_ids == [2]
 
@@ -171,10 +172,9 @@ async def test_pending_enrichment_claim_marks_processing_and_skips_reclaim():
         )
         await db.commit()
 
-        repo = AnalysisRepository(db)
-        claimed_ids = await repo.claim_pending_enrichment_ids(min_score=55, limit=10)
+        claimed_ids = await claim_pending_enrichment_ids(db, min_score=55, limit=10)
         await db.commit()
-        second_claim = await repo.claim_pending_enrichment_ids(min_score=55, limit=10)
+        second_claim = await claim_pending_enrichment_ids(db, min_score=55, limit=10)
         analysis = await db.get(AiAnalysis, 1)
 
         assert claimed_ids == [1]
@@ -310,7 +310,7 @@ async def test_pending_enrichment_claim_uses_skip_locked_for_postgresql(monkeypa
         )
         await db.commit()
 
-        claimed_ids = await AnalysisRepository(db).claim_pending_enrichment_ids(min_score=55, limit=10)
+        claimed_ids = await claim_pending_enrichment_ids(db, min_score=55, limit=10)
         await db.commit()
 
     assert calls["skip_locked"] == 1

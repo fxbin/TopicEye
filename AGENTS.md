@@ -72,9 +72,9 @@ scripts/check_layering.py`，CI 作业 `backend-layering`）作用于两个目�
 `app/api/v1/` 认两条：禁止 `import sqlalchemy`（`sqlalchemy.ext.asyncio` /
 `sqlalchemy.exc` 除外），禁止直接写 `select/insert/update/delete` 构造与
 `db.execute/db.add/db.scalars/db.scalar`。`app/repositories/` 认一条（#113）：
-禁止 import `app.services.*`（函数内局部 import 同样抓）；唯一存量豁免是
-`analysis_repo.py` 的两个评分编排 import（评分上移重构单 #122 清空，
-allowlist 只减不增）。跨层共享的口径常量（`scoring_caliber.py`、
+禁止 import `app.services.*`（函数内局部 import 同样抓）；#122 已将增强候选评分编排
+上移到 `app/services/enrichment_selection.py`，repository 只保留取数与行锁领取，
+allowlist 已清空，测试禁止重新增加。跨层共享的口径常量（`scoring_caliber.py`、
 `tag_normalization.py`）已落 `app/core/`，repositories 从 core 取用是合法向下依赖。
 上表其余禁止项机器查不出——`from app.models import <ORMModel>` 与 api 层合法要用的
 Enum、依赖注入同模块，自动判定会误报，只能人工看。`app/mcp/` 是与 `api/v1` 平级的

@@ -43,13 +43,8 @@ REPO_DIR = Path("app/repositories")
 # _db_write.py 不再需要豁免——SQLite PRAGMA 调用已随 SQLite 分支移除。
 ALLOWLIST: set[str] = set()
 
-# repositories→services 禁令的存量豁免（#113 收口时遗留，#122 重构后清空）。
-# 键 = 文件名，值 = 允许 import 的 app.services 模块前缀集合；
-# 新增条目必须附带 issue 引号，且只允许删除、不允许新增（棘轮）。
-REPO_SERVICES_IMPORT_ALLOWLIST: dict[str, set[str]] = {
-    # analysis_repo 评分编排上移 services 的重构单：#122
-    "analysis_repo.py": {"app.services.feedback_signal", "app.services.scoring_engine"},
-}
+# #122 已清空 repositories→services 存量豁免；测试禁止重新增加。
+REPO_SERVICES_IMPORT_ALLOWLIST: dict[str, set[str]] = {}
 
 # 允许的 sqlalchemy 子模块前缀（值对象 / 类型注解 / 异常类）。
 ALLOWED_SQLALCHEMY_PREFIXES = ("sqlalchemy.ext.asyncio", "sqlalchemy.exc")

@@ -11,8 +11,6 @@ from app.models.content import ContentItem
 from app.models.source import Source
 from app.repositories.analysis_queries import latest_analysis_id_for_content_id
 from app.repositories.base import BaseRepository
-from app.services.feedback_signal import get_feedback_scores
-from app.services.scoring_engine import ScoringInput, score_items
 
 
 class AnalysisRepository(BaseRepository[AiAnalysis]):
@@ -31,8 +29,8 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_pending_enrichment_ids(self, min_score: float, limit: int) -> list[int]:
-        """Return unified-scored high-value content IDs that still need enrichment."""
+    async def list_pending_enrichment_candidates(self, limit: int) -> list[tuple[AiAnalysis, ContentItem, int | None]]:
+        """Read latest pending/error analyses and source weights; no scoring."""
         latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
         stmt = (
             select(AiAnalysis, ContentItem, Source.weight.label("source_weight_db"))
@@ -47,108 +45,66 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
                 ),
             )
             .order_by(AiAnalysis.curation_score.desc(), AiAnalysis.created_at.desc())
-            .limit(max(limit * 5, limit))
+            .limit(limit)
         )
         result = await self.db.execute(stmt)
         rows = result.all()
-        feedback_scores = await get_feedback_scores(
-            self.db,
-            [int(analysis.content_id) for analysis, _content, _source_weight in rows],
+        return [tuple(row) for row in rows]
+
+    async def claim_enrichment_candidates(self, candidate_ids: list[int]) -> list[int]:
+        """Lock still-eligible latest rows, preserve supplied order and mark processing."""
+        if not candidate_ids:
+            return []
+
+        latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
+        lock_stmt = (
+            select(AiAnalysis.id, AiAnalysis.content_id)
+            .where(AiAnalysis.id == latest_id)
+            .where(AiAnalysis.content_id.in_(candidate_ids))
+            .where(
+                or_(
+                    AiAnalysis.enrichment_status.is_(None),
+                    AiAnalysis.enrichment_status.in_(("pending", "error")),
+                )
+            )
         )
-        candidate_ids: set[int] = set()
-        scoring_inputs: list[ScoringInput] = []
-        for analysis, content, source_weight_db in rows:
-            candidate_ids.add(int(analysis.content_id))
-            scoring_inputs.append(
-                ScoringInput(
-                    content_id=int(analysis.content_id),
-                    title=content.title,
-                    category=content.category,
-                    summary_source=analysis.summary_source,
-                    source_id=content.source_id,
-                    source_name=content.source_name,
-                    published_at=content.published_at,
-                    crawled_at=content.crawled_at,
-                    curation_score=analysis.curation_score or 0,
-                    info_density=analysis.info_density or 50,
-                    actionability=analysis.actionability or 50,
-                    source_weight=analysis.source_weight or 50,
-                    creator_score=analysis.creator_score or 0,
-                    viral_score=analysis.viral_score or 0,
-                    freshness_score=analysis.freshness_score or 0,
-                    quality_score=analysis.quality_score or 0,
-                    hot_score=analysis.hot_score or 0,
-                    risk_score=analysis.risk_score or 0,
-                    source_weight_db=source_weight_db or 3,
-                    feedback_score=feedback_scores.get(int(analysis.content_id), 0),
+        lock_stmt = lock_stmt.with_for_update(skip_locked=True)
+
+        result = await self.db.execute(lock_stmt)
+        locked_rows = result.all()
+        if not locked_rows:
+            return []
+
+        analysis_ids_by_content = {int(content_id): int(analysis_id) for analysis_id, content_id in locked_rows}
+        ordered_content_ids = [
+            int(content_id) for content_id in candidate_ids if int(content_id) in analysis_ids_by_content
+        ]
+        analysis_ids = [analysis_ids_by_content[content_id] for content_id in ordered_content_ids]
+        if not analysis_ids:
+            return []
+
+        update_result = await self.db.execute(
+            update(AiAnalysis)
+            .where(AiAnalysis.id.in_(analysis_ids))
+            .where(
+                or_(
+                    AiAnalysis.enrichment_status.is_(None),
+                    AiAnalysis.enrichment_status.in_(("pending", "error")),
                 )
             )
+            .values(enrichment_status="processing")
+        )
+        await self.db.flush()
+        if update_result.rowcount == len(analysis_ids):
+            return ordered_content_ids
 
-        return [
-            int(item.content_id)
-            for breakdown, item in score_items(scoring_inputs)
-            if breakdown.selected and breakdown.final_score >= min_score and item.content_id in candidate_ids
-        ][:limit]
-
-    async def claim_pending_enrichment_ids(self, min_score: float, limit: int) -> list[int]:
-        """Claim unified-scored enrichment candidates so concurrent batches do not duplicate work."""
-
-        async def _claim() -> list[int]:
-            candidate_ids = await self.get_pending_enrichment_ids(min_score, limit)
-            if not candidate_ids:
-                return []
-
-            latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
-            lock_stmt = (
-                select(AiAnalysis.id, AiAnalysis.content_id)
-                .where(AiAnalysis.id == latest_id)
-                .where(AiAnalysis.content_id.in_(candidate_ids))
-                .where(
-                    or_(
-                        AiAnalysis.enrichment_status.is_(None),
-                        AiAnalysis.enrichment_status.in_(("pending", "error")),
-                    )
-                )
-            )
-            lock_stmt = lock_stmt.with_for_update(skip_locked=True)
-
-            result = await self.db.execute(lock_stmt)
-            locked_rows = result.all()
-            if not locked_rows:
-                return []
-
-            analysis_ids_by_content = {int(content_id): int(analysis_id) for analysis_id, content_id in locked_rows}
-            ordered_content_ids = [
-                int(content_id) for content_id in candidate_ids if int(content_id) in analysis_ids_by_content
-            ][:limit]
-            analysis_ids = [analysis_ids_by_content[content_id] for content_id in ordered_content_ids]
-            if not analysis_ids:
-                return []
-
-            update_result = await self.db.execute(
-                update(AiAnalysis)
-                .where(AiAnalysis.id.in_(analysis_ids))
-                .where(
-                    or_(
-                        AiAnalysis.enrichment_status.is_(None),
-                        AiAnalysis.enrichment_status.in_(("pending", "error")),
-                    )
-                )
-                .values(enrichment_status="processing")
-            )
-            await self.db.flush()
-            if update_result.rowcount == len(analysis_ids):
-                return ordered_content_ids
-
-            refreshed = await self.db.execute(
-                select(AiAnalysis.content_id)
-                .where(AiAnalysis.id.in_(analysis_ids))
-                .where(AiAnalysis.enrichment_status == "processing")
-            )
-            refreshed_content_ids = {int(row[0]) for row in refreshed.all()}
-            return [content_id for content_id in ordered_content_ids if content_id in refreshed_content_ids]
-
-        return await _claim()
+        refreshed = await self.db.execute(
+            select(AiAnalysis.content_id)
+            .where(AiAnalysis.id.in_(analysis_ids))
+            .where(AiAnalysis.enrichment_status == "processing")
+        )
+        refreshed_content_ids = {int(row[0]) for row in refreshed.all()}
+        return [content_id for content_id in ordered_content_ids if content_id in refreshed_content_ids]
 
     async def claim_enrichment_for_content(self, content_id: int) -> AiAnalysis | None:
         """Claim the latest analysis for one content item before running enrichment."""

@@ -33,7 +33,6 @@ def test_plan_catalog_declares_free_and_paid_boundaries():
     assert "未完成能力只作为路线图展示，不作为当前可用承诺" in catalog["paid_area"]
 
 
-
 def test_plan_catalog_source_resolves_to_maintained_heading():
     source, separator, heading = get_plan_catalog()["source"].partition("#")
     assert separator and heading

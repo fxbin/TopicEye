@@ -482,6 +482,23 @@ def test_today_picks_query_uses_latest_analysis_only(monkeypatch):
     assert rows[0]["recommended_reason"] == "新理由"
     assert rows[0]["adjusted_curation_score"] == 106.0
 
+    # Captured body must survive the analytical adapter. A URL title may
+    # have real prose, or a high-scoring AI summary with no source evidence.
+    body = "工具提供可复现的基准测试。开发者可以检查实测结果。"
+    conn.execute(
+        "UPDATE oltp_db.content_items SET title=?, summary=?, raw_content=? WHERE id=1",
+        ["https://example.com/original", "阅读原文", body],
+    )
+    rows = analytics.query_today_picks(hours=48, curation_threshold=0)
+    assert rows[0]["raw_content"] == body
+    from app.services.today_picks import _row_to_content_payload, _score_rows
+
+    scored = _score_rows(rows)
+    assert len(scored) == 1
+    assert _row_to_content_payload(scored[0][1], scored[0][0])["title"] == "工具提供可复现的基准测试。"
+    conn.execute("UPDATE oltp_db.content_items SET raw_content=NULL WHERE id=1")
+    assert _score_rows(analytics.query_today_picks(hours=48, curation_threshold=0)) == []
+
     conn.close()
 
 

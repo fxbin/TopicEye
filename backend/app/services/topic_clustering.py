@@ -21,6 +21,7 @@ from app.models.content import ContentItem, ContentStatus
 from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.llm import call_llm_json
 from app.services.scoring_engine import ScoringInput, score_items
@@ -416,7 +417,7 @@ async def cluster_topics(
         items.append(
             {
                 "id": content.id,
-                "title": content.title,
+                "title": readable_content_title(content.title, content.summary, content.raw_content),
                 "summary": analysis.summary or "",
                 "tags": analysis.tags,
                 "curation_score": analysis.curation_score or 0,
@@ -428,6 +429,7 @@ async def cluster_topics(
             ScoringInput(
                 content_id=content.id,
                 title=content.title,
+                content_evidence=has_readable_content(content.title, content.summary, content.raw_content),
                 category=content.category,
                 source_id=content.source_id,
                 source_name=content.source_name,

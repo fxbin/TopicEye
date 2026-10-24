@@ -64,6 +64,8 @@ class ReportsMixin:
         feedback_min = float(SCORING_CONFIG["feedback_score_min"])
         feedback_max = float(SCORING_CONFIG["feedback_score_max"])
         feedback_weight = float(SCORING_CONFIG["w_feedback"])
+        source_summary_expr = "c.summary" if self._oltp_column_exists(conn, "content_items", "summary") else "NULL"
+        raw_content_expr = "c.raw_content" if self._oltp_column_exists(conn, "content_items", "raw_content") else "NULL"
 
         results = conn.execute(f"""
             WITH {LATEST_ANALYSIS_CTE},
@@ -81,7 +83,9 @@ class ReportsMixin:
                    COALESCE(a.curation_score, 0)
                        + LEAST({feedback_max}, GREATEST({feedback_min}, COALESCE(f.feedback_score, 0))) * {feedback_weight}
                        AS adjusted_score,
-                   a.summary_source
+                   a.summary_source,
+                   {source_summary_expr} AS source_summary,
+                   {raw_content_expr} AS raw_content
             FROM oltp_db.content_items c
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
@@ -122,6 +126,8 @@ class ReportsMixin:
                 "feedback_score": float(row[22]) if row[22] else 0,
                 "adjusted_score": round(float(row[23] or 0), 1),
                 "summary_source": row[24],
+                "source_summary": row[25],
+                "raw_content": row[26],
             }
             for row in results
         ]

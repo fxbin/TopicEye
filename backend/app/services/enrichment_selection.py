@@ -7,6 +7,7 @@ commit/rollback, so claiming stays atomic with its existing transaction.
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.analysis_repo import AnalysisRepository
+from app.services.content_evidence import has_readable_content
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput, score_items
 
@@ -25,6 +26,7 @@ async def get_pending_enrichment_ids(db: AsyncSession, min_score: float, limit: 
             ScoringInput(
                 content_id=int(analysis.content_id),
                 title=content.title,
+                content_evidence=has_readable_content(content.title, content.summary, content.raw_content),
                 category=content.category,
                 summary_source=analysis.summary_source,
                 source_id=content.source_id,

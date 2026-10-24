@@ -33,6 +33,7 @@ from app.services.analysis_normalize import (
     _normalize_text,
     _valid_analysis_result,
 )
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.llm import call_llm_json, call_llm_json_with_metadata
 from app.services.llm.prompts.analysis import (
@@ -443,8 +444,11 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     """Run full AI analysis on a single content item (single LLM call)."""
     logger.info("Analyzing content id=%d: %s", content.id, content.title[:50])
 
+    if not has_readable_content(content.title, content.summary, content.raw_content):
+        raise ValueError("no_readable_content")
+
     content_text = content.raw_content or content.summary or ""
-    title = content.title
+    title = readable_content_title(content.title, content.summary, content.raw_content)
     truncated = content_text[:3000] if content_text else "无正文内容"
 
     system_prompt, analysis_prompt, lang, is_arxiv = _select_analysis_prompts(
@@ -676,7 +680,7 @@ async def analyze_one_claimed(
             fencing_token = claim.fencing_token
             await db.commit()
 
-        content = await db.get(ContentItem, content_id)
+        content = await db.get(ContentItem, content_id, populate_existing=True)
         if content is None:
             return None
         if fencing_token is None:
@@ -686,6 +690,18 @@ async def analyze_one_claimed(
             fencing_token = content.analysis_claim_token
         if not fencing_token or content.analysis_claim_token != fencing_token:
             logger.info("Skipped analysis for content id=%d: lease ownership changed", content_id)
+            return None
+
+        # Old pending rows predate ingestion filtering. Finish their owned
+        # lease explicitly without a model call or retry loop.
+        if not has_readable_content(content.title, content.summary, content.raw_content):
+            skipped = await ContentRepo(db).skip_analysis_claim(content_id, fencing_token, reason="no_readable_content")
+            if skipped:
+                await db.commit()
+                invalidate_content_read_caches()
+                logger.warning("Skipped analysis for content id=%d: no_readable_content", content_id)
+            else:
+                await db.rollback()
             return None
 
         # ``db.get`` opened a read transaction.  The LLM call can take tens of

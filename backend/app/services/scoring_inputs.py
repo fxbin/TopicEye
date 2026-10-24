@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_serialization import latest_analysis_from_item
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import ScoringInput
@@ -42,7 +43,10 @@ def build_scoring_input(item: Any, feedback_score: float = 0) -> ScoringInput:
 
     return ScoringInput(
         content_id=item.id,
-        title=item.title,
+        title=readable_content_title(item.title, getattr(item, "summary", None), getattr(item, "raw_content", None)),
+        content_evidence=has_readable_content(
+            item.title, getattr(item, "summary", None), getattr(item, "raw_content", None)
+        ),
         category=item.category,
         summary_source=analysis.summary_source,
         source_id=item.source_id,

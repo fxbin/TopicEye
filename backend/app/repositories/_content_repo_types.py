@@ -51,3 +51,4 @@ class ScoringContentRow:
     hot_score: float | None
     risk_score: float | None
     summary_source: str | None = None
+    raw_content: str | None = None

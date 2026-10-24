@@ -26,6 +26,7 @@ from app.models.source import Source, SourceStatus, SourceType
 # Error redaction extracted to _error_redaction.py (pure functions + constants)
 from app.services._error_redaction import redact_source_sync_error  # noqa: F401 — re-export
 from app.services.classifier import classify_async
+from app.services.content_evidence import readable_content_title
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.content_summary import clean_content_summary
 from app.services.dedup import build_hash
@@ -283,6 +284,10 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         eligible_entries: list[dict[str, Any]] = []
         for entry in candidate_entries:
             title = entry.get("title", "")
+            # Hash identity was computed from the original feed title above.
+            # Repair only when captured source prose supports a readable title.
+            title = readable_content_title(title, entry.get("summary"), entry.get("raw_content"), fallback=title)
+            entry["title"] = title
             # RSS/Atom descriptions are often HTML.  Normalise at the model
             # boundary so every scraper stores a display-safe, readable
             # summary instead of relying on individual scraper conventions.

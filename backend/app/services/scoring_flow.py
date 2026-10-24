@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.content_repo import ContentRepo, ScoringContentRow
 from app.repositories.ignored_repo import IgnoredRepo
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.json_cache import (
     get_cached_json as _get_cached_json,
@@ -259,7 +260,8 @@ async def build_scoring_inputs_from_rows(
         scoring_inputs.append(
             ScoringInput(
                 content_id=item.id,
-                title=item.title,
+                title=readable_content_title(item.title, item.summary, item.raw_content),
+                content_evidence=has_readable_content(item.title, item.summary, item.raw_content),
                 category=item.category,
                 summary_source=item.summary_source,
                 source_id=item.source_id,

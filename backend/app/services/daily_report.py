@@ -22,6 +22,7 @@ from app.core.edition_naming import (
 from app.models.daily_report import DailyReport
 from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_serialization import latest_analysis_from_item
 from app.services.digest_base import is_active_generating as _digest_is_active_generating
 from app.services.digest_fallback import build_daily_editorial_fallback
@@ -190,7 +191,8 @@ async def _fetch_report_inputs(
     background = [
         _item_to_report_dict(item, analysis, analysis.curation_score or 0)
         for item in items
-        if (analysis := latest_analysis_from_item(item)) is not None
+        if has_readable_content(item.title, getattr(item, "summary", None), getattr(item, "raw_content", None))
+        and (analysis := latest_analysis_from_item(item)) is not None
     ]
     background.sort(key=lambda x: (x["curation_score"], x["creator_score"]), reverse=True)
     curated.sort(key=lambda x: (x["adjusted_score"], x["curation_score"]), reverse=True)
@@ -200,7 +202,7 @@ async def _fetch_report_inputs(
 def _item_to_report_dict(item, analysis, adjusted_score: float) -> dict:
     return {
         "id": item.id,
-        "title": item.title,
+        "title": readable_content_title(item.title, getattr(item, "summary", None), getattr(item, "raw_content", None)),
         "url": normalize_zhihu_url(item.url),
         "category": item.category or "未分类",
         "source_name": item.source_name or "",

@@ -167,9 +167,9 @@ def test_today_picks_cache_key_and_invalidation():
     invalidate_json_cache()
     params = TodayPicksCacheParams(hours=48, category="AI", limit=80)
     key = params.key
-    assert key == "contents:today-picks:v5:hours=48&category=AI&limit=80&user_id="
+    assert key == "contents:today-picks:v6:hours=48&category=AI&limit=80&user_id="
     assert TodayPicksCacheParams(hours=48, category="AI", limit=80, user_id=42).key == (
-        "contents:today-picks:v5:hours=48&category=AI&limit=80&user_id=42"
+        "contents:today-picks:v6:hours=48&category=AI&limit=80&user_id=42"
     )
 
     set_cached_json(key, {"items": [], "total": 0})
@@ -186,7 +186,7 @@ def test_today_picks_startup_cache_matches_default_screen_request():
 
     assert params.hours == 24
     assert params.limit == TODAY_PICKS_INITIAL_LIMIT == 40
-    assert params.key == "contents:today-picks:v5:hours=24&limit=40&user_id="
+    assert params.key == "contents:today-picks:v6:hours=24&limit=40&user_id="
 
 
 def test_source_list_cache_key_and_invalidation():
@@ -319,3 +319,19 @@ def test_trending_cache_invalidation_is_scoped():
     )
     assert get_cached_json("contents:list:example", ttl_seconds=10) is not None
     invalidate_json_cache()
+
+
+def test_today_picks_does_not_reuse_pre_evidence_gate_payload():
+    from app.services.today_picks_cache import get_cached_today_picks
+
+    invalidate_json_cache()
+    set_cached_json(
+        "contents:today-picks:v5:hours=24&limit=40&user_id=",
+        {
+            "items": [{"id": 37111, "title": "https://example.com/empty"}],
+            "total": 1,
+        },
+    )
+    assert get_cached_today_picks(default_today_picks_cache_params(), ttl_seconds=60) is None
+    invalidate_today_picks_cache()
+    assert get_cached_json("contents:today-picks:v5:hours=24&limit=40&user_id=", ttl_seconds=60) is None

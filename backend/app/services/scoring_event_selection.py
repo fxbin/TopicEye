@@ -9,6 +9,7 @@ from app.services.scoring_engine import ScoringInput, score_items
 
 def event_candidate_ids(items: list[ScoringInput], assignments: dict[int, EventAssignment]) -> set[int]:
     """Preserve event identity while allowing a reviewed member to stand in for a fallback canonical."""
+    items = [item for item in items if item.content_evidence]
     fallback_ids = {item.content_id for item in items if item.summary_source == "local_fallback"}
     fallback_groups = {
         a.event_group_id
@@ -43,6 +44,7 @@ def display_event_candidate_ids(items: list[ScoringInput], assignments: dict[int
     cannot hide every in-scope member. Fallback canonicals remain in the
     separate pending-review pool when a formal representative is available.
     """
+    items = [item for item in items if item.content_evidence]
     standalone = {item.content_id for item in items if item.content_id not in assignments}
     groups: dict[int, list[ScoringInput]] = {}
     for item in items:

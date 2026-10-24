@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.duckdb_service import query_content_for_weekly, run_query
 from app.services.scoring_engine import ScoringInput, score_items
 
@@ -51,6 +52,7 @@ def _score_digest_rows(rows: list[dict]) -> list[dict]:
         if not breakdown.selected:
             continue
         row = dict(row_map[scoring_input.content_id])
+        row["title"] = readable_content_title(row.get("title"), row.get("source_summary"), row.get("raw_content"))
         row["adjusted_score"] = breakdown.final_score
         row["score_breakdown"] = breakdown.to_dict()
         digest_rows.append(row)
@@ -64,6 +66,7 @@ def _row_to_scoring_input(row: dict) -> ScoringInput:
     return ScoringInput(
         content_id=int(row["id"]),
         title=row.get("title") or "",
+        content_evidence=has_readable_content(row.get("title"), row.get("source_summary"), row.get("raw_content")),
         category=row.get("category"),
         source_name=row.get("source_name"),
         crawled_at=row.get("crawled_at"),

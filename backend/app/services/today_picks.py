@@ -18,6 +18,7 @@ from app.repositories.content_event_consumption_repo import (
 )
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_event_coverage import coverage_payload
+from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_summary import clean_content_summary
 from app.services.duckdb_service import query_today_picks, query_topics, run_query
 from app.services.feedback_signal import get_feedback_scores
@@ -145,6 +146,10 @@ async def build_today_picks(
                 exc_info=True,
             )
             return _empty_payload()
+
+    # Reject old unsupported analyses before representative choice, percentile
+    # thresholds, diversity and totals. AI-generated summaries are not evidence.
+    rows = [row for row in rows if _row_to_scoring_input(row).content_evidence]
 
     # 个人「不感兴趣」按用户隔离：DuckDB SQL 只过滤全局屏蔽行，
     # 这里在候选进入评分/截断前剔除当前用户自己的忽略，避免结果缺页。
@@ -450,6 +455,7 @@ def _row_to_scoring_input(row: dict) -> ScoringInput:
     return ScoringInput(
         content_id=row["id"],
         title=row.get("title") or "",
+        content_evidence=has_readable_content(row.get("title"), row.get("summary"), row.get("raw_content")),
         category=row.get("category"),
         summary_source=row.get("summary_source"),
         source_id=row.get("source_id"),
@@ -516,7 +522,7 @@ def _row_to_content_payload(row: dict, breakdown: ScoreBreakdown) -> dict:
     }
     return {
         "id": row["id"],
-        "title": row.get("title") or "",
+        "title": readable_content_title(row.get("title"), row.get("summary"), row.get("raw_content")),
         "url": row.get("url") or "",
         "source_id": row.get("source_id"),
         "source_name": row.get("source_name"),

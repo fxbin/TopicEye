@@ -64,6 +64,16 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def has_complete_usage(response: Any) -> bool:
+    """Require explicit counters before trace evidence calls usage known."""
+    usage = _get_value(response, "usage", "usageMetadata")
+    counters = [
+        _get_value(usage, "prompt_tokens", "input_tokens", "promptTokenCount"),
+        _get_value(usage, "completion_tokens", "output_tokens", "candidatesTokenCount"),
+    ]
+    return all(type(value) is int and value >= 0 for value in counters)
+
+
 def extract_usage(response: Any) -> TokenUsage:
     usage = _get_value(response, "usage", "usageMetadata")
     actual_model = _get_value(response, "model")
@@ -299,13 +309,13 @@ async def record_llm_call_in_new_session(
     usage: TokenUsage | None = None,
     error_message: str | None = None,
     request_id: str | None = None,
-) -> None:
+) -> dict | None:
     from app.core.database import async_session
 
     async with async_session() as db:
 
         async def _write():
-            await record_llm_call(
+            log = await record_llm_call(
                 db,
                 model=model,
                 request_model=request_model,
@@ -316,13 +326,47 @@ async def record_llm_call_in_new_session(
                 error_message=error_message,
                 request_id=request_id,
             )
+            evidence = {
+                key: getattr(log, key)
+                for key in (
+                    "id",
+                    "request_id",
+                    "actual_model",
+                    "input_tokens",
+                    "output_tokens",
+                    "total_cost",
+                    "cost_per_1m_input",
+                    "cost_per_1m_output",
+                )
+            }
+            extra = getattr(model, "extra_params", None) or {}
+            all_zero = (
+                model is not None
+                and evidence["total_cost"] == 0
+                and all(getattr(model, key, None) == 0 for key in ("cost_per_1k_input", "cost_per_1k_output"))
+            )
+            # Existing configured rates have no reliable currency contract.
+            # Zero prices are currency invariant; nonzero rates require an
+            # explicit declaration before trace evidence can call them USD.
+            prices_match = model is not None and all(
+                getattr(model, field, None) is not None and evidence[key] == round(getattr(model, field) * 1000, 6)
+                for key, field in (
+                    ("cost_per_1m_input", "cost_per_1k_input"),
+                    ("cost_per_1m_output", "cost_per_1k_output"),
+                )
+            )
+            evidence["pricing_currency"] = (
+                "USD" if prices_match and (all_zero or extra.get("pricing_currency") == "USD") else None
+            )
             await db.commit()
+            return evidence
 
         try:
-            await _write()
+            return await _write()
         except Exception as exc:
             await db.rollback()
             logger.warning("LLM usage log skipped: %s", exc)
+            return None
 
 
 async def count_recent_llm_calls() -> tuple[int, int, int]:

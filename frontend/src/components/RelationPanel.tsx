@@ -12,7 +12,8 @@ interface RelationPanelProps {
 }
 
 const RELATION_LABELS: Record<string, { label: string; color: string }> = {
-  same_event: { label: '同事件', color: 'text-primary bg-primary-light/40' },
+  // Legacy tag-overlap edges are reading suggestions, not accepted event membership.
+  same_event: { label: '内容相近', color: 'text-primary bg-primary-light/40' },
   related_topic: { label: '同话题', color: 'text-teal-text bg-teal-light' },
   temporal_cluster: { label: '同时段', color: 'text-amber bg-amber/10' },
   causal: { label: '因果', color: 'text-red bg-red-light' },

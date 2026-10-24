@@ -24,6 +24,7 @@ from app.services.content_event_service import (
     ContentEventService,
     ContentEventValidationError,
 )
+from app.services.content_read_cache import invalidate_content_read_caches, invalidate_normalized_event_caches
 
 router = APIRouter(
     prefix="/admin/content-events",
@@ -97,6 +98,7 @@ async def normalize_content_events(
             idempotency_key=idempotency_key,
         )
         await db.commit()
+        invalidate_normalized_event_caches(result, mode=data.mode)
     except (
         ContentEventNotFoundError,
         ContentEventConflictError,
@@ -155,6 +157,7 @@ async def review_content_event_member(
             reviewer_user_id=admin_user.id,
         )
         await db.commit()
+        invalidate_content_read_caches()
     except (
         ContentEventNotFoundError,
         ContentEventConflictError,
@@ -185,6 +188,7 @@ async def set_content_event_canonical(
             actor_user_id=admin_user.id,
         )
         await db.commit()
+        invalidate_content_read_caches()
     except (
         ContentEventNotFoundError,
         ContentEventConflictError,
@@ -211,6 +215,7 @@ async def unlock_content_event_canonical(
             expected_version=data.expected_version,
         )
         await db.commit()
+        invalidate_content_read_caches()
     except (
         ContentEventNotFoundError,
         ContentEventConflictError,

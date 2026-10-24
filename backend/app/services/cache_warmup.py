@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from datetime import UTC
 from typing import Any
 
@@ -163,9 +164,14 @@ async def warmup_content_favorites(db) -> None:
 async def warmup_content_list(db) -> None:
     from datetime import datetime, timedelta
 
+    from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
     from app.repositories.ignored_repo import IgnoredRepo
+    from app.services.content_event_coverage import attach_event_coverage
 
-    params = home_content_list_cache_params()
+    params = replace(
+        home_content_list_cache_params(),
+        event_revision=await ContentEventConsumptionRepository(db).read_cache_revision(visible_user_id=None),
+    )
     ignored_ids = await IgnoredRepo(db).list_ignored_ids()
     items, total = await ContentRepo(db).list_paginated_with_analyses(
         page=params.page,
@@ -176,6 +182,8 @@ async def warmup_content_list(db) -> None:
         exclude_ids=ignored_ids,
         exclude_source_types={"DouyinHot"},
         time_cutoff=datetime.now(UTC) - timedelta(hours=params.hours or 48),
+        public_only=True,
+        group_events=params.group_events,
     )
     payload = {
         "items": [content_with_latest_analysis(item) for item in items],
@@ -183,13 +191,19 @@ async def warmup_content_list(db) -> None:
         "page": params.page,
         "page_size": params.page_size,
     }
+    if params.group_events:
+        await attach_event_coverage(db, payload["items"], visible_user_id=None)
     set_cached_content_list(params, payload)
 
 
 async def warmup_today_picks(db) -> None:
+    from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
     from app.services.today_picks import build_today_picks
 
-    params = default_today_picks_cache_params()
+    params = replace(
+        default_today_picks_cache_params(),
+        event_revision=await ContentEventConsumptionRepository(db).read_cache_revision(visible_user_id=None),
+    )
     payload = await build_today_picks(db, hours=params.hours, limit=params.limit)
     set_cached_today_picks(params, payload)
 

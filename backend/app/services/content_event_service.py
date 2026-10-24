@@ -359,13 +359,17 @@ class ContentEventService:
         detector_version: str | None = None,
         reason: str | None = None,
         review_status: str | None = None,
+        only_if_unassigned: bool = False,
     ) -> ContentEventGroup:
         group = await self._require_group(event_id)
         content = await self._require_content(content_id)
         self._ensure_owner(content, group.owner_user_id)
+        # Automatic writers may only claim an unassigned article. Both this
+        # check and the insert hold the content row lock; a relation added or
+        # reviewed while a classifier was waiting must never be updated here.
+        await self._ensure_unassigned(content.id, allowed_event_id=None if only_if_unassigned else event_id)
         if content.id == group.canonical_content_id:
             raise ContentEventValidationError("canonical content cannot also be an event member")
-        await self._ensure_unassigned(content.id, allowed_event_id=event_id)
         existing = await self.repo.get_member(content.id, for_update=True)
         confidence = _validate_confidence(confidence)
         relation_type = _validate_relation_type(relation_type)

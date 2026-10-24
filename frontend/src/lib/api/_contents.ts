@@ -6,7 +6,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ArticleReaderSnapshot, ContentItem, ContentRelation, EvidenceMark, EvidenceLink, PaginatedResponse, TopicInfo, ContentFilterParams } from '@/types';
+import type { ArticleReaderSnapshot, ContentEventCoverage, ContentItem, ContentRelation, EvidenceMark, EvidenceLink, PaginatedResponse, TopicInfo, ContentFilterParams } from '@/types';
 import { BASE_URL } from './_core';
 
 export const contentsApi = {
@@ -45,6 +45,19 @@ export const contentsApi = {
   /** 获取内容的关联内容列表 */
   getRelations(id: number, limit = 20): Promise<{ content_id: number; relations: ContentRelation[]; count: number }> {
     return request(`/contents/${id}/relations?limit=${limit}`);
+  },
+
+  /** 当前报道以外的同事件报道；版本变化返回 409，调用方应从第一页重载。 */
+  getEventCoverage(id: number, params: {
+    member_offset?: number;
+    member_limit?: number;
+    expected_event_id?: number;
+    expected_version?: number;
+  } = {}): Promise<{ content_id: number; event: ContentEventCoverage | null }> {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])
+    );
+    return request(`/contents/${id}/event/coverage${query.size ? `?${query}` : ''}`);
   },
 
   /** 获取收藏列表 */

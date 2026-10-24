@@ -9,10 +9,10 @@ from app.services.json_cache import get_cached_json, invalidate_json_cache, set_
 # would make an older serialized payload unsafe or misleading to display.
 # This prevents pre-cleanup AI summaries from being served until their TTL.
 TODAY_PICKS_LEGACY_CACHE_PREFIX = "contents:today-picks:"
-TODAY_PICKS_CACHE_PREFIX = "contents:today-picks:v4:"
+TODAY_PICKS_CACHE_PREFIX = "contents:today-picks:v5:"
 # The page opens on the rolling 24-hour window and requests the first 40 picks.
 # Keep the startup warmup key identical so the first visit can hit the cache.
-TODAY_PICKS_DEFAULT_CACHE_LABEL = "contents:today-picks:v4:hours=24&limit=40"
+TODAY_PICKS_DEFAULT_CACHE_LABEL = "contents:today-picks:v5:hours=24&limit=40"
 TODAY_PICKS_INITIAL_LIMIT = 40
 
 
@@ -24,6 +24,7 @@ class TodayPicksCacheParams:
     limit: int | None = None
     # None = anonymous public pool; int = public pool plus this user's private content.
     user_id: int | None = None
+    event_revision: str = ""
 
     @property
     def key(self) -> str:
@@ -35,6 +36,8 @@ class TodayPicksCacheParams:
         if self.limit:
             params["limit"] = self.limit
         params["user_id"] = "" if self.user_id is None else str(self.user_id)
+        if self.event_revision:
+            params["event_revision"] = self.event_revision
         return TODAY_PICKS_CACHE_PREFIX + urlencode(params)
 
 

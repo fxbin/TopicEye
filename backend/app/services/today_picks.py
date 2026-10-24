@@ -17,11 +17,12 @@ from app.repositories.content_event_consumption_repo import (
     EventDisplayGroup,
 )
 from app.repositories.ignored_repo import IgnoredRepo
+from app.services.content_event_coverage import coverage_payload
 from app.services.content_summary import clean_content_summary
 from app.services.duckdb_service import query_today_picks, query_topics, run_query
 from app.services.feedback_signal import get_feedback_scores
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
-from app.services.scoring_event_selection import event_candidate_ids
+from app.services.scoring_event_selection import display_event_candidate_ids
 
 logger = logging.getLogger(__name__)
 
@@ -222,12 +223,17 @@ async def build_today_picks(
         visible_group_ids = {
             assignment.event_group_id
             for item in response_items
-            if (assignment := event_assignments.get(int(item["id"]))) is not None and assignment.is_canonical
+            if (assignment := event_assignments.get(int(item["id"]))) is not None
         }
         event_groups = await event_repo.load_display_groups(
             visible_group_ids,
             visible_user_id=owner_user_id,
             member_limit=5,
+            representatives={
+                event_assignments[int(item["id"])].event_group_id: int(item["id"])
+                for item in response_items
+                if int(item["id"]) in event_assignments
+            },
         )
         _attach_event_normalization(
             response_items,
@@ -576,7 +582,7 @@ def _apply_event_assignments(
     assignments: dict[int, EventAssignment],
 ) -> list[dict]:
     """Choose response-only representatives; persisted canonical IDs stay intact."""
-    visible_ids = event_candidate_ids([_row_to_scoring_input(row) for row in rows], assignments)
+    visible_ids = display_event_candidate_ids([_row_to_scoring_input(row) for row in rows], assignments)
     return [row for row in rows if row["id"] in visible_ids]
 
 
@@ -585,10 +591,10 @@ def _attach_event_normalization(
     assignments: dict[int, EventAssignment],
     groups: dict[int, EventDisplayGroup],
 ) -> None:
-    """Attach accepted event members to visible canonical cards."""
+    """Attach coverage to the displayed report, preserving canonical identity."""
     for item in items:
         assignment = assignments.get(int(item["id"]))
-        if assignment is None or not assignment.is_canonical:
+        if assignment is None:
             continue
         group = groups.get(assignment.event_group_id)
         if group is None:
@@ -600,34 +606,7 @@ def _attach_event_normalization(
                 "members": [],
             }
             continue
-        item["normalization"] = {
-            "canonical_id": group.canonical_content_id,
-            "member_count": group.member_count,
-            "source_count": group.source_count,
-            "has_more": group.member_count > len(group.members),
-            "members": [
-                {
-                    "id": member.content_id,
-                    "title": member.title,
-                    "url": member.url,
-                    "source_name": member.source_name,
-                    "source_type": member.source_type,
-                    "platform": member.platform,
-                    "published_at": _serialize_event_datetime(member.published_at),
-                    "crawled_at": _serialize_event_datetime(member.crawled_at),
-                    "relation_type": member.relation_type,
-                    "confidence": member.confidence,
-                    "reason": member.reason,
-                }
-                for member in group.members
-            ],
-        }
-
-
-def _serialize_event_datetime(value):
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return value
+        item["normalization"] = coverage_payload(group, representative_id=int(item["id"]))
 
 
 def _pack_today_picks(

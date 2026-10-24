@@ -4,6 +4,7 @@ import sys
 from datetime import UTC, datetime
 from types import ModuleType, SimpleNamespace
 
+import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,9 @@ from app.api.v1 import admin_content_events
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import get_db
 from app.services.content_event_service import ContentEventConflictError
+from app.services.content_list_cache import home_content_list_cache_params
+from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
+from app.services.today_picks_cache import default_today_picks_cache_params
 
 
 class _Session:
@@ -51,6 +55,76 @@ def _group(**overrides):
     return SimpleNamespace(**values)
 
 
+@pytest.mark.parametrize("operation", ["review", "canonical", "unlock"])
+def test_event_mutation_invalidates_read_cache_after_commit(monkeypatch, operation):
+    session = _Session()
+
+    class FakeService:
+        def __init__(self, db):
+            assert db is session
+
+        async def review_relation(self, *args, **kwargs):
+            return _group()
+
+        async def set_canonical(self, *args, **kwargs):
+            return _group()
+
+        async def unlock_canonical(self, *args, **kwargs):
+            return _group()
+
+    monkeypatch.setattr(admin_content_events, "ContentEventService", FakeService)
+    keys = [home_content_list_cache_params().key, default_today_picks_cache_params().key]
+    invalidate_json_cache()
+    for key in keys:
+        set_cached_json(key, {"old_event": True})
+    client = _client(session=session)
+    if operation == "review":
+        response = client.patch(
+            "/admin/content-events/members/4/review",
+            json={"decision": "reject", "reason": "different event", "expected_version": 2},
+        )
+    elif operation == "canonical":
+        response = client.put(
+            "/admin/content-events/5/canonical",
+            json={
+                "canonical_content_id": 9,
+                "former_canonical_relation_type": "duplicate",
+                "reason": "prefer this report",
+                "expected_version": 2,
+            },
+        )
+    else:
+        response = client.post("/admin/content-events/5/unlock-canonical", json={"expected_version": 2})
+    assert response.status_code == 200 and session.commits == 1
+    assert all(get_cached_json(key, ttl_seconds=60) is None for key in keys)
+    invalidate_json_cache()
+
+
+def test_event_failed_commit_keeps_existing_read_cache(monkeypatch):
+    class FailingSession(_Session):
+        async def commit(self):
+            raise RuntimeError("commit failed")
+
+    class FakeService:
+        def __init__(self, db):
+            pass
+
+        async def review_relation(self, *args, **kwargs):
+            return _group()
+
+    monkeypatch.setattr(admin_content_events, "ContentEventService", FakeService)
+    key = home_content_list_cache_params().key
+    invalidate_json_cache()
+    set_cached_json(key, {"existing": True})
+    with pytest.raises(RuntimeError, match="commit failed"):
+        _client(session=FailingSession()).patch(
+            "/admin/content-events/members/4/review",
+            json={"decision": "reject", "reason": "different event", "expected_version": 2},
+        )
+    assert get_cached_json(key, ttl_seconds=60) is not None
+    invalidate_json_cache()
+
+
 def test_admin_router_has_global_admin_guard():
     response = _client(is_admin=False).get("/admin/content-events/reviews")
 
@@ -80,7 +154,8 @@ def test_normalize_requires_idempotency_key_and_valid_scope():
     assert leaked_owner.status_code == 422
 
 
-def test_normalize_returns_202_and_commits(monkeypatch):
+@pytest.mark.parametrize("mode", ["shadow", "write"])
+def test_normalize_returns_202_and_commits(monkeypatch, mode):
     session = _Session()
     calls: list[dict] = []
 
@@ -96,13 +171,16 @@ def test_normalize_returns_202_and_commits(monkeypatch):
         "app.services.content_event_normalization",
         fake_module,
     )
+    key = home_content_list_cache_params().key
+    invalidate_json_cache()
+    set_cached_json(key, {"old_event": True})
 
     response = _client(session=session).post(
         "/admin/content-events/normalize",
         headers={"Idempotency-Key": "run-20260729"},
         json={
             "hours": 48,
-            "mode": "write",
+            "mode": mode,
             "scope": "user",
             "owner_user_id": 12,
         },
@@ -112,13 +190,15 @@ def test_normalize_returns_202_and_commits(monkeypatch):
     assert calls == [
         {
             "hours": 48,
-            "mode": "write",
+            "mode": mode,
             "owner_user_id": 12,
             "idempotency_key": "run-20260729",
         }
     ]
     assert session.commits == 1
     assert response.json()["result"]["created_events"] == 2
+    assert (get_cached_json(key, ttl_seconds=60) is None) == (mode == "write")
+    invalidate_json_cache()
 
 
 def test_normalize_maps_lease_conflict_to_409(monkeypatch):

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.v1 import content_events
 from app.api.v1.auth import get_optional_current_user
 from app.core.database import get_db
-from app.services.content_event_service import ContentEventNotFoundError
+from app.services.content_event_service import ContentEventConflictError, ContentEventNotFoundError
 
 
 class _Session:
@@ -69,6 +69,60 @@ def _client(*, user_id: int | None = None) -> TestClient:
         SimpleNamespace(id=user_id) if user_id is not None else None
     )
     return TestClient(app)
+
+
+def test_coverage_endpoint_propagates_version_and_rejects_internal_fields(monkeypatch):
+    async def coverage(_db, content_id, **kwargs):
+        assert content_id == 8
+        assert kwargs == {
+            "visible_user_id": 42,
+            "member_offset": 5,
+            "member_limit": 20,
+            "expected_event_id": 11,
+            "expected_version": 3,
+        }
+        return {
+            "event_id": 11,
+            "version": 3,
+            "canonical_id": 7,
+            "representative_id": 8,
+            "member_count": 6,
+            "source_count": 3,
+            "member_offset": 5,
+            "next_offset": 6,
+            "has_more": False,
+            "reason": "internal classifier reasoning",
+            "members": [
+                {
+                    "id": 9,
+                    "title": "Another report",
+                    "url": "https://example.test/9",
+                    "relation_type": "update",
+                    "confidence": 0.93,
+                    "reason": "internal",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(content_events, "get_event_coverage", coverage)
+    result = _client(user_id=42).get(
+        "/contents/8/event/coverage?member_offset=5&expected_event_id=11&expected_version=3"
+    )
+    assert result.status_code == 200
+    event = result.json()["event"]
+    assert event["next_offset"] == 6 and "reason" not in event
+    assert "confidence" not in event["members"][0] and "reason" not in event["members"][0]
+
+
+def test_coverage_endpoint_conflict_and_page_validation(monkeypatch):
+    async def changed(*args, **kwargs):
+        raise ContentEventConflictError("changed")
+
+    monkeypatch.setattr(content_events, "get_event_coverage", changed)
+    client = _client()
+    assert client.get("/contents/8/event/coverage?expected_version=1").status_code == 409
+    assert client.get("/contents/8/event/coverage?member_limit=21").status_code == 422
+    assert client.get("/contents/8/event/coverage?member_offset=-1").status_code == 422
 
 
 def test_get_content_event_returns_additive_public_contract(monkeypatch):

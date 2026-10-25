@@ -10,10 +10,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections import defaultdict
 from datetime import UTC
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analysis import AiAnalysis
@@ -32,6 +33,11 @@ logger = logging.getLogger(__name__)
 CLUSTER_TAG_OVERLAP = 2  # min shared tags to be in same cluster (>=2 reduces false merges)
 MIN_CLUSTER_SIZE = 2  # min items to form a topic group
 CLUSTER_LLM_CONCURRENCY = 3
+
+# 每写完多少个话题组提交一次。此前所有写入在末尾一次性 commit，外层
+# 超时取消即整轮回滚（含已花费的 LLM 命名），积压原样留给下一次触发，
+# 形成超时循环；分批提交让取消最多损失当前未提交的一批。
+_TOPIC_COMMIT_BATCH = 50
 
 # ── Tag quality filter ─────────────────────────────────────────────────
 # Stopwords that carry no topic signal — verbs, fillers, generic actions.
@@ -302,6 +308,11 @@ async def cluster_topics_with_lease(
     except Exception:
         status = "FAILED"
         raise
+    except asyncio.CancelledError:
+        # 外层 track_job 超时经 wait_for 取消时不走 Exception 分支，
+        # 不单独拦截的话租约会以 SUCCESS 状态落库。
+        status = "FAILED"
+        raise
     finally:
         await job_tracker._release_job_run(TOPIC_CLUSTERING_JOB_KEY, status)
 
@@ -375,6 +386,9 @@ async def cluster_topics(
     # 1. Fetch recent analyzed items that still lack a topic_id
     from datetime import datetime, timedelta
 
+    # stage_ms 进 stats 落 job_execution_logs.result_summary，超时排查时
+    # 不用再猜 300s 花在了取数、命名还是写回。
+    stage_started = time.perf_counter()
     cutoff = datetime.now(UTC) - timedelta(days=days)
     latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
     result = await db.execute(
@@ -411,6 +425,8 @@ async def cluster_topics(
 
     content_ids = [content.id for content, _analysis, _source_weight in rows]
     feedback_scores = await get_feedback_scores(db, content_ids)
+    fetch_ms = int((time.perf_counter() - stage_started) * 1000)
+    stage_started = time.perf_counter()
     items = []
     scoring_inputs = []
     for content, analysis, source_weight_db in rows:
@@ -459,7 +475,6 @@ async def cluster_topics(
 
     # 2. Incremental: do NOT clear old topic assignments.
     #    Only new TopicGroups are inserted; existing ones are preserved.
-    from sqlalchemy import text
 
     # 3. Tag-based topic clustering. Event membership is handled elsewhere.
     groups = _union_find_cluster(items)
@@ -496,7 +511,13 @@ async def cluster_topics(
 
     # 5. Write to DB
     standalone_ids = {item["id"] for item in items} - {content_id for group in groups for content_id in group}
+    cluster_name_ms = int((time.perf_counter() - stage_started) * 1000)
+    stage_started = time.perf_counter()
 
+    # 每个话题组一条批量 UPDATE：此前逐条 UPDATE 在 2000 条积压下就是
+    # 2000 个串行往返，单是写回就能吃掉大半超时预算。单组成员数受
+    # max_items 上限约束，IN 参数量不会逼近 asyncpg 限制。
+    written_groups = 0
     for meta in cluster_meta:
         topic = TopicGroup(
             name=meta["name"],
@@ -508,13 +529,17 @@ async def cluster_topics(
         db.add(topic)
         await db.flush()  # get topic.id
 
-        for item_id in meta["item_ids"]:
-            await db.execute(
-                text("UPDATE content_items SET topic_id=:tid WHERE id=:id"),
-                {"tid": topic.id, "id": item_id},
-            )
+        await db.execute(
+            update(ContentItem)
+            .where(ContentItem.id.in_(meta["item_ids"]))
+            .values(topic_id=topic.id)
+        )
+        written_groups += 1
+        if written_groups % _TOPIC_COMMIT_BATCH == 0:
+            await db.commit()
 
     await db.commit()
+    write_ms = int((time.perf_counter() - stage_started) * 1000)
 
     stats = {
         "clusters": len(cluster_meta),
@@ -523,6 +548,7 @@ async def cluster_topics(
         "window_days": days,
         "incremental": True,
         "truncated": truncated,
+        "stage_ms": {"fetch": fetch_ms, "cluster_name": cluster_name_ms, "write": write_ms},
     }
     logger.info("Clustering done: %s", stats)
     return stats

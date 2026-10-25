@@ -533,7 +533,11 @@ async def _topic_clustering_daily() -> None:
 @track_job(
     "post_sync_clustering",
     name="增量话题聚类",
-    timeout=300,
+    # 与 cluster_topics_with_lease 的内层租约 TOPIC_CLUSTERING_JOB_TIMEOUT
+    # 对齐；外层比内层先取消会让租约语义失效，且 LLM 命名最坏情况
+    # （20 组 / 并发 3 / 单调用 ~45s）单独就超过 300s。重叠触发由
+    # 同进程锁 + 跨进程租约跳过，不会堆叠。
+    timeout=600,
     description="每15分钟对近期已分析内容做增量聚类，独立于分析管线",
 )
 async def _post_sync_clustering() -> None:

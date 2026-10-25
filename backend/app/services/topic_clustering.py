@@ -528,11 +528,7 @@ async def cluster_topics(
         db.add(topic)
         await db.flush()  # get topic.id
 
-        await db.execute(
-            update(ContentItem)
-            .where(ContentItem.id.in_(meta["item_ids"]))
-            .values(topic_id=topic.id)
-        )
+        await db.execute(update(ContentItem).where(ContentItem.id.in_(meta["item_ids"])).values(topic_id=topic.id))
         if written_groups % _TOPIC_COMMIT_BATCH == 0:
             await db.commit()
 

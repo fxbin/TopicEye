@@ -517,8 +517,7 @@ async def cluster_topics(
     # 每个话题组一条批量 UPDATE：此前逐条 UPDATE 在 2000 条积压下就是
     # 2000 个串行往返，单是写回就能吃掉大半超时预算。单组成员数受
     # max_items 上限约束，IN 参数量不会逼近 asyncpg 限制。
-    written_groups = 0
-    for meta in cluster_meta:
+    for written_groups, meta in enumerate(cluster_meta, start=1):
         topic = TopicGroup(
             name=meta["name"],
             keywords=meta["keywords"],
@@ -534,7 +533,6 @@ async def cluster_topics(
             .where(ContentItem.id.in_(meta["item_ids"]))
             .values(topic_id=topic.id)
         )
-        written_groups += 1
         if written_groups % _TOPIC_COMMIT_BATCH == 0:
             await db.commit()
 

@@ -11,6 +11,7 @@ import asyncio
 import logging
 import time
 from datetime import UTC, datetime
+from itertools import batched
 from typing import Any
 
 import httpx
@@ -36,6 +37,20 @@ from app.services.scrapers import get_scraper_cls
 from app.utils.url_safety import UnsafeUrlError, ensure_public_hostname
 
 logger = logging.getLogger(__name__)
+
+# asyncpg 单条语句最多绑定 32767 个参数（客户端硬限制，超限直接抛
+# ValueError，语句根本不会发给数据库）。多值 INSERT 的参数量 = 行数 ×
+# 列数（ContentItem 当前 29 列，>1129 行即超限）；hash 去重的 IN 查询
+# 同理。批大小留出列数增长余量，修复前大 feed 单批全量失败且无法自愈。
+_ASYNC_PG_MAX_ARGS = 32767
+_INGEST_INSERT_BATCH_ROWS = 500
+_INGEST_DEDUP_HASH_BATCH = 800
+
+
+def _ingest_insert_batch_size(column_count: int) -> int:
+    """按列数把单条 INSERT 的行数压到参数上限以内。"""
+    safe_rows = _ASYNC_PG_MAX_ARGS // max(column_count, 1)
+    return max(1, min(_INGEST_INSERT_BATCH_ROWS, safe_rows))
 
 
 def _ensure_datetime(value: Any) -> datetime | None:
@@ -259,15 +274,18 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
         # arXiv 等聚合平台的论文会同时出现在多个分类源(cs.AI/cs.CL/cs.LG),
         # 之前按 source_id 隔离去重导致同一 URL 被每个源各入一次。
         # 改为按 platform 分组,同一平台下相同内容只入库一次,归属首个抓到的源。
-        result = await db.execute(
-            select(ContentItem.content_hash)
-            .join(Source, Source.id == ContentItem.source_id)
-            .where(
-                ContentItem.content_hash.in_(incoming_hashes),
-                Source.platform == source.platform,
+        # IN 参数量同样受 asyncpg 32767 上限约束，按批分片后合并结果。
+        existing_hashes: set[str | None] = set()
+        for hash_batch in batched(incoming_hashes, _INGEST_DEDUP_HASH_BATCH):
+            result = await db.execute(
+                select(ContentItem.content_hash)
+                .join(Source, Source.id == ContentItem.source_id)
+                .where(
+                    ContentItem.content_hash.in_(hash_batch),
+                    Source.platform == source.platform,
+                )
             )
-        )
-        existing_hashes = {row[0] for row in result.all()}
+            existing_hashes.update(row[0] for row in result.all())
 
         # ── Step 4+5: Pre-filter, classify eligible entries, persist ─
         candidate_entries: list[dict[str, Any]] = []
@@ -473,12 +491,15 @@ async def _persist_new_content_items(
     # generates a rowid. Excluding makes both backends auto-generate.
     column_names = [c.name for c in ContentItem.__table__.columns if not (c.primary_key and c.autoincrement)]
     new_records = [{col: getattr(item, col) for col in column_names} for item in new_items]
-    insert_stmt = _backend_insert(ContentItem).values(new_records)
-    insert_stmt = insert_stmt.on_conflict_do_nothing(
-        index_elements=["source_id", "content_hash"],
-    ).returning(ContentItem.id, ContentItem.content_hash)
-    result = await db.execute(insert_stmt)
-    inserted_content_ids = {row.content_hash: row.id for row in result.all()}
+    inserted_content_ids: dict[str | None, int] = {}
+    for records_batch in batched(new_records, _ingest_insert_batch_size(len(column_names))):
+        insert_stmt = _backend_insert(ContentItem).values(list(records_batch))
+        insert_stmt = insert_stmt.on_conflict_do_nothing(
+            index_elements=["source_id", "content_hash"],
+        ).returning(ContentItem.id, ContentItem.content_hash)
+        result = await db.execute(insert_stmt)
+        for row in result.all():
+            inserted_content_ids[row.content_hash] = row.id
 
     # Attach ContentMetrics to successfully inserted rows only.
     from app.models.metrics import ContentMetrics

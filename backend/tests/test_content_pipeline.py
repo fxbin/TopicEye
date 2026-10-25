@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.database import Base
@@ -641,3 +642,71 @@ async def test_classification_failure_after_persist_keeps_source_active(monkeypa
         assert item.title.startswith("AI 领域")
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_ingest_from_source_survives_batches_beyond_asyncpg_param_limit(monkeypatch):
+    """回归 #155：单批新条目超过 asyncpg 32767 参数上限（29 列 → >1129 行）时，
+    多值 INSERT 必须分片；修复前整批抛 ValueError 且失败自循环。
+
+    必须在真实 PG（DATABASE_URL 指向一次性测试库）上运行才会踩到 asyncpg
+    的客户端限制；第二次同步同时覆盖 >800 hash 的分片去重 IN 查询。"""
+    entry_count = 1200  # 29 列 × 1200 行 = 34800 个绑定参数 > 32767
+
+    class BulkScraper:
+        def __init__(self, source_url, source_config):
+            self.source_url = source_url
+            self.source_config = source_config
+
+        async def fetch(self, client):
+            return [
+                {
+                    "title": f"Bulk AI digest {i}",
+                    "url": f"https://example.com/bulk/{i}",
+                    "summary": "A detailed technical article about AI systems and evaluation.",
+                }
+                for i in range(entry_count)
+            ]
+
+    async def no_srrf_check(url):
+        return None
+
+    async def no_classify(entries, *, category_names):
+        return []
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: BulkScraper)
+    monkeypatch.setattr(content_pipeline, "ensure_public_hostname", no_srrf_check)
+    monkeypatch.setattr(content_pipeline, "_classify_entries_concurrently", no_classify)
+
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as db:
+            source = Source(
+                name="Bulk Feed",
+                url="https://example.com/bulk-feed",
+                source_type=SourceType.RSS,
+                platform="example",
+                enabled=True,
+            )
+            db.add(source)
+            await db.commit()
+
+            stats = await content_pipeline.ingest_from_source(source, db)
+            await db.commit()
+
+            assert stats["fetched"] == entry_count
+            assert stats["new"] == entry_count
+            assert stats["duplicates"] == 0
+
+            persisted = (await db.execute(select(func.count()).select_from(ContentItem))).scalar_one()
+            assert persisted == entry_count
+
+            # 第二次同步：全部命中分片去重，不再回到失败循环。
+            stats_again = await content_pipeline.ingest_from_source(source, db)
+            await db.commit()
+
+            assert stats_again["new"] == 0
+            assert stats_again["duplicates"] == entry_count
+    finally:
+        await engine.dispose()

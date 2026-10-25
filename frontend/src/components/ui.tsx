@@ -98,7 +98,7 @@ export function Badge({
   };
 
   return (
-    <span className={cx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black', toneClass[tone], className)}>
+    <span className={cx('inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-black', toneClass[tone], className)}>
       {children}
     </span>
   );

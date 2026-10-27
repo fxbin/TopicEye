@@ -51,6 +51,19 @@ _TRACKER_IMAGE_URL_RE = re.compile(
 
 _BLOCK_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre", "code")
 
+# 反爬挑战空壳页的响应体签名：页面返回 200 但没有正文，靠浏览器执行
+# JS 挑战（字节 WAF 的 SHA-256 PoW 种 cookie、Cloudflare 的挑战脚本）
+# 后重载才能拿到真实内容。命中后按 anti_bot_challenge 分类，而不是让
+# 正文提取凑不够阈值、报「没有可提取的正文」误导用户。
+_BOT_CHALLENGE_MARKERS: tuple[bytes, ...] = (
+    b"waf_jschallenge",  # 字节 WAF JS 挑战脚本
+    b"_wafchallengeid",  # 字节 WAF 挑战 cookie 名
+    b"cdn-cgi/challenge-platform",  # Cloudflare 挑战脚本路径
+)
+# 真实挑战页都是轻量空壳（实测字节 WAF ~2.5KB、Cloudflare 插页几十 KB）；
+# 超过该体积的整页即使含词干也按正常正文处理，避免讨论反爬的文章被误判。
+_BOT_CHALLENGE_MAX_BYTES = 65_536
+
 
 class ArticleReaderError(Exception):
     """A user-safe reader failure with an HTTP status suitable for the API."""
@@ -153,6 +166,26 @@ async def _read_limited(response: httpx.Response, *, max_bytes: int | None = Non
             raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _looks_like_bot_challenge(payload: bytes) -> bool:
+    """True when the response body is an anti-bot JS challenge shell.
+
+    挑战页本身没有任何可提取正文；提前识别可给出诚实的「来源限制访问」
+    错误，而不是走完提取链路后误报「没有可提取的正文」。
+    """
+    if len(payload) > _BOT_CHALLENGE_MAX_BYTES:
+        return False
+    lowered = payload.lower()
+    return any(marker in lowered for marker in _BOT_CHALLENGE_MARKERS)
+
+
+def _raise_bot_challenge() -> None:
+    raise ArticleReaderError(
+        "anti_bot_challenge",
+        "该来源暂时限制了访问，请稍后重试或打开原文查看。",
+        503,
+    )
 
 
 async def _robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
@@ -642,6 +675,8 @@ async def _fetch_remote_article(
                     payload = await _read_limited(response, max_bytes=settings.ARTICLE_READER_MAX_PDF_BYTES)
                     return _extract_from_pdf(payload, current_url)
                 payload = await _read_limited(response)
+                if _looks_like_bot_challenge(payload):
+                    _raise_bot_challenge()
                 if content_type == "text/plain":
                     text = _clean_text(payload.decode(response.encoding or "utf-8", errors="replace"))
                     if len(text) < _MIN_READER_TEXT_CHARS:
@@ -810,6 +845,8 @@ async def _fetch_with_curl_cffi(url: str) -> ExtractedArticle:
         )
         if len(payload) > max_bytes:
             raise ArticleReaderError("response_too_large", "原文过大，请打开来源网站查看。", 413)
+        if _looks_like_bot_challenge(payload):
+            _raise_bot_challenge()
         final_url = str(response.url)
         if content_type == "application/pdf":
             return _extract_from_pdf(payload, final_url)
@@ -838,7 +875,10 @@ async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]
     error that could be caused by TLS-fingerprint-based blocking (e.g.
     403 from a WAF).  URL-level and robots.txt errors are not retried.
     """
-    # Errors that won't be fixed by a different TLS stack
+    # Errors that won't be fixed by a different TLS stack.
+    # anti_bot_challenge 刻意保持可重试：TLS 指纹型挑战换一层抓取仍可能
+    # 通过；IP 频率限流型（如掘金字节 WAF）两层都失败也无妨——冷却负缓存
+    # 会兜住随后的重复点击，不靠这里省请求。
     _no_retry = {
         "blocked_url",
         "unsupported_url",

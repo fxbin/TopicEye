@@ -90,6 +90,12 @@ class ExtractedArticle:
 _refresh_locks: dict[int, asyncio.Lock] = {}
 _refresh_locks_guard: asyncio.Lock | None = None
 _robots_cache: dict[str, tuple[datetime, robotparser.RobotFileParser | None, bool]] = {}
+# 失败冷却负缓存：content_id -> (code, message, status_code, expires_at)。
+# 抓取失败后的冷却期内重抛上次错误、不再外呼源站——被反爬限流的站点
+# （拦截窗口分钟级）经用户反复点击只会加深限流。进程级，与 _robots_cache
+# 同口径；refresh=true 绕过，成功读取后清除。
+_failure_cooldown: dict[int, tuple[str, str, int, datetime]] = {}
+_FAILURE_COOLDOWN_MAX_ENTRIES = 512
 
 
 async def _refresh_lock_for(content_id: int) -> asyncio.Lock:
@@ -922,6 +928,28 @@ async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]
         raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法连接，请打开原文。", 502) from e
 
 
+def _remember_failure(content_id: int, error: ArticleReaderError, now: datetime) -> None:
+    cooldown = timedelta(seconds=settings.ARTICLE_READER_FAILURE_COOLDOWN_SECONDS)
+    if cooldown > timedelta(0):
+        _failure_cooldown[content_id] = (error.code, error.message, error.status_code, now + cooldown)
+    if len(_failure_cooldown) > _FAILURE_COOLDOWN_MAX_ENTRIES:
+        for stale_id in [cid for cid, (_, _, _, until) in _failure_cooldown.items() if until <= now]:
+            _failure_cooldown.pop(stale_id, None)
+
+
+def _raise_if_cooling_down(content_id: int, now: datetime, *, refresh: bool) -> None:
+    if refresh:
+        return
+    cached = _failure_cooldown.get(content_id)
+    if cached is None:
+        return
+    code, message, status_code, until = cached
+    if until <= now:
+        _failure_cooldown.pop(content_id, None)
+        return
+    raise ArticleReaderError(code, message, status_code)
+
+
 def _snapshot_is_fresh(snapshot: ArticleSnapshot, now: datetime) -> bool:
     return snapshot.fetch_status == "ready" and as_utc(snapshot.expires_at) > now
 
@@ -981,8 +1009,10 @@ async def read_or_create_snapshot(
 ) -> tuple[ArticleSnapshot, str]:
     """Return a cached reader snapshot or safely generate a fresh one."""
     now = _utcnow()
+    _raise_if_cooling_down(content.id, now, refresh=refresh)
     existing = await db.scalar(select(ArticleSnapshot).where(ArticleSnapshot.content_id == content.id))
     if existing and not refresh and _snapshot_is_fresh(existing, now):
+        _failure_cooldown.pop(content.id, None)
         return existing, "hit"
 
     lock = await _refresh_lock_for(content.id)
@@ -991,6 +1021,7 @@ async def read_or_create_snapshot(
         existing = await db.scalar(select(ArticleSnapshot).where(ArticleSnapshot.content_id == content.id))
         now = _utcnow()
         if existing and not refresh and _snapshot_is_fresh(existing, now):
+            _failure_cooldown.pop(content.id, None)
             return existing, "hit"
 
         if not settings.ARTICLE_READER_ENABLED:
@@ -1003,6 +1034,7 @@ async def read_or_create_snapshot(
             try:
                 extracted, fetch_tier = await _fetch_remote_article_tiered(content.url)
             except ArticleReaderError as e:
+                _remember_failure(content.id, e, _utcnow())
                 fetch_elapsed_ms = int((time.perf_counter() - fetch_started) * 1000)
                 await record_reader_event(
                     db,
@@ -1045,6 +1077,7 @@ async def read_or_create_snapshot(
             extraction_method=fetch_tier,
             duration_ms=fetch_elapsed_ms,
         )
+        _failure_cooldown.pop(content.id, None)
         return existing, "miss"
 
 

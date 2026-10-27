@@ -108,6 +108,9 @@ class Settings(BaseSettings):
     ARTICLE_READER_MAX_REDIRECTS: int = 3
     ARTICLE_READER_SNAPSHOT_TTL_SECONDS: int = 86_400
     ARTICLE_READER_ROBOTS_CACHE_SECONDS: int = 3_600
+    # 抓取失败后的冷却窗口：期内重复点击直接重抛上次错误，不再外呼源站
+    # （反爬限流的拦截窗口是分钟级，重试只会加深限流）。0 关闭冷却。
+    ARTICLE_READER_FAILURE_COOLDOWN_SECONDS: int = 120
     ARTICLE_READER_ALLOWED_HOSTS: str = ""
     # Comma-separated browser UA pool. Each reader fetch picks one at random
     # to reduce per-request fingerprinting by WAF / bot-detection systems.

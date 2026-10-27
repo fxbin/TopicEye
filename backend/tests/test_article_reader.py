@@ -484,3 +484,166 @@ async def test_curl_fallback_validates_redirect_before_following(monkeypatch):
         await article_reader._fetch_with_curl_cffi("https://example.com/story")
     assert exc_info.value.code == "blocked_url"
     assert requested == ["https://example.com/story"]
+
+
+async def _cooldown_test_session():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    return engine, session_factory
+
+
+@pytest.mark.asyncio
+async def test_reader_failure_cooldown_suppresses_repeat_fetches(monkeypatch):
+    engine, session_factory = await _cooldown_test_session()
+    article_reader._failure_cooldown.clear()
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_FAILURE_COOLDOWN_SECONDS", 120)
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=701,
+                title="冷却样本",
+                url="https://example.com/cooldown",
+                source_name="测试信源",
+                source_type="RSS",
+                status=ContentStatus.ANALYZED,
+            )
+        )
+        await db.commit()
+        content = await db.scalar(select(ContentItem).where(ContentItem.id == 701))
+
+        fetch_calls: list[str] = []
+
+        async def challenged(url: str):
+            fetch_calls.append(url)
+            raise article_reader.ArticleReaderError(
+                "anti_bot_challenge", "该来源暂时限制了访问，请稍后重试或打开原文查看。", 503
+            )
+
+        monkeypatch.setattr(article_reader, "_fetch_remote_article_tiered", challenged)
+
+        for _ in range(2):
+            with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+                await article_reader.read_or_create_snapshot(db, content)
+            assert exc_info.value.code == "anti_bot_challenge"
+
+        # 冷却期内第二次读取直接重抛缓存错误，没有第二次外呼
+        assert fetch_calls == ["https://example.com/cooldown"]
+
+        # refresh=true 绕过冷却，允许用户强制重试
+        with pytest.raises(article_reader.ArticleReaderError):
+            await article_reader.read_or_create_snapshot(db, content, refresh=True)
+        assert len(fetch_calls) == 2
+
+    article_reader._failure_cooldown.clear()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reader_failure_cooldown_clears_on_success(monkeypatch):
+    engine, session_factory = await _cooldown_test_session()
+    article_reader._failure_cooldown.clear()
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_FAILURE_COOLDOWN_SECONDS", 120)
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=702,
+                title="恢复样本",
+                url="https://example.com/recovered",
+                source_name="测试信源",
+                source_type="RSS",
+                status=ContentStatus.ANALYZED,
+            )
+        )
+        await db.commit()
+        content = await db.scalar(select(ContentItem).where(ContentItem.id == 702))
+
+        fetch_calls = 0
+
+        async def flaky(url: str):
+            nonlocal fetch_calls
+            fetch_calls += 1
+            if fetch_calls == 1:
+                raise article_reader.ArticleReaderError("anti_bot_challenge", "受限", 503)
+            return (
+                article_reader.ExtractedArticle(
+                    canonical_url=url,
+                    title="恢复后的文章",
+                    byline=None,
+                    published_at=None,
+                    excerpt=None,
+                    text_content="恢复后的正文。" * 30,
+                    content_blocks=[],
+                    extraction_method="http",
+                ),
+                "httpx",
+            )
+
+        monkeypatch.setattr(article_reader, "_fetch_remote_article_tiered", flaky)
+
+        with pytest.raises(article_reader.ArticleReaderError):
+            await article_reader.read_or_create_snapshot(db, content)
+
+        # 第二次抓取成功（refresh 绕过冷却强制重试）→ 快照落库、冷却清除
+        snapshot, cache_status = await article_reader.read_or_create_snapshot(db, content, refresh=True)
+        assert cache_status == "miss"
+        assert snapshot.fetch_status == "ready"
+
+        # 冷却已清除：再次失败会真实外呼（fetch_calls 递增）而非重抛旧错误
+        fetch_calls_force_fail = {"n": 2}
+
+        async def always_fail(url: str):
+            fetch_calls_force_fail["n"] += 1
+            raise article_reader.ArticleReaderError("upstream_unavailable", "来源不可用", 502)
+
+        monkeypatch.setattr(article_reader, "_fetch_remote_article_tiered", always_fail)
+        with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+            await article_reader.read_or_create_snapshot(db, content, refresh=True)
+        assert exc_info.value.code == "upstream_unavailable"
+        assert fetch_calls_force_fail["n"] == 3
+
+    article_reader._failure_cooldown.clear()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reader_failure_cooldown_disabled_at_zero(monkeypatch):
+    engine, session_factory = await _cooldown_test_session()
+    article_reader._failure_cooldown.clear()
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_FAILURE_COOLDOWN_SECONDS", 0)
+
+    async with session_factory() as db:
+        db.add(
+            ContentItem(
+                id=703,
+                title="零冷却样本",
+                url="https://example.com/no-cooldown",
+                source_name="测试信源",
+                source_type="RSS",
+                status=ContentStatus.ANALYZED,
+            )
+        )
+        await db.commit()
+        content = await db.scalar(select(ContentItem).where(ContentItem.id == 703))
+
+        fetch_calls = 0
+
+        async def failing(url: str):
+            nonlocal fetch_calls
+            fetch_calls += 1
+            raise article_reader.ArticleReaderError("anti_bot_challenge", "受限", 503)
+
+        monkeypatch.setattr(article_reader, "_fetch_remote_article_tiered", failing)
+
+        for _ in range(2):
+            with pytest.raises(article_reader.ArticleReaderError):
+                await article_reader.read_or_create_snapshot(db, content)
+
+        # 冷却关闭：每次读取都真实外呼
+        assert fetch_calls == 2
+        assert article_reader._failure_cooldown == {}
+
+    await engine.dispose()

@@ -3,34 +3,33 @@
 /**
  * 模型编辑表单（add/edit 双模式，AdminModal 弹窗承载）。
  *
- * 从 app/model-eval/page.tsx 抽出的组件，v2 交互改版：
- * - 承载形态：内联 Panel 改为 AdminModal 弹窗，内容区独立滚动，底部操作栏常驻
- * - 预设选择（4 个供应商 + 高级 LiteLLM 路由）
- * - 模型目录接入：provider 分组下拉（models.dev 精选）+ Model ID datalist
- *   自动补全 + 价格/上下文预填；目录不可用时回落内置 PROVIDER_PRESETS
- * - API Key / Base URL / Model ID / 显示名称
- * - 路由参数（priority / cooldown / routing group / family / channel）
- * - 性能参数（temperature / max_tokens / rpm）
- * - 费用参数（input / output / cache hit 每百万 tokens 单价）
- * - 推荐参数 hint + restore defaults 按钮
+ * v4 流程改版（渠道优先）：
+ * - 承载形态不变：AdminModal 弹窗，内容区独立滚动，底部操作栏常驻
+ * - 添加流程从「4 张预设卡片开场」改为 用户描述的自然顺序：
+ *   选择渠道 → 选择模型（目录下拉或自定义）→ 接入协议（API Base）→ API Key；
+ *   可选项（显示名称 / 描述 / 专家参数）随后。编辑模式同构，字段预填。
+ * - 渠道下拉即原专家参数里的 Provider 选择（models.dev 目录精选分组 +
+ *   内置预设回落），提前为主步骤；专家参数区不再重复 Provider 字段
+ * - preset_key 不再随创建 payload 发送：预设卡片的参数捆绑随卡片一起退役，
+ *   参数默认走 catalog 通用默认值（presetNumberDefault 的 catalog 回退）
+ * - v3 密度收敛保留：每字段一行式 11px 提示、三个单价并排、全弹窗无 10px 小字
  *
- * 交互约定：
- * - 必填校验失败时字段下方红字提示（首次点击保存后显示），不再静默禁用保存按钮
- * - 保存失败在表单内错误条展示，不再使用浏览器 alert()
- * - 切换预设保留已填写的显示名称与 API Key
+ * 交互约定（v2 契约不变）：
+ * - 必填校验失败时字段下方红字提示（首次点击保存后显示），不静默禁用保存按钮
+ * - 保存失败在表单内错误条展示；切换渠道保留已填的显示名称与 API Key
  * - 编辑模式跳过预设目录拉取，打开即可保存
  * - 有未保存修改时关闭需二次确认（内联确认条）
  * - onClose(saved, createdId)：保存成功时 saved=true，新增成功时附带 createdId
  *   供调用方自动触发连接测试；取消时无参数
  *
- * 状态：catalog（拉取预设）/ presetKey / form（17 字段）/ saving /
- * saveError / submitAttempted / dirty / confirmDiscard。
+ * 状态：catalog（参数帮助文案）/ form（17 字段）/ saving / saveError /
+ * submitAttempted / dirty / confirmDiscard / providerSelectKey（渠道下拉值）/
+ * catalogProviders + catalogModels（目录数据，价格/上下文预填）。
  * ModelsTab 用此组件实现"添加模型"和"编辑模型"两种模式。
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  CheckCircle2,
   Loader2,
   RefreshCw,
   SlidersHorizontal,
@@ -50,11 +49,9 @@ import {
   PROVIDER_PRESETS,
   formatPresetValue,
   formatTokens,
-  parameterChangeHint,
   parameterMeta,
   parseOptionalNumber,
   presetNumberDefault,
-  presetRequires,
 } from './_model-eval-utils';
 
 /**
@@ -63,15 +60,27 @@ import {
  * 在高视口浪费空间、矮视口裁切输入框。
  */
 const MODAL_BODY_MAX_HEIGHT = 'calc(100dvh - 230px)';
-/** 弹窗宽度：兼顾预设卡片双列排布与表单字段密度 */
+/** 弹窗宽度：兼顾渠道/模型字段与专家参数的表单密度 */
 const MODAL_MAX_WIDTH = 720;
+
+/**
+ * 专家参数字段的一行式提示：说明 + 默认/范围元信息合并为一行 11px。
+ * 此前每字段挂「元信息加粗行 + 说明行 + 需要调整行」三行 10px 小字，
+ * 多字段的提示连成小字墙，扫读负担远大于信息价值。
+ */
+function ParamHint({ catalog, field, fallback }: { catalog: LlmModelPresetCatalog | null; field: string; fallback: string }) {
+  return (
+    <div className="mt-1 text-[11px] leading-4 text-ink-500">
+      {catalog?.parameter_help?.[field]?.plain || fallback}
+      {' · '}
+      {parameterMeta(catalog, field)}
+    </div>
+  );
+}
 
 export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null; onClose: (saved?: boolean, createdId?: number) => void }) {
   const isEdit = !!model;
   const [catalog, setCatalog] = useState<LlmModelPresetCatalog | null>(null);
-  const [loadingCatalog, setLoadingCatalog] = useState(!isEdit);
-  const [presetKey, setPresetKey] = useState('deepseek_balanced');
-  const [showAdvanced, setShowAdvanced] = useState(isEdit);
   const [form, setForm] = useState({
     name: model?.name || '',
     provider: model?.provider || '',
@@ -89,7 +98,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     requests_per_minute: model?.requests_per_minute ?? 30,
     description: model?.description || '',
     enabled: model?.enabled ?? true,
-    // 定价默认来自后端预设 defaults（applyPreset）或模型目录预填，
+    // 定价默认来自模型目录预填（命中目录模型时），
     // 前端不再硬编码厂商价格
     cost_per_1m_input: model?.cost_per_1m_input?.toString() ?? '',
     cost_per_1m_input_cache_hit: model?.cost_per_1m_input_cache_hit?.toString() ?? '',
@@ -100,21 +109,16 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  // ── 模型目录（models.dev 缓存）：provider 分组下拉 + Model ID datalist + 价格预填 ──
+  const [showAdvanced, setShowAdvanced] = useState(isEdit);
+  // ── 模型目录（models.dev 缓存）：渠道分组下拉 + 模型 datalist + 价格预填 ──
   const [catalogProviders, setCatalogProviders] = useState<ModelCatalogProvidersResponse | null>(null);
   const [catalogModels, setCatalogModels] = useState<ModelCatalogModelItem[]>([]);
   // 下拉 value 用 models.dev id（唯一）；表单保存的 provider 是 litellm provider
   const [providerSelectKey, setProviderSelectKey] = useState('');
-  const selectedPreset = useMemo(
-    () => catalog?.presets.find((item) => item.key === presetKey),
-    [catalog, presetKey],
-  );
   const currentPreset = PROVIDER_PRESETS[form.provider] || PROVIDER_PRESETS.custom;
-  const needsModelId = isEdit || presetRequires(selectedPreset, 'model_id') || presetKey === 'custom';
-  const needsApiBase = presetRequires(selectedPreset, 'api_base') || presetKey === 'openai_compatible';
 
   /**
-   * Provider 下拉统一选项：目录精选分组优先；目录不可用或未覆盖时回落
+   * 渠道下拉统一选项：目录精选分组优先；目录不可用或未覆盖时回落
    * 内置 PROVIDER_PRESETS（离线兜底）。value 是 models.dev id（唯一键），
    * litellm provider 从 featured 项取，保存时再映射。
    */
@@ -136,20 +140,22 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   }, [catalogProviders]);
   const providerOptionsByKey = useMemo(() => new Map(providerOptions.map((o) => [o.value, o])), [providerOptions]);
 
-  // 下拉高亮与 form.provider（litellm 值）映射失配时反查同步；编辑模式初始也走这里
+  // 下拉高亮与 form.provider（litellm 值）映射失配时反查同步；编辑模式初始也走这里。
+  // 非目录渠道的 litellm provider 直接等于选项 value（custom 渠道落 provider="custom"，
+  // 与后端 custom 预设约定一致：裸模型名按 OpenAI 兼容网关处理）
   useEffect(() => {
     setProviderSelectKey((prev) => {
       const option = providerOptionsByKey.get(prev);
-      const optionProvider = option?.featured?.litellm_provider ?? (prev === 'custom' ? '' : prev);
+      const optionProvider = option?.featured?.litellm_provider ?? prev;
       if (optionProvider === (form.provider || '')) return prev;
       const next = providerOptions.find(
-        (o) => (o.featured?.litellm_provider ?? (o.value === 'custom' ? '' : o.value)) === (form.provider || ''),
+        (o) => (o.featured?.litellm_provider ?? o.value) === (form.provider || ''),
       );
       return next?.value ?? 'custom';
     });
   }, [form.provider, providerOptions, providerOptionsByKey]);
 
-  // 选中精选 provider 后拉取目录模型（datalist 数据源）；失败静默，仍可手填
+  // 选中目录渠道后拉取目录模型（datalist 数据源）；失败静默，仍可手填
   useEffect(() => {
     const option = providerOptionsByKey.get(providerSelectKey);
     if (!option?.featured) {
@@ -170,7 +176,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     };
   }, [providerSelectKey, providerOptionsByKey]);
 
-  // 目录 provider 清单（添加/编辑两种模式都要；失败回落内置预设）
+  // 目录渠道清单（添加/编辑两种模式都要；失败回落内置预设渠道）
   useEffect(() => {
     let cancelled = false;
     modelsApi
@@ -184,15 +190,35 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     };
   }, []);
 
+  // 参数帮助文案（专家参数的一行式提示与恢复默认用）；失败回落组件内置文案
+  useEffect(() => {
+    let cancelled = false;
+    modelsApi
+      .presets()
+      .then((res) => {
+        if (!cancelled) setCatalog(res);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /** 当前 Model ID 在目录中的命中项（价格/上下文参考提示用） */
   const matchedCatalogModel = useMemo(
     () => catalogModels.find((m) => m.model_id === form.model_id) ?? null,
     [catalogModels, form.model_id],
   );
 
+  /** 当前渠道的默认接入地址：目录渠道取 models.dev 网关，内置渠道取预设 baseUrl */
+  const channelDefaultBase = useMemo(() => {
+    const option = providerOptionsByKey.get(providerSelectKey);
+    return option?.featured?.default_api_base ?? (providerSelectKey && providerSelectKey !== 'custom' ? PROVIDER_PRESETS[providerSelectKey]?.baseUrl : undefined);
+  }, [providerOptionsByKey, providerSelectKey]);
+
   /**
    * 用户输入统一入口：任何字段编辑都会标记表单为脏，并清除上一次的保存错误，
-   * 供关闭时的放弃确认使用。程序化变更（初始化预设、恢复默认）不经过此入口。
+   * 供关闭时的放弃确认使用。程序化变更（渠道联动预填、恢复默认）不经过此入口。
    */
   const patchForm = (patch: Partial<typeof form>) => {
     setDirty(true);
@@ -200,94 +226,31 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     setForm((prev) => ({ ...prev, ...patch }));
   };
 
-  const applyPreset = useCallback((nextKey: string, nextCatalog: LlmModelPresetCatalog | null) => {
-    const preset = nextCatalog?.presets.find((item) => item.key === nextKey);
-    if (!preset) return;
-    const defaults = preset.defaults || {};
-    setPresetKey(nextKey);
-    setForm((prev) => ({
-      ...prev,
-      name: prev.name,
-      provider: preset.provider,
-      model_id: preset.model_id || '',
-      api_base: preset.api_base || '',
-      routing_group: String(defaults.routing_group || 'default'),
-      model_family: preset.model_family || '',
-      channel_name: preset.channel_name || '',
-      routing_priority: presetNumberDefault(preset, nextCatalog, 'routing_priority', 100),
-      cooldown_seconds: presetNumberDefault(preset, nextCatalog, 'cooldown_seconds', 300),
-      temperature: presetNumberDefault(preset, nextCatalog, 'temperature', 0.3),
-      max_tokens: presetNumberDefault(preset, nextCatalog, 'max_tokens', 2000),
-      requests_per_minute: presetNumberDefault(preset, nextCatalog, 'requests_per_minute', 30),
-      description: preset.description || '',
-      enabled: true,
-      cost_per_1m_input: defaults.cost_per_1m_input !== undefined && defaults.cost_per_1m_input !== null ? String(defaults.cost_per_1m_input) : '',
-      cost_per_1m_input_cache_hit: defaults.cost_per_1m_input_cache_hit !== undefined && defaults.cost_per_1m_input_cache_hit !== null ? String(defaults.cost_per_1m_input_cache_hit) : '',
-      cost_per_1m_output: defaults.cost_per_1m_output !== undefined && defaults.cost_per_1m_output !== null ? String(defaults.cost_per_1m_output) : '',
-    }));
-  }, []);
-
   const restoreRecommendedDefaults = useCallback(() => {
     setDirty(true);
     setSaveError('');
     setForm((prev) => ({
       ...prev,
-      routing_priority: presetNumberDefault(selectedPreset, catalog, 'routing_priority', 100),
-      cooldown_seconds: presetNumberDefault(selectedPreset, catalog, 'cooldown_seconds', 300),
-      temperature: presetNumberDefault(selectedPreset, catalog, 'temperature', 0.3),
-      max_tokens: presetNumberDefault(selectedPreset, catalog, 'max_tokens', 2000),
-      requests_per_minute: presetNumberDefault(selectedPreset, catalog, 'requests_per_minute', 30),
+      routing_priority: presetNumberDefault(undefined, catalog, 'routing_priority', 100),
+      cooldown_seconds: presetNumberDefault(undefined, catalog, 'cooldown_seconds', 300),
+      temperature: presetNumberDefault(undefined, catalog, 'temperature', 0.3),
+      max_tokens: presetNumberDefault(undefined, catalog, 'max_tokens', 2000),
+      requests_per_minute: presetNumberDefault(undefined, catalog, 'requests_per_minute', 30),
     }));
-  }, [catalog, selectedPreset]);
-
-  const handlePresetSelection = (nextKey: string) => {
-    // 初始化目录时的 applyPreset 不应触发放弃确认；只有用户主动选择才算修改。
-    setDirty(true);
-    setSaveError('');
-    applyPreset(nextKey, catalog);
-  };
-
-  useEffect(() => {
-    if (isEdit) return;
-    let cancelled = false;
-    setLoadingCatalog(true);
-    modelsApi.presets()
-      .then((res) => {
-        if (cancelled) return;
-        setCatalog(res);
-        const nextKey = res.presets.some((item) => item.key === presetKey) ? presetKey : res.presets[0]?.key || 'custom';
-        applyPreset(nextKey, res);
-      })
-      .catch((e) => {
-        console.error('fetchModelPresets', e);
-        if (!cancelled) {
-          setForm((prev) => ({
-            ...prev,
-            provider: prev.provider || 'openai',
-            api_base: prev.api_base || PROVIDER_PRESETS.openai.baseUrl,
-            requests_per_minute: prev.requests_per_minute || 30,
-          }));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingCatalog(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [applyPreset, isEdit]);
+  }, [catalog]);
 
   /**
-   * 必填字段校验：显示名称（编辑模式）与 Model ID（两种模式都要求，
-   * 预设已内置 Model ID 时由预设自动填充，不会拦截用户）。
+   * 必填字段校验：显示名称（编辑模式）、渠道（添加模式）与 Model ID（两种模式都要求）。
+   * 渠道不选直接保存会打后端 422（provider 必填），这里前置为内联红字提示。
    * 结果在首次保存尝试后展示于字段下方。
    */
   const fieldErrors = useMemo(() => {
-    const errors: { name?: string; model_id?: string } = {};
+    const errors: { name?: string; provider?: string; model_id?: string } = {};
     if (isEdit && !form.name.trim()) errors.name = '请填写显示名称';
-    if (!form.model_id.trim()) errors.model_id = '请填写 Model ID';
+    if (!isEdit && !form.provider.trim()) errors.provider = '请先选择渠道';
+    if (!form.model_id.trim()) errors.model_id = '请填写模型 ID';
     return errors;
-  }, [form.model_id, form.name, isEdit]);
+  }, [form.model_id, form.name, form.provider, isEdit]);
 
   const handleSave = async () => {
     setSubmitAttempted(true);
@@ -296,10 +259,11 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     setSaveError('');
     try {
       const payload: Record<string, unknown> = { ...form };
-      if (!isEdit) payload.preset_key = presetKey;
       payload.cost_per_1m_input = parseOptionalNumber(form.cost_per_1m_input);
       payload.cost_per_1m_input_cache_hit = parseOptionalNumber(form.cost_per_1m_input_cache_hit);
       payload.cost_per_1m_output = parseOptionalNumber(form.cost_per_1m_output);
+      // 创建时后端必填 name；未填则用模型名（与占位文案一致）
+      if (!payload.name && !isEdit) payload.name = form.model_id;
       if (!payload.name) delete payload.name;
       if (!payload.api_key) delete payload.api_key;
       if (!payload.api_base) delete payload.api_base;
@@ -332,7 +296,8 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     const option = providerOptionsByKey.get(key);
     if (!option) return;
     const featured = option.featured;
-    const nextProvider = featured?.litellm_provider ?? (key === 'custom' ? '' : key);
+    // custom 渠道落 provider="custom"（后端约定），base 清空由用户填
+    const nextProvider = featured?.litellm_provider ?? key;
     setProviderSelectKey(key);
     setDirty(true);
     setSaveError('');
@@ -364,144 +329,120 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     }));
   };
 
-  const saveDisabled = saving || loadingCatalog;
+  const saveDisabled = saving;
 
   return (
     <AdminModal title={isEdit ? '编辑模型' : '添加模型'} onClose={handleClose} maxWidth={MODAL_MAX_WIDTH}>
-      <div className="-mt-3 mb-3 text-xs leading-5 text-ink-500">
-        {isEdit ? '修改已有模型配置。API Key 留空时不会覆盖原密钥。' : '推荐先选预设，只填写 API Key；参数默认值已经内置。'}
-      </div>
+      {isEdit ? (
+        <div className="-mt-3 mb-3 text-xs leading-5 text-ink-500">
+          修改已有模型配置。API Key 留空时不会覆盖原密钥。
+        </div>
+      ) : (
+        <div className="-mt-3 mb-4 rounded-xs border border-teal-border bg-teal-light px-3 py-2 text-xs font-bold leading-5 text-teal">
+          选渠道、选模型、填 API Key 即可接入；路由与性能参数已有合理默认，需要时再展开专家参数。
+        </div>
+      )}
 
       <div className="overflow-y-auto pr-1" style={{ maxHeight: MODAL_BODY_MAX_HEIGHT }}>
-        {!isEdit && catalog?.help.beginner_tip && (
-          <div className="mb-4 rounded-xs border border-teal-border bg-teal-light px-3 py-2 text-xs font-bold leading-5 text-teal">
-            {catalog.help.beginner_tip}
+        {/* ── 主流程：渠道 → 模型 → 接入协议 ── */}
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <FieldLabel htmlFor="model-provider" required>1 · 选择渠道</FieldLabel>
+            <SelectInput id="model-provider" value={providerSelectKey || ''} aria-invalid={submitAttempted && !!fieldErrors.provider} onChange={(e) => handleProviderSelect(e.target.value)}>
+              {!providerSelectKey && <option value="">选择渠道…</option>}
+              {Array.from(new Set(providerOptions.map((o) => o.group))).map((group) => (
+                <optgroup key={group} label={group}>
+                  {providerOptions.filter((o) => o.group === group).map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </SelectInput>
+            {submitAttempted && fieldErrors.provider && (
+              <div role="alert" className="mt-1 text-[11px] font-bold leading-4 text-red">{fieldErrors.provider}</div>
+            )}
+            <div className="mt-1 text-[11px] leading-4 text-ink-500">
+              当前 LiteLLM 路由前缀：<span className="font-bold text-ink-700">{form.provider || '未设置'}</span>
+              {providerSelectKey === 'custom' && '；可填裸模型名或完整 LiteLLM 路由，OpenAI 兼容网关在此填写 Base URL'}
+            </div>
           </div>
-        )}
 
-        {!isEdit && (
-          <div className="mb-4">
-            {loadingCatalog ? (
-              <div className="flex min-h-[112px] items-center justify-center gap-2 rounded-sm border border-ink-200 bg-ink-100 text-sm font-bold text-ink-500">
-                <Loader2 size={15} className="animate-spin" />
-                正在加载模型预设
+          <div>
+            <FieldLabel htmlFor="model-id" required>2 · 选择模型（目录可选，支持自定义）</FieldLabel>
+            <TextInput id="model-id" required list="model-catalog-models" aria-invalid={submitAttempted && !!fieldErrors.model_id} aria-describedby={submitAttempted && fieldErrors.model_id ? 'model-id-error' : undefined} value={form.model_id} onChange={(e) => handleModelIdChange(e.target.value)} placeholder={currentPreset.modelPlaceholder} />
+            <datalist id="model-catalog-models">
+              {catalogModels.map((m) => (
+                <option key={`${m.provider}/${m.model_id}`} value={m.model_id}>
+                  {`${m.name ?? m.model_id}${m.context_window ? ` · ${formatTokens(m.context_window)} ctx` : ''}${m.status && m.status !== 'ga' ? ` · ${m.status}` : ''}`}
+                </option>
+              ))}
+            </datalist>
+            {submitAttempted && fieldErrors.model_id ? (
+              <div id="model-id-error" role="alert" className="mt-1 text-[11px] font-bold leading-4 text-red">{fieldErrors.model_id}</div>
+            ) : matchedCatalogModel ? (
+              <div className="mt-1 text-[11px] font-bold leading-4 text-teal">
+                目录参考：上下文 {formatTokens(matchedCatalogModel.context_window || 0)}
+                {matchedCatalogModel.max_output_tokens ? ` · 输出上限 ${formatTokens(matchedCatalogModel.max_output_tokens)}` : ''}
+                {matchedCatalogModel.cost_per_1m_input != null
+                  ? ` · $${matchedCatalogModel.cost_per_1m_input}/${matchedCatalogModel.cost_per_1m_output ?? '-'} 每百万 tokens`
+                  : ''}
+                （models.dev，费用与上下文窗口已预填，超出窗口的调用会自动跳过该路由）
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {catalog?.presets.map((preset) => {
-                  const active = preset.key === presetKey;
-                  return (
-                    <button
-                      key={preset.key}
-                      type="button"
-                      onClick={() => handlePresetSelection(preset.key)}
-                      aria-pressed={active}
-                      className={cx(
-                        'min-h-[126px] rounded-sm border bg-white p-3 text-left transition',
-                        active ? 'border-primary-border bg-primary-light' : 'border-ink-200 hover:border-primary-border',
-                      )}
-                    >
-                      <div className="mb-2 flex items-start justify-between gap-2">
-                        <div className={cx('text-sm font-black', active ? 'text-primary' : 'text-ink-900')}>{preset.label}</div>
-                        {active && <CheckCircle2 size={16} className="shrink-0 text-primary" />}
-                      </div>
-                      <div className="text-xs leading-5 text-ink-500">{preset.description}</div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        {['temperature', 'max_tokens'].map((field) => (
-                          <span key={field} className="rounded-xs bg-white px-2 py-1 text-[10px] font-black text-ink-500">
-                            {catalog?.parameter_help?.[field]?.label || field} {formatPresetValue(preset.defaults[field] ?? catalog?.defaults[field])}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {preset.recommended_for.slice(0, 3).map((item) => (
-                          <span key={item} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-ink-500">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="mt-1 text-[11px] leading-4 text-ink-500">
+                {catalogModels.length > 0 ? '可从下拉选择目录模型，或手填自定义模型名 / 完整 LiteLLM 路由。' : '目录暂无该渠道模型，可直接手填模型名或完整 LiteLLM 路由。'}
               </div>
             )}
           </div>
-        )}
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div>
-            <FieldLabel htmlFor="model-api-key">API Key {isEdit ? '(留空不修改)' : ''}</FieldLabel>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <FieldLabel htmlFor="model-api-base">3 · API Base URL（接入协议）</FieldLabel>
+              {channelDefaultBase && channelDefaultBase !== form.api_base && (
+                <button
+                  type="button"
+                  onClick={() => patchForm({ api_base: channelDefaultBase })}
+                  className="rounded-full border border-primary-border bg-primary-light px-2 py-0.5 text-[11px] font-black text-primary"
+                >
+                  使用内置
+                </button>
+              )}
+            </div>
+            <TextInput id="model-api-base" value={form.api_base} onChange={(e) => patchForm({ api_base: e.target.value })} placeholder="https://api.example.com/v1 或 http://host.docker.internal:11434/v1" />
+            {/\/\/(localhost|127\.0\.0\.1)([:/]|\s|$)/.test(form.api_base) && (
+              <div className="mt-1 rounded-xs border border-amber-border bg-amber-light px-2 py-1 text-[11px] font-bold leading-4 text-amber">
+                检测到 localhost：后端跑在 Docker 内时 localhost 指向容器自身，调用时会自动转换为 host.docker.internal；若仍连不上，请直接填写 http://host.docker.internal:端口。
+              </div>
+            )}
+            {channelDefaultBase
+              ? <div className="mt-1 text-[11px] leading-4 text-ink-500">渠道默认：{channelDefaultBase}{form.api_base && form.api_base !== channelDefaultBase && '（当前使用自定义地址）'}</div>
+              : <div className="mt-1 text-[11px] leading-4 text-ink-500">OpenAI 兼容网关通常填写 /v1 结尾的地址；本地推理服务（Ollama / LM Studio 等）用 http://host.docker.internal:端口/v1。</div>}
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="model-api-key">4 · API Key {isEdit ? '(留空不修改)' : ''}</FieldLabel>
             <TextInput id="model-api-key" type="password" value={form.api_key} onChange={(e) => patchForm({ api_key: e.target.value })} placeholder="粘贴供应商 API Key" autoComplete="off" />
-            {(needsApiBase || presetKey === 'openai_compatible') && (
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">本地推理服务不校验 Key 时，可填 ollama 等任意占位值。</div>
+            {providerSelectKey === 'custom' && (
+              <div className="mt-1 text-[11px] leading-4 text-ink-500">本地推理服务不校验 Key 时，可填 ollama 等任意占位值。</div>
             )}
           </div>
-          <div>
-            <FieldLabel htmlFor="model-name" required={isEdit}>显示名称</FieldLabel>
-            <TextInput id="model-name" required={isEdit} aria-invalid={submitAttempted && !!fieldErrors.name} aria-describedby={submitAttempted && fieldErrors.name ? 'model-name-error' : undefined} value={form.name} onChange={(e) => patchForm({ name: e.target.value })} placeholder={selectedPreset?.defaults.name ? String(selectedPreset.defaults.name) : '不填则使用预设名称'} />
-            {submitAttempted && fieldErrors.name && <div id="model-name-error" role="alert" className="mt-1 text-[10px] font-bold leading-4 text-red">{fieldErrors.name}</div>}
-          </div>
-          {(needsModelId || showAdvanced || (submitAttempted && !!fieldErrors.model_id)) && (
+
+          {/* ── 可选信息 ── */}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div>
-              <FieldLabel htmlFor="model-id" required>Model ID</FieldLabel>
-              <TextInput id="model-id" required list="model-catalog-models" aria-invalid={submitAttempted && !!fieldErrors.model_id} aria-describedby={submitAttempted && fieldErrors.model_id ? 'model-id-error' : undefined} value={form.model_id} onChange={(e) => handleModelIdChange(e.target.value)} placeholder={selectedPreset?.model_id || selectedPreset?.model_id_placeholder || `如 ${currentPreset.modelPlaceholder}`} />
-              <datalist id="model-catalog-models">
-                {catalogModels.map((m) => (
-                  <option key={`${m.provider}/${m.model_id}`} value={m.model_id}>
-                    {`${m.name ?? m.model_id}${m.context_window ? ` · ${formatTokens(m.context_window)} ctx` : ''}${m.status && m.status !== 'ga' ? ` · ${m.status}` : ''}`}
-                  </option>
-                ))}
-              </datalist>
-              {submitAttempted && fieldErrors.model_id ? (
-                <div id="model-id-error" role="alert" className="mt-1 text-[10px] font-bold leading-4 text-red">{fieldErrors.model_id}</div>
-              ) : matchedCatalogModel ? (
-                <div className="mt-1 text-[10px] font-bold leading-4 text-teal">
-                  目录参考：上下文 {formatTokens(matchedCatalogModel.context_window || 0)}
-                  {matchedCatalogModel.max_output_tokens ? ` · 输出上限 ${formatTokens(matchedCatalogModel.max_output_tokens)}` : ''}
-                  {matchedCatalogModel.cost_per_1m_input != null
-                    ? ` · $${matchedCatalogModel.cost_per_1m_input}/${matchedCatalogModel.cost_per_1m_output ?? '-'} 每百万 tokens`
-                    : ''}
-                  （models.dev，费用与上下文窗口已预填，超出窗口的调用会自动跳过该路由）
-                </div>
-              ) : catalogModels.length > 0 ? (
-                <div className="mt-1 text-[10px] leading-4 text-ink-500">可从下拉选择目录模型，或手填裸模型名 / 完整 LiteLLM 路由。</div>
-              ) : (
-                <div className="mt-1 text-[10px] leading-4 text-ink-500">可填裸模型名，也可直接填完整 LiteLLM 路由。</div>
-              )}
+              <FieldLabel htmlFor="model-name" required={isEdit}>显示名称</FieldLabel>
+              <TextInput id="model-name" required={isEdit} aria-invalid={submitAttempted && !!fieldErrors.name} aria-describedby={submitAttempted && fieldErrors.name ? 'model-name-error' : undefined} value={form.name} onChange={(e) => patchForm({ name: e.target.value })} placeholder="不填则使用模型名" />
+              {submitAttempted && fieldErrors.name && <div id="model-name-error" role="alert" className="mt-1 text-[11px] font-bold leading-4 text-red">{fieldErrors.name}</div>}
             </div>
-          )}
-          {(needsApiBase || showAdvanced) && (
             <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <FieldLabel htmlFor="model-api-base">API Base URL {needsApiBase ? '*' : ''}</FieldLabel>
-                {currentPreset.baseUrl && (
-                  <button
-                    type="button"
-                    onClick={() => patchForm({ api_base: currentPreset.baseUrl })}
-                    className="rounded-full border border-primary-border bg-primary-light px-2 py-0.5 text-[10px] font-black text-primary"
-                  >
-                    使用内置
-                  </button>
-                )}
-              </div>
-              <TextInput id="model-api-base" value={form.api_base} onChange={(e) => patchForm({ api_base: e.target.value })} placeholder={selectedPreset?.api_base_placeholder || 'https://api.example.com/v1 或 http://host.docker.internal:11434/v1'} />
-              {/\/\/(localhost|127\.0\.0\.1)([:/]|\s|$)/.test(form.api_base) && (
-                <div className="mt-1 rounded-xs border border-amber-border bg-amber-light px-2 py-1 text-[10px] font-bold leading-4 text-amber">
-                  检测到 localhost：后端跑在 Docker 内时 localhost 指向容器自身，调用时会自动转换为 host.docker.internal；若仍连不上，请直接填写 http://host.docker.internal:端口。
-                </div>
-              )}
-              {currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-ink-500">内置默认：{currentPreset.baseUrl}</div>}
-              {!currentPreset.baseUrl && <div className="mt-1 text-[10px] leading-4 text-ink-500">OpenAI 兼容网关通常填写 /v1 结尾的地址；本地推理服务（Ollama / LM Studio 等）用 http://host.docker.internal:端口/v1。</div>}
+              <FieldLabel htmlFor="model-description">描述</FieldLabel>
+              <TextInput id="model-description" value={form.description} onChange={(e) => patchForm({ description: e.target.value })} placeholder="可选备注" />
             </div>
-          )}
-          <div>
-            <FieldLabel htmlFor="model-description">描述</FieldLabel>
-            <TextInput id="model-description" value={form.description} onChange={(e) => patchForm({ description: e.target.value })} placeholder="可选备注" />
-          </div>
-          <div className="grid grid-cols-3 gap-2 rounded-xs border border-ink-200 bg-ink-100 p-2.5">
-            <InfoCell label="稳定度" value={formatPresetValue(form.temperature)} />
-            <InfoCell label="输出长度" value={formatPresetValue(form.max_tokens)} />
-            <InfoCell label="请求/分" value={formatPresetValue(form.requests_per_minute)} />
+            <div className="grid grid-cols-3 gap-2 rounded-xs border border-ink-200 bg-ink-100 p-2.5 lg:col-span-2">
+              <InfoCell label="稳定度" value={formatPresetValue(form.temperature)} />
+              <InfoCell label="输出长度" value={formatPresetValue(form.max_tokens)} />
+              <InfoCell label="请求/分" value={formatPresetValue(form.requests_per_minute)} />
+            </div>
           </div>
         </div>
 
@@ -517,41 +458,17 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
           <button
             type="button"
             onClick={restoreRecommendedDefaults}
-            className="inline-flex items-center gap-1.5 rounded-sm border border-ink-200 bg-white px-3 py-2 text-xs font-bold text-ink-700 transition hover:border-primary-border hover:text-primary"
+            className="ml-2 inline-flex items-center gap-1.5 rounded-sm border border-ink-200 bg-white px-3 py-2 text-xs font-bold text-ink-700 transition hover:border-primary-border hover:text-primary"
           >
             <RefreshCw size={14} />
             恢复推荐默认
           </button>
-          {selectedPreset?.help && !showAdvanced && (
-            <span className="ml-2 align-middle text-xs font-bold text-ink-500">{selectedPreset.help}</span>
-          )}
-          {!showAdvanced && (
-            <span className="ml-2 align-middle text-xs font-bold text-teal">
-              保持收起时使用推荐默认参数。
-            </span>
-          )}
         </div>
 
         {showAdvanced && (
           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xs border border-teal-border bg-teal-light px-3 py-2 text-xs font-bold leading-5 text-teal lg:col-span-2">
               {catalog?.help.advanced_tip || '这些参数只在你明确知道要调整模型行为时再改；不确定时点“恢复推荐默认”。'}
-            </div>
-            <div>
-              <FieldLabel htmlFor="model-provider" required>Provider</FieldLabel>
-              <SelectInput id="model-provider" value={providerSelectKey || 'custom'} onChange={(e) => handleProviderSelect(e.target.value)}>
-                {Array.from(new Set(providerOptions.map((o) => o.group))).map((group) => (
-                  <optgroup key={group} label={group}>
-                    {providerOptions.filter((o) => o.group === group).map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </SelectInput>
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
-                当前 LiteLLM 路由前缀：<span className="font-bold text-ink-700">{form.provider || '未设置'}</span>
-                ；OpenAI 兼容网关目录项会自动带出 API Base。
-              </div>
             </div>
             <div>
               <FieldLabel htmlFor="model-routing-group">路由组</FieldLabel>
@@ -564,17 +481,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <div>
               <FieldLabel htmlFor="model-cooldown-seconds">失败冷却秒数</FieldLabel>
               <TextInput id="model-cooldown-seconds" type="number" value={form.cooldown_seconds} onChange={(e) => patchForm({ cooldown_seconds: parseInt(e.target.value, 10) || 300 })} />
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
-                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'cooldown_seconds')}</span>
-                <br />
-                {catalog?.parameter_help?.cooldown_seconds?.plain || catalog?.help.cooldown_tip || '失败后暂停一段时间再重试。'}
-                {parameterChangeHint(catalog, 'cooldown_seconds') && (
-                  <>
-                    <br />
-                    {parameterChangeHint(catalog, 'cooldown_seconds')}
-                  </>
-                )}
-              </div>
+              <ParamHint catalog={catalog} field="cooldown_seconds" fallback={catalog?.help.cooldown_tip || '失败后暂停一段时间再重试。'} />
             </div>
             <div>
               <FieldLabel htmlFor="model-model-family">模型家族</FieldLabel>
@@ -587,32 +494,12 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
             <div>
               <FieldLabel htmlFor="model-temperature">稳定度</FieldLabel>
               <TextInput id="model-temperature" type="number" step="0.1" value={form.temperature} onChange={(e) => patchForm({ temperature: parseFloat(e.target.value) || 0.3 })} />
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
-                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'temperature')}</span>
-                <br />
-                {catalog?.parameter_help?.temperature?.plain || catalog?.help.temperature_tip || '越低越稳定，分析和摘要通常用 0.2-0.4。'}
-                {parameterChangeHint(catalog, 'temperature') && (
-                  <>
-                    <br />
-                    {parameterChangeHint(catalog, 'temperature')}
-                  </>
-                )}
-              </div>
+              <ParamHint catalog={catalog} field="temperature" fallback={catalog?.help.temperature_tip || '越低越稳定，分析和摘要通常用 0.2-0.4。'} />
             </div>
             <div>
               <FieldLabel htmlFor="model-max-tokens">输出长度</FieldLabel>
               <TextInput id="model-max-tokens" type="number" value={form.max_tokens} onChange={(e) => patchForm({ max_tokens: parseInt(e.target.value, 10) || 2000 })} />
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
-                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'max_tokens')}</span>
-                <br />
-                {catalog?.parameter_help?.max_tokens?.plain || catalog?.help.max_tokens_tip || '控制单次输出长度。'}
-                {parameterChangeHint(catalog, 'max_tokens') && (
-                  <>
-                    <br />
-                    {parameterChangeHint(catalog, 'max_tokens')}
-                  </>
-                )}
-              </div>
+              <ParamHint catalog={catalog} field="max_tokens" fallback={catalog?.help.max_tokens_tip || '控制单次输出长度。'} />
             </div>
             <div>
               <FieldLabel htmlFor="model-context-window">上下文窗口</FieldLabel>
@@ -622,41 +509,32 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                 onChange={(e) => patchForm({ context_window: parseOptionalNumber(e.target.value) })}
                 placeholder="目录预填；留空不做调用前预检"
               />
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
+              <div className="mt-1 text-[11px] leading-4 text-ink-500">
                 配置后超出窗口的请求会自动跳过该路由并尝试下一候选；留空表示不预检。
               </div>
             </div>
             <div>
               <FieldLabel htmlFor="model-requests-per-minute">每分钟请求数</FieldLabel>
               <TextInput id="model-requests-per-minute" type="number" value={form.requests_per_minute} onChange={(e) => patchForm({ requests_per_minute: parseInt(e.target.value, 10) || 30 })} />
-              <div className="mt-1 text-[10px] leading-4 text-ink-500">
-                <span className="font-bold text-ink-700">{parameterMeta(catalog, 'requests_per_minute')}</span>
-                <br />
-                {catalog?.parameter_help?.requests_per_minute?.plain || catalog?.help.rpm_tip || '每分钟请求数。个人 Key 建议从 10-30 开始。'}
-                {parameterChangeHint(catalog, 'requests_per_minute') && (
-                  <>
-                    <br />
-                    {parameterChangeHint(catalog, 'requests_per_minute')}
-                  </>
-                )}
+              <ParamHint catalog={catalog} field="requests_per_minute" fallback={catalog?.help.rpm_tip || '每分钟请求数。个人 Key 建议从 10-30 开始。'} />
+            </div>
+            {/* 三个单价并排一行，说明收为行下轻量文字；此前说明盒占一格与输入框混排，打断表单流 */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-2">
+              <div>
+                <FieldLabel htmlFor="model-cost-per-1m-input">输入未命中 / 百万</FieldLabel>
+                <TextInput id="model-cost-per-1m-input" type="number" step="0.001" value={form.cost_per_1m_input} onChange={(e) => patchForm({ cost_per_1m_input: e.target.value })} placeholder="如 1" />
+              </div>
+              <div>
+                <FieldLabel htmlFor="model-cost-per-1m-output">输出单价 / 百万</FieldLabel>
+                <TextInput id="model-cost-per-1m-output" type="number" step="0.001" value={form.cost_per_1m_output} onChange={(e) => patchForm({ cost_per_1m_output: e.target.value })} placeholder="如 2" />
+              </div>
+              <div>
+                <FieldLabel htmlFor="model-cost-per-1m-input-cache-hit">缓存命中 / 百万</FieldLabel>
+                <TextInput id="model-cost-per-1m-input-cache-hit" type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
               </div>
             </div>
-            <div>
-              <FieldLabel htmlFor="model-cost-per-1m-input">输入未命中单价 / 百万 Tokens</FieldLabel>
-              <TextInput id="model-cost-per-1m-input" type="number" step="0.001" value={form.cost_per_1m_input} onChange={(e) => patchForm({ cost_per_1m_input: e.target.value })} placeholder="如 1" />
-            </div>
-            <div>
-              <FieldLabel htmlFor="model-cost-per-1m-output">输出单价 / 百万 Tokens</FieldLabel>
-              <TextInput id="model-cost-per-1m-output" type="number" step="0.001" value={form.cost_per_1m_output} onChange={(e) => patchForm({ cost_per_1m_output: e.target.value })} placeholder="如 2" />
-            </div>
-            <div>
-              <FieldLabel htmlFor="model-cost-per-1m-input-cache-hit">输入缓存命中 / 百万 Tokens</FieldLabel>
-              <TextInput id="model-cost-per-1m-input-cache-hit" type="number" step="0.001" value={form.cost_per_1m_input_cache_hit} onChange={(e) => patchForm({ cost_per_1m_input_cache_hit: e.target.value })} placeholder="如 0.02" />
-            </div>
-            <div className="flex items-end">
-              <div className="w-full rounded-xs border border-ink-200 bg-ink-100 px-2.5 py-2 text-[11px] leading-4 text-ink-500">
-                费用估算按输入未命中价和输出价计算；留空时后端用模型目录价（USD）估算。
-              </div>
+            <div className="text-[11px] leading-4 text-ink-500 lg:col-span-2">
+              单位：元 / 百万 Tokens。费用估算按输入未命中价和输出价计算；留空时后端用模型目录价（USD）估算。
             </div>
           </div>
         )}

@@ -27,6 +27,7 @@ from app.models.source import Source, SourceStatus, SourceType
 # Error redaction extracted to _error_redaction.py (pure functions + constants)
 from app.services._error_redaction import redact_source_sync_error  # noqa: F401 — re-export
 from app.services.classifier import classify_async
+from app.services.content_enrichment import enrich_new_entries
 from app.services.content_evidence import readable_content_title
 from app.services.content_read_cache import invalidate_content_read_caches
 from app.services.content_summary import clean_content_summary
@@ -296,6 +297,10 @@ async def _ingest_from_source_inner(source: Source, db: AsyncSession) -> dict[st
                 continue
             candidate_entries.append(entry)
             existing_hashes.add(ch)
+
+        # ── Step 3.5: 入库前全文补全（fail-open）────
+        # 只补去重后的新候选；掘金等限流站点的站内阅读因此点击时零外呼。
+        await enrich_new_entries(candidate_entries)
 
         new_items: list[ContentItem] = []
         metrics_records: list[dict | None] = []

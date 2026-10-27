@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     # （反爬限流的拦截窗口是分钟级，重试只会加深限流）。0 关闭冷却。
     ARTICLE_READER_FAILURE_COOLDOWN_SECONDS: int = 120
     ARTICLE_READER_ALLOWED_HOSTS: str = ""
+    # 入库全文补全：命中域名的缺正文条目在入库时预抓一次原文存
+    # raw_content（fail-open），站内阅读点击时走 ingested 路径零外呼。
+    # 逗号分隔域名，留空关闭；每 sync 上限与最小间隔见 content_enrichment。
+    INGEST_FULLTEXT_HOSTS: str = "juejin.cn"
+    INGEST_FULLTEXT_MAX_PER_SYNC: int = 6
     # Comma-separated browser UA pool. Each reader fetch picks one at random
     # to reduce per-request fingerprinting by WAF / bot-detection systems.
     # Override via env var to customise; a single value works as a 1-element pool.

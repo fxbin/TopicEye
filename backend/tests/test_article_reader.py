@@ -284,6 +284,96 @@ async def test_reader_still_blocks_unconfigured_private_dns_result(monkeypatch):
     assert exc_info.value.code == "blocked_url"
 
 
+# 字节 WAF JS 挑战空壳页的精简样本：真实拦截响应约 2.5KB，保留签名特征
+_BYTEDANCE_WAF_CHALLENGE_HTML = (
+    b'<!DOCTYPE html><html lang="en"><head><script nonce="argus-csp-token" '
+    b'src="https://lf-waf-js.byted-static.com/obj/waf-jschallenge/out-sha256.js">'
+    b'</script></head><body><script nonce="argus-csp-token">var wci="_wafchallengeid";'
+    b"</script>Please wait...</body></html>"
+)
+
+_CLOUDFLARE_CHALLENGE_HTML = (
+    b"<!DOCTYPE html><html><head><title>Just a moment...</title>"
+    b'<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script>'
+    b"</head><body></body></html>"
+)
+
+
+def test_bot_challenge_detection_matches_known_waf_signatures():
+    assert article_reader._looks_like_bot_challenge(_BYTEDANCE_WAF_CHALLENGE_HTML)
+    assert article_reader._looks_like_bot_challenge(_CLOUDFLARE_CHALLENGE_HTML)
+    # 正常 SSR 文章页不得误判
+    normal_page = (
+        "<html><body><article><h1>标题</h1><p>" + "正文内容。" * 40 + "</p></article></body></html>"
+    ).encode()
+    assert not article_reader._looks_like_bot_challenge(normal_page)
+    # 讨论反爬的正文中出现挑战词干：整页体积远超空壳上限，不按挑战处理
+    large_article_with_marker = (
+        "<html><body><article><p>如何识别 waf_jschallenge 空壳页。</p><p>"
+        + "正文内容。" * 20_000
+        + "</p></article></body></html>"
+    ).encode()
+    assert len(large_article_with_marker) > article_reader._BOT_CHALLENGE_MAX_BYTES
+    assert not article_reader._looks_like_bot_challenge(large_article_with_marker)
+
+
+@pytest.mark.asyncio
+async def test_remote_reader_classifies_waf_challenge_as_anti_bot(monkeypatch):
+    async def allow_url(url: str) -> str:
+        return url
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=_BYTEDANCE_WAF_CHALLENGE_HTML,
+        )
+
+    monkeypatch.setattr(article_reader, "_validate_public_url", allow_url)
+    with pytest.raises(article_reader.ArticleReaderError) as exc_info:
+        await article_reader._fetch_remote_article(
+            "https://reader-test.example/post/1",
+            transport=httpx.MockTransport(handler),
+        )
+
+    assert exc_info.value.code == "anti_bot_challenge"
+    assert exc_info.value.status_code == 503
+    assert "暂时限制" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_tiered_fetch_still_tries_curl_cffi_on_anti_bot_challenge(monkeypatch):
+    """TLS 指纹型挑战换 curl_cffi 仍可能通过：anti_bot_challenge 不得进 _no_retry。"""
+    tier_calls: list[str] = []
+
+    async def challenged_httpx(url):
+        tier_calls.append("httpx")
+        raise article_reader.ArticleReaderError("anti_bot_challenge", "受限", 503)
+
+    async def successful_curl(url):
+        tier_calls.append("curl_cffi")
+        return article_reader.ExtractedArticle(
+            canonical_url=url,
+            title="文章",
+            byline=None,
+            published_at=None,
+            excerpt=None,
+            text_content="可阅读的正文。" * 20,
+            content_blocks=[],
+            extraction_method="curl_cffi",
+        )
+
+    monkeypatch.setattr(article_reader, "_fetch_remote_article", challenged_httpx)
+    monkeypatch.setattr(article_reader, "_fetch_with_curl_cffi", successful_curl)
+    monkeypatch.setattr(article_reader.settings, "ARTICLE_READER_CURL_CFFI_FALLBACK", True)
+
+    article, tier = await article_reader._fetch_remote_article_tiered("https://example.com/story")
+    assert tier == "curl_cffi"
+    assert tier_calls == ["httpx", "curl_cffi"]
+
+
 @pytest.mark.asyncio
 async def test_remote_reader_follows_safe_redirect_and_extracts_article(monkeypatch):
     async def allow_url(url: str) -> str:

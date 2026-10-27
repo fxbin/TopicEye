@@ -710,3 +710,74 @@ async def test_ingest_from_source_survives_batches_beyond_asyncpg_param_limit(mo
             assert stats_again["duplicates"] == entry_count
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_ingest_from_source_runs_fulltext_enrichment_on_new_candidates(monkeypatch):
+    """Step 3.5 接线：去重后的新候选要过全文补全，重复条目不再外呼。"""
+
+    class FakeScraper:
+        def __init__(self, source_url, source_config):
+            self.source_url = source_url
+            self.source_config = source_config
+
+        async def fetch(self, client):
+            return [
+                {"title": "掘金新文", "url": "https://juejin.cn/post/100", "summary": "90 字摘要"},
+                {"title": "掘金旧文", "url": "https://juejin.cn/post/101", "summary": "90 字摘要"},
+            ]
+
+    enriched_urls: list[str] = []
+
+    async def fake_enrich(entries):
+        enriched_urls.extend(str(entry.get("url")) for entry in entries)
+        return 0
+
+    async def fake_get_active_category_names(db):
+        return ["AI"]
+
+    async def fake_classify_async(title, summary, db, category_names=None, auto_create_new_category=True):
+        return {"category": "AI", "tags": [], "is_new_category": False, "confidence": 0.8}
+
+    monkeypatch.setattr(content_pipeline, "get_scraper_cls", lambda source_type: FakeScraper)
+    monkeypatch.setattr(content_pipeline, "_get_active_category_names", fake_get_active_category_names)
+    monkeypatch.setattr(content_pipeline, "classify_async", fake_classify_async)
+    monkeypatch.setattr(content_pipeline, "enrich_new_entries", fake_enrich)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        async with session_factory() as db:
+            source = Source(
+                id=1,
+                name="掘金测试源",
+                url="https://juejin.cn/feed",
+                source_type=SourceType.RSS,
+                enabled=True,
+            )
+            db.add(source)
+            # 预置一条"旧文"：去重后不应进入补全名单（挂到同一 source 以命中
+            # 按 platform 分组的 hash 去重查询）
+            db.add(
+                ContentItem(
+                    title="掘金旧文",
+                    url="https://juejin.cn/post/101",
+                    source_id=1,
+                    source_name="掘金测试源",
+                    source_type="RSS",
+                    platform=source.platform,
+                    content_hash=content_pipeline.build_hash("掘金旧文https://juejin.cn/post/101"),
+                    status=ContentStatus.ANALYZED,
+                )
+            )
+            await db.commit()
+
+            stats = await content_pipeline.ingest_from_source(source, db)
+
+        assert stats == {"fetched": 2, "new": 1, "duplicates": 1}
+        assert enriched_urls == ["https://juejin.cn/post/100"]
+    finally:
+        await engine.dispose()

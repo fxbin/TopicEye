@@ -580,6 +580,24 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
         return None
     blocks: list[dict[str, str | int]]
     if "<" in raw and ">" in raw:
+        soup_raw = BeautifulSoup(raw, "html.parser")
+        for node in soup_raw(
+            [
+                "script",
+                "style",
+                "noscript",
+                "template",
+                "svg",
+                "canvas",
+                "iframe",
+                "form",
+                "nav",
+                "footer",
+                "aside",
+                "header",
+            ]
+        ):
+            node.decompose()
         # Try trafilatura for better boilerplate removal on HTML content
         try:
             clean_html = trafilatura.extract(
@@ -594,28 +612,14 @@ def _extract_from_ingested_content(content: ContentItem) -> ExtractedArticle | N
             clean_html = None
 
         if clean_html:
-            soup = BeautifulSoup(clean_html, "html.parser")
-            blocks = _extract_semantic_blocks(soup, content.url or "")
+            blocks = _extract_semantic_blocks(BeautifulSoup(clean_html, "html.parser"), content.url or "")
+            # 与 _extract_from_html 同口径：trafilatura 把短标题/小列表当
+            # 样板丢弃时整篇回退手工提取——入库补全的结构化 HTML
+            # （content_enrichment）依赖这条路还原标题/代码块/列表结构。
+            if _missing_heading_or_list_structure(blocks, soup_raw, content.url or ""):
+                blocks = _extract_semantic_blocks(soup_raw, content.url or "")
         else:
-            soup = BeautifulSoup(raw, "html.parser")
-            for node in soup(
-                [
-                    "script",
-                    "style",
-                    "noscript",
-                    "template",
-                    "svg",
-                    "canvas",
-                    "iframe",
-                    "form",
-                    "nav",
-                    "footer",
-                    "aside",
-                    "header",
-                ]
-            ):
-                node.decompose()
-            blocks = _extract_semantic_blocks(soup, content.url or "")
+            blocks = _extract_semantic_blocks(soup_raw, content.url or "")
     else:
         blocks = blocks_from_text(raw)
     blocks = _without_duplicate_title(blocks, content.title or "")
@@ -926,6 +930,16 @@ async def _fetch_remote_article_tiered(url: str) -> tuple[ExtractedArticle, str]
     except CurlError as e:
         logger.warning("Tier 2 (curl_cffi) network failure for %s: %s", url, type(e).__name__)
         raise ArticleReaderError("upstream_unavailable", "来源网站暂时无法连接，请打开原文。", 502) from e
+
+
+async def fetch_readable_article(url: str) -> ExtractedArticle:
+    """Public fetch+extract over the tiered reader pipeline.
+
+    供 ingest 侧全文补全（content_enrichment）复用：SSRF 校验、robots、
+    体积上限、反爬挑战识别与点击时抓取走完全相同的链路。
+    """
+    article, _tier = await _fetch_remote_article_tiered(url)
+    return article
 
 
 def _remember_failure(content_id: int, error: ArticleReaderError, now: datetime) -> None:

@@ -34,7 +34,7 @@ dependencies = [
     "feedparser==6.0.11",
     "beautifulsoup4==4.12.3",
     "python-dotenv==1.2.2",
-    "litellm==1.101.0",
+    "litellm==1.103.1",
     "tenacity==9.0.0",
     "duckdb==1.2.2",
     "jieba==0.42.1",

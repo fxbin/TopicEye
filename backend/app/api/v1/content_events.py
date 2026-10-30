@@ -126,7 +126,9 @@ async def analyze_content_event_angles(
             LlmBudgetExceededError: "事件角度分析失败：模型预算已耗尽，请稍后重试",
             LlmContextWindowExceededError: "事件角度分析失败：事件内容超出模型上下文，请稍后重试",
         }
-        detail = next((text for exc_type, text in details.items() if isinstance(exc, exc_type)), "事件角度分析失败，请稍后重试")
+        detail = next(
+            (text for exc_type, text in details.items() if isinstance(exc, exc_type)), "事件角度分析失败，请稍后重试"
+        )
         logger.warning("Event angle analysis LLM failure for content %s: %s", content_id, type(exc).__name__)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
     except Exception as exc:

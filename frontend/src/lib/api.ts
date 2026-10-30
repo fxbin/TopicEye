@@ -388,3 +388,5 @@ export { usersApi } from './api/_users';
 export type { UserListItem, UserListResponse, UserUpdatePayload, UserCreatePayload, UserCreateResponse } from '@/types/users';
 export { mcpOAuthApi } from './api/_mcp-oauth';
 export type { McpAuthorizeInfo, McpAuthorizeDecision } from './api/_mcp-oauth';
+export { muteRulesApi } from './api/_mute-rules';
+export type { MuteRuleItem, MuteRuleListResponse, MuteRuleType } from './api/_mute-rules';

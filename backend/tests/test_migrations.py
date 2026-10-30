@@ -120,3 +120,39 @@ def test_unknown_legacy_revision_with_stale_schema_refuses_startup(throwaway_pg_
 
     with _pytest.raises(RuntimeError, match="pre-squash-migrations"):
         migrations_mod.run_startup_migrations()
+
+
+def test_mute_rules_migration_roundtrip(throwaway_pg_database) -> None:
+    """#171 mute_rules 迁移可逆：head → downgrade -1 → head，表与约束随迁移增删。"""
+    from alembic import command
+
+    def _cfg():
+        return migrations_mod._build_alembic_config()
+
+    def _tables() -> set[str]:
+        engine = create_engine(throwaway_pg_database)
+        try:
+            return set(inspect(engine).get_table_names())
+        finally:
+            engine.dispose()
+
+    command.upgrade(_cfg(), "head")
+    assert "mute_rules" in _tables()
+
+    engine = create_engine(throwaway_pg_database)
+    with engine.begin() as conn:
+        constraints = {
+            (row[0], row[1])
+            for row in conn.execute(
+                text("SELECT conname, contype FROM pg_constraint WHERE conrelid = 'mute_rules'::regclass")
+            )
+        }
+    engine.dispose()
+    assert ("uq_mute_rules_user_type_value", "u") in constraints, "应创建 (user_id, rule_type, value) 唯一约束"
+    assert ("ck_mute_rules_rule_type", "c") in constraints, "应创建 rule_type CHECK 约束"
+
+    command.downgrade(_cfg(), "-1")
+    assert "mute_rules" not in _tables(), "downgrade 应完整删除 mute_rules"
+
+    command.upgrade(_cfg(), "head")
+    assert "mute_rules" in _tables(), "再次 upgrade 应重建 mute_rules"

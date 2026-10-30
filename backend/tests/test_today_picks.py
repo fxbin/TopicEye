@@ -953,6 +953,7 @@ def _fake_scored(rows: list[dict]):
 
 def _patch_scoring(monkeypatch, rows: list[dict]):
     from app.repositories.ignored_repo import IgnoredRepo
+    from app.services.mute_rule_service import MuteExclusions
 
     monkeypatch.setattr(today_picks, "query_today_picks", lambda **_kwargs: rows)
     monkeypatch.setattr(today_picks, "_score_rows", lambda _rows, **_kwargs: _fake_scored(_rows))
@@ -963,8 +964,13 @@ def _patch_scoring(monkeypatch, rows: list[dict]):
     async def _no_personal_ignored(_self, _user_id):
         return set()
 
+    async def _no_mute_rules(_db, _user_id):
+        return MuteExclusions()
+
     monkeypatch.setattr(today_picks, "query_topics", _topics)
     monkeypatch.setattr(IgnoredRepo, "list_personal_ignored_ids", _no_personal_ignored)
+    # owner_user_id 路径会读静音规则；这些用例不关心降噪，钉成空规则集
+    monkeypatch.setattr(today_picks, "load_mute_exclusions", _no_mute_rules)
 
 
 def test_select_slate_without_boosts_matches_base_order():

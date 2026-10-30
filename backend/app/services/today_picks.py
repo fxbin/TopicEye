@@ -22,6 +22,7 @@ from app.services.content_evidence import has_readable_content, readable_content
 from app.services.content_summary import clean_content_summary
 from app.services.duckdb_service import query_today_picks, query_topics, run_query
 from app.services.feedback_signal import get_feedback_scores
+from app.services.mute_rule_service import filter_muted_rows, load_mute_exclusions
 from app.services.scoring_engine import CONFIG as SCORING_CONFIG, ScoreBreakdown, ScoringInput, score_items
 from app.services.scoring_event_selection import display_event_candidate_ids
 
@@ -157,6 +158,12 @@ async def build_today_picks(
         personal_ignored = await IgnoredRepo(db).list_personal_ignored_ids(owner_user_id)
         if personal_ignored:
             rows = [row for row in rows if row.get("id") not in personal_ignored]
+        # 用户静音规则（keyword/source/domain）：沿 ignored 的注入位置与
+        # 口径，把 mute 命中并入排除集（对 DuckDB 与 OLTP fallback 两条
+        # 候选来源同样生效；#171）
+        mute_exclusions = await load_mute_exclusions(db, owner_user_id)
+        if mute_exclusions:
+            rows = filter_muted_rows(rows, mute_exclusions)
 
     event_repo = ContentEventConsumptionRepository(db)
     try:

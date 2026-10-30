@@ -6,7 +6,7 @@
 
 import { request } from './_core';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
-import type { ArticleReaderSnapshot, ContentEventCoverage, ContentItem, ContentRelation, EvidenceMark, EvidenceLink, PaginatedResponse, TopicInfo, ContentFilterParams } from '@/types';
+import type { ArticleReaderSnapshot, ContentEventCoverage, ContentItem, ContentRelation, EventAngleAnalysis, EvidenceMark, EvidenceLink, PaginatedResponse, TopicInfo, ContentFilterParams } from '@/types';
 import { BASE_URL } from './_core';
 
 export const contentsApi = {
@@ -58,6 +58,11 @@ export const contentsApi = {
       Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])
     );
     return request(`/contents/${id}/event/coverage${query.size ? `?${query}` : ''}`);
+  },
+
+  /** 事件切面稀缺度分析（AI 角度缺口建议）。每次调用实时重算，无本地持久化。 */
+  analyzeEventAngles(id: number): Promise<EventAngleAnalysis> {
+    return request(`/contents/${id}/event/angles`, { method: 'POST' });
   },
 
   /** 获取收藏列表 */

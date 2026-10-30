@@ -281,6 +281,30 @@ export interface ContentEventCoverage extends ContentNormalizationSummary {
   next_offset: number;
 }
 
+/** 稀缺角度的引用：后端已做防幻觉过滤，只含输入成员集合内的报道。 */
+export interface EventAngleRef {
+  content_id: number;
+  title: string;
+}
+
+export interface EventScarceAngle {
+  angle: string;
+  reason?: string;
+  refs: EventAngleRef[];
+}
+
+/** 事件切面稀缺度分析结果；status=no_event 表示没有可见事件或无已接受归并成员。 */
+export interface EventAngleAnalysis {
+  status: 'ok' | 'no_event';
+  event_id?: number | null;
+  version?: number | null;
+  truncated: boolean;
+  analyzed_count: number;
+  covered_angles: string[];
+  scarce_angles: EventScarceAngle[];
+  audience_questions: string[];
+}
+
 export interface ContentItem {
   id: number;
   title: string;

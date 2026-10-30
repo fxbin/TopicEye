@@ -6,6 +6,7 @@ import { contentsApi } from '@/lib/api';
 import { timeAgo } from '@/lib/datetime';
 import { createEventCoverageLoader } from '@/lib/event-coverage';
 import type { CoverageState } from '@/lib/event-coverage';
+import EventAngleAnalysis from '@/components/EventAngleAnalysis';
 import type { ContentItem, ContentNormalizationMember, ContentNormalizationSummary } from '@/types';
 
 const RELATIONS: Record<ContentNormalizationMember['relation_type'], { label: string; className: string }> = {
@@ -88,6 +89,8 @@ function CoverageDisclosure({ contentId, seed }: { contentId: number; seed: Cont
               </button>
             </div>
           )}
+          {/* 切面稀缺度分析：事件报道读完后的 AI 角度缺口建议，两处挂载点共用 */}
+          <EventAngleAnalysis contentId={contentId} />
         </div>
       )}
     </div>

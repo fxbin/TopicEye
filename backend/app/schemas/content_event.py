@@ -90,6 +90,36 @@ class ContentEventCoverageLookupResponse(BaseModel):
     event: ContentEventCoverageResponse | None
 
 
+class EventAngleRef(BaseModel):
+    """一条稀缺角度引用：输入成员集合内的 content_id 与其标题。"""
+
+    content_id: int
+    title: str
+
+
+class EventScarceAngle(BaseModel):
+    angle: str
+    reason: str = ""
+    refs: list[EventAngleRef]
+
+
+class EventAngleAnalysisResponse(BaseModel):
+    """POST /contents/{id}/event/angles 的响应。
+
+    ``no_event`` 表示内容没有可见事件、或事件没有已接受归并成员；
+    此时除 status 外的字段均为默认值。
+    """
+
+    status: Literal["ok", "no_event"]
+    event_id: int | None = None
+    version: int | None = None
+    truncated: bool = False
+    analyzed_count: int = Field(default=0, ge=0)
+    covered_angles: list[str] = Field(default_factory=list)
+    scarce_angles: list[EventScarceAngle] = Field(default_factory=list)
+    audience_questions: list[str] = Field(default_factory=list)
+
+
 class ContentEventNormalizeRequest(BaseModel):
     hours: int = Field(default=24, ge=1, le=720)
     mode: Literal["shadow", "write"] = "shadow"

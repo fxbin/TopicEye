@@ -18,6 +18,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
+import MuteRulesPanel from '@/components/MuteRulesPanel';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { integrationsApi, apiTokensApi, authApi } from '@/lib/api';
 import type { ApiTokenItem } from '@/lib/api';
@@ -765,6 +766,9 @@ export default function ProfilePage() {
                 装好后，在 Agent 对话中{`直接问「今天有什么值得写的选题」「看看${EDITION_LABELS.daily_neutral}」即可。`}
               </div>
             </Panel>
+
+            {/* 降噪规则：关键词 / 信源 / 域名静音（#171） */}
+            <MuteRulesPanel />
           </div>
         </div>
       </div>

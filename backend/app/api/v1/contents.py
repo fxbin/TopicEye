@@ -40,6 +40,7 @@ from app.services.content_serialization import content_with_latest_analysis, lat
 from app.services.enrichment_selection import claim_pending_enrichment_ids
 from app.services.favorite_cache import invalidate_favorite_cache
 from app.services.json_cache import get_cached_json, invalidate_json_cache, set_cached_json
+from app.services.mute_rule_service import MuteExclusions, load_mute_exclusions
 from app.services.scoring_flow import (
     DEFAULT_SCORING_FLOW_HOURS,
     DEFAULT_SCORING_FLOW_LIMIT,
@@ -79,6 +80,7 @@ async def _score_content_page(
     sort_order: str = "desc",
     visible_user_id: int | None = None,
     public_only: bool = False,
+    mute_exclusions: MuteExclusions | None = None,
 ) -> dict:
     from app.services.scoring_inputs import build_scoring_inputs
 
@@ -90,6 +92,9 @@ async def _score_content_page(
         limit=_SCORING_BATCH_SIZE,
         visible_user_id=visible_user_id,
         public_only=public_only,
+        exclude_keywords=mute_exclusions.keywords if mute_exclusions else None,
+        exclude_source_ids=mute_exclusions.source_ids if mute_exclusions else None,
+        exclude_domains=mute_exclusions.domains if mute_exclusions else None,
     )
     if not scored_items:
         return _empty_list_response(page, page_size)
@@ -237,6 +242,8 @@ async def list_contents(
         time_cutoff = (snapshot.anchor if snapshot else datetime.now(UTC)) - timedelta(hours=hours)
 
     ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=current_user.id if current_user is not None else None)
+    # 用户静音规则（keyword/source/domain）：与 ignored 叠加排除（#171）
+    mute_exclusions = await load_mute_exclusions(db, current_user.id if current_user is not None else None)
     exclude_source_types = None if include_trend_sources else _TREND_SOURCE_TYPES
 
     # 评分排序在 Python 侧分页，等级/标签筛选语义不同，明确拒绝而不是静默忽略。
@@ -259,6 +266,7 @@ async def list_contents(
             sort_order=sort_order,
             visible_user_id=current_user.id if current_user is not None else None,
             public_only=current_user is None,
+            mute_exclusions=mute_exclusions,
         )
 
     # ── Standard SQL sort path ─────────────────────────────────────────
@@ -286,6 +294,9 @@ async def list_contents(
             group_events=group_events,
             snapshot_binding=snapshot_binding,
             expected_snapshot_digest=snapshot.digest if snapshot else None,
+            exclude_keywords=mute_exclusions.keywords if mute_exclusions else None,
+            exclude_source_ids=mute_exclusions.source_ids if mute_exclusions else None,
+            exclude_domains=mute_exclusions.domains if mute_exclusions else None,
         )
     except ContentFeedChangedError as exc:
         raise HTTPException(409, str(exc)) from exc

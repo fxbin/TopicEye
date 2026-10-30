@@ -24,6 +24,7 @@ from app.api.v1.metrics import router as metrics_router
 from app.api.v1.model_catalog import router as model_catalog_router
 from app.api.v1.monthly_digests import router as monthly_digests_router
 from app.api.v1.mother_topics import router as mother_topics_router
+from app.api.v1.mute_rules import router as mute_rules_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.oauth import router as oauth_router
 from app.api.v1.plans import router as plans_router
@@ -57,6 +58,7 @@ router.include_router(integrations_router)
 router.include_router(scoring_router)
 router.include_router(skill_router)
 router.include_router(users_router)
+router.include_router(mute_rules_router)
 router.include_router(sources_router)
 router.include_router(content_events_router)
 router.include_router(contents_router)

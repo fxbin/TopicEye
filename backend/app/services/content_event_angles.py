@@ -90,10 +90,7 @@ def _build_user_message(event_title: str, articles: list[ContentItem]) -> str:
         title = sanitize_prompt_input(item.title, max_chars=TITLE_MAX_CHARS)
         summary = sanitize_prompt_input(item.summary, max_chars=SUMMARY_MAX_CHARS)
         raw = sanitize_prompt_input(item.raw_content, max_chars=raw_cap)
-        if summary or raw:
-            block = f"#{item.id} | {title} | {summary} | {raw}"
-        else:
-            block = f"#{item.id} | {title}"
+        block = f"#{item.id} | {title} | {summary} | {raw}" if summary or raw else f"#{item.id} | {title}"
         blocks.append(block)
         used += len(block)
 

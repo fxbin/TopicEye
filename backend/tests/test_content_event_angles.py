@@ -33,8 +33,15 @@ class _Session:
     pass
 
 
-def _content(cid: int, *, title: str | None = None, summary: str | None = None, raw: str | None = None,
-             published: datetime | None = None, owner: int | None = None) -> SimpleNamespace:
+def _content(
+    cid: int,
+    *,
+    title: str | None = None,
+    summary: str | None = None,
+    raw: str | None = None,
+    published: datetime | None = None,
+    owner: int | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=cid,
         title=title if title is not None else f"报道 {cid}",
@@ -211,8 +218,11 @@ async def test_member_over_limit_keeps_latest_and_marks_truncated(monkeypatch):
         contents=contents,
         group=_group(canonical_id=1),
         member_rows=member_rows,
-        llm_result={"covered_angles": ["a"], "scarce_angles": [{"angle": "x", "reason": "r", "ref_content_ids": [32]}],
-                    "audience_questions": ["q"]},
+        llm_result={
+            "covered_angles": ["a"],
+            "scarce_angles": [{"angle": "x", "reason": "r", "ref_content_ids": [32]}],
+            "audience_questions": ["q"],
+        },
     )
 
     result = await analyze_event_angles(object(), 1, visible_user_id=None)
@@ -272,7 +282,9 @@ def test_build_user_message_truncates_oversized_raw_content():
 
 def test_build_user_message_enforces_total_cap_and_survives_braces():
     articles = [
-        _content(7, title="标题 {brace}", summary="摘要", raw="字" * 50_000, published=datetime(2026, 7, 1, tzinfo=UTC)),
+        _content(
+            7, title="标题 {brace}", summary="摘要", raw="字" * 50_000, published=datetime(2026, 7, 1, tzinfo=UTC)
+        ),
         _content(8, title="标题二", summary="摘要", raw="文" * 50_000, published=datetime(2026, 7, 2, tzinfo=UTC)),
     ]
 

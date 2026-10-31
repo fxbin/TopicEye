@@ -12,6 +12,7 @@ from app.services.trending_cache import (
     TrendingListCacheParams,
 )
 from app.services.trending_cross import cluster_trending_items
+from app.services.trending_lifecycle import TopicStageInfo, compute_trending_item_stages
 from app.services.trending_snapshot import analyze_persistent_topics
 from app.services.zhihu_url import normalize_zhihu_url
 
@@ -25,6 +26,13 @@ DEFAULT_TRENDING_DAYS_BACK = 7
 
 def _enum_value(value: object) -> str:
     return str(getattr(value, "value", value))
+
+
+def _stage_fields(stage_info: TopicStageInfo | None) -> dict[str, object]:
+    """列表条目的 stage/stage_reason 字段（窗口内无在榜记录时为 null）。"""
+    if stage_info is None:
+        return {"stage": None, "stage_reason": None}
+    return {"stage": stage_info.stage.value, "stage_reason": stage_info.stage_reason}
 
 
 async def build_default_trending_cache_payloads(db: AsyncSession) -> dict[str, object]:
@@ -72,6 +80,9 @@ async def build_default_trending_cache_payloads(db: AsyncSession) -> dict[str, o
         DEFAULT_TRENDING_MIN_SOURCES,
         DEFAULT_TRENDING_DAYS_BACK,
     )
+    # 与 api.v1.trending.build_trending_list_payload 保持同一响应形状：
+    # 列表条目带 stage/stage_reason（窗口内无在榜记录时为 null）
+    stage_map = await compute_trending_item_stages(db, [item.title for item in items])
     return {
         list_params.key: [
             {
@@ -86,6 +97,7 @@ async def build_default_trending_cache_payloads(db: AsyncSession) -> dict[str, o
                 "trend": item.trend,
                 "cover_url": item.cover_url,
                 "extra": item.extra,
+                **_stage_fields(stage_map.get(item.title.strip())),
             }
             for item in items
         ],

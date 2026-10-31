@@ -3,9 +3,10 @@
 /**
  * Trending page 子组件（从 page.tsx 抽出的展示组件）。
  *
- * 9 个展示组件：
+ * 10 个展示组件：
  * - WebnovelItemRow      网文榜单行（额外信息密度展示）
  * - TrendBadge           趋势方向徽章（up/down/new/stable）
+ * - StageBadge           生命周期阶段徽章（发酵/爆发/回落/常青）
  * - PanelTitle           面板标题（re-export 自 @/components/ui）
  * - StatTile             统计数字块（re-export 自 @/components/StatTile）
  * - ResonanceBadge       跨平台共鸣度徽章
@@ -15,7 +16,7 @@
  * - ClusterCard          跨平台聚类卡片（折叠/展开）
  *
  * 静态配置（CATEGORIES / SOURCE_BRAND / CATEGORY_COLORS / TREND_ICONS /
- * RESONANCE_COLORS / isWebnovelSource）来自 _trending-utils.ts。
+ * RESONANCE_COLORS / STAGE_META / isWebnovelSource）来自 _trending-utils.ts。
  */
 
 import React, { useState } from 'react';
@@ -29,7 +30,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Panel, cx } from '@/components/ui';
+import { Badge, Panel, cx } from '@/components/ui';
 // PanelTitle / StatTile 已收敛到公共组件层，此处 re-export 保持调用方 import 路径不变。
 export { PanelTitle } from '@/components/ui';
 export { StatTile } from '@/components/StatTile';
@@ -46,6 +47,7 @@ import {
   SOURCE_LABELS,
   TREND_ICONS,
   isWebnovelSource,
+  stageMeta,
 } from './_trending-utils';
 
 export function WebnovelItemRow({ item, rank }: { item: TrendingItem; rank: number }) {
@@ -119,6 +121,19 @@ export function TrendBadge({ trend }: { trend: string | null }) {
   return (
     <span className={cx('inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-black', c.className)}>
       <Icon size={11} strokeWidth={2.2} fill={c.fill} />
+    </span>
+  );
+}
+
+/** 生命周期阶段徽章（issue #173）：stage 为 null/未知不渲染；title 悬浮展示判定依据 */
+export function StageBadge({ stage, reason }: { stage: string | null; reason?: string | null }) {
+  const meta = stageMeta(stage);
+  if (!meta) return null;
+  return (
+    <span title={reason || meta.label} className="shrink-0">
+      <Badge tone={meta.tone} className="!px-1.5 !py-0.5 !text-[10px]">
+        {meta.label}
+      </Badge>
     </span>
   );
 }

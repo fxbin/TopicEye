@@ -4,6 +4,9 @@
  * 从 lib/api.ts 拆出，通过 lib/api re-export 保持向后兼容。
  */
 
+/** 趋势话题生命周期阶段（后端按 7 天快照窗口判定） */
+export type TrendingStage = 'ferment' | 'peaking' | 'declining' | 'evergreen';
+
 export interface TrendingItem {
   id: number;
   source: string;
@@ -16,6 +19,10 @@ export interface TrendingItem {
   trend: string | null;
   cover_url: string | null;
   extra: Record<string, unknown> | null;
+  /** 生命周期阶段（7 天快照窗口判定；窗口内无在榜记录时为 null） */
+  stage: TrendingStage | null;
+  /** 阶段判定依据，一句话中文（如「在榜 6 天 · 最新排名 3」）；无数据时为 null */
+  stage_reason: string | null;
   fetched_at: string;
   batch_id: string;
 }

@@ -40,6 +40,9 @@ _SOURCE_LABELS: dict[str, str] = {
     "eastmoney": "东方财富",
 }
 
+# 标题相似度阈值：达到即视为同一 topic（共振聚类与生命周期阶段共用此口径）
+SIM_THRESHOLD = 0.25
+
 
 def _extract_keywords(title: str, topk: int = 8) -> list[str]:
     """提取标题关键词（用 TF-IDF）"""
@@ -95,8 +98,7 @@ def cluster_trending_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         item_kw[item["id"]] = set(kws)
         item["_keywords"] = kws
 
-    # 2. 贪心聚类
-    SIM_THRESHOLD = 0.25  # 相似度阈值
+    # 2. 贪心聚类（阈值 SIM_THRESHOLD 提为模块级常量，供生命周期阶段等共用）
     used = set()
     clusters: list[list[dict]] = []
 

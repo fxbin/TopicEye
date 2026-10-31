@@ -9,6 +9,7 @@ from app.api.v1.admin_scoring_dashboard import router as admin_scoring_dashboard
 from app.api.v1.analyses import router as analyses_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.categories import router as categories_router
+from app.api.v1.content_check import router as content_check_router
 from app.api.v1.content_events import router as content_events_router
 from app.api.v1.contents import router as contents_router
 from app.api.v1.creation import router as creation_router
@@ -61,6 +62,7 @@ router.include_router(users_router)
 router.include_router(mute_rules_router)
 router.include_router(sources_router)
 router.include_router(content_events_router)
+router.include_router(content_check_router)
 router.include_router(contents_router)
 router.include_router(topics_router)
 router.include_router(analyses_router)

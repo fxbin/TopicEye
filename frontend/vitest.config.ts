@@ -14,9 +14,11 @@ export default defineConfig({
   },
   test: {
     // 纯逻辑测试无需 DOM，node 环境启动更快。
+    // include 同时收 .ts 与 .tsx：组件测试用 react-dom/server 的 renderToString
+    // 在 node 环境断言渲染输出（见 src/app/content-check/_highlight.test.tsx），不引 jsdom。
     environment: 'node',
     globals: false,
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       // 门禁只统计已写测试的纯逻辑模块，避免 100+ 个未测文件把阈值拖到 0。
@@ -31,6 +33,9 @@ export default defineConfig({
         'src/lib/admin-nav.ts',
         'src/app/admin/sources/_batch-utils.ts',
         'src/app/admin/webhook-logs/_scope-utils.ts',
+        // #175：文稿检测的高亮分段与结果时效判定（各有同目录测试，纳入门禁锁定）
+        'src/app/content-check/_highlight.tsx',
+        'src/app/content-check/_scan-state.ts',
       ],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

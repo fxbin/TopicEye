@@ -123,7 +123,7 @@ def test_unknown_legacy_revision_with_stale_schema_refuses_startup(throwaway_pg_
 
 
 def test_mute_rules_migration_roundtrip(throwaway_pg_database) -> None:
-    """#171 mute_rules 迁移可逆：head → downgrade -1 → head，表与约束随迁移增删。"""
+    """#171 mute_rules 迁移可逆：head → downgrade 到 mute_rules 之前 → head，表与约束随迁移增删。"""
     from alembic import command
 
     def _cfg():
@@ -151,7 +151,8 @@ def test_mute_rules_migration_roundtrip(throwaway_pg_database) -> None:
     assert ("uq_mute_rules_user_type_value", "u") in constraints, "应创建 (user_id, rule_type, value) 唯一约束"
     assert ("ck_mute_rules_rule_type", "c") in constraints, "应创建 rule_type CHECK 约束"
 
-    command.downgrade(_cfg(), "-1")
+    # 显式回退到 mute_rules 之前的 revision：head 会随新迁移增长，-1 不再可靠
+    command.downgrade(_cfg(), "c7a4e9f21b86")
     assert "mute_rules" not in _tables(), "downgrade 应完整删除 mute_rules"
 
     command.upgrade(_cfg(), "head")

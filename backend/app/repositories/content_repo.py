@@ -40,6 +40,7 @@ from app.repositories._content_repo_types import (  # noqa: F401 — re-export f
 from app.repositories._query_helpers import (
     apply_content_scope,
     apply_filters,
+    apply_mute_rule_exclusions,
     apply_visibility,
     visibility_clauses,
 )
@@ -555,6 +556,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         group_events: bool = False,
         snapshot_binding: str | None = None,
         expected_snapshot_digest: str | None = None,
+        exclude_keywords: Sequence[str] | None = None,
+        exclude_source_ids: set[int] | None = None,
+        exclude_domains: set[str] | None = None,
     ) -> tuple[Sequence[ContentItem], int] | GroupedFeedPage:
         """Like list_paginated but eager-loads analyses relation.
 
@@ -618,6 +622,22 @@ class ContentRepo(BaseRepository[ContentItem]):
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
             time_cutoff=time_cutoff,
+        )
+
+        # 用户静音规则排除（keyword/source/domain，与 ignored 叠加；#171）
+        stmt = apply_mute_rule_exclusions(
+            stmt,
+            self.model,
+            exclude_keywords=exclude_keywords,
+            exclude_source_ids=exclude_source_ids,
+            exclude_domains=exclude_domains,
+        )
+        count_stmt = apply_mute_rule_exclusions(
+            count_stmt,
+            self.model,
+            exclude_keywords=exclude_keywords,
+            exclude_source_ids=exclude_source_ids,
+            exclude_domains=exclude_domains,
         )
 
         # ── 服务端推荐等级 / 标签筛选 ────────────────────────────────
@@ -1160,6 +1180,9 @@ class ContentRepo(BaseRepository[ContentItem]):
         limit: int = 500,
         visible_user_id: int | None = None,
         public_only: bool = False,
+        exclude_keywords: Sequence[str] | None = None,
+        exclude_source_ids: set[int] | None = None,
+        exclude_domains: set[str] | None = None,
     ) -> tuple[Sequence[ContentItem], int]:
         """
         Fetch ANALYZED items with analyses + source for scoring pipeline.
@@ -1210,6 +1233,15 @@ class ContentRepo(BaseRepository[ContentItem]):
         )
         count_stmt = apply_visibility(count_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
         data_stmt = apply_visibility(data_stmt, self.model, visible_user_id=visible_user_id, public_only=public_only)
+
+        # 用户静音规则排除（keyword/source/domain，与 ignored 叠加；#171）
+        mute_kwargs = {
+            "exclude_keywords": exclude_keywords,
+            "exclude_source_ids": exclude_source_ids,
+            "exclude_domains": exclude_domains,
+        }
+        count_stmt = apply_mute_rule_exclusions(count_stmt, self.model, **mute_kwargs)
+        data_stmt = apply_mute_rule_exclusions(data_stmt, self.model, **mute_kwargs)
 
         total_result = await self.db.execute(count_stmt)
         total = total_result.scalar() or 0

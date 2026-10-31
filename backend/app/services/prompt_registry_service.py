@@ -174,6 +174,20 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "module": "app.services.llm.prompts.angle_recommend",
         "attr": "USER_TEMPLATE",
     },
+    {
+        "name": "event_angles_system",
+        "scene": "event_angles",
+        "description": "事件切面稀缺度分析系统提示词",
+        "module": "app.services.llm.prompts.event_angles",
+        "attr": "SYSTEM_PROMPT",
+    },
+    {
+        "name": "event_angles_user",
+        "scene": "event_angles",
+        "description": "事件切面稀缺度分析用户提示词",
+        "module": "app.services.llm.prompts.event_angles",
+        "attr": "USER_TEMPLATE",
+    },
 ]
 
 

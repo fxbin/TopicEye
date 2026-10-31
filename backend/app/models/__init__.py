@@ -28,6 +28,7 @@ from app.models.favorite import FavoriteItem
 from app.models.ignored import IgnoredItem
 from app.models.metrics import ContentMetrics
 from app.models.metrics_snapshot import MetricsSnapshotRecord
+from app.models.mute_rule import MuteRule
 from app.models.oauth_provider import OAuthProvider
 from app.models.pick_mark import PickMark
 from app.models.product_feedback import IssueFeedback, ProductUpdate
@@ -69,6 +70,7 @@ __all__ = [
     "Category",
     "EmailVerificationCode",
     "IgnoredItem",
+    "MuteRule",
     "TrendingItem",
     "TrendingSnapshot",
     "ScheduledJob",

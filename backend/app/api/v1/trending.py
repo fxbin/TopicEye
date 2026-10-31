@@ -30,6 +30,7 @@ from app.services.trending_cache import (
     set_cached_trending_list,
     set_cached_trending_sources,
 )
+from app.services.trending_lifecycle import compute_trending_item_stages
 from app.services.trending_pipeline import sync_all_trending, sync_trending_source
 from app.services.zhihu_url import normalize_zhihu_url
 
@@ -55,6 +56,9 @@ class TrendingItemOut(BaseModel):
     trend: str | None = None
     cover_url: str | None = None
     extra: dict | None = None
+    # 生命周期阶段（7 天快照窗口判定；窗口内无该 topic 在榜记录时为 null）
+    stage: str | None = None  # ferment/peaking/declining/evergreen
+    stage_reason: str | None = None  # 一句话中文依据（如「在榜 6 天 · 最新排名 3」）
 
     model_config = {"from_attributes": True}
 
@@ -128,7 +132,15 @@ async def build_trending_list_payload(
         exclude_sources=exclude_sources,
         limit=limit,
     )
-    return [TrendingItemOut.model_validate(item).model_dump() for item in items]
+    stage_map = await compute_trending_item_stages(db, [it.title for it in items])
+    payload = []
+    for item in items:
+        row = TrendingItemOut.model_validate(item).model_dump()
+        stage_info = stage_map.get(item.title.strip())
+        row["stage"] = stage_info.stage.value if stage_info else None
+        row["stage_reason"] = stage_info.stage_reason if stage_info else None
+        payload.append(row)
+    return payload
 
 
 @router.get("/sources", response_model=list[TrendingSourceInfo])

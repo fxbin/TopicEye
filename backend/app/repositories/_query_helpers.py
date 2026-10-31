@@ -12,10 +12,11 @@ the count stmt).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, or_
+from sqlalchemy import ColumnElement, func, or_
 from sqlalchemy.sql import Select
 
 # ── Filter dict → WHERE clauses ─────────────────────────────────
@@ -125,4 +126,69 @@ def apply_content_scope(
         stmt = stmt.where(model.source_type.notin_(exclude_source_types))
     if time_cutoff:
         stmt = stmt.where(model.crawled_at >= time_cutoff)
+    return stmt
+
+
+# ── 用户静音规则排除（#171） ─────────────────────────────────────
+
+
+def _escape_like_literal(value: str) -> str:
+    """转义 LIKE/ILIKE 通配符，让用户关键词按字面子串匹配。
+
+    与 Python 侧 ``row_is_muted`` 的 lower 子串判断保持同一语义：
+    关键词里的 % 或 _ 不应被当成通配符。
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def url_host_expression(model: Any):
+    """SQL 侧的 url host 归一表达式（小写、去路径/查询/端口、去 www.）。
+
+    前提：url 必须带协议（含 ``://``）。无协议的 url 经 split_part 取不到
+    第二段、求值为空串，永不命中任何 domain 规则；Python 侧
+    ``mute_rule_service.url_host_normalized`` 按同一前提对齐（无协议同样
+    返回空串、不参与匹配），两侧不留隐性分叉。
+    """
+    host = func.split_part(func.split_part(func.lower(model.url), "://", 2), "/", 1)
+    host = func.split_part(host, "?", 1)
+    host = func.split_part(host, "#", 1)
+    host = func.split_part(host, ":", 1)
+    return func.regexp_replace(host, "^www\\.", "")
+
+
+def apply_mute_rule_exclusions(
+    stmt: Select,
+    model: Any,
+    *,
+    exclude_keywords: Sequence[str] | None = None,
+    exclude_source_ids: set[int] | None = None,
+    exclude_domains: set[str] | None = None,
+) -> Select:
+    """Apply per-user mute-rule exclusions (keyword / source / domain).
+
+    只排除可见项，不删除数据；与 ``exclude_ids``（ignored_items）叠加生效：
+
+    - ``exclude_keywords``  → title/summary ILIKE %v%（多关键词任一命中即排除）
+    - ``exclude_source_ids`` → source_id 精确等值集合
+    - ``exclude_domains``   → url host 归一（去 www.）后等值集合
+
+    三值逻辑注意（NULL 行不得被误杀）：
+
+    - title/summary 可为 NULL：``NOT (title ILIKE p OR summary ILIKE p)`` 在
+      summary 为 NULL 时求值为 NULL、整行被丢弃，因此每列都用
+      ``col IS NULL OR col NOT ILIKE p`` 的 NULL 安全非命中式，按列 AND。
+    - source_id 可为 NULL（sources 删除走 SET NULL）：``NULL NOT IN (...)``
+      同样求值为 NULL，需 ``source_id IS NULL OR source_id NOT IN (...)``。
+    """
+    if exclude_keywords:
+        for keyword in exclude_keywords:
+            pattern = f"%{_escape_like_literal(keyword)}%"
+            stmt = stmt.where(
+                or_(model.title.is_(None), model.title.notilike(pattern, escape="\\")),
+                or_(model.summary.is_(None), model.summary.notilike(pattern, escape="\\")),
+            )
+    if exclude_source_ids:
+        stmt = stmt.where(or_(model.source_id.is_(None), model.source_id.notin_(exclude_source_ids)))
+    if exclude_domains:
+        stmt = stmt.where(url_host_expression(model).notin_(exclude_domains))
     return stmt

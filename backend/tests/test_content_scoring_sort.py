@@ -21,6 +21,9 @@ class FakeContentRepo:
         limit,
         visible_user_id=None,
         public_only=False,
+        exclude_keywords=None,
+        exclude_source_ids=None,
+        exclude_domains=None,
     ):
         items = [
             _content_item(1, "high"),

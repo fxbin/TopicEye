@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_optional_current_user
+from app.api.v1.auth import get_current_user, get_optional_current_user
 from app.core.database import get_db
-from app.schemas.content_event import ContentEventCoverageLookupResponse, ContentEventLookupResponse
+from app.schemas.content_event import (
+    ContentEventCoverageLookupResponse,
+    ContentEventLookupResponse,
+    EventAngleAnalysisResponse,
+)
+from app.services.content_event_angles import EventAngleAnalysisError, analyze_event_angles
 from app.services.content_event_coverage import get_event_coverage
 from app.services.content_event_service import (
     ContentEventConflictError,
     ContentEventNotFoundError,
     ContentEventService,
 )
+from app.services.llm.budget_guard import LlmBudgetExceededError
+from app.services.llm.circuit_breaker import CircuitOpenError
+from app.services.llm.provider import LlmCapacityUnavailableError, LlmContextWindowExceededError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contents", tags=["content-events"])
 
@@ -77,3 +88,53 @@ async def get_content_event_coverage(
     except ContentEventConflictError as exc:
         raise HTTPException(status_code=409, detail="Event changed; reload coverage") from exc
     return ContentEventCoverageLookupResponse(content_id=content_id, event=event)
+
+
+@router.post("/{content_id}/event/angles", response_model=EventAngleAnalysisResponse)
+async def analyze_content_event_angles(
+    content_id: int,
+    current_user: Any = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EventAngleAnalysisResponse:
+    """Analyze angle scarcity across the visible event's accepted reports.
+
+    Read-only: no business table writes; the LLM call itself is traced by the
+    existing call_trace infrastructure.
+    """
+
+    try:
+        result = await analyze_event_angles(db, content_id, visible_user_id=current_user.id)
+    except ContentEventNotFoundError as exc:
+        # Missing and non-visible content intentionally share one response.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content not found") from exc
+    except EventAngleAnalysisError as exc:
+        logger.warning("Event angle analysis unparsable for content %s", content_id, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="事件角度分析失败：模型返回结构不可用，请稍后重试",
+        ) from exc
+    except (
+        CircuitOpenError,
+        LlmCapacityUnavailableError,
+        LlmBudgetExceededError,
+        LlmContextWindowExceededError,
+    ) as exc:
+        # LLM 链路失败 → 502 显式文案；不折叠成 200 假成功（AGENTS 2.1）。
+        details = {
+            CircuitOpenError: "事件角度分析失败：模型链路熔断中，请稍后重试",
+            LlmCapacityUnavailableError: "事件角度分析失败：模型服务暂不可用，请稍后重试",
+            LlmBudgetExceededError: "事件角度分析失败：模型预算已耗尽，请稍后重试",
+            LlmContextWindowExceededError: "事件角度分析失败：事件内容超出模型上下文，请稍后重试",
+        }
+        detail = next(
+            (text for exc_type, text in details.items() if isinstance(exc, exc_type)), "事件角度分析失败，请稍后重试"
+        )
+        logger.warning("Event angle analysis LLM failure for content %s: %s", content_id, type(exc).__name__)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
+    except Exception as exc:
+        logger.warning("Event angle analysis failed for content %s", content_id, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="事件角度分析失败，请稍后重试",
+        ) from exc
+    return EventAngleAnalysisResponse.model_validate(result)

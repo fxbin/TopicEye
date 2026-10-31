@@ -8,12 +8,15 @@
  * - CATEGORY_COLORS  分类颜色映射
  * - isWebnovelSource()  网文来源判定
  * - TREND_ICONS / RESONANCE_COLORS  趋势/共鸣度视觉映射（在子组件 _components.tsx 用）
+ * - STAGE_META / stageMeta()  生命周期阶段徽章映射（issue #173）
  *
  * 子组件 _components.tsx 依赖本模块，page.tsx 通过 re-export 保持外部 import 路径不变。
  */
 
 import { Headphones, MessageCircle, Newspaper, TrendingUp, Flame } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { Tone } from '@/components/ui';
+import type { TrendingStage } from '@/types/trending';
 
 export const CATEGORIES = [
   { value: '', label: '全部' },
@@ -91,3 +94,21 @@ export const RESONANCE_COLORS: Record<number, { bgClass: string; textClass: stri
   2: { bgClass: 'bg-primary-light', textClass: 'text-primary', borderClass: 'border-primary-border', label: '升温' },
   3: { bgClass: 'bg-teal-light', textClass: 'text-teal', borderClass: 'border-teal-border', label: '共振' },
 };
+
+/** 生命周期阶段 → 徽章文案与 tone（常青=teal / 爆发=primary / 回落=amber / 发酵=neutral） */
+export const STAGE_META: Record<TrendingStage, { label: string; tone: Tone }> = {
+  evergreen: { label: '常青', tone: 'teal' },
+  peaking: { label: '爆发', tone: 'primary' },
+  declining: { label: '回落', tone: 'amber' },
+  ferment: { label: '发酵', tone: 'neutral' },
+};
+
+/**
+ * stage → 徽章元数据。
+ * null/undefined/未知 stage 透传为 undefined（调用方据此不渲染徽章，
+ * 与后端「窗口内无在榜记录时 stage 为 null」的口径对齐）。
+ */
+export function stageMeta(stage: TrendingStage | string | null | undefined): { label: string; tone: Tone } | undefined {
+  if (!stage) return undefined;
+  return STAGE_META[stage as TrendingStage];
+}

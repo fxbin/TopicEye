@@ -20,6 +20,7 @@ import { EmptyState, LoadingState } from '@/components/StateView';
 import {
   ClusterCard,
   PanelTitle,
+  StageBadge,
   StatTile,
   TrendBadge,
   WebnovelItemRow,
@@ -454,6 +455,7 @@ function TrendingPage() {
                           <span className="flex-1 truncate text-[12.5px] leading-snug text-gray-800">
                             {item.title}
                           </span>
+                          <StageBadge stage={item.stage} reason={item.stage_reason} />
                           {item.hot_value > 0 && (
                             <span className={cx('shrink-0 whitespace-nowrap font-mono text-[10px] font-medium', item.hot_value > 10000 ? 'text-primary' : 'text-gray-400')}>
                               {item.hot_value >= 10000 ? `${(item.hot_value / 10000).toFixed(1)}万` : item.hot_value.toLocaleString()}

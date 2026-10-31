@@ -6,15 +6,17 @@ Repository for TrendingItem model operations.
 - 按信源+分类聚合统计
 - 全量倒序查询（跨平台共振分析用）
 - 按标题模糊搜索（角度推荐用）
+- 最近 N 天快照查询（生命周期阶段标注用）
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 
 from sqlalchemy import func, select
 
-from app.models.trending import TrendingCategory, TrendingItem, TrendingSource
+from app.models.trending import TrendingCategory, TrendingItem, TrendingSnapshot, TrendingSource
 from app.repositories.base import BaseRepository
 
 
@@ -92,6 +94,22 @@ class TrendingRepository(BaseRepository[TrendingItem]):
         供跨平台共振分析使用，不做 limit。
         """
         stmt = select(TrendingItem).order_by(TrendingItem.source, TrendingItem.rank)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def list_snapshots_since(self, *, cutoff: date) -> Sequence[TrendingSnapshot]:
+        """返回 snapshot_date ≥ cutoff 的快照，按日期、小时升序。
+
+        Args:
+            cutoff: 窗口起始日（含当日）。today 锚点与窗口长度由调用方
+                    （trending_lifecycle）决定，本方法只按传入日期过滤，
+                    避免日期语义在两层漂移。供趋势生命周期阶段标注使用。
+        """
+        stmt = (
+            select(TrendingSnapshot)
+            .where(TrendingSnapshot.snapshot_date >= cutoff)
+            .order_by(TrendingSnapshot.snapshot_date, TrendingSnapshot.snapshot_hour)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

@@ -65,7 +65,7 @@ for (const label of ['今日情报', '每周情报', '每月情报', '数据统�
 }
 
 const userLabels = visibleLabels(user);
-for (const label of ['今日情报', '每周情报', '每月情报', '数据统计', '我的母题', '收藏夹', '算法流程', '网文雷达', '我的信源']) {
+for (const label of ['今日情报', '每周情报', '每月情报', '数据统计', '我的母题', '收藏夹', '算法流程', '文稿检测', '网文雷达', '我的信源']) {
   assert(userLabels.includes(label), `user navigation should show ${label}`);
 }
 for (const label of ['管理后台', '低粉爆文']) {
@@ -78,7 +78,7 @@ for (const label of ['管理后台']) {
 }
 assert(adminLabels.includes('网文雷达'), 'admin navigation should still show 网文雷达');
 
-for (const pathName of ['/daily', '/weekly', '/monthly', '/stats', '/my-topics', '/favorites', '/algorithm', '/novel', '/sources/me', '/profile']) {
+for (const pathName of ['/daily', '/weekly', '/monthly', '/stats', '/my-topics', '/favorites', '/algorithm', '/content-check', '/novel', '/sources/me', '/profile']) {
   assert(USER_ONLY_PATHS.includes(pathName), `USER_ONLY_PATHS should include ${pathName}`);
   assert.strictEqual(requiredAccessForPath(pathName), 'user');
   assert.strictEqual(canAccessPath(pathName, null, enabledFeatures), false, `${pathName} should require login`);

@@ -36,6 +36,7 @@ import type {
   NotificationListResponse,
 } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
+import type { SensitiveCheckResponse } from '@/types/content-check';
 import type {
   RSSHubInstance,
   StatsOverview,
@@ -275,6 +276,18 @@ export const authApi = {
 export const plansApi = {
   list(): Promise<PlanCatalogResponse> {
     return request('/plans');
+  },
+};
+
+// ─── Content Check API（文稿检测）───
+
+export const contentCheckApi = {
+  /** 发布前违禁词/广告法极限词扫描（需登录，单次最多 20000 字符）。 */
+  checkSensitive(text: string): Promise<SensitiveCheckResponse> {
+    return request('/content-check/sensitive', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
   },
 };
 

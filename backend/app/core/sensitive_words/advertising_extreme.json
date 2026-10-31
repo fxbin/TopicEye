@@ -1,0 +1,1027 @@
+{
+  "_meta": {
+    "description": "广告法绝对化用语与极限词（文稿发布前检测用）",
+    "source": [
+      "《中华人民共和国广告法》第九条（绝对化用语条款，法律法规条文不受著作权保护）",
+      "https://github.com/521xueweihan/advertising_law_checker（MIT License，通行广告法极限词清单）",
+      "https://github.com/konsheng/Sensitive-lexicon（MIT License，广告类词条人工筛取）"
+    ],
+    "license": "开源参考部分 MIT；法条部分无著作权",
+    "version_date": "2026-10-31",
+    "note": "人工筛取高频词，非整库搬运；词条不得包含空白或标点字符（service 加载时校验）"
+  },
+  "words": [
+    {
+      "word": "最好",
+      "severity": "high",
+      "suggestion": "改为具体优势描述，如「更适合新手」"
+    },
+    {
+      "word": "最佳",
+      "severity": "high",
+      "suggestion": "改为「优秀」「出色」等非绝对表述"
+    },
+    {
+      "word": "最优",
+      "severity": "high"
+    },
+    {
+      "word": "最强",
+      "severity": "high",
+      "suggestion": "改为「性能出色」等可验证表述"
+    },
+    {
+      "word": "最大",
+      "severity": "medium"
+    },
+    {
+      "word": "最高",
+      "severity": "high"
+    },
+    {
+      "word": "最低",
+      "severity": "high",
+      "suggestion": "改为「到手价 X 元」等具体价格表述"
+    },
+    {
+      "word": "最先进",
+      "severity": "high"
+    },
+    {
+      "word": "最流行",
+      "severity": "medium"
+    },
+    {
+      "word": "最受欢迎",
+      "severity": "high",
+      "suggestion": "改为「广受好评」并给出依据"
+    },
+    {
+      "word": "最专业",
+      "severity": "high"
+    },
+    {
+      "word": "最权威",
+      "severity": "high"
+    },
+    {
+      "word": "最便宜",
+      "severity": "high",
+      "suggestion": "改为具体价格对比"
+    },
+    {
+      "word": "最优惠",
+      "severity": "high"
+    },
+    {
+      "word": "最省钱",
+      "severity": "medium"
+    },
+    {
+      "word": "最快速",
+      "severity": "medium"
+    },
+    {
+      "word": "最有效",
+      "severity": "high"
+    },
+    {
+      "word": "最安全",
+      "severity": "high"
+    },
+    {
+      "word": "最健康",
+      "severity": "high"
+    },
+    {
+      "word": "最舒适",
+      "severity": "medium"
+    },
+    {
+      "word": "最纯正",
+      "severity": "medium"
+    },
+    {
+      "word": "最完美",
+      "severity": "high"
+    },
+    {
+      "word": "最顶级",
+      "severity": "high"
+    },
+    {
+      "word": "最极致",
+      "severity": "high"
+    },
+    {
+      "word": "最科学",
+      "severity": "medium"
+    },
+    {
+      "word": "最全面",
+      "severity": "medium"
+    },
+    {
+      "word": "最值得买",
+      "severity": "high"
+    },
+    {
+      "word": "最火",
+      "severity": "low"
+    },
+    {
+      "word": "最热销",
+      "severity": "high"
+    },
+    {
+      "word": "最适合",
+      "severity": "low",
+      "suggestion": "视语境改为「适合」并说明条件"
+    },
+    {
+      "word": "最值得",
+      "severity": "medium"
+    },
+    {
+      "word": "第一",
+      "severity": "medium",
+      "suggestion": "序数用法可保留；排名宣称需改写或注明数据来源"
+    },
+    {
+      "word": "第一品牌",
+      "severity": "high"
+    },
+    {
+      "word": "世界第一",
+      "severity": "high"
+    },
+    {
+      "word": "全球第一",
+      "severity": "high"
+    },
+    {
+      "word": "全国第一",
+      "severity": "high"
+    },
+    {
+      "word": "行业第一",
+      "severity": "high"
+    },
+    {
+      "word": "销量第一",
+      "severity": "high",
+      "suggestion": "改为「某榜单第 N」并附来源"
+    },
+    {
+      "word": "排名第一",
+      "severity": "high"
+    },
+    {
+      "word": "市场第一",
+      "severity": "high"
+    },
+    {
+      "word": "第一名",
+      "severity": "medium"
+    },
+    {
+      "word": "断层第一",
+      "severity": "high"
+    },
+    {
+      "word": "天下第一",
+      "severity": "high"
+    },
+    {
+      "word": "独一无二",
+      "severity": "high",
+      "suggestion": "改为「少见」「有特色」"
+    },
+    {
+      "word": "独此一家",
+      "severity": "high"
+    },
+    {
+      "word": "仅此一家",
+      "severity": "high"
+    },
+    {
+      "word": "绝无仅有",
+      "severity": "high"
+    },
+    {
+      "word": "史无前例",
+      "severity": "high"
+    },
+    {
+      "word": "前所未有",
+      "severity": "medium"
+    },
+    {
+      "word": "空前绝后",
+      "severity": "high"
+    },
+    {
+      "word": "无与伦比",
+      "severity": "high"
+    },
+    {
+      "word": "举世无双",
+      "severity": "high"
+    },
+    {
+      "word": "独步天下",
+      "severity": "high"
+    },
+    {
+      "word": "首选",
+      "severity": "medium",
+      "suggestion": "改为「值得优先考虑」"
+    },
+    {
+      "word": "首屈一指",
+      "severity": "medium"
+    },
+    {
+      "word": "首创",
+      "severity": "medium"
+    },
+    {
+      "word": "独家首创",
+      "severity": "high"
+    },
+    {
+      "word": "顶级",
+      "severity": "high",
+      "suggestion": "改为「高端」「旗舰」"
+    },
+    {
+      "word": "顶尖",
+      "severity": "high"
+    },
+    {
+      "word": "极品",
+      "severity": "high"
+    },
+    {
+      "word": "极致",
+      "severity": "low",
+      "suggestion": "视语境改为「精良」「考究」"
+    },
+    {
+      "word": "完美",
+      "severity": "high",
+      "suggestion": "改为「完成度高」等留余地的表述"
+    },
+    {
+      "word": "绝对",
+      "severity": "high",
+      "suggestion": "删除或改为「基本」「几乎」"
+    },
+    {
+      "word": "终极",
+      "severity": "medium"
+    },
+    {
+      "word": "至尊",
+      "severity": "high"
+    },
+    {
+      "word": "万能",
+      "severity": "high",
+      "suggestion": "改为列举实际适用场景"
+    },
+    {
+      "word": "神器",
+      "severity": "medium",
+      "suggestion": "改为「好用」「省力」"
+    },
+    {
+      "word": "最低价",
+      "severity": "high",
+      "suggestion": "改为具体到手价"
+    },
+    {
+      "word": "全网最低",
+      "severity": "high"
+    },
+    {
+      "word": "全网最低价",
+      "severity": "high",
+      "suggestion": "改为「券后 X 元」并确保可验证"
+    },
+    {
+      "word": "史上最低",
+      "severity": "high"
+    },
+    {
+      "word": "历史最低",
+      "severity": "high"
+    },
+    {
+      "word": "全城最低",
+      "severity": "high"
+    },
+    {
+      "word": "全年最低",
+      "severity": "high"
+    },
+    {
+      "word": "击穿底价",
+      "severity": "high"
+    },
+    {
+      "word": "跳楼价",
+      "severity": "medium"
+    },
+    {
+      "word": "破产价",
+      "severity": "medium"
+    },
+    {
+      "word": "超低价",
+      "severity": "medium"
+    },
+    {
+      "word": "白菜价",
+      "severity": "low"
+    },
+    {
+      "word": "国家级",
+      "severity": "high",
+      "suggestion": "删除或改为实际资质名称与编号"
+    },
+    {
+      "word": "世界级",
+      "severity": "high"
+    },
+    {
+      "word": "国际级",
+      "severity": "medium"
+    },
+    {
+      "word": "宇宙级",
+      "severity": "medium"
+    },
+    {
+      "word": "特供",
+      "severity": "high"
+    },
+    {
+      "word": "专供",
+      "severity": "high"
+    },
+    {
+      "word": "御用",
+      "severity": "high"
+    },
+    {
+      "word": "皇家",
+      "severity": "medium"
+    },
+    {
+      "word": "皇室",
+      "severity": "medium"
+    },
+    {
+      "word": "权威认证",
+      "severity": "medium",
+      "suggestion": "写明认证机构全称与证书编号"
+    },
+    {
+      "word": "官方认证",
+      "severity": "low"
+    },
+    {
+      "word": "世界领先",
+      "severity": "high"
+    },
+    {
+      "word": "国际领先",
+      "severity": "high"
+    },
+    {
+      "word": "全球领先",
+      "severity": "high"
+    },
+    {
+      "word": "行业领先",
+      "severity": "medium"
+    },
+    {
+      "word": "遥遥领先",
+      "severity": "medium"
+    },
+    {
+      "word": "金牌",
+      "severity": "medium",
+      "suggestion": "写明赛事/评级全称"
+    },
+    {
+      "word": "王牌",
+      "severity": "medium"
+    },
+    {
+      "word": "冠军品质",
+      "severity": "high"
+    },
+    {
+      "word": "销量冠军",
+      "severity": "high"
+    },
+    {
+      "word": "销量王",
+      "severity": "high"
+    },
+    {
+      "word": "销冠",
+      "severity": "high"
+    },
+    {
+      "word": "百分百",
+      "severity": "high",
+      "suggestion": "改为「绝大多数」或给出真实比例"
+    },
+    {
+      "word": "百分之百",
+      "severity": "high"
+    },
+    {
+      "word": "万无一失",
+      "severity": "high"
+    },
+    {
+      "word": "永久",
+      "severity": "high",
+      "suggestion": "改为「长期」并注明条件"
+    },
+    {
+      "word": "终身",
+      "severity": "medium"
+    },
+    {
+      "word": "一劳永逸",
+      "severity": "medium"
+    },
+    {
+      "word": "立竿见影",
+      "severity": "medium"
+    },
+    {
+      "word": "药到病除",
+      "severity": "high"
+    },
+    {
+      "word": "根治",
+      "severity": "high",
+      "suggestion": "普通商品不得宣称医疗功效"
+    },
+    {
+      "word": "治愈",
+      "severity": "high"
+    },
+    {
+      "word": "包治百病",
+      "severity": "high"
+    },
+    {
+      "word": "神药",
+      "severity": "high"
+    },
+    {
+      "word": "秘方",
+      "severity": "medium"
+    },
+    {
+      "word": "祖传秘方",
+      "severity": "high"
+    },
+    {
+      "word": "疗效",
+      "severity": "high"
+    },
+    {
+      "word": "有效率",
+      "severity": "high"
+    },
+    {
+      "word": "治愈率",
+      "severity": "high"
+    },
+    {
+      "word": "三天见效",
+      "severity": "high"
+    },
+    {
+      "word": "快速见效",
+      "severity": "medium"
+    },
+    {
+      "word": "无效退款",
+      "severity": "medium"
+    },
+    {
+      "word": "绝不反弹",
+      "severity": "high"
+    },
+    {
+      "word": "杀菌消炎",
+      "severity": "medium"
+    },
+    {
+      "word": "消炎杀菌",
+      "severity": "medium"
+    },
+    {
+      "word": "抗癌",
+      "severity": "high"
+    },
+    {
+      "word": "防癌",
+      "severity": "high"
+    },
+    {
+      "word": "特效药",
+      "severity": "high"
+    },
+    {
+      "word": "纯天然无副作用",
+      "severity": "high"
+    },
+    {
+      "word": "无副作用",
+      "severity": "high"
+    },
+    {
+      "word": "震惊世界",
+      "severity": "high"
+    },
+    {
+      "word": "轰动全球",
+      "severity": "high"
+    },
+    {
+      "word": "震惊全网",
+      "severity": "medium"
+    },
+    {
+      "word": "惊呆",
+      "severity": "low"
+    },
+    {
+      "word": "逆天",
+      "severity": "medium"
+    },
+    {
+      "word": "完爆",
+      "severity": "medium"
+    },
+    {
+      "word": "吊打",
+      "severity": "medium"
+    },
+    {
+      "word": "秒杀一切",
+      "severity": "high"
+    },
+    {
+      "word": "卖疯了",
+      "severity": "medium"
+    },
+    {
+      "word": "抢疯了",
+      "severity": "medium"
+    },
+    {
+      "word": "疯抢",
+      "severity": "medium"
+    },
+    {
+      "word": "狂甩",
+      "severity": "medium"
+    },
+    {
+      "word": "爆款",
+      "severity": "low"
+    },
+    {
+      "word": "断货王",
+      "severity": "medium"
+    },
+    {
+      "word": "人手一件",
+      "severity": "medium"
+    },
+    {
+      "word": "人手一支",
+      "severity": "medium"
+    },
+    {
+      "word": "天花板",
+      "severity": "medium",
+      "suggestion": "流行语，平台个别场景限流，视语境保留"
+    },
+    {
+      "word": "天花板级",
+      "severity": "medium"
+    },
+    {
+      "word": "全网爆款",
+      "severity": "medium"
+    },
+    {
+      "word": "年度之最",
+      "severity": "high"
+    },
+    {
+      "word": "无人能及",
+      "severity": "high"
+    },
+    {
+      "word": "无人能敌",
+      "severity": "high"
+    },
+    {
+      "word": "举国无双",
+      "severity": "high"
+    },
+    {
+      "word": "绝版",
+      "severity": "low"
+    },
+    {
+      "word": "孤品",
+      "severity": "low"
+    },
+    {
+      "word": "错过不再有",
+      "severity": "medium"
+    },
+    {
+      "word": "错过再等一年",
+      "severity": "high"
+    },
+    {
+      "word": "千年难遇",
+      "severity": "high"
+    },
+    {
+      "word": "百年一遇",
+      "severity": "medium"
+    },
+    {
+      "word": "稀世",
+      "severity": "medium"
+    },
+    {
+      "word": "圣品",
+      "severity": "high"
+    },
+    {
+      "word": "极品中的极品",
+      "severity": "high"
+    },
+    {
+      "word": "巅峰",
+      "severity": "low"
+    },
+    {
+      "word": "顶峰",
+      "severity": "low"
+    },
+    {
+      "word": "登峰造极",
+      "severity": "medium"
+    },
+    {
+      "word": "炉火纯青",
+      "severity": "low"
+    },
+    {
+      "word": "无懈可击",
+      "severity": "medium"
+    },
+    {
+      "word": "十全十美",
+      "severity": "medium"
+    },
+    {
+      "word": "尽善尽美",
+      "severity": "medium"
+    },
+    {
+      "word": "白璧无瑕",
+      "severity": "medium"
+    },
+    {
+      "word": "史无前例的",
+      "severity": "high"
+    },
+    {
+      "word": "开创者",
+      "severity": "medium"
+    },
+    {
+      "word": "引领潮流",
+      "severity": "medium"
+    },
+    {
+      "word": "潮流风向标",
+      "severity": "medium"
+    },
+    {
+      "word": "标杆",
+      "severity": "low"
+    },
+    {
+      "word": "典范",
+      "severity": "low"
+    },
+    {
+      "word": "翘楚",
+      "severity": "medium"
+    },
+    {
+      "word": "执牛耳",
+      "severity": "medium"
+    },
+    {
+      "word": "独占鳌头",
+      "severity": "high"
+    },
+    {
+      "word": "魁首",
+      "severity": "medium"
+    },
+    {
+      "word": "头号",
+      "severity": "medium"
+    },
+    {
+      "word": "头牌",
+      "severity": "medium"
+    },
+    {
+      "word": "龙头",
+      "severity": "low"
+    },
+    {
+      "word": "霸主",
+      "severity": "medium"
+    },
+    {
+      "word": "称霸",
+      "severity": "medium"
+    },
+    {
+      "word": "垄断",
+      "severity": "low"
+    },
+    {
+      "word": "碾压",
+      "severity": "low"
+    },
+    {
+      "word": "降维打击",
+      "severity": "low"
+    },
+    {
+      "word": "全球首发",
+      "severity": "medium"
+    },
+    {
+      "word": "全国首发",
+      "severity": "medium"
+    },
+    {
+      "word": "独家",
+      "severity": "low"
+    },
+    {
+      "word": "全网首发",
+      "severity": "medium"
+    },
+    {
+      "word": "顶级配置",
+      "severity": "high"
+    },
+    {
+      "word": "顶级工艺",
+      "severity": "high"
+    },
+    {
+      "word": "顶级享受",
+      "severity": "high"
+    },
+    {
+      "word": "极品原料",
+      "severity": "high"
+    },
+    {
+      "word": "顶级原料",
+      "severity": "high"
+    },
+    {
+      "word": "万金油",
+      "severity": "low"
+    },
+    {
+      "word": "包您满意",
+      "severity": "high"
+    },
+    {
+      "word": "令你满意",
+      "severity": "medium"
+    },
+    {
+      "word": "物超所值",
+      "severity": "medium"
+    },
+    {
+      "word": "必赚",
+      "severity": "high"
+    },
+    {
+      "word": "零风险",
+      "severity": "high"
+    },
+    {
+      "word": "无风险",
+      "severity": "high"
+    },
+    {
+      "word": "保收益",
+      "severity": "high"
+    },
+    {
+      "word": "无限回购",
+      "severity": "medium"
+    },
+    {
+      "word": "无限回购款",
+      "severity": "medium"
+    },
+    {
+      "word": "闭眼入",
+      "severity": "medium",
+      "suggestion": "夸大推荐用语，改为说明适用人群"
+    },
+    {
+      "word": "无脑入",
+      "severity": "medium"
+    },
+    {
+      "word": "谁买谁赚",
+      "severity": "high"
+    },
+    {
+      "word": "买到就是赚到",
+      "severity": "medium"
+    },
+    {
+      "word": "亏本清仓",
+      "severity": "medium"
+    },
+    {
+      "word": "清仓大甩卖",
+      "severity": "medium"
+    },
+    {
+      "word": "大甩卖",
+      "severity": "low"
+    },
+    {
+      "word": "厂家直销",
+      "severity": "low"
+    },
+    {
+      "word": "原单",
+      "severity": "medium"
+    },
+    {
+      "word": "尾单",
+      "severity": "low"
+    },
+    {
+      "word": "外贸原单",
+      "severity": "medium"
+    },
+    {
+      "word": "高仿",
+      "severity": "high",
+      "suggestion": "涉嫌售假，删除"
+    },
+    {
+      "word": "超A",
+      "severity": "high"
+    },
+    {
+      "word": "一比一复刻",
+      "severity": "high"
+    },
+    {
+      "word": "顶级复刻",
+      "severity": "high"
+    },
+    {
+      "word": "平替",
+      "severity": "low"
+    },
+    {
+      "word": "平价替代",
+      "severity": "low"
+    },
+    {
+      "word": "效果堪比医美",
+      "severity": "high"
+    },
+    {
+      "word": "堪比医美",
+      "severity": "high"
+    },
+    {
+      "word": "在家做医美",
+      "severity": "high"
+    },
+    {
+      "word": "瘦成闪电",
+      "severity": "high"
+    },
+    {
+      "word": "暴瘦",
+      "severity": "high"
+    },
+    {
+      "word": "七天瘦十斤",
+      "severity": "high"
+    },
+    {
+      "word": "月瘦二十斤",
+      "severity": "high"
+    },
+    {
+      "word": "特效丰胸",
+      "severity": "high"
+    },
+    {
+      "word": "快速美白",
+      "severity": "high"
+    },
+    {
+      "word": "瞬间美白",
+      "severity": "high"
+    },
+    {
+      "word": "一洗白",
+      "severity": "high"
+    },
+    {
+      "word": "生发神器",
+      "severity": "high"
+    },
+    {
+      "word": "七天祛斑",
+      "severity": "high"
+    },
+    {
+      "word": "根治脱发",
+      "severity": "high"
+    },
+    {
+      "word": "彻底根除",
+      "severity": "high"
+    },
+    {
+      "word": "永不",
+      "severity": "medium"
+    },
+    {
+      "word": "永不褪色",
+      "severity": "high"
+    },
+    {
+      "word": "永不磨损",
+      "severity": "high"
+    },
+    {
+      "word": "终身免费",
+      "severity": "medium"
+    },
+    {
+      "word": "终身质保",
+      "severity": "medium"
+    },
+    {
+      "word": "终身有效",
+      "severity": "medium"
+    },
+    {
+      "word": "全球限量",
+      "severity": "medium"
+    },
+    {
+      "word": "绝无二手",
+      "severity": "medium"
+    }
+  ]
+}

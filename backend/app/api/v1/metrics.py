@@ -315,8 +315,9 @@ async def _collect_snapshot_payload() -> dict:
     except Exception:
         pass
 
-    # 慢查询计数
-    slow_queries = 0
+    # 慢查询计数。读不到就是读不到——留 None 让判定端显示「—」，
+    # 回落成 0 会把「没取到」说成「一次慢查询都没有」。
+    slow_queries: int | None = None
     try:
         from app.core.slow_query import get_slow_count
 

@@ -151,7 +151,8 @@ th.num,td.num{text-align:right}
 /* ── 图表 ── */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
-.chart-cell{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px 8px;position:relative;min-width:0}
+/* 图表格子不自带边框：外层面板已经是容器，格子再套一层卡片就成了卡片套卡片 */
+.chart-cell{background:transparent;border:0;padding:4px 0 0;position:relative;min-width:0}
 .chart-title{font-size:11.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
 .chart-cell canvas{display:block;width:100%;height:160px}
 .chart-tip{display:none;position:absolute;z-index:10;background:rgba(26,26,46,.96);color:#fff;border-radius:var(--r-sm);padding:7px 10px;font-size:11px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.16)}
@@ -458,6 +459,8 @@ function fmtByUnit(unit,v){
   if(v==null)return'--';
   if(unit==='ms')return fmtMs(v);
   if(unit==='%')return Number(v).toFixed(Math.abs(v)<10?2:1)+'%';
+  if(unit==='$')return fmtCost(v);
+  if(unit===' 次/小时')return Number(v).toFixed(1)+' 次/小时';
   if(unit===' 次')return Math.round(v)+' 次';
   if(unit===' req/s')return Number(v).toFixed(1)+' req/s';
   return fmtNum(v);
@@ -493,10 +496,12 @@ function seriesFromHistory(records){
     ts:Date.parse(r.captured_at)/1000,
     total_requests:r.http_total_requests||0,
     total_errors_5xx:r.http_total_errors_5xx||0,
+    error_rate:r.http_error_rate==null?null:r.http_error_rate,
     total_llm_calls:r.llm_total_calls||0,
     total_llm_cost_usd:r.llm_total_cost_usd||0,
     db_pool_checked_out:r.db_pool_checked_out||0,
     db_pool_size:r.db_pool_size||0,
+    db_utilization:r.db_pool_utilization==null?null:r.db_pool_utilization,
     p50:r.http_p50||0,p95:r.http_p95||0,p99:r.http_p99||0,
     llm_p50:r.llm_p50||0,llm_p95:r.llm_p95||0,llm_p99:r.llm_p99||0,
     llm_success_rate:r.llm_success_rate==null?null:r.llm_success_rate,
@@ -504,15 +509,16 @@ function seriesFromHistory(records){
 }
 
 // 各体检项的趋势序列。trend 键由服务端下发，这里只负责取对应那一列。
+// 趋势口径必须跟该项的当前值一致：错误率画比率（不是累计 5xx 个数），
+// 连接池画利用率（不是已借出连接数）——否则同一行里两个数字说的不是一回事。
 function trendFor(trendKey,series){
   if(!trendKey||!series.length)return[];
   const s=series;
   switch(trendKey){
-    case 'errors': return s.map(p=>({t:p.ts,v:p.total_errors_5xx}));
+    case 'errors': return s.map(p=>({t:p.ts,v:p.error_rate==null?0:p.error_rate}));
     case 'p95': return s.map(p=>({t:p.ts,v:p.p95*1000}));
     case 'llmok': return s.map(p=>({t:p.ts,v:p.llm_success_rate==null?null:p.llm_success_rate})).filter(p=>p.v!=null);
-    // 连接池利用率要跟当前值同口径（%），不能画已借出连接数
-    case 'db': return s.map(p=>({t:p.ts,v:p.db_pool_size?p.db_pool_checked_out/p.db_pool_size*100:0}));
+    case 'db': return s.map(p=>({t:p.ts,v:p.db_utilization!=null?p.db_utilization:(p.db_pool_size?p.db_pool_checked_out/p.db_pool_size*100:0)}));
     case 'reqrate': return calcRate(s,'total_requests');
     case 'cost': return s.map(p=>({t:p.ts,v:p.total_llm_cost_usd}));
     default: return [];
@@ -975,32 +981,32 @@ function renderCharts(data){
   ]);
 }
 
+function findCheck(key){
+  return lastChecks.find(c=>c.key===key);
+}
+
+// 运行时状态卡直接用服务端的判定结论，不在前端再抄一份阈值与状态映射。
 function renderStatusCards(data){
-  const cb=data.circuit_breaker||{};
-  const badge=document.getElementById('cbBadge');
-  const state=(cb.state||'unknown').toLowerCase();
-  badge.textContent=state;
-  badge.className='pill '+(state==='closed'?'ok':state==='open'?'crit':state==='half_open'?'warn':'info');
-  document.getElementById('cbDetail').textContent='失败 '+(cb.failure_count||0)+'/'+(cb.failure_threshold||5);
+  const cb=findCheck('cb');
+  const cbBadge=document.getElementById('cbBadge');
+  cbBadge.textContent=cb?cb.display:'—';
+  cbBadge.className='pill '+(cb?cb.state:'info');
+  const breaker=data.circuit_breaker||{};
+  document.getElementById('cbDetail').textContent='失败 '+(breaker.failure_count||0)+'/'+(breaker.failure_threshold||5);
 
   const cache=data.llm_cache||{};
   const cacheTotal=(cache.hits||0)+(cache.misses||0);
-  const hitRate=cache.hit_rate||0;
   const cbadge=document.getElementById('cacheBadge');
-  if(!cacheTotal){
-    cbadge.textContent='无记录';
-    cbadge.className='pill info';
-  }else{
-    cbadge.textContent=hitRate>0.3?'有效':hitRate>0?'偏低':'未命中';
-    cbadge.className='pill '+(hitRate>0.3?'ok':hitRate>0?'warn':'info');
-  }
-  document.getElementById('cacheDetail').textContent='命中 '+(cache.hits||0)+'/'+cacheTotal+'（'+(hitRate*100).toFixed(1)+'%）';
+  // 缓存命中率只是参考数字，没有行动阈值，不判档位
+  cbadge.textContent=cacheTotal?((cache.hit_rate*100).toFixed(1)+'%'):'无记录';
+  cbadge.className='pill info';
+  document.getElementById('cacheDetail').textContent='命中 '+(cache.hits||0)+'/'+cacheTotal;
 
-  const slow=data.slow_queries||0;
+  const slow=findCheck('slow');
   const sbadge=document.getElementById('slowBadge');
-  sbadge.textContent=slow>50?'偏高':slow>10?'中等':'正常';
-  sbadge.className='pill '+(slow>50?'crit':slow>10?'warn':'ok');
-  document.getElementById('slowDetail').textContent=slow+' 次';
+  sbadge.textContent=slow?slow.display:'—';
+  sbadge.className='pill '+(slow?slow.state:'info');
+  document.getElementById('slowDetail').textContent='进程运行至今累计 '+(data.slow_queries==null?'—':data.slow_queries)+' 次';
 }
 
 function renderTopPaths(data){

@@ -71,7 +71,15 @@ async def _get(app: FastAPI, path: str, token: str | None = None) -> httpx.Respo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "path", ["/metrics", "/metrics/snapshot", "/metrics/history", "/metrics/logs", "/metrics/llm-logs"]
+    "path",
+    [
+        "/metrics",
+        "/metrics/snapshot",
+        "/metrics/history",
+        "/metrics/logs",
+        "/metrics/llm-logs",
+        "/metrics/checks",
+    ],
 )
 async def test_metrics_endpoints_reject_anonymous(monitored_app, path: str):
     app, _ = monitored_app
@@ -81,7 +89,15 @@ async def test_metrics_endpoints_reject_anonymous(monitored_app, path: str):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "path", ["/metrics", "/metrics/snapshot", "/metrics/history", "/metrics/logs", "/metrics/llm-logs"]
+    "path",
+    [
+        "/metrics",
+        "/metrics/snapshot",
+        "/metrics/history",
+        "/metrics/logs",
+        "/metrics/llm-logs",
+        "/metrics/checks",
+    ],
 )
 async def test_metrics_endpoints_reject_non_admin(monitored_app, path: str):
     app, session_factory = monitored_app
@@ -97,6 +113,25 @@ async def test_metrics_prometheus_allows_admin(monitored_app):
     resp = await _get(app, "/metrics", token)
     assert resp.status_code == 200
     assert "topiceye_content_recent_24h" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_metrics_checks_allows_admin(monitored_app):
+    """管理员能拿到体检判定结论：每项都要有当前值、阈值与状态。"""
+    app, session_factory = monitored_app
+    token = await _seed_account(session_factory, "metrics-admin@test.local", UserRole.ADMIN.value)
+    resp = await _get(app, "/metrics/checks", token)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["summary"]["total"] == len(body["checks"])
+    assert body["checks"], "体检项不应为空"
+    for check in body["checks"]:
+        assert set(check) >= {"key", "label", "display", "threshold", "state", "has_data"}
+        assert check["state"] in {"ok", "warn", "crit", "info"}
+        # 没有样本时显示占位符并且不算通过；有样本时必须给出真实读数
+        assert (check["display"] == "—") is (not check["has_data"])
+        if not check["has_data"]:
+            assert check["state"] == "info"
 
 
 @pytest.mark.asyncio

@@ -32,11 +32,13 @@ def _payload(
     llm: dict[str, Any] | None = None,
     db_pool: dict[str, Any] | None = None,
     circuit_state: str | None = "closed",
-    slow_queries: int = 0,
+    slow_queries: int | None = 0,
+    uptime_seconds: float = 7200.0,
     timeseries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "snapshot": {
+            "uptime_seconds": uptime_seconds,
             "http": {
                 "total_requests": total_requests,
                 "error_rate": error_rate,
@@ -77,6 +79,13 @@ class TestCircuitBreakerState:
         assert cb["has_data"] is False
         assert cb["state"] == "info"
 
+    def test_unknown_state_value_is_not_ok(self):
+        """认不出来的状态值同样不能当成正常——将来加枚举值时不会静默判成正常。"""
+        checks = evaluate_checks(_payload(circuit_state="half-open"))
+        cb = _by_key(checks, "cb")
+        assert cb["has_data"] is True
+        assert cb["state"] == "info"
+
 
 class TestLatencyUnit:
     """接口给秒，阈值按毫秒读。"""
@@ -88,10 +97,12 @@ class TestLatencyUnit:
         assert p95["display"] == "1.50s"
 
     def test_p95_over_critical_threshold_is_critical(self):
-        """1500ms 低于 2000ms 阈值 → 注意；2500ms → 严重。"""
+        """阈值是 500ms / 2000ms：300ms 合格、1500ms 注意、2500ms 严重。"""
+        ok_case = evaluate_checks(_payload(total_requests=10, latency={"p50": 0.1, "p95": 0.3, "count": 10}))
         warn_case = evaluate_checks(_payload(total_requests=10, latency={"p50": 0.1, "p95": 1.5, "count": 10}))
         crit_case = evaluate_checks(_payload(total_requests=10, latency={"p50": 0.1, "p95": 2.5, "count": 10}))
-        assert _by_key(warn_case, "p95")["state"] == "ok"
+        assert _by_key(ok_case, "p95")["state"] == "ok"
+        assert _by_key(warn_case, "p95")["state"] == "warn"
         assert _by_key(crit_case, "p95")["state"] == "crit"
 
     def test_p95_without_samples_has_no_data(self):
@@ -103,7 +114,13 @@ class TestLatencyUnit:
 
     def test_threshold_text_carries_unit(self):
         definition = next(d for d in CHECK_DEFINITIONS if d.key == "p95")
-        assert threshold_text(definition) == "< 500ms 合格"
+        assert threshold_text(definition) == "≤ 500ms 合格"
+
+    def test_threshold_text_uses_inclusive_sign(self):
+        """实现是「严格超过才算超标」，等于阈值算合格——文案要跟实现说同一件事。"""
+        for key in ("errrate", "db", "slow"):
+            definition = next(d for d in CHECK_DEFINITIONS if d.key == key)
+            assert threshold_text(definition).startswith("≤ ")
 
 
 class TestNoDataIsNotZero:
@@ -140,6 +157,42 @@ class TestNoDataIsNotZero:
         cost = _by_key(checks, "cost")
         assert cost["has_data"] is False
         assert cost["state"] == "info"
+
+
+class TestSlowQueryRate:
+    """慢查询是累计计数，判定用「每小时多少次」，不是拿累计值比固定阈值。"""
+
+    def test_rate_is_per_hour(self):
+        # 跑了两小时、累计 20 次 → 10 次/小时
+        checks = evaluate_checks(_payload(slow_queries=20, uptime_seconds=7200.0))
+        slow = _by_key(checks, "slow")
+        assert slow["has_data"] is True
+        assert slow["value"] == 10.0
+        assert slow["display"] == "10.0 次/小时"
+
+    def test_long_running_process_is_not_permanently_over_threshold(self):
+        """跑满一天累计 60 次不该被判严重——速率口径下只有 2.5 次/小时。"""
+        checks = evaluate_checks(_payload(slow_queries=60, uptime_seconds=86400.0))
+        assert _by_key(checks, "slow")["state"] == "ok"
+
+    def test_just_started_has_no_data(self):
+        """刚启动不到一分钟时速率没意义，不该显示成 0 次/小时。"""
+        checks = evaluate_checks(_payload(slow_queries=0, uptime_seconds=30.0))
+        slow = _by_key(checks, "slow")
+        assert slow["has_data"] is False
+        assert slow["display"] == "—"
+
+    def test_counter_unavailable_has_no_data(self):
+        """读不到慢查询计数时是「没取到」，不是「0 次」。"""
+        checks = evaluate_checks(_payload(slow_queries=None))
+        slow = _by_key(checks, "slow")
+        assert slow["has_data"] is False
+        assert slow["state"] == "info"
+
+    def test_high_rate_is_critical(self):
+        """一小时 60 次慢查询 → 严重。"""
+        checks = evaluate_checks(_payload(slow_queries=60, uptime_seconds=3600.0))
+        assert _by_key(checks, "slow")["state"] == "crit"
 
 
 class TestInformationalChecks:
@@ -208,12 +261,41 @@ class TestSummary:
             )
         )
         summary = summarize_checks(checks)
-        # 没样本的 LLM 成功率与成本不算通过，也不算失败
-        assert summary["no_data"] == 2
+        # 没样本的三项（LLM 成功率、请求速率、LLM 成本）不算通过，也不算失败
+        assert summary["no_data"] == 3
         assert summary["crit"] == 0
         assert summary["warn"] == 0
-        assert summary["ok"] >= 4
+        # 通过的正好是错误率、P95、连接池、慢查询、熔断器这五项
+        assert summary["ok"] == 5
+        assert summary["checked"] == 5
         assert summary["total"] == len(CHECK_DEFINITIONS)
+
+    def test_informational_checks_are_not_counted_as_passed(self):
+        """参考项即使有数据也不计入通过数——它们只是参考，不是合格判定。"""
+        checks = evaluate_checks(
+            _payload(
+                total_requests=10,
+                latency={"p50": 0.01, "p95": 0.05, "count": 10},
+                db_pool={"checked_out": 1, "size": 20, "utilization": 5.0},
+                llm={"total_calls": 3, "success_rate": 100.0, "total_cost_usd": 0.25},
+                timeseries=[
+                    {"ts": 1000.0, "total_requests": 10},
+                    {"ts": 1010.0, "total_requests": 30},
+                ],
+            )
+        )
+        summary = summarize_checks(checks)
+        assert summary["informational"] == 2  # 请求速率、LLM 成本
+        # 通过的是错误率、P95、LLM 成功率、连接池、慢查询、熔断器这六项
+        assert summary["ok"] == 6
+        assert summary["checked"] == 6
+
+    def test_undetermined_state_is_not_counted_as_passed(self):
+        """有数据但判不出档位（认不出来的枚举值）不能算通过。"""
+        checks = evaluate_checks(_payload(circuit_state="half-open"))
+        summary = summarize_checks(checks)
+        assert summary["undetermined"] == 1
+        assert summary["ok"] == 1  # 只有慢查询这一项判得出档位
 
     def test_critical_counts_separately(self):
         checks = evaluate_checks(

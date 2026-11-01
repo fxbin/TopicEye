@@ -97,9 +97,22 @@ def _db_utilization(payload: dict[str, Any]) -> tuple[float, bool]:
     return float(pool.get("utilization") or 0.0), bool(pool.get("size"))
 
 
-def _slow_queries(payload: dict[str, Any]) -> tuple[int, bool]:
-    """慢查询累计数。这是单调计数器，0 就是真的「一次都没有」。"""
-    return int(payload.get("slow_queries") or 0), True
+def _slow_query_rate(payload: dict[str, Any]) -> tuple[float, bool]:
+    """每小时慢查询数。
+
+    慢查询是**进程启动至今的累计计数**，直接跟固定阈值比，进程跑久了必然「超标」——
+    那是拿累计量比瞬时量，量纲不对。改用「累计数 ÷ 进程运行时长」得到速率，
+    分子分母都从进程启动算起，口径对得上。
+
+    刚启动不到一分钟时速率没有意义，算没有样本（而不是显示 0.0 次/小时）。
+    """
+    total = payload.get("slow_queries")
+    if total is None:
+        return 0.0, False
+    uptime = float(_snapshot(payload).get("uptime_seconds") or 0)
+    if uptime < 60:
+        return 0.0, False
+    return float(total) / (uptime / 3600.0), True
 
 
 def _circuit_state(payload: dict[str, Any]) -> tuple[str, bool]:
@@ -160,7 +173,7 @@ def _fmt_db_utilization(value: float) -> str:
 
 
 def _fmt_slow(value: float) -> str:
-    return f"{int(value)} 次"
+    return f"{value:.1f} 次/小时"
 
 
 def _fmt_circuit(value: Any) -> str:
@@ -222,8 +235,8 @@ CHECK_DEFINITIONS: tuple[CheckDefinition, ...] = (
     CheckDefinition(
         key="slow",
         label="慢查询",
-        hint="超过慢阈值的查询数",
-        unit=" 次",
+        hint="每小时慢查询数（累计 ÷ 运行时长）",
+        unit=" 次/小时",
         warn=10,
         crit=50,
         trend=None,
@@ -233,7 +246,9 @@ CHECK_DEFINITIONS: tuple[CheckDefinition, ...] = (
         key="cb",
         label="熔断器",
         hint="LLM 熔断状态",
-        state_map={"open": STATE_CRIT, "half_open": STATE_WARN},
+        # 已知状态要列全：closed 是正常，open 严重，half_open 注意。
+        # 表里没有的状态值按 info 处理（认不出来 ≠ 没问题）。
+        state_map={"closed": STATE_OK, "open": STATE_CRIT, "half_open": STATE_WARN},
         trend=None,
         logs="app",
     ),
@@ -250,6 +265,7 @@ CHECK_DEFINITIONS: tuple[CheckDefinition, ...] = (
         key="cost",
         label="LLM 成本（累计）",
         hint="进程启动至今",
+        unit="$",
         informational=True,
         trend="cost",
         logs="llm",
@@ -261,7 +277,7 @@ _VALUE_GETTERS: dict[str, Callable[[dict[str, Any]], tuple[Any, bool]]] = {
     "p95": _http_p95,
     "llmok": _llm_success_rate,
     "db": _db_utilization,
-    "slow": _slow_queries,
+    "slow": _slow_query_rate,
     "cb": _circuit_state,
     "req": _request_rate,
     "cost": _llm_cost,
@@ -280,7 +296,11 @@ _FORMATTERS: dict[str, Callable[[Any], str]] = {
 
 
 def threshold_text(definition: CheckDefinition) -> str:
-    """阈值说明：让人一眼看出「到什么程度算不合格」。"""
+    """阈值说明：让人一眼看出「到什么程度算不合格」。
+
+    用 ≤ / ≥ 而不是 < / >：判定是**严格**超过阈值才算超标，
+    正好等于阈值算合格，文案得跟实现说同一件事。
+    """
     if definition.informational:
         return NO_VALUE
     if definition.state_map is not None:
@@ -289,7 +309,7 @@ def threshold_text(definition: CheckDefinition) -> str:
         return NO_VALUE
     if definition.invert:
         return f"≥ {definition.warn:g}{definition.unit} 合格"
-    return f"< {definition.warn:g}{definition.unit} 合格"
+    return f"≤ {definition.warn:g}{definition.unit} 合格"
 
 
 def evaluate_state(definition: CheckDefinition, value: Any, has_data: bool) -> str:
@@ -303,7 +323,8 @@ def evaluate_state(definition: CheckDefinition, value: Any, has_data: bool) -> s
     if definition.informational:
         return STATE_INFO
     if definition.state_map is not None:
-        return definition.state_map.get(str(value), STATE_OK)
+        # 未知的状态值不能当成正常：那是「没认出来」，不是「没问题」
+        return definition.state_map.get(str(value), STATE_INFO)
     if value is None or definition.warn is None or definition.crit is None:
         return STATE_INFO
     if definition.invert:
@@ -348,8 +369,10 @@ def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, int]:
     """体检项的计数汇总，供顶部判定条直接用。
 
     ``checked`` 是真正参与合格判定的项数（排除参考项与没有样本的项）。
+    有数据但判定不出档位的项（状态 info）单独记在 ``undetermined``，
+    不混进 ``ok``——否则「没判出好坏」会被说成「检查通过」。
     """
-    ok = warn = crit = no_data = informational = 0
+    ok = warn = crit = no_data = informational = undetermined = 0
     for check in checks:
         if not check["has_data"]:
             no_data += 1
@@ -362,8 +385,10 @@ def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, int]:
             crit += 1
         elif state == STATE_WARN:
             warn += 1
-        else:
+        elif state == STATE_OK:
             ok += 1
+        else:
+            undetermined += 1
     return {
         "total": len(checks),
         "checked": ok + warn + crit,
@@ -372,4 +397,5 @@ def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, int]:
         "crit": crit,
         "no_data": no_data,
         "informational": informational,
+        "undetermined": undetermined,
     }

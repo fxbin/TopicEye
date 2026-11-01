@@ -123,6 +123,16 @@ class LlmTransportError(LlmAdapterError):
     """连接失败 / 响应不可解析。"""
 
 
+class LlmConfigurationError(LlmAdapterError):
+    """模型配置无法由自有传输层承接：provider 没有协议实现、缺 api_base、
+    或配了只有 litellm 才认的路由串 / 参数。
+
+    在发请求之前就抛出，不带状态码。它是**候选级**问题——换下一个候选可能
+    就好了——所以不是确定性请求错误（那类是换路无解、直接放弃）；编排层把它
+    当普通失败：冷却该候选、换下一个，且不做 tenacity 重试（不改配置重试结果不变）。
+    """
+
+
 # ── litellm 的错误串特征（逐条抄自 _map_openai_exception）──────────────────
 
 # ExceptionCheckers.is_error_str_rate_limit

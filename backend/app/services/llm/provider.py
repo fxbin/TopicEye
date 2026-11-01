@@ -1,5 +1,5 @@
 """
-LLM service layer — unified AI calls via litellm.
+LLM service layer — unified AI calls over the in-house transport adapters.
 
 Features:
 - Ordered DB-backed route chain with automatic failover
@@ -29,7 +29,7 @@ from litellm.exceptions import UnsupportedParamsError
 
 from app.services.llm._call_engine import (
     _call_with_retry,
-    _complete_with_selected_transport,
+    _complete_with_native_transport,
     _completion_timeout_seconds,
     _is_deterministic_request_error,
     _is_rate_limit_error,
@@ -103,25 +103,11 @@ async def complete_once(
     api_key = decrypt_secret(raw_key) if raw_key else None
     api_base = normalize_api_base(raw_base) if raw_base else None
 
-    kwargs: dict[str, Any] = {
-        "model": request_model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "num_retries": 0,
-    }
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    kwargs.update(_litellm_extra_kwargs(model_config))
-    completion_timeout = _completion_timeout_seconds(kwargs.get("timeout"))
-    kwargs["timeout"] = completion_timeout
-    if api_key:
-        kwargs["api_key"] = api_key
-    if api_base:
-        kwargs["api_base"] = api_base
+    configured_timeout = _litellm_extra_kwargs(model_config).get("timeout")
+    completion_timeout = _completion_timeout_seconds(configured_timeout if configured_timeout is not None else timeout)
 
-    return await _complete_with_selected_transport(
-        kwargs=kwargs,
+    return await _complete_with_native_transport(
+        request_model=request_model,
         messages=messages,
         api_key=api_key,
         api_base=api_base,
@@ -180,7 +166,7 @@ async def call_llm_with_metadata(
 ) -> tuple[str, dict[str, Any]]:
     """Call LLM with automatic ordered failover and return the selected route metadata.
 
-    ``response_format`` is passed through to litellm's ``acompletion``.
+    ``response_format`` is passed through to the transport adapter.
     When a provider does not support it (``UnsupportedParamsError``),
     the failover loop retries that candidate without ``response_format``
     so JSON-mode callers still get a usable text response.

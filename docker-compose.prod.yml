@@ -103,10 +103,6 @@ services:
       - DUCKDB_EXTENSION_DIR=${DUCKDB_EXTENSION_DIR:-./data/duckdb_extensions}
       - DUCKDB_STARTUP_INIT_ENABLED=${DUCKDB_STARTUP_INIT_ENABLED:-false}
       - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
-      # LLM 传输层：litellm | native。native 走自建传输层（OpenAI 兼容族 /
-      # anthropic / gemini），编排层零改动；不满足条件的 provider 显式回落
-      # litellm 并记 warning。回滚：设为 litellm 后重启后端。
-      - LLM_TRANSPORT=${LLM_TRANSPORT:-native}
       # litellm 导入时会联网拉远端模型价格表（失败重试 3 次）：多花 ~3.4s
       # 启动时间，且把启动成败挂在一个外部端点上。本仓库的计价不读那份表
       # （走 llm_models + models.dev 目录表），线上唯一的模型也不在那份表里

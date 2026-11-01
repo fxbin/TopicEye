@@ -29,7 +29,6 @@ import httpx
 import litellm
 import pytest
 
-from app.core.config import settings
 from app.services.llm import _call_engine
 from app.services.llm._call_engine import _should_retry
 from app.services.llm.adapters import (
@@ -519,8 +518,8 @@ def test_anthropic_and_gemini_need_no_api_base():
     assert native_unavailable_reason(_model("gemini")) is None
 
 
-def test_gemini_json_schema_falls_back():
-    """gemini 只复刻 json_object；其它 response_format 形状显式回落 litellm。"""
+def test_gemini_json_schema_is_unsupported():
+    """gemini 只复刻 json_object；其它 response_format 形状显式拒绝。"""
     model = _model("gemini", "gemini-2.5-flash")
     assert native_unavailable_reason(model, {"type": "json_object"}) is None
     reason = native_unavailable_reason(model, {"type": "json_schema", "json_schema": {"name": "x"}})
@@ -533,7 +532,6 @@ async def test_native_transport_dispatch_per_protocol(monkeypatch, http_capture)
     """native 模式下按协议分派到对应适配器。"""
     _, state = http_capture
     state["json"] = _ANTHROPIC_OK
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
 
     content = await _call_engine._call_llm_single(
         messages=_MESSAGES,
@@ -553,7 +551,6 @@ async def test_gemini_dispatch_uses_default_gateway(monkeypatch, http_capture):
     """gemini 缺 api_base 时走默认网关，且落到 gemini 适配器上。"""
     captured, state = http_capture
     state["json"] = _GEMINI_OK
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
 
     content = await _call_engine._call_llm_single(
         messages=_MESSAGES,
@@ -573,34 +570,22 @@ async def test_gemini_dispatch_uses_default_gateway(monkeypatch, http_capture):
     assert captured[-1]["headers"].get("x-goog-api-key") == "test-key"
 
 
-def test_unsupported_protocol_falls_back_to_litellm(monkeypatch):
-    """没有自有实现的 provider 显式回落 litellm，而不是报错。"""
-    called = {"litellm": False}
-
-    async def fake_acompletion(**kwargs):
-        called["litellm"] = True
-        return SimpleNamespace(
-            model="m",
-            choices=[SimpleNamespace(message=SimpleNamespace(content="litellm-ok"))],
-            usage={"prompt_tokens": 1, "completion_tokens": 2},
-        )
-
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
-    monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
-
+def test_unsupported_protocol_raises_configuration_error(monkeypatch):
+    """没有自有实现的 provider 显式报配置错误，而不是静默换路。"""
     import asyncio
 
-    content = asyncio.run(
-        _call_engine._call_llm_single(
-            messages=_MESSAGES,
-            model="vertex_ai/gemini-2.5-flash",
-            api_key="test-key",
-            api_base="https://x.example.com",
-            temperature=0.3,
-            max_tokens=200,
-            response_format=None,
-            model_config=_model("vertex_ai", api_base="https://x.example.com"),
+    from app.services.llm.adapters.errors import LlmConfigurationError
+
+    with pytest.raises(LlmConfigurationError, match="vertex_ai"):
+        asyncio.run(
+            _call_engine._call_llm_single(
+                messages=_MESSAGES,
+                model="vertex_ai/gemini-2.5-flash",
+                api_key="test-key",
+                api_base="https://x.example.com",
+                temperature=0.3,
+                max_tokens=200,
+                response_format=None,
+                model_config=_model("vertex_ai", api_base="https://x.example.com"),
+            )
         )
-    )
-    assert content == "litellm-ok"
-    assert called["litellm"] is True

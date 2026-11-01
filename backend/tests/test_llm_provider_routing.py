@@ -287,7 +287,7 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
     class FakeResponse:
         choices = [FakeChoice()]
 
-    async def fake_acompletion(**kwargs):
+    async def fake_complete(self, request):
         nonlocal active, max_active
         async with lock:
             active += 1
@@ -301,13 +301,14 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
         return None
 
     monkeypatch.setattr(_rate_limit.settings, "LLM_WORKER_CONCURRENCY", 2)
-    monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
     # _call_llm_single 内部延迟 import record_llm_call_in_new_session，patch 其来源模块
     import app.services.llm_usage as llm_usage_mod
 
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
 
     try:
+        model_config = _model(1, "worker", 10)
         await asyncio.gather(
             *[
                 _call_engine._call_llm_single(
@@ -318,7 +319,7 @@ async def test_llm_completion_calls_are_globally_bounded(monkeypatch):
                     0.2,
                     100,
                     None,
-                    None,
+                    model_config,
                     "test",
                 )
                 for index in range(5)
@@ -353,7 +354,7 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
     class FakeResponse:
         choices = [FakeChoice()]
 
-    async def fake_acompletion(**kwargs):
+    async def fake_complete(self, request):
         nonlocal active, max_active
         async with lock:
             active += 1
@@ -368,7 +369,7 @@ async def test_llm_completion_calls_are_bounded_per_model(monkeypatch):
 
     monkeypatch.setattr(_rate_limit, "RateLimiter", FastRateLimiter)
     monkeypatch.setattr(_rate_limit.settings, "LLM_WORKER_CONCURRENCY", 5)
-    monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
     import app.services.llm_usage as llm_usage_mod
 
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
@@ -403,8 +404,8 @@ async def test_llm_completion_has_bounded_async_deadline(monkeypatch):
     cancelled = asyncio.Event()
     observed = {}
 
-    async def slow_acompletion(**kwargs):
-        observed.update(kwargs)
+    async def slow_complete(self, request):
+        observed["timeout"] = request.timeout
         try:
             await asyncio.sleep(1)
         except asyncio.CancelledError:
@@ -415,7 +416,7 @@ async def test_llm_completion_has_bounded_async_deadline(monkeypatch):
         return None
 
     monkeypatch.setattr(_call_engine.settings, "LLM_COMPLETION_TIMEOUT_SECONDS", 0.01)
-    monkeypatch.setattr(_call_engine, "acompletion", slow_acompletion)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", slow_complete)
     import app.services.llm_usage as llm_usage_mod
 
     monkeypatch.setattr(llm_usage_mod, "record_llm_call_in_new_session", fake_record_llm_call_in_new_session)
@@ -429,6 +430,7 @@ async def test_llm_completion_has_bounded_async_deadline(monkeypatch):
             0.2,
             100,
             None,
+            _model(9, "timeout-probe", 10),
         )
 
     assert observed["timeout"] == 0.1

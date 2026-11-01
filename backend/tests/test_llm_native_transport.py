@@ -26,7 +26,6 @@ import httpx
 import pytest
 from litellm.exceptions import BadRequestError, RateLimitError
 
-from app.core.config import settings
 from app.services.llm import _call_engine
 from app.services.llm._call_engine import _should_retry
 from app.services.llm.adapters import (
@@ -296,10 +295,10 @@ def test_openai_compatible_provider_supports_native():
     assert native_unavailable_reason(_model("openai", "gpt-4.1-mini")) is None
 
 
-def test_non_openai_protocol_provider_falls_back():
-    """azure / bedrock / vertex_ai 协议不同，回落 litellm。
+def test_non_openai_protocol_provider_is_unsupported():
+    """azure / bedrock / vertex_ai 协议与认证不同，没有自有实现（#190）。
 
-    anthropic 与 gemini 自 #185 起有自有协议实现，不再落在这份名单里。
+    anthropic 与 gemini 自 #185 起有自有协议实现，不在这份名单里。
     """
     for provider in ("azure", "bedrock", "vertex_ai"):
         reason = native_unavailable_reason(_model(provider, api_base="https://x.example.com"))
@@ -307,27 +306,40 @@ def test_non_openai_protocol_provider_falls_back():
         assert provider in reason
 
 
-def test_missing_api_base_falls_back_except_openai():
-    """缺 api_base 时回落 litellm（避免两条路径打到不同端点）。"""
+def test_missing_api_base_rejected_unless_default_gateway_exists():
+    """缺 api_base 时：有策展默认网关的 provider 可走，没有的（如 custom）显式拒绝。"""
     assert native_unavailable_reason(_model("custom")) is not None
-    assert native_unavailable_reason(_model("deepseek")) is not None
-    # openai 的默认端点与 litellm 一致，可走自有路径。
-    assert native_unavailable_reason(_model("openai", "gpt-4.1-mini")) is None
+    # deepseek 的默认网关来自精选目录，自有路径可直接走。
+    assert native_unavailable_reason(_model("deepseek")) is None
 
 
-def test_explicit_litellm_route_string_falls_back():
-    """配置了 litellm 专属路由串时回落——那是 litellm 的路由约定，不在自有路径解释。"""
+def test_default_api_bases_match_curated_catalog():
+    """DEFAULT_API_BASES 与模型目录的精选默认网关不得漂移（两处真源的守卫）。
+
+    目录侧没给默认网关的厂商（anthropic / gemini / xai / mistral），registry
+    补官方端点；多个 OpenAI 兼容网关共用 provider=openai，默认只指官方端点。
+    """
+    from app.services.llm.adapters import DEFAULT_API_BASES
+    from app.services.model_catalog_service import FEATURED_PROVIDERS
+
+    for featured in FEATURED_PROVIDERS:
+        if featured.default_api_base is None or featured.litellm_provider == "openai":
+            continue
+        assert DEFAULT_API_BASES.get(featured.litellm_provider) == featured.default_api_base, featured.litellm_provider
+
+
+def test_explicit_litellm_route_string_is_rejected():
+    """配置了 litellm 专属路由串时拒绝——那是 litellm 的路由约定，不在自有路径解释。"""
     model = _model("custom", api_base="https://gw.example.com/v1", extra={"litellm_model": "openai/foo"})
     assert native_unavailable_reason(model) is not None
 
 
-def test_litellm_only_params_fall_back():
-    """会改变协议或路由语义的 litellm_params 一律回落。"""
+def test_litellm_only_params_are_rejected():
+    """会改变协议或路由语义的 litellm_params 一律拒绝，提示改配置。"""
     for params in (
         {"api_version": "2024-02-01"},
         {"custom_llm_provider": "azure"},
         {"drop_params": True},
-        {"num_retries": 4},
     ):
         model = _model("custom", api_base="https://gw.example.com/v1", extra={"litellm_params": params})
         assert native_unavailable_reason(model) is not None, params
@@ -341,37 +353,18 @@ def test_header_only_litellm_params_are_honored():
     assert native_unavailable_reason(model) is None
 
 
-# ── 5. 传输分派：默认 litellm，native 时显式回落 ─────────────────────────────
+def test_num_retries_param_is_tolerated():
+    """litellm_params.num_retries 已无意义（重试全在编排层），带这个键不再拒绝。"""
+    model = _model("custom", api_base="https://gw.example.com/v1", extra={"litellm_params": {"num_retries": 4}})
+    assert native_unavailable_reason(model) is None
 
 
-def test_default_transport_is_litellm():
-    """默认走 litellm——既有部署行为不变。"""
-    assert settings.LLM_TRANSPORT.strip().lower() == "litellm"
-
-
-def test_invalid_transport_value_is_rejected():
-    """拼错的传输层取值必须显式报错，不能静默回落成 litellm。
-
-    静默回落会让「以为已经在跑自有传输层」的部署实际仍在跑 litellm，
-    而外部看不出来——这正是 AGENTS.md「禁止安静失败」要挡的情况。
-    """
-    from pydantic import ValidationError
-
-    from app.core.config import Settings
-
-    with pytest.raises(ValidationError) as exc_info:
-        Settings(LLM_TRANSPORT="nativee")
-    # 断言错误的**内容**而不是「有 ValidationError 就算」——别的字段报错也会抛它。
-    assert "LLM_TRANSPORT" in str(exc_info.value)
-
-    # 合法值归一化（大小写/空白不影响）。
-    assert Settings(LLM_TRANSPORT="  NATIVE ").LLM_TRANSPORT == "native"
-    assert Settings(LLM_TRANSPORT="LiteLLM").LLM_TRANSPORT == "litellm"
+# ── 5. 传输执行 ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_native_path_calls_own_transport(monkeypatch):
-    """native 模式下，OpenAI 兼容族走自有传输实现。"""
+async def test_call_llm_single_uses_own_transport(monkeypatch):
+    """主链路经 _call_engine 走自有传输实现。"""
     captured: dict = {}
 
     async def fake_complete(self, request):
@@ -384,7 +377,6 @@ async def test_native_path_calls_own_transport(monkeypatch):
             usage={"prompt_tokens": 1, "completion_tokens": 2},
         )
 
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
     monkeypatch.setattr(
         "app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete",
         fake_complete,
@@ -409,14 +401,13 @@ async def test_native_path_calls_own_transport(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_native_path_maps_error_to_litellm_exception(monkeypatch):
+async def test_transport_error_maps_to_litellm_exception(monkeypatch):
     """自有路径的错误必须映射回 litellm 异常类型，编排层判定才不变。"""
     from app.services.llm.adapters.errors import LlmRateLimitError
 
     async def fake_complete(self, request):
         raise LlmRateLimitError("Rate limit reached", status_code=429, body="rate limited")
 
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
 
     model_config = _model("custom", "minicpm5-2b", api_base="https://gw.example.com/v1")
@@ -434,74 +425,40 @@ async def test_native_path_maps_error_to_litellm_exception(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_non_supported_provider_falls_back_to_litellm(monkeypatch):
-    """native 模式下不支持的 provider 回落 litellm，而不是报错。
+async def test_unsupported_provider_raises_configuration_error(monkeypatch):
+    """不支持的 provider 显式报配置错误，不静默换路、也不碰网络。
 
-    用 vertex_ai 举例——它的认证与端点跟第一方不同，没有自有实现（#185）。
+    用 vertex_ai 举例——它的认证与端点跟第一方不同，没有自有实现（#190）。
     """
-    called = {"litellm": False}
+    from app.services.llm.adapters.errors import LlmConfigurationError
 
-    async def fake_acompletion(**kwargs):
-        called["litellm"] = True
-        return SimpleNamespace(
-            model="m",
-            choices=[SimpleNamespace(message=SimpleNamespace(content="litellm-ok"))],
-            usage={"prompt_tokens": 1, "completion_tokens": 2},
-        )
+    async def fail_complete(self, request):
+        raise AssertionError("transport must not be reached for an unsupported provider")
 
-    async def fail_native(self, request):
-        raise AssertionError("native path must not be used for this provider")
-
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
-    monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
-    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fail_native)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fail_complete)
 
     model_config = _model("vertex_ai", "gemini-2.5-flash", api_base="https://x.example.com")
-    content = await _call_engine._call_llm_single(
-        messages=[{"role": "user", "content": "hi"}],
-        model="vertex_ai/gemini-2.5-flash",
-        api_key="k",
-        api_base="https://x.example.com",
-        temperature=0.3,
-        max_tokens=100,
-        response_format=None,
-        model_config=model_config,
-    )
-
-    assert content == "litellm-ok"
-    assert called["litellm"] is True
-
-
-@pytest.mark.asyncio
-async def test_litellm_transport_mode_ignores_native(monkeypatch):
-    """默认（litellm）模式下自有传输层完全不参与。"""
-
-    async def fail_native(self, request):
-        raise AssertionError("native path must not be used in litellm mode")
-
-    async def fake_acompletion(**kwargs):
-        return SimpleNamespace(
-            model="m",
-            choices=[SimpleNamespace(message=SimpleNamespace(content="litellm-ok"))],
-            usage={"prompt_tokens": 1, "completion_tokens": 2},
+    with pytest.raises(LlmConfigurationError, match="vertex_ai"):
+        await _call_engine._call_llm_single(
+            messages=[{"role": "user", "content": "hi"}],
+            model="vertex_ai/gemini-2.5-flash",
+            api_key="k",
+            api_base="https://x.example.com",
+            temperature=0.3,
+            max_tokens=100,
+            response_format=None,
+            model_config=model_config,
         )
 
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "litellm")
-    monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
-    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fail_native)
 
-    model_config = _model("custom", "minicpm5-2b", api_base="https://gw.example.com/v1")
-    content = await _call_engine._call_llm_single(
-        messages=[{"role": "user", "content": "hi"}],
-        model="openai/minicpm5-2b",
-        api_key="k",
-        api_base="https://gw.example.com/v1",
-        temperature=0.3,
-        max_tokens=100,
-        response_format=None,
-        model_config=model_config,
-    )
-    assert content == "litellm-ok"
+def test_configuration_error_is_candidate_level_not_request_level():
+    """配置错误是候选级问题：不做 tenacity 重试，但也不是「换路无解」的确定性
+    请求错——failover 应冷却该候选并尝试下一个，而不是直接放弃。"""
+    from app.services.llm.adapters.errors import LlmConfigurationError
+
+    exc = LlmConfigurationError("provider azure 没有自有协议实现")
+    assert _should_retry(exc) is False
+    assert _call_engine._is_deterministic_request_error(exc) is False
 
 
 # ── 6. 自有传输实现的请求体与响应归一化 ──────────────────────────────────────

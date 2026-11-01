@@ -78,7 +78,7 @@ async def trace_runtime(monkeypatch):
 async def test_failover_attempts_link_to_real_rows_without_pricing_failed_usage_as_free(trace_runtime, monkeypatch):
     sessions, _ = trace_runtime
     complete = AsyncMock(side_effect=[RuntimeError("429 rate limit"), response()])
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     with (
         llm_call_budget(max_physical_attempts=2, max_cost_usd=0.01),
         trace_llm_call("event_eval:mock-run:query:1") as trace,
@@ -88,7 +88,6 @@ async def test_failover_attempts_link_to_real_rows_without_pricing_failed_usage_
         )
         result = trace.report()
     assert complete.await_count == 2
-    assert all(call.kwargs["num_retries"] == 0 for call in complete.await_args_list)
     assert [attempt["status"] for attempt in result["physical_attempts"]] == ["failed", "done"]
     assert result["cost_usd"] is None and result["usage_linkage_verified"] is False
     assert result["route"]["provider_reported_model"] == "provider-reported-mock-model"
@@ -103,7 +102,7 @@ async def test_failover_attempts_link_to_real_rows_without_pricing_failed_usage_
 async def test_physical_cap_survives_failover_and_does_not_mark_next_model_unhealthy(trace_runtime, monkeypatch):
     _, models = trace_runtime
     complete = AsyncMock(side_effect=RuntimeError("429 rate limit"))
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     with (
         llm_call_budget(max_physical_attempts=1, max_cost_usd=0.01),
         trace_llm_call("event_eval:physical-cap") as trace,
@@ -122,7 +121,7 @@ async def test_cost_cap_refuses_unknown_prices_before_transport(trace_runtime, m
     _, models = trace_runtime
     models[0].cost_per_1k_input = models[0].cost_per_1k_output = None
     complete = AsyncMock(return_value=response())
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     with (
         llm_call_budget(max_physical_attempts=2, max_cost_usd=0.01),
         trace_llm_call("event_eval:unknown-price") as trace,
@@ -138,7 +137,7 @@ async def test_cost_cap_refuses_unknown_prices_before_transport(trace_runtime, m
 @pytest.mark.asyncio
 async def test_cache_provenance_keeps_original_identity_without_charging_twice(trace_runtime, monkeypatch):
     complete = AsyncMock(return_value=response())
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     messages = [{"role": "user", "content": "same mock request"}]
     with llm_call_budget(max_physical_attempts=1, max_cost_usd=0.01):
         with trace_llm_call("event_eval:cache-producer") as first:
@@ -154,7 +153,9 @@ async def test_cache_provenance_keeps_original_identity_without_charging_twice(t
 
 @pytest.mark.asyncio
 async def test_concurrent_logical_requests_keep_separate_attempt_ids(trace_runtime, monkeypatch):
-    monkeypatch.setattr(engine, "acompletion", AsyncMock(return_value=response()))
+    monkeypatch.setattr(
+        "app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", AsyncMock(return_value=response())
+    )
 
     async def request(number):
         with trace_llm_call(f"event_eval:parallel:{number}") as trace:
@@ -175,7 +176,7 @@ async def test_unknown_currency_is_refused_and_legacy_cache_is_not_usage_proof(t
     _, models = trace_runtime
     models[0].extra_params.pop("pricing_currency")
     complete = AsyncMock(return_value=response())
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     with llm_call_budget(max_physical_attempts=1, max_cost_usd=0.01), trace_llm_call() as trace:
         with pytest.raises(LlmTraceBudgetExceeded, match="USD pricing"):
             await provider.call_llm_with_metadata(
@@ -196,7 +197,7 @@ async def test_free_model_name_without_explicit_prices_cannot_bypass_budget(trac
     models[0].cost_per_1k_input = models[0].cost_per_1k_output = None
     models[0].extra_params = {}
     complete = AsyncMock(return_value=response())
-    monkeypatch.setattr(engine, "acompletion", complete)
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", complete)
     with llm_call_budget(max_physical_attempts=1, max_cost_usd=0.01), trace_llm_call() as trace:
         with pytest.raises(LlmTraceBudgetExceeded, match="explicit known unit prices"):
             await provider.call_llm_with_metadata(
@@ -229,7 +230,9 @@ async def test_nonzero_cache_price_is_not_currency_free_even_with_zero_base_rate
 async def test_missing_or_invalid_token_counters_do_not_become_known_zero_usage(trace_runtime, monkeypatch, usage):
     received = response()
     received.usage = usage
-    monkeypatch.setattr(engine, "acompletion", AsyncMock(return_value=received))
+    monkeypatch.setattr(
+        "app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", AsyncMock(return_value=received)
+    )
     with llm_call_budget(max_physical_attempts=1, max_cost_usd=0.01), trace_llm_call() as trace:
         await provider.call_llm_with_metadata(
             [{"role": "user", "content": "mock unknown usage"}], routing_group="trace-test", max_tokens=100

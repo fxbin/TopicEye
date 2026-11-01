@@ -3,31 +3,28 @@
 
 回答两个问题：
 
-1. **这个模型能不能走自有传输层？**——按**协议**判定，不按 litellm 的
-   provider 名单硬编码。已实现的协议：OpenAI ``/chat/completions``、
-   anthropic ``/v1/messages``、gemini ``generateContent``；azure / bedrock /
-   vertex_ai 的请求与响应格式不同，回落 litellm 并记 warning。
-2. **自有传输层要往哪个 URL 发、用哪个模型名？**
+1. **这个模型能不能走自有传输层？**——按**协议**判定，不按某个厂商名单
+   硬编码。已实现的协议：OpenAI ``/chat/completions``、anthropic
+   ``/v1/messages``、gemini ``generateContent``；azure / bedrock / vertex_ai
+   的认证与端点形状不同，尚无实现（#190），这类配置显式报
+   ``LlmConfigurationError``，不静默换路。
+2. **自有传输层要往哪个 URL ���、用哪个模型名？**
 
-   - **URL**：``api_base`` 优先用编排层解析好的（已含容器回环地址重写，
-     与 litellm 收到的是同一个值，两条路径因此打到同一端点）；没配置时用
-     provider 的默认网关（``openai`` / ``anthropic`` / ``gemini`` 三个的默认值
-     与 litellm 一致）——其余 provider 回落 litellm，因为 litellm 对它们的
-     内部默认端点与仓库策展值并不一致。
-   - **模型名**：线上真正识别的**裸模型名**。与 litellm 的结果逐条对齐——
-     litellm 收到 ``provider/model`` 路由串后会剥掉第一段，所以
-     ``custom`` + ``minicpm5-2b`` 发的是 ``minicpm5-2b``，
-     ``openai`` + ``example-org/example-29b`` 发的是
+   - **URL**：``api_base`` 优先用编排层解析好的（已含容器回环地址重写）；
+     没配置时用 provider 的默认网关（``DEFAULT_API_BASES``，与
+     ``model_catalog_service`` 的精选目录保持一致，有测试守卫）。
+   - **模型名**：线上真正识别的**裸模型名**。``custom`` + ``minicpm5-2b``
+     发的是 ``minicpm5-2b``，``openai`` + ``example-org/example-29b`` 发的是
      ``example-org/example-29b``（斜杠后的组织/模型命名原样保留，#83）。
 
-**为什么按协议而不是按 litellm provider 名单分流？** provider 列存的是
-litellm provider 名，而那份名单随版本变动（实测 1.103.1 已无 ``zhipu``，
-改名 ``zai``）。自有传输层只依赖「协议 + 端点」，不依赖那份名单。
+**为什么按协议分流？** provider 列里存的是沿用自 litellm 时代的 provider 名
+（历史数据如此，不改名），而厂商名单会变；自有传输层只依赖「协议 + 端点」。
 
 **显式路由串与 litellm 专属参数不参与自有路径**：``litellm_model`` /
 ``litellm_params.model`` 是 litellm 的路由串约定；``api_version`` /
 ``custom_llm_provider`` / ``drop_params`` 会改变协议或路由语义。遇到这些
-一律回落 litellm，不在自有路径里解释它们。
+显式报错，提示改用 provider 列与 api_base，不在自有路径里猜测它们的意思。
+配置键名保留 ``litellm_params`` 等历史写法：它们已落库在用户的模型配置里。
 """
 
 from __future__ import annotations
@@ -62,26 +59,36 @@ OPENAI_COMPATIBLE_PROVIDERS: frozenset[str] = frozenset(
 ANTHROPIC_PROVIDERS: frozenset[str] = frozenset({"anthropic"})
 GEMINI_PROVIDERS: frozenset[str] = frozenset({"gemini"})
 
-# provider → 协议实现。按**协议**分流，不按 litellm 的 provider 名单分流。
+# provider → 协议实现。按**协议**分流。
 PROTOCOL_BY_PROVIDER: dict[str, str] = {
     **{provider: "openai_compat" for provider in OPENAI_COMPATIBLE_PROVIDERS},
     **{provider: "anthropic_native" for provider in ANTHROPIC_PROVIDERS},
     **{provider: "gemini_native" for provider in GEMINI_PROVIDERS},
 }
 
-# provider 未显式配置 api_base 时的默认网关。只收录 litellm 与仓库策展值
-# 一致的条目；其余 provider 在缺 api_base 时回落 litellm，避免两条路径
-# 打到不同端点。
+# provider 未显式配置 api_base 时的默认网关。
+#
+# 与 ``model_catalog_service.FEATURED_PROVIDERS`` 的精选默认值保持一致（有
+# 测试守卫，两处不得漂移）；目录里没给默认值的厂商这里写官方文档端点。
+# ``custom`` 刻意不在这里——「完全自定义」必须由用户自带 api_base。
 DEFAULT_API_BASES: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
-    # litellm 的 anthropic 默认网关（`AnthropicConfig.get_api_base`）。
     "anthropic": "https://api.anthropic.com",
-    # litellm 的 gemini 默认网关（生成式语言 API 的 v1beta）。
+    # 生成式语言 API 的 v1beta。
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "deepseek": "https://api.deepseek.com",
+    "zhipu": "https://open.bigmodel.cn/api/paas/v4/",
+    "minimax": "https://api.minimaxi.com/v1",
+    "moonshot": "https://api.moonshot.cn/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "xai": "https://api.x.ai/v1",
+    "mistral": "https://api.mistral.ai/v1",
 }
 
-# 自有路径能如实复刻的 litellm_params 键：只影响请求头与请求体字段。
-# ``timeout`` / ``num_retries`` 由编排层统一处理（见 _call_engine）。
+# ``extra_params.litellm_params`` 里自有路径认的键：只影响请求头与请求体字段。
+# ``timeout`` 由编排层统一处理（见 _call_engine）；``num_retries`` 已无意义
+# （传输层没有内部重试，重试全在编排层），保留在名单里只是为了不让存量
+# 配置因为多了这个键而报错。
 NATIVE_HONORED_LITELLM_PARAMS: frozenset[str] = frozenset(
     {
         "default_headers",
@@ -93,8 +100,8 @@ NATIVE_HONORED_LITELLM_PARAMS: frozenset[str] = frozenset(
     }
 )
 
-# 已经提示过回落的 provider——同一个 provider 只提示一次，避免每次调用刷屏。
-_warned_fallbacks: set[str] = set()
+# 已经提示过「无法承接」的 provider——同一个 provider + 原因只提示一次，避免刷屏。
+_warned_unsupported: set[str] = set()
 
 
 def _clean(value: Any) -> str | None:
@@ -150,13 +157,11 @@ def native_unavailable_reason(model_config: Any, response_format: dict | None = 
 
     判定项：
 
-    1. provider 属已支持的协议族（OpenAI 兼容 / anthropic / gemini，
-       按协议，不按 litellm 名单）
+    1. provider 属已支持的协议族（OpenAI 兼容 / anthropic / gemini，按协议判）
     2. 模型有裸模型名
     3. 能解析出 api_base（模型自带，或 provider 有默认网关）
     4. 没配 litellm 专属的显式路由串
-    5. litellm_params 里没有会改变协议/路由语义的键，且 num_retries 没有
-       被调大（自有路径没有内部重试，调大就意味着两条路径语义不同）
+    5. litellm_params 里没有会改变协议/路由语义的键
     6. 该协议能如实复刻 ``response_format``（gemini 只复刻 json_object）
     """
     provider = resolve_provider(model_config)
@@ -164,7 +169,7 @@ def native_unavailable_reason(model_config: Any, response_format: dict | None = 
         return "模型未配置 provider"
     protocol = PROTOCOL_BY_PROVIDER.get(provider.lower())
     if protocol is None:
-        return f"provider {provider} 没有自有协议实现"
+        return f"provider {provider} 没有自有协议实现（azure / bedrock / vertex_ai 见 #190）"
 
     model_id = _clean(getattr(model_config, "model_id", None))
     if not model_id:
@@ -174,22 +179,18 @@ def native_unavailable_reason(model_config: Any, response_format: dict | None = 
     litellm_params = params.get("litellm_params") if isinstance(params.get("litellm_params"), dict) else {}
 
     if _clean(params.get("litellm_model")) or _clean(litellm_params.get("model")):
-        return "配置了 litellm 专属的显式路由串"
+        return "配置了 litellm 专属的显式路由串，请改用 provider 列 + model_id"
 
     unsupported = sorted(set(litellm_params) - NATIVE_HONORED_LITELLM_PARAMS)
     if unsupported:
-        return f"litellm_params 含自有路径不复刻的参数: {', '.join(unsupported)}"
-
-    num_retries = litellm_params.get("num_retries")
-    if num_retries not in (None, 0):
-        return f"litellm_params.num_retries={num_retries} 需要 litellm 内部重试"
+        return f"litellm_params 含自有传输层不支持的参数: {', '.join(unsupported)}"
 
     if not resolve_base_url(model_config, provider):
         return f"provider {provider} 未配置 api_base 且无默认网关"
 
-    # gemini 侧只复刻 json_object；其它形状（json_schema 等）交给 litellm。
+    # gemini 侧只复刻 json_object；其它形状没有对应的请求字段。
     if protocol == "gemini_native" and response_format is not None and response_format.get("type") != "json_object":
-        return "gemini 自有路径只复刻 response_format=json_object"
+        return "gemini 只支持 response_format=json_object"
 
     return None
 
@@ -228,10 +229,9 @@ def build_native_request(
     response_format: dict | None,
     timeout: float,
 ) -> NativeRequest | None:
-    """构造自有传输层的请求；不可用时返回 None（调用方回落 litellm）。
+    """构造自有传输层的请求；配置不完整时返回 None（调用方据此报配置错误）。
 
-    ``api_base`` 传编排层已解析好的值（含容器回环地址重写），与 litellm
-    收到的是同一个值，两条路径因此打到同一端点。
+    ``api_base`` 传编排层已解析好的值（含容器回环地址重写）。
     """
     provider = resolve_provider(model_config)
     if not provider:
@@ -270,17 +270,18 @@ def build_native_request(
     )
 
 
-def note_fallback(provider: str | None, reason: str) -> None:
-    """记录一次「回落 litellm」——同一个 provider+原因只提示一次。
+def note_unsupported(provider: str | None, reason: str) -> None:
+    """记录一次「自有传输层无法承接该配置」——同一个 provider+原因只提示一次。
 
-    回落必须是显式的：不能静默变成「看起来成功」的另一条路径。
+    调用方随后会抛 ``LlmConfigurationError``；这里的 warning 是给运维看日志用的：
+    异常可能被 failover 吞掉换下一个候选，日志里仍要留下这个配置有问题的痕迹。
     """
     key = f"{provider or 'unknown'}:{reason}"
-    if key in _warned_fallbacks:
+    if key in _warned_unsupported:
         return
-    _warned_fallbacks.add(key)
+    _warned_unsupported.add(key)
     logger.warning(
-        "Native LLM transport unavailable for provider=%s (%s); falling back to litellm",
+        "Native LLM transport cannot serve provider=%s (%s); candidate skipped",
         provider or "unknown",
         reason,
     )

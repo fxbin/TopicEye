@@ -373,10 +373,10 @@ async def _save_trending_snapshots() -> None:
 
 
 @track_job(
-    "cleanup_trending_snapshots", name="清理过期趋势快照", timeout=60, description="每日01:00清理15天前的趋势快照"
+    "cleanup_trending_snapshots", name="清理过期趋势快照", timeout=60, description="每日01:00清理7天前的趋势快照"
 )
 async def _cleanup_old_trending_snapshots() -> None:
-    """Delete trending snapshots older than 15 days at 01:00."""
+    """Delete trending snapshots older than 7 days at 01:00."""
     logger.info("Scheduler: cleanup_old_trending_snapshots started")
     try:
         async with async_session() as db:
@@ -1088,7 +1088,7 @@ def start_scheduler() -> None:
         _cleanup_old_trending_snapshots,
         trigger=CronTrigger(hour=1, minute=0),
         id="cleanup_trending_snapshots",
-        name="Cleanup trending snapshots older than 15 days",
+        name="Cleanup trending snapshots older than 7 days",
         replace_existing=True,
     )
 

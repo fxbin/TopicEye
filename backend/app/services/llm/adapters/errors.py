@@ -2,12 +2,11 @@
 
 设计要点（issue #181）：
 
-传输层（不管 litellm 还是自有实现）最终都要让编排层按同一套语义做决定：
-限流 → 不重试、切下一候选；确定性请求错（400 族）→ 不重试、不降级、
-不污染熔断器。因此这里定义**自有**错误类型，再由
-:func:`to_litellm_exception` 映射回既有的 litellm 异常类型，让
-`_call_engine._is_deterministic_request_error` / `_should_retry` /
-`provider.py` 的 `except UnsupportedParamsError` 回退逻辑一行都不用改。
+传输层最终要让编排层按一套稳定的语义做决定：限流 → 不重试、切下一候选；
+确定性请求错（400 族）→ 不重试、不降级、不污染熔断器。编排层
+（`_call_engine._is_deterministic_request_error` / `_should_retry` /
+`provider.py` 的 `except LlmUnsupportedParamsError` 回退逻辑）直接按这里的
+自有类型判定。
 
 分类口径**逐条对齐 litellm 1.103.1 的 `_map_openai_exception`**（OpenAI
 兼容族）。litellm 的判定顺序是「先看错误串特征，再看状态码」，本模块照抄，
@@ -52,9 +51,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
-
-import httpx
 
 
 class LlmAdapterError(Exception):
@@ -476,7 +472,6 @@ _GEMINI_SERVER_MARKERS = (
 
 # litellm 把 gemini 与 vertex_ai 归到同一套异常映射，502 的归类与 OpenAI 兼容族
 # 不同（APIConnectionError vs BadGatewayError），按 provider 区分时用这份名单。
-_GEMINI_FAMILY_PROVIDERS = frozenset({"gemini", "vertex_ai"})
 
 
 def _gemini_body_error_code(body: str) -> int | None:
@@ -569,85 +564,7 @@ def classify_gemini_error(status_code: int, body: str) -> LlmAdapterError:
     if status_code == 500:
         return build(LlmServerError)
     if status_code == 502:
-        # litellm 的 vertex 路径把 502 归成 APIConnectionError（不是 BadGatewayError），
-        # 由 to_litellm_exception 按 provider 区分。
         return build(LlmServerError)
     if status_code == 503:
         return build(LlmServerError)
     return build(LlmApiError)
-
-
-def to_litellm_exception(exc: LlmAdapterError, *, model: str | None = None, provider: str | None = None):
-    """把自有错误映射成既有的 litellm 异常类型。
-
-    编排层（`_call_engine` / `provider.py` / `analysis.py`）只认 litellm 的
-    异常类型，映射后**既有判定语义一行都不用改**：
-
-    - ``RateLimitError`` → `_should_retry` 返回 False（不重试），failover 切下一候选
-    - ``BadRequestError`` 族 → `_is_deterministic_request_error` 为真
-      （不重试、不降级、不污染熔断器）
-    - ``UnsupportedParamsError`` → `provider.py` 捕获后去掉 response_format 重试
-
-    litellm 的异常构造签名要求 ``message`` / ``model`` / ``llm_provider``。
-    """
-    from litellm.exceptions import (
-        APIConnectionError,
-        APIError,
-        AuthenticationError,
-        BadGatewayError,
-        BadRequestError,
-        ContentPolicyViolationError,
-        ContextWindowExceededError,
-        InternalServerError,
-        NotFoundError,
-        PermissionDeniedError,
-        RateLimitError,
-        ServiceUnavailableError,
-        Timeout,
-        UnsupportedParamsError,
-    )
-
-    message = str(exc)
-    kwargs: dict[str, Any] = {"message": message, "model": model, "llm_provider": provider or "openai"}
-
-    if isinstance(exc, LlmRateLimitError):
-        return RateLimitError(**kwargs)
-    if isinstance(exc, LlmUnsupportedParamsError):
-        return UnsupportedParamsError(**kwargs)
-    if isinstance(exc, LlmContentPolicyError):
-        return ContentPolicyViolationError(**kwargs)
-    if isinstance(exc, LlmContextWindowError):
-        return ContextWindowExceededError(**kwargs)
-    if isinstance(exc, LlmBadRequestError):
-        return BadRequestError(**kwargs)
-    if isinstance(exc, LlmAuthenticationError):
-        return AuthenticationError(**kwargs)
-    if isinstance(exc, LlmPermissionDeniedError):
-        # litellm 的 PermissionDeniedError 要求带 response（openai SDK 的
-        # APIStatusError 需要 response.request 存在）。这里给一个占位
-        # response——litellm 自己的 vertex 映射也是这么造的。
-        return PermissionDeniedError(
-            response=httpx.Response(
-                status_code=exc.status_code or 403,
-                request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
-            ),
-            **kwargs,
-        )
-    if isinstance(exc, LlmNotFoundError):
-        return NotFoundError(**kwargs)
-    if isinstance(exc, LlmTimeoutError):
-        return Timeout(**kwargs)
-    if isinstance(exc, LlmServerError):
-        if exc.status_code == 502:
-            # litellm 的 gemini（vertex）路径把 502 归成 APIConnectionError，
-            # OpenAI 兼容族归成 BadGatewayError——两家的兜底表不同，按 provider 复刻。
-            if (provider or "").lower() in _GEMINI_FAMILY_PROVIDERS:
-                return APIConnectionError(**kwargs)
-            return BadGatewayError(**kwargs)
-        if exc.status_code == 503:
-            return ServiceUnavailableError(**kwargs)
-        return InternalServerError(**kwargs)
-    if isinstance(exc, LlmTransportError):
-        return APIConnectionError(**kwargs)
-
-    return APIError(status_code=exc.status_code or 500, **kwargs)

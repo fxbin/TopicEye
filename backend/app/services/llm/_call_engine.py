@@ -16,15 +16,6 @@ import logging
 import time
 from typing import Any
 
-from litellm import RateLimitError
-from litellm.exceptions import (  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
-    BadRequestError,
-    ContentPolicyViolationError,
-    ContextWindowExceededError,
-    JSONSchemaValidationError,
-    UnprocessableEntityError,
-    UnsupportedParamsError,
-)
 from tenacity import (
     retry,
     retry_if_exception,
@@ -42,7 +33,11 @@ from app.services.llm._rate_limit import (
     acquire_completion_slot,
     estimate_request_tokens,
 )
-from app.services.llm.adapters.errors import LlmConfigurationError
+from app.services.llm.adapters.errors import (
+    LlmBadRequestError,
+    LlmConfigurationError,
+    LlmRateLimitError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +57,7 @@ def _is_bad_request_error(exc: Exception) -> bool:
     400 是确定性错误（请求格式错误或内容被过滤），重试不会改变结果。
     典型场景：GLM/智谱 contentFilter code=1301 触发内容安全过滤。
     """
-    if isinstance(exc, BadRequestError):
+    if isinstance(exc, LlmBadRequestError):
         return True
     msg = str(exc).lower()
     return "error code: 400" in msg or ("contentfilter" in msg and "400" in msg)
@@ -80,14 +75,7 @@ def _is_deterministic_request_error(exc: Exception) -> bool:
 
     if isinstance(
         exc,
-        BadRequestError
-        | ContentPolicyViolationError
-        | ContextWindowExceededError
-        | JSONSchemaValidationError
-        | UnprocessableEntityError
-        | UnsupportedParamsError
-        | LlmContextWindowExceededError
-        | LlmTraceBudgetExceeded,
+        LlmBadRequestError | LlmContextWindowExceededError | LlmTraceBudgetExceeded,
     ):
         return True
     return _is_bad_request_error(exc)
@@ -138,7 +126,6 @@ def _parse_reset_time(exc: Exception):
 
 async def _complete_with_native_transport(
     *,
-    request_model: str,
     messages: list,
     api_key: str | None,
     api_base: str | None,
@@ -167,7 +154,6 @@ async def _complete_with_native_transport(
         note_unsupported,
         resolve_protocol,
         resolve_provider,
-        to_litellm_exception,
     )
 
     def _unsupported(reason: str) -> LlmConfigurationError:
@@ -201,17 +187,10 @@ async def _complete_with_native_transport(
             adapter.complete(native_request),
             timeout=timeout,
         )
-    except LlmAdapterError as exc:
-        # 自有错误映射成既有的 litellm 异常类型，让编排层（重试判定、failover、
-        # 熔断、内容降级）保持同一套语义，不因传输实现而漂移。
-        # llm_provider 取**路由串第一段**（litellm 认的 provider 名），不是
-        # 模型表里的 provider 列——后者在本仓库是 "custom"，litellm 那边是
-        # "openai"。
-        raise to_litellm_exception(
-            exc,
-            model=request_model,
-            provider=request_model.split("/", 1)[0] or resolve_provider(model_config),
-        ) from exc
+    except LlmAdapterError:
+        # 自有异常族直接上抛：编排层（重试判定、failover、熔断、内容降级）
+        # 就按这套类型判定，不再翻译成第三方异常。
+        raise
 
 
 async def _call_llm_single(
@@ -256,7 +235,6 @@ async def _call_llm_single(
             if trace is not None:
                 attempt = trace.begin_attempt(model_config, model, max_tokens)
             response = await _complete_with_native_transport(
-                request_model=model,
                 messages=messages,
                 api_key=api_key,
                 api_base=api_base,
@@ -349,9 +327,9 @@ def _should_retry(exc: BaseException) -> bool:
     """
     from app.services.llm.budget_guard import LlmBudgetExceededError
 
-    if isinstance(exc, RateLimitError | LlmBudgetExceededError | LlmConfigurationError) or _is_deterministic_request_error(
-        exc
-    ):
+    if isinstance(
+        exc, LlmRateLimitError | LlmBudgetExceededError | LlmConfigurationError
+    ) or _is_deterministic_request_error(exc):
         return False
     return not _is_rate_limit_error(exc)
 

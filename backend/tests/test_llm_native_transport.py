@@ -3,11 +3,11 @@
 
 三组断言：
 
-1. **错误分类与 litellm 判定结论一致**——同样的 provider 响应，在两条路径下
-   必须得到同样的编排决策（限流不重试且切下一候选；确定性错误不重试、
-   不降级、不污染熔断器）。对照组是**真实 litellm** 的判定结果（用
-   ``litellm.aclient_session`` 注入 MockTransport，让 litellm 自己走一遍
-   异常映射），不是手写的期望表。
+1. **错误分类与 litellm 时代的判定结论一致**——同样的 provider 响应，
+   翻到自有异常族前后的编排决策必须相同（限流不重试且切下一候选；
+   确定性错误不重试、不降级、不污染熔断器）。对照组是**真实 litellm**
+   抛出的异常 + 逐字保留的 litellm 时代判定函数（``llm_parity_oracle``），
+   不是手写的期望表。
 2. **用量提取一致**——同一份 usage 载荷，经两条路径得到相同的 TokenUsage，
    计价口径不因传输实现而漂移。
 3. **URL 与请求体一致**——自有路径打到与 litellm 相同的端点、发送同样的
@@ -24,20 +24,19 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from litellm.exceptions import BadRequestError, RateLimitError
 
 from app.services.llm import _call_engine
-from app.services.llm._call_engine import _should_retry
+from app.services.llm._call_engine import _is_deterministic_request_error, _should_retry
 from app.services.llm.adapters import (
     LlmAdapterError,
     build_chat_completions_url,
     classify_status_error,
     native_unavailable_reason,
     resolve_wire_model,
-    to_litellm_exception,
 )
 from app.services.llm.adapters.registry import build_native_request
 from app.services.llm_usage import extract_usage
+from tests.llm_parity_oracle import legacy_is_deterministic_request_error, legacy_should_retry
 
 # ── 1. 错误分类：自有分类 ↔ litellm 异常 的判定结论必须一致 ────────────────
 
@@ -159,15 +158,11 @@ async def test_native_error_classification_matches_litellm_decision(status: int,
     native = classify_status_error(status, json.dumps(body))
     litellm_exc = await _litellm_exception_for(status, body, monkeypatch)
 
-    # 自有异常映射后必须与 litellm 同类——编排层的 isinstance 判定才能命中。
-    mapped = to_litellm_exception(native, model="m", provider="openai")
-    assert type(mapped) is type(litellm_exc), f"{status} 映射类型不一致: {type(mapped)} vs {type(litellm_exc)}"
+    # 翻转到自有异常族后，重试判定必须与 litellm 时代一致。
+    assert _should_retry(native) is legacy_should_retry(litellm_exc), f"{status} 重试判定不一致"
 
-    # 两条路径的重试判定必须一致。
-    assert _should_retry(mapped) is _should_retry(litellm_exc), f"{status} 重试判定不一致"
-
-    # 两条路径的「确定性请求错」判定必须一致。
-    assert _call_engine._is_deterministic_request_error(mapped) is _call_engine._is_deterministic_request_error(
+    # 「确定性请求错」判定同理。
+    assert _is_deterministic_request_error(native) is legacy_is_deterministic_request_error(
         litellm_exc
     ), f"{status} 确定性判定不一致"
 
@@ -191,11 +186,12 @@ def test_server_side_400_stays_bad_request():
     litellm 对服务端 400 不做「参数不被支持」的再分类，因此自家路径也不能
     再分类，否则同一响应在两条路径下会得到不同编排结论。
     """
+    from app.services.llm.adapters.errors import LlmBadRequestError
+
     native = classify_status_error(400, json.dumps({"error": {"message": "response_format is not supported"}}))
-    mapped = to_litellm_exception(native, model="m", provider="openai")
-    assert type(mapped) is BadRequestError
-    assert _call_engine._is_deterministic_request_error(mapped) is True
-    assert _should_retry(mapped) is False
+    assert type(native) is LlmBadRequestError
+    assert _is_deterministic_request_error(native) is True
+    assert _should_retry(native) is False
 
 
 def test_content_policy_and_context_window_are_deterministic():
@@ -205,16 +201,15 @@ def test_content_policy_and_context_window_are_deterministic():
         {"error": {"message": "This model's maximum context length is 8192 tokens"}},
     ):
         native = classify_status_error(400, json.dumps(body))
-        mapped = to_litellm_exception(native, model="m", provider="openai")
-        assert _call_engine._is_deterministic_request_error(mapped) is True
-        assert _should_retry(mapped) is False
+        assert _is_deterministic_request_error(native) is True
+        assert _should_retry(native) is False
 
 
 def test_rate_limit_is_not_retried():
     """限流不重试（由 failover 切下一候选），两条路径一致。"""
     native = classify_status_error(429, json.dumps({"error": {"message": "Rate limit reached"}}))
-    mapped = to_litellm_exception(native, model="m", provider="openai")
-    assert _should_retry(mapped) is False
+    assert type(native).__name__ == "LlmRateLimitError"
+    assert _should_retry(native) is False
 
 
 # ── 2. 用量提取：两条路径得到相同的 TokenUsage ────────────────────────────────
@@ -401,8 +396,8 @@ async def test_call_llm_single_uses_own_transport(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_transport_error_maps_to_litellm_exception(monkeypatch):
-    """自有路径的错误必须映射回 litellm 异常类型，编排层判定才不变。"""
+async def test_transport_error_propagates_own_type(monkeypatch):
+    """自有路径的错误以自有异常族类型上抛：编排层直接按这套类型判定。"""
     from app.services.llm.adapters.errors import LlmRateLimitError
 
     async def fake_complete(self, request):
@@ -411,7 +406,7 @@ async def test_transport_error_maps_to_litellm_exception(monkeypatch):
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
 
     model_config = _model("custom", "minicpm5-2b", api_base="https://gw.example.com/v1")
-    with pytest.raises(RateLimitError):
+    with pytest.raises(LlmRateLimitError):
         await _call_engine._call_llm_single(
             messages=[{"role": "user", "content": "hi"}],
             model="openai/minicpm5-2b",
@@ -458,7 +453,7 @@ def test_configuration_error_is_candidate_level_not_request_level():
 
     exc = LlmConfigurationError("provider azure 没有自有协议实现")
     assert _should_retry(exc) is False
-    assert _call_engine._is_deterministic_request_error(exc) is False
+    assert _is_deterministic_request_error(exc) is False
 
 
 # ── 6. 自有传输实现的请求体与响应归一化 ──────────────────────────────────────

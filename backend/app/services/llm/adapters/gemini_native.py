@@ -18,7 +18,7 @@ gemini 的协议与 OpenAI 兼容族、anthropic 都不同：
   （snake_case），所以这不是笔误，litellm 一直这么发。
 - **response_format**：``{"type": "json_object"}`` 映射成
   ``generationConfig.response_mime_type = "application/json"``。其它形状
-  （json_schema 等）**不在自有路径复刻**——由 registry 显式回落 litellm。
+  （json_schema 等）**不在自有路径复刻**——由 registry 显式拒绝。
 - **用量**：给 gemini 原生 ``usageMetadata``。``promptTokenCount`` 是**含缓存**
   的输入总量，``cachedContentTokenCount`` 是其中的缓存部分（Google 文档口径），
   本仓库 ``_input_tokens_include_cache`` 对非 anthropic provider 的分支会

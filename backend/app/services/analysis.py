@@ -511,18 +511,17 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
             final_model = final_metadata.get("actual_model") or final_model
         except Exception as llm_exc:
             # CircuitOpenError (breaker tripped), LlmBudgetExceededError (budget
-            # fuse) and BadRequestError (400, e.g. GLM contentFilter code=1301)
+            # fuse) and LlmBadRequestError (400, e.g. GLM contentFilter code=1301)
             # trigger local fallback. Other LLM failures (timeout, network,
             # RuntimeError) still propagate up so the caller can record ERROR
             # status + retry. Budget rejection must especially NOT consume
             # analysis attempts: a day-window fuse can outlast the retry budget
             # and would otherwise burn the whole backlog into permanent ERROR.
-            from litellm.exceptions import BadRequestError
-
+            from app.services.llm.adapters.errors import LlmBadRequestError
             from app.services.llm.budget_guard import LlmBudgetExceededError
             from app.services.llm.circuit_breaker import CircuitOpenError
 
-            if isinstance(llm_exc, CircuitOpenError | BadRequestError | LlmBudgetExceededError):
+            if isinstance(llm_exc, CircuitOpenError | LlmBadRequestError | LlmBudgetExceededError):
                 logger.warning(
                     "LLM call failed for content id=%d (%s), using local fallback",
                     content.id,

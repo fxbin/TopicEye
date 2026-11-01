@@ -37,7 +37,6 @@ from app.services.llm.adapters.errors import (
     classify_anthropic_error,
     classify_gemini_error,
     classify_status_error,
-    to_litellm_exception,
 )
 from app.services.llm.adapters.gemini_native import GeminiNativeAdapter, build_generate_content_url
 from app.services.llm.adapters.openai_compat import OpenAICompatAdapter, build_chat_completions_url
@@ -102,5 +101,4 @@ __all__ = [
     "resolve_provider",
     "resolve_wire_model",
     "supports_native_transport",
-    "to_litellm_exception",
 ]

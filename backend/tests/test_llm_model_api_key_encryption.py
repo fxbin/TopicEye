@@ -3,7 +3,7 @@
 覆盖：
 - 写入加密：_new_model_from_request / _apply_model_request 落库前调用 encrypt_secret，
   DB 存的是 enc:v1: 前缀，不是明文。
-- 读取解密：_candidate_from_db_model 与 _completion_kwargs 返回解密后的原值。
+- 读取解密：_candidate_from_db_model 与 complete_once 传出解密后的原值。
 - 兼容性：decrypt_secret 天然兼容明文（非 enc:v1: 前缀原样返回），保证迁移前后都能跑。
 - 重复加密守卫：已是 enc:v1: 的值不会被二次加密。
 - 明文不回传：GET 响应只返回 api_key_set 布尔值。
@@ -15,15 +15,19 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.api.v1.llm_models import (
     ModelCreateRequest,
     ModelUpdateRequest,
     _apply_model_request,
-    _completion_kwargs,
     _new_model_from_request,
 )
+from app.core.config import settings
 from app.models.llm_model import LlmModel
 from app.services.llm._failover import _candidate_from_db_model
+from app.services.llm.adapters.base import AdapterChoice, AdapterMessage, AdapterResponse
+from app.services.llm.provider import complete_once
 from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
 
 # 测试用占位 Key，非真实凭据。
@@ -107,22 +111,29 @@ class TestReadDecryption:
         candidate = _candidate_from_db_model(model, temperature=0.3, max_tokens=2000)
         assert candidate["api_key"] == _PLAINTEXT_KEY
 
-    def test_completion_kwargs_decrypts(self):
+    @pytest.mark.asyncio
+    async def test_complete_once_decrypts(self, monkeypatch):
         """/models/{id}/test 测试端点也用解密后的 Key。"""
+        captured: dict[str, str | None] = {}
+
+        async def fake_complete(self, request):
+            captured["api_key"] = request.api_key
+            return AdapterResponse(
+                choices=[AdapterChoice(message=AdapterMessage(content="pong"))],
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+                model=request.model,
+            )
+
+        monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
+        monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
         model = SimpleNamespace(
             provider="openai",
-            model_id="openai/glm-test",
+            model_id="glm-test",
             api_key=encrypt_secret(_PLAINTEXT_KEY),
             api_base="https://example.com/v1",
             temperature=0.3,
             max_tokens=2000,
             extra_params={},
         )
-        kwargs = _completion_kwargs(
-            model,
-            resolved_model="openai/glm-test",
-            messages=[{"role": "user", "content": "hi"}],
-            temperature=0.3,
-            max_tokens=2000,
-        )
-        assert kwargs.get("api_key") == _PLAINTEXT_KEY
+        await complete_once(model, [{"role": "user", "content": "hi"}], temperature=0.3, max_tokens=2000)
+        assert captured["api_key"] == _PLAINTEXT_KEY

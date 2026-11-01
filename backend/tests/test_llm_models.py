@@ -1,4 +1,4 @@
-import threading
+import asyncio
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 
@@ -17,17 +17,45 @@ from app.api.v1.llm_models import (
     ModelCreateRequest,
     ModelUpdateRequest,
     _auto_score_response,
-    _completion_kwargs,
     _missing_explicit_api_key,
     _resolve_litellm_model,
     _sample_payload,
     _summarize_llm_error,
 )
+from app.core.config import settings
 from app.core.database import Base
 from app.models.llm_model import LlmModel, ModelEvaluation
 from app.services.auth_service import create_session, create_user
+from app.services.llm.adapters.base import AdapterChoice, AdapterMessage, AdapterResponse
 from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
+from app.services.llm.provider import complete_once
+
+
+@pytest.fixture
+def native_capture(monkeypatch):
+    """把自有传输层的 complete 换成记录器，返回捕获到的 NativeRequest 列表。
+
+    探测与评测都必须经同一条传输分派；这里只放行自有路径，litellm 路径被
+    换成会直接失败的桩——若调用漏到那边，测试立刻红。
+    """
+    captured: list = []
+
+    async def fake_complete(self, request):
+        captured.append(request)
+        return AdapterResponse(
+            choices=[AdapterChoice(message=AdapterMessage(content='{"summary":"ok","tags":["a"]}'))],
+            usage={"prompt_tokens": 10, "completion_tokens": 5},
+            model=request.model,
+        )
+
+    async def refuse_litellm(**_kwargs):
+        raise AssertionError("single-shot calls must not reach the litellm transport")
+
+    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
+    monkeypatch.setattr("app.services.llm._call_engine.acompletion", refuse_litellm)
+    return captured
 
 
 @pytest_asyncio.fixture
@@ -212,24 +240,21 @@ def test_normalize_api_base_passthrough_outside_container(monkeypatch):
     assert normalize_api_base("http://localhost:40114/v1") == "http://localhost:40114/v1"
 
 
-def test_completion_kwargs_normalizes_loopback_api_base(monkeypatch):
+@pytest.mark.asyncio
+async def test_complete_once_normalizes_loopback_api_base(monkeypatch, native_capture):
     monkeypatch.setattr(model_resolver_module, "_container_env", True)
     monkeypatch.setattr(model_resolver_module, "_rewrite_logged", set())
     model = SimpleNamespace(
+        provider="custom",
+        model_id="minicpm5-2b",
         api_key="test-key",
         api_base="http://localhost:40114/olla/openai/v1",
         extra_params=None,
     )
 
-    kwargs = _completion_kwargs(
-        model,
-        "openai/minicpm5-2b",
-        [{"role": "user", "content": "hello"}],
-        temperature=0.3,
-        max_tokens=200,
-    )
+    await complete_once(model, [{"role": "user", "content": "hello"}], temperature=0.3, max_tokens=200)
 
-    assert kwargs["api_base"] == "http://host.docker.internal:40114/olla/openai/v1"
+    assert native_capture[0].base_url == "http://host.docker.internal:40114/olla/openai/v1"
 
 
 def test_summarize_llm_error_strips_traceback_and_adds_connection_hint():
@@ -251,52 +276,85 @@ def test_summarize_llm_error_adds_hint_for_not_found():
     assert "/v1" in summarized
 
 
-def test_completion_kwargs_passes_openai_compatible_timeout_and_endpoint():
+@pytest.mark.asyncio
+async def test_complete_once_passes_endpoint_key_and_probe_timeout(native_capture):
     model = SimpleNamespace(
+        provider="custom",
+        model_id="deepseek-v4-flash-free",
         api_key="test-key",
         api_base="https://opencode.ai/zen/v1",
         extra_params=None,
     )
 
-    kwargs = _completion_kwargs(
+    await complete_once(
         model,
-        "openai/deepseek-v4-flash-free",
         [{"role": "user", "content": "hello"}],
         temperature=0.3,
         max_tokens=200,
+        timeout=LLM_COMPLETION_TIMEOUT_SECONDS,
     )
 
-    assert kwargs["model"] == "openai/deepseek-v4-flash-free"
-    assert kwargs["api_key"] == "test-key"
-    assert kwargs["api_base"] == "https://opencode.ai/zen/v1"
-    assert kwargs["timeout"] == LLM_COMPLETION_TIMEOUT_SECONDS
+    request = native_capture[0]
+    assert request.model == "deepseek-v4-flash-free"
+    assert request.api_key == "test-key"
+    assert request.base_url == "https://opencode.ai/zen/v1"
+    assert request.timeout == LLM_COMPLETION_TIMEOUT_SECONDS
 
 
-def test_completion_kwargs_merges_explicit_litellm_params():
+@pytest.mark.asyncio
+async def test_complete_once_lets_configured_timeout_and_headers_override_defaults(native_capture):
     model = SimpleNamespace(
+        provider="custom",
+        model_id="custom-model",
         api_key="test-key",
         api_base="https://example.test/v1",
         extra_params={
             "cost_per_1m_input_cache_hit": 0.02,
-            "litellm_params": {
-                "timeout": 10,
-                "custom_llm_provider": "openai",
-                "unsupported": "ignored",
-            },
+            "litellm_params": {"timeout": 10, "extra_headers": {"X-Tenant": "demo"}},
         },
     )
 
-    kwargs = _completion_kwargs(
+    await complete_once(
         model,
-        "openai/custom-model",
         [{"role": "user", "content": "hello"}],
         temperature=0.3,
         max_tokens=200,
+        timeout=LLM_COMPLETION_TIMEOUT_SECONDS,
     )
 
-    assert kwargs["timeout"] == 10
-    assert kwargs["custom_llm_provider"] == "openai"
-    assert "unsupported" not in kwargs
+    request = native_capture[0]
+    assert request.timeout == 10
+    assert request.headers["X-Tenant"] == "demo"
+
+
+@pytest.mark.asyncio
+async def test_complete_once_is_a_single_attempt(monkeypatch):
+    """探测与评测不重试、不 failover：适配器抛限流就原样抛出，且只打了一次。"""
+    from litellm.exceptions import RateLimitError
+
+    from app.services.llm.adapters.errors import LlmRateLimitError
+
+    calls = 0
+
+    async def failing_complete(self, request):
+        nonlocal calls
+        calls += 1
+        raise LlmRateLimitError("rate limited", status_code=429)
+
+    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", failing_complete)
+    model = SimpleNamespace(
+        provider="custom",
+        model_id="custom-model",
+        api_key="test-key",
+        api_base="https://example.test/v1",
+        extra_params=None,
+    )
+
+    with pytest.raises(RateLimitError):
+        await complete_once(model, [{"role": "user", "content": "hello"}], temperature=0.3, max_tokens=16)
+
+    assert calls == 1
 
 
 def test_model_config_normalizes_blank_api_key_and_endpoint():
@@ -423,28 +481,26 @@ async def test_evaluation_run_executes_models_with_bounded_concurrency(llm_model
 
     active = 0
     max_active = 0
-    lock = threading.Lock()
-    both_started = threading.Event()
-    release = threading.Event()
+    both_started = asyncio.Event()
+    release = asyncio.Event()
 
-    def fake_completion(**_kwargs):
+    async def fake_complete(self, request):
         nonlocal active, max_active
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
-            if active >= 2:
-                both_started.set()
-        assert both_started.wait(2)
+        active += 1
+        max_active = max(max_active, active)
+        if active >= 2:
+            both_started.set()
+        await asyncio.wait_for(both_started.wait(), 2)
         release.set()
-        with lock:
-            active -= 1
-        return SimpleNamespace(
-            model="fake-model",
-            choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary":"ok","tags":["a"]}'))],
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        active -= 1
+        return AdapterResponse(
+            choices=[AdapterChoice(message=AdapterMessage(content='{"summary":"ok","tags":["a"]}'))],
+            usage={"prompt_tokens": 10, "completion_tokens": 5},
+            model=request.model,
         )
 
-    monkeypatch.setattr("litellm.completion", fake_completion)
+    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
+    monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
 
     response = await client.post(
         "/models/evaluations/run",
@@ -462,3 +518,27 @@ async def test_evaluation_run_executes_models_with_bounded_concurrency(llm_model
 
     assert [row.status for row in rows] == ["DONE", "DONE"]
     assert all(row.response_text for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_model_ping_goes_through_shared_transport_dispatch(llm_model_client, monkeypatch, native_capture):
+    """连通性探测与主链路同一条传输路径：探测通过 = 生产那条路通。"""
+    client, _free_token, _pro_token, admin_token, session_factory = llm_model_client
+    monkeypatch.setattr(llm_models_api, "async_session", session_factory)
+
+    async with session_factory() as db:
+        model_id = (await db.execute(select(LlmModel.id).order_by(LlmModel.id))).scalars().first()
+
+    response = await client.post(f"/models/{model_id}/test", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["model_name"] == "System Model"
+
+    request = native_capture[0]
+    assert request.model == "gpt-test"
+    assert request.base_url == "https://api.openai.com/v1"
+    assert request.api_key == "system-key"
+    assert request.max_tokens == 16
+    assert request.timeout == LLM_COMPLETION_TIMEOUT_SECONDS

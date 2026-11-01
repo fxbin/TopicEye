@@ -29,6 +29,8 @@ from litellm.exceptions import UnsupportedParamsError
 
 from app.services.llm._call_engine import (
     _call_with_retry,
+    _complete_with_selected_transport,
+    _completion_timeout_seconds,
     _is_deterministic_request_error,
     _is_rate_limit_error,
     _parse_reset_time,
@@ -44,6 +46,8 @@ from app.services.llm._rate_limit import (
     reset_token_rate_limiter,
 )
 from app.services.llm.call_trace import current_trace
+from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
+from app.services.secret_store import decrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +78,59 @@ def _litellm_extra_kwargs(model_config: Any = None) -> dict[str, Any]:
         for key, value in litellm_params.items()
         if key in LITELLM_COMPLETION_PARAM_KEYS and value is not None
     }
+
+
+async def complete_once(
+    model_config: Any,
+    messages: list,
+    *,
+    temperature: float | None,
+    max_tokens: int | None,
+    timeout: float | None = None,
+) -> Any:
+    """单次直连调用：不重试、不 failover、不过熔断器和限流器。
+
+    供模型连通性探测与 A/B 评测使用——它们要回答的是「这个配置现在到底通不通」
+    「这个模型的原始表现如何」，编排层的重试与换路反而会掩盖答案。传输实现与
+    主链路同源，探测与评测看到的就是生产实际跑的那条路径。
+
+    ``timeout`` 为空时取编排层默认上限；``extra_params.litellm_params.timeout``
+    的覆盖关系与主链路一致（配置值优先，再受全局上限约束）。
+    """
+    request_model = resolve_litellm_model(model_config)
+    raw_key = getattr(model_config, "api_key", None)
+    raw_base = getattr(model_config, "api_base", None)
+    api_key = decrypt_secret(raw_key) if raw_key else None
+    api_base = normalize_api_base(raw_base) if raw_base else None
+
+    kwargs: dict[str, Any] = {
+        "model": request_model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "num_retries": 0,
+    }
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    kwargs.update(_litellm_extra_kwargs(model_config))
+    completion_timeout = _completion_timeout_seconds(kwargs.get("timeout"))
+    kwargs["timeout"] = completion_timeout
+    if api_key:
+        kwargs["api_key"] = api_key
+    if api_base:
+        kwargs["api_base"] = api_base
+
+    return await _complete_with_selected_transport(
+        kwargs=kwargs,
+        messages=messages,
+        api_key=api_key,
+        api_base=api_base,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=None,
+        model_config=model_config,
+        timeout=completion_timeout,
+    )
 
 
 async def invalidate_model_cache() -> None:

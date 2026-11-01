@@ -7,8 +7,8 @@ Routes:
 - PUT  /models/evaluations/{id}/score Human-score one result
 
 从 llm_models.py 拆出，共享 helper（_missing_explicit_api_key /
-_completion_kwargs / _retry_write / _resolve_litellm_model / _model_snapshot）
-继续从 llm_models 模块导入。
+_resolve_litellm_model / _model_snapshot / LLM_COMPLETION_TIMEOUT_SECONDS）
+继续从 llm_models 模块导入；单次调用本身走 services.llm.provider.complete_once。
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from app.api.v1.auth import get_current_admin_user
 
 # 从父模块导入共享 helper（test_model 和 evaluation 都用）
 from app.api.v1.llm_models import (
-    _completion_kwargs,
+    LLM_COMPLETION_TIMEOUT_SECONDS,
     _missing_explicit_api_key,
     _model_snapshot,
     _resolve_litellm_model,
@@ -38,6 +38,7 @@ from app.core.database import async_session, get_db
 from app.models.llm_model import ModelEvaluation
 from app.repositories.llm_evaluation_repo import ModelEvaluationRepository
 from app.repositories.llm_model_repo import LlmModelRepository
+from app.services.llm.provider import complete_once
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
 
 # _retry_write 已移除——PostgreSQL 不需要应用层重试
@@ -171,8 +172,6 @@ async def _run_one_evaluation(
     prompt_text: str,
     write_lock: asyncio.Lock | None = None,
 ) -> None:
-    from litellm import completion
-
     async def _run_db_write(operation):
         if write_lock is None:
             return await operation()
@@ -199,17 +198,19 @@ async def _run_one_evaluation(
         return
 
     resolved_model = _resolve_litellm_model(model)
-    kwargs = _completion_kwargs(
-        model,
-        resolved_model,
-        [{"role": "user", "content": prompt_text}],
-        temperature=model.temperature,
-        max_tokens=model.max_tokens,
-    )
+    prompt_messages = [{"role": "user", "content": prompt_text}]
 
     start = time.monotonic()
     try:
-        response = await asyncio.to_thread(completion, **kwargs)
+        # 评测要的是模型的原始表现：单次调用、不重试、不换路，且与主链路同一条
+        # 传输路径——否则评出来的延迟与行为不是生产实际跑的那条。
+        response = await complete_once(
+            model,
+            prompt_messages,
+            temperature=model.temperature,
+            max_tokens=model.max_tokens,
+            timeout=LLM_COMPLETION_TIMEOUT_SECONDS,
+        )
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content or ""
         usage = extract_usage(response)

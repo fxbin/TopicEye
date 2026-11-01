@@ -58,7 +58,8 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 
 ## Consequences
 
-- 试点本身的成本很低：`adapters/` 约 600 行，`_call_engine.py` 只多了一个传输
+- 试点本身的成本很低：`adapters/` 约 1030 行（其中大头是错误分类里逐条对齐
+  litellm 的特征串与说明），`_call_engine.py` 只多了一个传输
   分派函数，编排层零改动。
 - **`LLM_TRANSPORT=native` 不等于「不用 litellm」**：编排层仍按 litellm 的异常
   类型判定，litellm 仍是依赖。本次只是证明「传输层可以自己写，且行为能对齐」。

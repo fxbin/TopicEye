@@ -36,6 +36,8 @@ export default defineConfig({
         // #175：文稿检测的高亮分段与结果时效判定（各有同目录测试，纳入门禁锁定）
         'src/app/content-check/_highlight.tsx',
         'src/app/content-check/_scan-state.ts',
+        // #179：前端体验指标上报的整形与设备派生
+        'src/lib/web-vitals.ts',
       ],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

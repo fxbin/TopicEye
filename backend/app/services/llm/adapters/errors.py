@@ -54,6 +54,8 @@ import json
 import re
 from typing import Any
 
+import httpx
+
 
 class LlmAdapterError(Exception):
     """自有传输层错误基类。
@@ -93,6 +95,16 @@ class LlmNotFoundError(LlmAdapterError):
 
 class LlmAuthenticationError(LlmAdapterError):
     """鉴权失败（401/403）。"""
+
+
+class LlmPermissionDeniedError(LlmAdapterError):
+    """权限不足（403）。
+
+    与鉴权失败分开：litellm 对 anthropic 的 403 给 ``PermissionDeniedError``，
+    而这个类型**不在**编排层的确定性错误清单里（见
+    ``_call_engine._is_deterministic_request_error``）——403 在 anthropic 路径下
+    是**可重试**的，合并进鉴权失败会让编排结论漂移。
+    """
 
 
 class LlmTimeoutError(LlmAdapterError):
@@ -344,6 +356,217 @@ def classify_status_error(status_code: int, body: str) -> LlmAdapterError:
     return build(LlmApiError)
 
 
+# ── anthropic（litellm 的 _map_anthropic_exception）─────────────────────────
+
+# litellm 的 anthropic 路径判定用的错误串就是**原始响应体**——不是 OpenAI 兼容族
+# 那个 ``Error code: {status} - {body}`` 大串。实测 litellm 抛出的消息是
+# ``litellm.BadRequestError: AnthropicException - {原始响应体}``。
+_ANTHROPIC_CONTEXT_WINDOW_MARKERS = (
+    "prompt is too long",
+    "prompt: length",
+)
+_ANTHROPIC_OVERLOADED_MARKERS = (
+    "overloaded_error",
+    "Overloaded",
+)
+_ANTHROPIC_INVALID_API_KEY_MARKER = "Invalid API Key"
+_ANTHROPIC_CONTENT_POLICY_MARKER = "content filtering policy"
+
+
+def classify_anthropic_error(status_code: int, body: str) -> LlmAdapterError:
+    """按 litellm 的 ``_map_anthropic_exception`` 判定 anthropic 的错误。
+
+    litellm 对 anthropic 用的是**另一套**特征串与状态码兜底表，与 OpenAI 兼容族
+    不同源：
+
+    - 403 → ``PermissionDeniedError``（不是 ``BadRequestError``）。这个类型不在
+      编排层的确定性错误清单里，所以 anthropic 的 403 是**可重试**的——
+      自家路径必须同样可重试，否则编排结论漂移。
+    - 413 与 400 同归请求错；529 与 500 同归服务端错。
+    """
+    text = body or ""
+    error_str = text
+
+    def build(exc_cls, message: str | None = None) -> LlmAdapterError:
+        return exc_cls(  # type: ignore[return-value]
+            message if message is not None else f"AnthropicException - {text}",
+            status_code=status_code,
+            body=text[:2000],
+        )
+
+    # 1) 上下文超窗
+    if any(marker in error_str for marker in _ANTHROPIC_CONTEXT_WINDOW_MARKERS) or _is_context_window_exceeded(
+        error_str
+    ):
+        return build(LlmContextWindowError)
+
+    # 2) 过载
+    if any(marker in error_str for marker in _ANTHROPIC_OVERLOADED_MARKERS):
+        return build(LlmServerError)
+
+    # 3) api key 无效
+    if _ANTHROPIC_INVALID_API_KEY_MARKER in error_str:
+        return build(LlmAuthenticationError)
+
+    # 4) 内容策略
+    if _ANTHROPIC_CONTENT_POLICY_MARKER in error_str:
+        return build(LlmContentPolicyError)
+
+    # 5) 状态码兜底
+    if status_code == 401:
+        return build(LlmAuthenticationError)
+    if status_code == 403:
+        return build(LlmPermissionDeniedError)
+    if status_code in (400, 413):
+        return build(LlmBadRequestError)
+    if status_code == 404:
+        return build(LlmNotFoundError)
+    if status_code == 408:
+        return build(LlmTimeoutError)
+    if status_code == 429:
+        return build(LlmRateLimitError)
+    if status_code in (500, 529):
+        return build(LlmServerError)
+    if status_code == 502:
+        return build(LlmServerError)
+    if status_code == 503:
+        return build(LlmServerError)
+    return build(LlmApiError)
+
+
+# ── gemini（litellm 的 _map_vertex_exception）──────────────────────────────
+
+# litellm 的 gemini 路径同样用**原始响应体**做判定串。实测消息形如
+# ``litellm.BadRequestError: GeminiException BadRequestError - {原始响应体}``。
+_GEMINI_PROJECT_MARKERS = (
+    "Vertex AI API has not been used in project",
+    "Unable to find your project",
+)
+_GEMINI_PAYLOAD_TOO_LARGE_MARKER = "400 Request payload size exceeds"
+_GEMINI_UNKNOWN_ERROR_MARKERS = (
+    "None Unknown Error.",
+    "Content has no parts.",
+)
+_GEMINI_INVALID_API_KEY_MARKER = "API key not valid."
+_GEMINI_BLOCKED_MARKERS = (
+    "The response was blocked.",
+    "Output blocked by content filtering policy",
+)
+_GEMINI_QUOTA_MARKERS = (
+    "429 Quota exceeded",
+    "Quota exceeded for",
+    "Resource exhausted",
+    "IndexError: list index out of range",
+    "429 Unable to submit request because the service is temporarily out of capacity.",
+)
+_GEMINI_SERVER_MARKERS = (
+    "500 Internal Server Error",
+    "The model is overloaded.",
+)
+
+# litellm 把 gemini 与 vertex_ai 归到同一套异常映射，502 的归类与 OpenAI 兼容族
+# 不同（APIConnectionError vs BadGatewayError），按 provider 区分时用这份名单。
+_GEMINI_FAMILY_PROVIDERS = frozenset({"gemini", "vertex_ai"})
+
+
+def _gemini_body_error_code(body: str) -> int | None:
+    """取响应体里的 ``error.code``（litellm 的 ``_get_body_error_code`` 同源）。"""
+    try:
+        parsed = json.loads(body)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    error = parsed.get("error")
+    if not isinstance(error, dict):
+        return None
+    code = error.get("code")
+    if code is None:
+        return None
+    try:
+        return int(code)
+    except (TypeError, ValueError):
+        return None
+
+
+def classify_gemini_error(status_code: int, body: str) -> LlmAdapterError:
+    """按 litellm 的 ``_map_vertex_exception`` 判定 gemini 的错误。
+
+    与 anthropic 又不一样：litellm 对 gemini 的 403 给 ``BadRequestError``
+    （**不是** ``PermissionDeniedError``）——判定靠响应体里出现 "403" 字样，
+    命中不到才落到状态码兜底的 ``PermissionDeniedError``。这个差异直接改变
+    编排结论（403 是否算确定性错误），必须逐字复刻。
+    """
+    text = body or ""
+    error_str = text
+
+    def build(exc_cls, message: str | None = None) -> LlmAdapterError:
+        return exc_cls(  # type: ignore[return-value]
+            message if message is not None else f"GeminiException - {text}",
+            status_code=status_code,
+            body=text[:2000],
+        )
+
+    # 1) 项目未开通
+    if any(marker in error_str for marker in _GEMINI_PROJECT_MARKERS):
+        return build(LlmBadRequestError)
+
+    # 2) 请求体过大 / 上下文超窗
+    if _GEMINI_PAYLOAD_TOO_LARGE_MARKER in error_str or _is_context_window_exceeded(error_str):
+        return build(LlmContextWindowError)
+
+    # 3) 未知错误
+    if any(marker in error_str for marker in _GEMINI_UNKNOWN_ERROR_MARKERS):
+        return build(LlmServerError)
+
+    # 4) api key 无效
+    if _GEMINI_INVALID_API_KEY_MARKER in error_str:
+        return build(LlmAuthenticationError)
+
+    # 5) 403 —— litellm 靠错误串里出现 "403" 字样判定，与响应体的 code 字段同源
+    if "403" in error_str:
+        return build(LlmBadRequestError)
+
+    # 6) 内容策略
+    if any(marker in error_str for marker in _GEMINI_BLOCKED_MARKERS):
+        return build(LlmContentPolicyError)
+
+    # 7) 配额耗尽
+    if any(marker in error_str for marker in _GEMINI_QUOTA_MARKERS):
+        return build(LlmRateLimitError)
+
+    # 8) 上游网关把 429 包在 5xx 外壳里（限流闸门只对 5xx 生效）
+    if 500 <= status_code < 600 and _gemini_body_error_code(text) == 429:
+        return build(LlmRateLimitError)
+
+    # 9) 服务端错
+    if any(marker in error_str for marker in _GEMINI_SERVER_MARKERS):
+        return build(LlmServerError)
+
+    # 10) 状态码兜底
+    if status_code == 400:
+        return build(LlmBadRequestError)
+    if status_code == 401:
+        return build(LlmAuthenticationError)
+    if status_code == 403:
+        return build(LlmPermissionDeniedError)
+    if status_code == 404:
+        return build(LlmNotFoundError)
+    if status_code == 408:
+        return build(LlmTimeoutError)
+    if status_code == 429:
+        return build(LlmRateLimitError)
+    if status_code == 500:
+        return build(LlmServerError)
+    if status_code == 502:
+        # litellm 的 vertex 路径把 502 归成 APIConnectionError（不是 BadGatewayError），
+        # 由 to_litellm_exception 按 provider 区分。
+        return build(LlmServerError)
+    if status_code == 503:
+        return build(LlmServerError)
+    return build(LlmApiError)
+
+
 def to_litellm_exception(exc: LlmAdapterError, *, model: str | None = None, provider: str | None = None):
     """把自有错误映射成既有的 litellm 异常类型。
 
@@ -367,6 +590,7 @@ def to_litellm_exception(exc: LlmAdapterError, *, model: str | None = None, prov
         ContextWindowExceededError,
         InternalServerError,
         NotFoundError,
+        PermissionDeniedError,
         RateLimitError,
         ServiceUnavailableError,
         Timeout,
@@ -388,12 +612,27 @@ def to_litellm_exception(exc: LlmAdapterError, *, model: str | None = None, prov
         return BadRequestError(**kwargs)
     if isinstance(exc, LlmAuthenticationError):
         return AuthenticationError(**kwargs)
+    if isinstance(exc, LlmPermissionDeniedError):
+        # litellm 的 PermissionDeniedError 要求带 response（openai SDK 的
+        # APIStatusError 需要 response.request 存在）。这里给一个占位
+        # response——litellm 自己的 vertex 映射也是这么造的。
+        return PermissionDeniedError(
+            response=httpx.Response(
+                status_code=exc.status_code or 403,
+                request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+            ),
+            **kwargs,
+        )
     if isinstance(exc, LlmNotFoundError):
         return NotFoundError(**kwargs)
     if isinstance(exc, LlmTimeoutError):
         return Timeout(**kwargs)
     if isinstance(exc, LlmServerError):
         if exc.status_code == 502:
+            # litellm 的 gemini（vertex）路径把 502 归成 APIConnectionError，
+            # OpenAI 兼容族归成 BadGatewayError——两家的兜底表不同，按 provider 复刻。
+            if (provider or "").lower() in _GEMINI_FAMILY_PROVIDERS:
+                return APIConnectionError(**kwargs)
             return BadGatewayError(**kwargs)
         if exc.status_code == 503:
             return ServiceUnavailableError(**kwargs)

@@ -4,15 +4,16 @@
 回答两个问题：
 
 1. **这个模型能不能走自有传输层？**——按**协议**判定，不按 litellm 的
-   provider 名单硬编码。走 OpenAI ``/chat/completions`` 协议的 provider
-   走自有实现；anthropic / gemini / azure / bedrock / vertex_ai 的请求与
-   响应格式不同，回落 litellm 并记 warning。
+   provider 名单硬编码。已实现的协议：OpenAI ``/chat/completions``、
+   anthropic ``/v1/messages``、gemini ``generateContent``；azure / bedrock /
+   vertex_ai 的请求与响应格式不同，回落 litellm 并记 warning。
 2. **自有传输层要往哪个 URL 发、用哪个模型名？**
 
    - **URL**：``api_base`` 优先用编排层解析好的（已含容器回环地址重写，
-     与 litellm 收到的是同一个值，两条路径因此打到同一端点）；没配置时只有
-     ``openai`` 用 ``https://api.openai.com/v1`` 作默认——其余 provider 回落
-     litellm，因为 litellm 对它们的内部默认端点与仓库策展值并不一致。
+     与 litellm 收到的是同一个值，两条路径因此打到同一端点）；没配置时用
+     provider 的默认网关（``openai`` / ``anthropic`` / ``gemini`` 三个的默认值
+     与 litellm 一致）——其余 provider 回落 litellm，因为 litellm 对它们的
+     内部默认端点与仓库策展值并不一致。
    - **模型名**：线上真正识别的**裸模型名**。与 litellm 的结果逐条对齐——
      litellm 收到 ``provider/model`` 路由串后会剥掉第一段，所以
      ``custom`` + ``minicpm5-2b`` 发的是 ``minicpm5-2b``，
@@ -34,7 +35,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.services.llm.adapters.anthropic_native import AnthropicNativeAdapter
 from app.services.llm.adapters.base import NativeRequest
+from app.services.llm.adapters.gemini_native import GeminiNativeAdapter
 from app.services.llm.adapters.openai_compat import OpenAICompatAdapter
 
 logger = logging.getLogger(__name__)
@@ -55,11 +58,26 @@ OPENAI_COMPATIBLE_PROVIDERS: frozenset[str] = frozenset(
     }
 )
 
+# 原生协议族：请求体、响应体、错误分类都另有一套。
+ANTHROPIC_PROVIDERS: frozenset[str] = frozenset({"anthropic"})
+GEMINI_PROVIDERS: frozenset[str] = frozenset({"gemini"})
+
+# provider → 协议实现。按**协议**分流，不按 litellm 的 provider 名单分流。
+PROTOCOL_BY_PROVIDER: dict[str, str] = {
+    **{provider: "openai_compat" for provider in OPENAI_COMPATIBLE_PROVIDERS},
+    **{provider: "anthropic_native" for provider in ANTHROPIC_PROVIDERS},
+    **{provider: "gemini_native" for provider in GEMINI_PROVIDERS},
+}
+
 # provider 未显式配置 api_base 时的默认网关。只收录 litellm 与仓库策展值
 # 一致的条目；其余 provider 在缺 api_base 时回落 litellm，避免两条路径
 # 打到不同端点。
 DEFAULT_API_BASES: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
+    # litellm 的 anthropic 默认网关（`AnthropicConfig.get_api_base`）。
+    "anthropic": "https://api.anthropic.com",
+    # litellm 的 gemini 默认网关（生成式语言 API 的 v1beta）。
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
 }
 
 # 自有路径能如实复刻的 litellm_params 键：只影响请求头与请求体字段。
@@ -127,23 +145,26 @@ def _extra_params(model_config: Any) -> dict[str, Any]:
     return extra if isinstance(extra, dict) else {}
 
 
-def native_unavailable_reason(model_config: Any) -> str | None:
+def native_unavailable_reason(model_config: Any, response_format: dict | None = None) -> str | None:
     """该模型不能走自有传输层的原因；可走时返回 None。
 
     判定项：
 
-    1. provider 属 OpenAI 兼容族（按协议，不按 litellm 名单）
+    1. provider 属已支持的协议族（OpenAI 兼容 / anthropic / gemini，
+       按协议，不按 litellm 名单）
     2. 模型有裸模型名
     3. 能解析出 api_base（模型自带，或 provider 有默认网关）
     4. 没配 litellm 专属的显式路由串
     5. litellm_params 里没有会改变协议/路由语义的键，且 num_retries 没有
        被调大（自有路径没有内部重试，调大就意味着两条路径语义不同）
+    6. 该协议能如实复刻 ``response_format``（gemini 只复刻 json_object）
     """
     provider = resolve_provider(model_config)
     if not provider:
         return "模型未配置 provider"
-    if provider.lower() not in OPENAI_COMPATIBLE_PROVIDERS:
-        return f"provider {provider} 不是 OpenAI 兼容协议"
+    protocol = PROTOCOL_BY_PROVIDER.get(provider.lower())
+    if protocol is None:
+        return f"provider {provider} 没有自有协议实现"
 
     model_id = _clean(getattr(model_config, "model_id", None))
     if not model_id:
@@ -166,7 +187,19 @@ def native_unavailable_reason(model_config: Any) -> str | None:
     if not resolve_base_url(model_config, provider):
         return f"provider {provider} 未配置 api_base 且无默认网关"
 
+    # gemini 侧只复刻 json_object；其它形状（json_schema 等）交给 litellm。
+    if protocol == "gemini_native" and response_format is not None and response_format.get("type") != "json_object":
+        return "gemini 自有路径只复刻 response_format=json_object"
+
     return None
+
+
+def resolve_protocol(model_config: Any) -> str | None:
+    """该模型对应的协议实现名；不支持时返回 None。"""
+    provider = resolve_provider(model_config)
+    if not provider:
+        return None
+    return PROTOCOL_BY_PROVIDER.get(provider.lower())
 
 
 def resolve_base_url(model_config: Any, provider: str | None) -> str | None:
@@ -255,7 +288,20 @@ def note_fallback(provider: str | None, reason: str) -> None:
 
 # 单例：适配器无状态，URL 与请求体都在请求里。
 _openai_compat_adapter = OpenAICompatAdapter()
+_anthropic_native_adapter = AnthropicNativeAdapter()
+_gemini_native_adapter = GeminiNativeAdapter()
+
+_ADAPTERS_BY_PROTOCOL: dict[str, Any] = {
+    "openai_compat": _openai_compat_adapter,
+    "anthropic_native": _anthropic_native_adapter,
+    "gemini_native": _gemini_native_adapter,
+}
 
 
 def get_openai_compat_adapter() -> OpenAICompatAdapter:
     return _openai_compat_adapter
+
+
+def get_adapter(protocol: str):
+    """按协议实现名取适配器单例。"""
+    return _ADAPTERS_BY_PROTOCOL.get(protocol)

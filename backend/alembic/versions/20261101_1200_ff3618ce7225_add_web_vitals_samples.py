@@ -1,8 +1,8 @@
 """前端体验指标样本表 web_vitals_samples
 
 Revision ID: ff3618ce7225
-Revises: d2b7f9a41c05
-Create Date: 2026-10-31
+Revises: f2c8e6a4b9d1
+Create Date: 2026-11-01
 
 #179 前端体验指标接入系统内监控面：浏览器侧 web-vitals 上报的单次观测落库。
 
@@ -25,7 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "ff3618ce7225"
-down_revision: str | None = "d2b7f9a41c05"
+down_revision: str | None = "f2c8e6a4b9d1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

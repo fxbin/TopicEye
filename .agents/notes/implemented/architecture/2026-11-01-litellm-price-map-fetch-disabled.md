@@ -1,6 +1,6 @@
 # Agent Note: 关掉 litellm 启动时对远端模型价格表的拉取
 
-Status: implemented — 部署配置默认关闭远端拉取，改用 litellm 随包的本地备份
+Status: implemented — 已随 #204 退役 litellm 而失效：变量与 compose 条目移除，运行时不再导入 litellm
 
 ## Problem
 
@@ -77,4 +77,4 @@ litellm 读的是环境变量，且读时机在 import 时。两种放法的差�
   36 项）——都全绿；同一组请求在两种状态下的异常类型与内容完全一致。
 
 相关：[自建 LLM 传输层的可行性与边界](2026-11-01-self-owned-llm-transport.md)、
-[补 anthropic / gemini 原生协议](../../proposed/architecture/2026-11-01-native-anthropic-gemini-protocols.md)
+[补 anthropic / gemini 原生协议](2026-11-01-native-anthropic-gemini-protocols.md)

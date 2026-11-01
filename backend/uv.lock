@@ -3077,7 +3077,6 @@ dependencies = [
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jieba" },
-    { name = "litellm" },
     { name = "mcp" },
     { name = "mini-racer" },
     { name = "psycopg", extra = ["binary"] },
@@ -3095,6 +3094,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "aiosqlite" },
+    { name = "litellm" },
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -3117,7 +3117,6 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "itsdangerous", specifier = "==2.2.0" },
     { name = "jieba", specifier = "==0.42.1" },
-    { name = "litellm", specifier = "==1.103.1" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "mini-racer", specifier = "==0.14.1" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.2.13" },
@@ -3135,6 +3134,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = "==0.20.0" },
+    { name = "litellm", specifier = "==1.103.1" },
     { name = "pip-audit", specifier = "==2.7.3" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },

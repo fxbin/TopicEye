@@ -1,6 +1,6 @@
 # Agent Note: 自有传输层补 anthropic / gemini 原生协议
 
-Status: proposed — 两个第一方协议的自有实现已落地（开关默认关闭），未在生产启用
+Status: implemented — 自 #185 起合并；#204 退役 litellm 后本 note 的协议实现成为唯一传输路径
 
 ## Problem
 

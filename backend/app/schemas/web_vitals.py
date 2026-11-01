@@ -10,15 +10,19 @@ from pydantic import BaseModel, Field
 class WebVitalSampleIn(BaseModel):
     """单条上报样本。
 
-    字段只做形状校验（长度/范围），语义校验（metric 白名单、值域、路径归一）
+    这里只做**形状**校验，语义校验（metric 白名单、值域、路径归一、枚举兜底）
     在 service 层做——那是口径真源。
+
+    字段长度上限刻意放得比真实约束宽：非法条目应当**逐条丢弃**，
+    而不是让一笔脏数据把同批的合法样本一起报废。真正的边界由 service
+    逐条判定（metric 不在白名单 → 丢；路径归一后超长 → 丢；枚举不认识 → 降级）。
     """
 
-    metric: str = Field(min_length=1, max_length=16, description="LCP | INP | CLS | FCP | TTFB")
+    metric: str = Field(max_length=64, description="LCP | INP | CLS | FCP | TTFB，不认识则丢弃")
     value: float = Field(description="指标原值：毫秒（CLS 除外，为无量纲分值）")
-    path: str = Field(min_length=1, max_length=200, description="页面 pathname，服务端会归一化")
-    navigation_type: str = Field(default="navigate", max_length=20)
-    device_class: str = Field(default="unknown", max_length=10)
+    path: str = Field(max_length=512, description="页面 pathname，服务端会归一化；空串按 / 处理")
+    navigation_type: str = Field(default="navigate", max_length=64)
+    device_class: str = Field(default="unknown", max_length=64)
 
 
 class WebVitalReportRequest(BaseModel):

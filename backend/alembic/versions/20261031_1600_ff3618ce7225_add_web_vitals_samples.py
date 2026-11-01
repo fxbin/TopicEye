@@ -10,7 +10,7 @@ Create Date: 2026-10-31
 - path 存**归一化后的路由模板**（如 /topics/[id]），不是原始 pathname，
   避免内容 id 把路径基数撑爆；归一规则在 service 层（唯一真源）。
 - rating 由服务端按自己的阈值算（不采信客户端上报值），
-  与 web-vitals v5 的判定语义一致。
+  与 web-vitals v6 的判定语义一致。
 - 不存原始 User-Agent，只存派生的 device_class。
 - user_id 可空：未登录上报时为空；用户注销后置空而非级联删除样本。
 - 纯增量新表（无数据回填、不改既有表），downgrade 直接删表。

@@ -2,7 +2,7 @@
 
 覆盖三块：
 
-1. **阈值判定**（``classify_metric``）：边界值语义必须与 web-vitals v5 一致
+1. **阈值判定**（``classify_metric``）：边界值语义必须与 web-vitals v6 一致
    ——等于 good 上界仍是 good，严格大于才是 needs-improvement。
 2. **路径归一**（``normalize_route_path``）：动态段必须归成 ``[id]``，
    静态段必须原样保留（``/admin/model-eval`` 不能被误伤）。

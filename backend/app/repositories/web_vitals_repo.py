@@ -101,6 +101,30 @@ class WebVitalsRepository(BaseRepository[WebVitalSample]):
         result = await self.db.execute(stmt)
         return result.all()
 
+    async def path_sample_counts(
+        self,
+        cutoff: datetime,
+        navigation_type: str = "all",
+        limit: int = 200,
+    ) -> Sequence[tuple]:
+        """按路径模板统计窗口内样本数，按样本数降序。
+
+        与 :meth:`percentiles_by_path_metric` 分开算，是为了让「挑哪些路由进
+        明细」这件事不受那边 (path, metric) 组数上限的截断影响——否则组数
+        超限时部分路径的样本数会被低估，排名跟着错。
+
+        返回 (path, count) 元组列表。
+        """
+        stmt = select(
+            WebVitalSample.path,
+            func.count(WebVitalSample.id).label("sample_count"),
+        ).where(WebVitalSample.captured_at >= cutoff)
+        if navigation_type != "all":
+            stmt = stmt.where(WebVitalSample.navigation_type == navigation_type)
+        stmt = stmt.group_by(WebVitalSample.path).order_by(func.count(WebVitalSample.id).desc()).limit(limit)
+        result = await self.db.execute(stmt)
+        return result.all()
+
     async def delete_older_than(self, cutoff: datetime) -> int:
         """删除 cutoff 之前的样本，返回删除条数。"""
         result = await self.db.execute(delete(WebVitalSample).where(WebVitalSample.captured_at < cutoff))

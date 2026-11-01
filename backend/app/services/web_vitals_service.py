@@ -3,7 +3,7 @@
 这里是**口径真源**：阈值、p75 定义、路径归一、值域校验都只此一处。
 大盘 HTML 与 API 都从这里取数，不允许另抄一份阈值。
 
-阈值取自 Google 核心网页指标，与浏览器侧 web-vitals v5 的判定一致：
+阈值取自 Google 核心网页指标，与浏览器侧 web-vitals v6 的判定一致：
 
 ======== ========== ==============
 指标     good 上界  needs-improvement 上界
@@ -80,7 +80,7 @@ class NormalizedSample:
 def classify_metric(metric: str, value: float) -> str:
     """按阈值把指标值判成 good / needs-improvement / poor。
 
-    边界语义与 web-vitals v5 一致：等于 good 上界仍是 good，
+    边界语义与 web-vitals v6 一致：等于 good 上界仍是 good，
     严格大于才是 needs-improvement。
     """
     good_max, needs_improvement_max = METRIC_THRESHOLDS[metric]
@@ -216,12 +216,10 @@ async def summarize(
     metrics.sort(key=lambda item: (_metric_order(item["metric"]), item["metric"]))
 
     path_rows = await repo.percentiles_by_path_metric(cutoff, navigation_type)
-    per_path_counts: dict[str, int] = {}
-    for _path, _metric, _p75, count in path_rows:
-        per_path_counts[_path] = per_path_counts.get(_path, 0) + int(count or 0)
-    top_paths = {
-        path for path, _count in sorted(per_path_counts.items(), key=lambda kv: kv[1], reverse=True)[:route_limit]
-    }
+    # 选哪些路由进明细，用**按路径的样本数**排序，而不是从被截断的
+    # (path, metric) 组里反推——后者在组数超限时会把部分路径的计数低估。
+    path_count_rows = await repo.path_sample_counts(cutoff, navigation_type)
+    top_paths = {path for path, _count in path_count_rows[:route_limit]}
 
     routes = []
     for path, metric, p75, count in path_rows:

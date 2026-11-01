@@ -125,6 +125,71 @@ async def test_report_rejects_empty_and_oversized_batches(web_vitals_api_setup: 
 
 
 @pytest.mark.asyncio
+async def test_report_drops_semantically_invalid_items_without_422(web_vitals_api_setup: Setup):
+    """形状合法但语义非法的条目要逐条丢弃，不能让一笔脏数据把整批打成 422。
+
+    schema 只做形状校验（是不是列表、字段在不在、条数超没超），
+    语义判定（metric 白名单、路径归一后长度、枚举白名单）一律在 service 逐条做。
+    """
+    client, _, _ = web_vitals_api_setup
+    resp = await client.post(
+        "/metrics/web-vitals",
+        json={
+            "samples": [
+                {"metric": "UNKNOWN_METRIC_XYZ", "value": 1200, "path": "/trending"},
+                {"metric": "LCP", "value": 1200, "path": "/" + "a" * 300},
+                {"metric": "LCP", "value": 1200, "path": "/trending"},
+            ]
+        },
+    )
+    assert resp.status_code == 202
+    assert resp.json() == {"accepted": 1, "rejected": 2}
+
+
+@pytest.mark.asyncio
+async def test_report_normalizes_empty_path_instead_of_rejecting_batch(
+    web_vitals_api_setup: Setup,
+):
+    """空路径按 / 处理（service 归一），不该整批 422。"""
+    client, tokens, _ = web_vitals_api_setup
+    resp = await client.post(
+        "/metrics/web-vitals",
+        json={"samples": [{"metric": "LCP", "value": 1200, "path": ""}]},
+    )
+    assert resp.status_code == 202
+    assert resp.json() == {"accepted": 1, "rejected": 0}
+
+    resp = await client.get(
+        "/metrics/web-vitals/summary",
+        headers={"Authorization": f"Bearer {tokens['admin']}"},
+    )
+    assert resp.status_code == 200
+    assert {route["path"] for route in resp.json()["routes"]} == {"/"}
+
+
+@pytest.mark.asyncio
+async def test_report_swallows_db_failure_without_breaking_session(web_vitals_api_setup: Setup, monkeypatch):
+    """DB 异常时不能把错误抛回浏览器，也不能把会话带坏。
+
+    这条守卫最容易在重构中被删掉：删掉 try/except 后本用例会看到 500 而红。
+    """
+    client, tokens, _ = web_vitals_api_setup
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("db is down")
+
+    monkeypatch.setattr(web_vitals_api.web_vitals_service, "record_samples", _boom)
+
+    resp = await client.post("/metrics/web-vitals", json={"samples": [_sample()]})
+    assert resp.status_code == 202
+    assert resp.json() == {"accepted": 0, "rejected": 1}
+
+    # 守卫里带了回滚：随后的查询必须仍然可用，而不是连带 500
+    resp = await client.get("/metrics/web-vitals/summary", headers={"Authorization": f"Bearer {tokens['admin']}"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_summary_requires_admin(web_vitals_api_setup: Setup):
     client, tokens, _ = web_vitals_api_setup
     resp = await client.get("/metrics/web-vitals/summary")

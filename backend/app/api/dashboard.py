@@ -934,7 +934,12 @@ function renderWebVitals(data){
   });
   const tbody=document.getElementById('wvRouteTable');
   if(!routes.length){
-    tbody.innerHTML='<tr><td colspan="5" class="loading">该窗口内没有样本。上线后由浏览器端上报产生。</td></tr>';
+    // 软导航口径在多数浏览器恒为空：只有支持 soft-navigation entry type 的浏览器
+    // 才会把 navigationType 记成 soft-navigation，所以要把原因说清楚。
+    const emptyHint=(data.navigation_type==='soft-navigation')
+      ?'该窗口内没有软导航样本（多数浏览器还不支持 soft-navigation 观测）'
+      :'该窗口内没有样本。上线后由浏览器端上报产生。';
+    tbody.innerHTML='<tr><td colspan="5" class="loading">'+escHtml(emptyHint)+'</td></tr>';
     return;
   }
   tbody.innerHTML=routes.map(r=>{

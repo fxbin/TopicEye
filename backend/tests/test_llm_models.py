@@ -22,7 +22,6 @@ from app.api.v1.llm_models import (
     _sample_payload,
     _summarize_llm_error,
 )
-from app.core.config import settings
 from app.core.database import Base
 from app.models.llm_model import LlmModel, ModelEvaluation
 from app.services.auth_service import create_session, create_user
@@ -34,11 +33,7 @@ from app.services.llm.provider import complete_once
 
 @pytest.fixture
 def native_capture(monkeypatch):
-    """把自有传输层的 complete 换成记录器，返回捕获到的 NativeRequest 列表。
-
-    探测与评测都必须经同一条传输分派；这里只放行自有路径，litellm 路径被
-    换成会直接失败的桩——若调用漏到那边，测试立刻红。
-    """
+    """把自有传输层的 complete 换成记录器，返回捕获到的 NativeRequest 列表。"""
     captured: list = []
 
     async def fake_complete(self, request):
@@ -49,12 +44,7 @@ def native_capture(monkeypatch):
             model=request.model,
         )
 
-    async def refuse_litellm(**_kwargs):
-        raise AssertionError("single-shot calls must not reach the litellm transport")
-
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
-    monkeypatch.setattr("app.services.llm._call_engine.acompletion", refuse_litellm)
     return captured
 
 
@@ -341,7 +331,6 @@ async def test_complete_once_is_a_single_attempt(monkeypatch):
         calls += 1
         raise LlmRateLimitError("rate limited", status_code=429)
 
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", failing_complete)
     model = SimpleNamespace(
         provider="custom",
@@ -499,7 +488,6 @@ async def test_evaluation_run_executes_models_with_bounded_concurrency(llm_model
             model=request.model,
         )
 
-    monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
 
     response = await client.post(

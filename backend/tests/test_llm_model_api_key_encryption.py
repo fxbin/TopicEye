@@ -23,7 +23,6 @@ from app.api.v1.llm_models import (
     _apply_model_request,
     _new_model_from_request,
 )
-from app.core.config import settings
 from app.models.llm_model import LlmModel
 from app.services.llm._failover import _candidate_from_db_model
 from app.services.llm.adapters.base import AdapterChoice, AdapterMessage, AdapterResponse
@@ -124,7 +123,6 @@ class TestReadDecryption:
                 model=request.model,
             )
 
-        monkeypatch.setattr(settings, "LLM_TRANSPORT", "native")
         monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fake_complete)
         model = SimpleNamespace(
             provider="openai",

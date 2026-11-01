@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from litellm import RateLimitError, acompletion
+from litellm import RateLimitError
 from litellm.exceptions import (  # noqa: I001 — litellm 子模块按 ruff isort 规则应与 litellm 同组
     BadRequestError,
     ContentPolicyViolationError,
@@ -42,6 +42,7 @@ from app.services.llm._rate_limit import (
     acquire_completion_slot,
     estimate_request_tokens,
 )
+from app.services.llm.adapters.errors import LlmConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -135,53 +136,52 @@ def _parse_reset_time(exc: Exception):
     return None
 
 
-async def _complete_with_selected_transport(
+async def _complete_with_native_transport(
     *,
-    kwargs: dict[str, Any],
+    request_model: str,
     messages: list,
     api_key: str | None,
     api_base: str | None,
-    temperature: float,
-    max_tokens: int,
+    temperature: float | None,
+    max_tokens: int | None,
     response_format: dict | None,
     model_config: Any,
     timeout: float,
 ):
-    """按 ``LLM_TRANSPORT`` 选择传输实现，返回**读取形状一致**的响应。
+    """走自有传输层完成一次调用，返回 ``AdapterResponse``。
 
-    两条路径的返回对象都支持 ``response.choices[0].message.content`` 与
-    ``extract_usage`` 需要的 ``.usage`` / ``.model``，因此下游（用量提取、
-    计价、调用轨迹落库）无需区分传输实现。
+    下游（用量提取、计价、调用轨迹落库）读 ``response.choices[0].message.content``
+    与 ``.usage`` / ``.model``，形状由 adapters 保证。
 
-    - ``litellm``（默认）：行为与改动前完全一致。
-    - ``native``：已实现协议的 provider（OpenAI 兼容 / anthropic / gemini）
-      走自有传输层；不满足条件的 provider 显式回落 litellm 并记 warning
-      （不静默换路径）。
+    模型配置不满足自有路径条件（provider 没有协议实现、缺 api_base、配了只有
+    litellm 才认的路由串或参数）时抛 ``LlmConfigurationError``。这是**候选级**
+    的配置问题：编排层按普通失败处理——冷却该候选、换下一个——不做 tenacity
+    重试，也不当成「换路无解」的确定性请求���误直接放弃。
     """
-    if settings.LLM_TRANSPORT.strip().lower() != "native":
-        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
-
     from app.services.llm.adapters import (
         LlmAdapterError,
+        LlmConfigurationError,
         build_native_request,
         get_adapter,
         native_unavailable_reason,
-        note_fallback,
+        note_unsupported,
         resolve_protocol,
         resolve_provider,
         to_litellm_exception,
     )
 
+    def _unsupported(reason: str) -> LlmConfigurationError:
+        note_unsupported(resolve_provider(model_config), reason)
+        return LlmConfigurationError(reason)
+
     reason = native_unavailable_reason(model_config, response_format)
     if reason is not None:
-        note_fallback(resolve_provider(model_config), reason)
-        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+        raise _unsupported(reason)
 
     protocol = resolve_protocol(model_config)
     adapter = get_adapter(protocol) if protocol else None
     if adapter is None:
-        note_fallback(resolve_provider(model_config), "未找到协议实现")
-        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+        raise _unsupported("未找到协议实现")
 
     native_request = build_native_request(
         model_config,
@@ -194,8 +194,7 @@ async def _complete_with_selected_transport(
         timeout=timeout,
     )
     if native_request is None:
-        note_fallback(resolve_provider(model_config), "未能构造自有传输层请求")
-        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+        raise _unsupported("未能构造自有传输层请求")
 
     try:
         return await asyncio.wait_for(
@@ -208,11 +207,10 @@ async def _complete_with_selected_transport(
         # llm_provider 取**路由串第一段**（litellm 认的 provider 名），不是
         # 模型表里的 provider 列——后者在本仓库是 "custom"，litellm 那边是
         # "openai"。
-        route = str(kwargs.get("model") or "")
         raise to_litellm_exception(
             exc,
-            model=kwargs.get("model"),
-            provider=route.split("/", 1)[0] or resolve_provider(model_config),
+            model=request_model,
+            provider=request_model.split("/", 1)[0] or resolve_provider(model_config),
         ) from exc
 
 
@@ -241,31 +239,12 @@ async def _call_llm_single(
         await model_limiter.acquire()
     _pool_metrics.rate_limited(pool_scope, time.monotonic() - rate_limit_started)
 
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        # litellm 默认 num_retries=2 会内部重试, 与我们的 tenacity + failover 叠加
-        # 导致限流时单条内容烧 8N 次配额。重试策略由 _call_with_retry 统一管理,
-        # 这里显式关闭 litellm 内部重试。除非 extra_params 明确覆盖。
-        "num_retries": 0,
-    }
-    kwargs.update(_litellm_extra_kwargs(model_config))
-    if current_trace() is not None:
-        # A traced physical-attempt cap must include SDK retries. One guarded
-        # attempt therefore permits exactly one LiteLLM completion attempt.
-        kwargs["num_retries"] = 0
-    completion_timeout = _completion_timeout_seconds(kwargs.get("timeout"))
-    # 同时传给 LiteLLM 和 asyncio。前者取消底层 HTTP 请求，后者为每个
-    # provider 提供一致的兜底截止时间。
-    kwargs["timeout"] = completion_timeout
-    if api_key:
-        kwargs["api_key"] = api_key
-    if api_base:
-        kwargs["api_base"] = api_base
-    if response_format:
-        kwargs["response_format"] = response_format
+    # 模型配置里显式给的请求参数（extra_params.litellm_params）：这里只取
+    # timeout。重试策略由 _call_with_retry 统一管理，传输层没有内部重试。
+    configured = _litellm_extra_kwargs(model_config)
+    # 同时传给传输层和 asyncio：前者取消底层 HTTP 请求，后者是每个
+    # provider 一致的兜底截止时间。
+    completion_timeout = _completion_timeout_seconds(configured.get("timeout"))
 
     logger.info("LLM call: model=%s, messages=%d", model, len(messages))
 
@@ -276,8 +255,8 @@ async def _call_llm_single(
             trace = current_trace()
             if trace is not None:
                 attempt = trace.begin_attempt(model_config, model, max_tokens)
-            response = await _complete_with_selected_transport(
-                kwargs=kwargs,
+            response = await _complete_with_native_transport(
+                request_model=model,
                 messages=messages,
                 api_key=api_key,
                 api_base=api_base,
@@ -365,10 +344,14 @@ def _should_retry(exc: BaseException) -> bool:
 
     BadRequestError (400) 也不重试：内容过滤等确定性错误重试只会浪费时间。
     预算熔断拒绝（LlmBudgetExceededError）同理：窗口未恢复前重试必被再拒。
+    配置不满足自有传输层条件（LlmConfigurationError）同理：不改配置重试结果不变，
+    但它是候选级问题，交给 failover 换下一个候选。
     """
     from app.services.llm.budget_guard import LlmBudgetExceededError
 
-    if isinstance(exc, RateLimitError | LlmBudgetExceededError) or _is_deterministic_request_error(exc):
+    if isinstance(exc, RateLimitError | LlmBudgetExceededError | LlmConfigurationError) or _is_deterministic_request_error(
+        exc
+    ):
         return False
     return not _is_rate_limit_error(exc)
 

@@ -1,15 +1,13 @@
 """
-自有传输层（issue #181 / #185）。
+自有传输层（issue #181 / #185 / #204）。
 
 编排层（failover / 冷却 / 熔断 / 限流 / 预算 / 缓存 / 计价）仍是本仓库
 自己的代码；本包只负责「把请求发出去、把响应与错误归一化」这一层。
 
 已实现的协议：OpenAI 兼容（``/chat/completions``）、anthropic
-（``/v1/messages``）、gemini（``generateContent``）。
-
-默认仍走 litellm（``LLM_TRANSPORT=litellm``）；切成 ``native`` 后，
-已实现协议的 provider 走自有实现，其余 provider 显式回落 litellm 并记
-warning。
+（``/v1/messages``）、gemini（``generateContent``）。这是**唯一**的传输
+实现：配置不满足条件（provider 无协议实现、缺 api_base、带 litellm 专属
+路由串或参数）时抛 ``LlmConfigurationError``，不静默换路。
 """
 
 from __future__ import annotations
@@ -26,6 +24,7 @@ from app.services.llm.adapters.errors import (
     LlmAdapterError,
     LlmAuthenticationError,
     LlmBadRequestError,
+    LlmConfigurationError,
     LlmContentPolicyError,
     LlmContextWindowError,
     LlmNotFoundError,
@@ -52,7 +51,7 @@ from app.services.llm.adapters.registry import (
     get_adapter,
     get_openai_compat_adapter,
     native_unavailable_reason,
-    note_fallback,
+    note_unsupported,
     resolve_base_url,
     resolve_protocol,
     resolve_provider,
@@ -75,6 +74,7 @@ __all__ = [
     "LlmAdapterError",
     "LlmAuthenticationError",
     "LlmBadRequestError",
+    "LlmConfigurationError",
     "LlmContentPolicyError",
     "LlmContextWindowError",
     "LlmNotFoundError",
@@ -96,7 +96,7 @@ __all__ = [
     "get_adapter",
     "get_openai_compat_adapter",
     "native_unavailable_reason",
-    "note_fallback",
+    "note_unsupported",
     "resolve_base_url",
     "resolve_protocol",
     "resolve_provider",

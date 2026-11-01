@@ -28,10 +28,6 @@ services:
       # 本机代理 fake-ip 模式把外网域名解析进 198.18.0.0/15，SSRF 防护会
       # 误拦真实信源；放行该解析段（IP 字面量不受影响）。不用代理可移除
       - SSRF_FAKE_IP_PROXY_CIDR=${SSRF_FAKE_IP_PROXY_CIDR:-198.18.0.0/15}
-      # LLM 传输层：litellm | native。native 走自建传输层（OpenAI 兼容族 /
-      # anthropic / gemini），编排层零改动；不满足条件的 provider 显式回落
-      # litellm 并记 warning。回滚：设为 litellm 后重启后端。
-      - LLM_TRANSPORT=${LLM_TRANSPORT:-native}
       # litellm 导入时会联网拉远端模型价格表（失败重试 3 次），本机实测该
       # 端点多次不可达：拉取耗时 ~4.7s 且每次启动带 3 条重试告警。本仓库的
       # 计价不读那份表（走 llm_models + models.dev 目录表），线上唯一的

@@ -311,8 +311,11 @@ def test_missing_api_base_rejected_unless_default_gateway_exists():
 def test_default_api_bases_match_curated_catalog():
     """DEFAULT_API_BASES 与模型目录的精选默认网关不得漂移（两处真源的守卫）。
 
-    目录侧没给默认网关的厂商（anthropic / gemini / xai / mistral），registry
-    补官方端点；多个 OpenAI 兼容网关共用 provider=openai，默认只指官方端点。
+    镜像断言只覆盖目录侧给了 default_api_base 且 provider 名唯一的条目
+    （deepseek / zhipu / minimax / moonshot / openrouter）。其余五家的端点
+    不在目录里，用显式断言钉住——它们恰是最常用的官方网关，误改必须打红：
+    anthropic / gemini 与 litellm 1.103.1 的内部默认一致；xai / mistral 用
+    官方文档端点；多个 OpenAI 兼容网关共用 provider=openai，默认只指官方端点。
     """
     from app.services.llm.adapters import DEFAULT_API_BASES
     from app.services.model_catalog_service import FEATURED_PROVIDERS
@@ -321,6 +324,12 @@ def test_default_api_bases_match_curated_catalog():
         if featured.default_api_base is None or featured.litellm_provider == "openai":
             continue
         assert DEFAULT_API_BASES.get(featured.litellm_provider) == featured.default_api_base, featured.litellm_provider
+
+    assert DEFAULT_API_BASES["openai"] == "https://api.openai.com/v1"
+    assert DEFAULT_API_BASES["anthropic"] == "https://api.anthropic.com"
+    assert DEFAULT_API_BASES["gemini"] == "https://generativelanguage.googleapis.com/v1beta"
+    assert DEFAULT_API_BASES["xai"] == "https://api.x.ai/v1"
+    assert DEFAULT_API_BASES["mistral"] == "https://api.mistral.ai/v1"
 
 
 def test_explicit_litellm_route_string_is_rejected():

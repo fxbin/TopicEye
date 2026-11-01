@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
@@ -18,22 +17,180 @@ _container_env: bool | None = None
 _rewrite_logged: set[str] = set()
 
 
-@lru_cache(maxsize=1)
+_ROUTE_PREFIX_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "a2a",
+        "a2a_agent",
+        "ai21",
+        "ai21_chat",
+        "aiml",
+        "aiohttp_openai",
+        "amazon_nova",
+        "anthropic",
+        "anthropic_text",
+        "apertis",
+        "assemblyai",
+        "auto_router",
+        "aws_polly",
+        "aws_textract",
+        "azure",
+        "azure_ai",
+        "azure_speech",
+        "azure_text",
+        "baseten",
+        "bedrock",
+        "bedrock_mantle",
+        "black_forest_labs",
+        "bytez",
+        "cerebras",
+        "charity_engine",
+        "chatgpt",
+        "chutes",
+        "clarifai",
+        "cloudflare",
+        "codestral",
+        "cognition",
+        "cohere",
+        "cohere_chat",
+        "cometapi",
+        "compactifai",
+        "cursor",
+        "custom",
+        "custom_openai",
+        "darkbloom",
+        "dashscope",
+        "databricks",
+        "datarobot",
+        "deepgram",
+        "deepinfra",
+        "deepseek",
+        "docker_model_runner",
+        "dotprompt",
+        "elevenlabs",
+        "empower",
+        "fal_ai",
+        "featherless_ai",
+        "fireworks_ai",
+        "friendliai",
+        "galadriel",
+        "gdc",
+        "gemini",
+        "gigachat",
+        "github",
+        "github_copilot",
+        "gradient_ai",
+        "groq",
+        "helicone",
+        "heroku",
+        "hosted_vllm",
+        "huggingface",
+        "humanloop",
+        "hyperbolic",
+        "inception",
+        "infinity",
+        "jina_ai",
+        "lambda_ai",
+        "langflow",
+        "langfuse",
+        "langgraph",
+        "lemonade",
+        "libertai",
+        "litellm_agent",
+        "litellm_proxy",
+        "llamafile",
+        "lm_studio",
+        "manus",
+        "maritalk",
+        "meta",
+        "meta_llama",
+        "milvus",
+        "minimax",
+        "mistral",
+        "modelscope",
+        "mongodb",
+        "moonshot",
+        "morph",
+        "nano-gpt",
+        "nebius",
+        "neosantara",
+        "nlp_cloud",
+        "novita",
+        "nscale",
+        "nvidia_nim",
+        "nvidia_riva",
+        "oci",
+        "ollama",
+        "ollama_chat",
+        "oobabooga",
+        "openai",
+        "openai_like",
+        "openrouter",
+        "ovhcloud",
+        "parasail",
+        "perplexity",
+        "petals",
+        "pg_vector",
+        "pinstripes",
+        "poe",
+        "predibase",
+        "publicai",
+        "qwen_ai_platform",
+        "qwencloud",
+        "ragflow",
+        "recraft",
+        "reducto",
+        "replicate",
+        "runwayml",
+        "s3_vectors",
+        "sagemaker",
+        "sagemaker_chat",
+        "sagemaker_nova",
+        "sambanova",
+        "sap",
+        "scaleway",
+        "scx-ai",
+        "snowflake",
+        "soniox",
+        "stability",
+        "synthetic",
+        "tencent",
+        "tensormesh",
+        "text-completion-codestral",
+        "text-completion-inception",
+        "text-completion-openai",
+        "together_ai",
+        "topaz",
+        "transcribe",
+        "triton",
+        "v0",
+        "valkey",
+        "vercel_ai_gateway",
+        "vertex_ai",
+        "vertex_ai_beta",
+        "vllm",
+        "volcengine",
+        "voyage",
+        "wandb",
+        "watsonx",
+        "watsonx_text",
+        "xai",
+        "xiaomi_mimo",
+        "xinference",
+        "zai",
+    }
+)
+
+
 def _known_litellm_providers() -> frozenset[str]:
-    """litellm 的 provider 注册表（StrEnum 成员可直接与 str 相等比较）。
+    """路由串首段的 provider 词汇表，固化自 litellm 1.103.1 的 provider_list。
 
     用于区分「用户显式给出的 litellm 路由串」与「组织/模型命名的网关模型名」：
-    前者首段命中注册表（如 deepseek/），后者不命中（如 example-org/）。
+    前者首段命中词汇表（如 deepseek/），后者不命中（如 example-org/）。
+    词汇表只在退役前用于路由串解析，已不再随 litellm 版本变动——名单冻结，
+    新厂商一律按「不认识的首段」兜底 OpenAI 兼容路由（对带 api_base 的自定义
+    网关是正确行为，见 #83）。
     """
-    try:
-        import litellm
-
-        # 成员是 (str, Enum) 混入：str(member) 是 "LlmProviders.DEEPSEEK"，
-        # 与请求串可比的是 .value（"deepseek"）。
-        return frozenset(str(p.value) if hasattr(p, "value") else str(p) for p in litellm.provider_list)
-    except Exception:  # noqa: BLE001 — litellm 导入失败时退化为「无已知前缀」
-        logger.warning("litellm provider_list unavailable; slash model ids keep legacy passthrough")
-        return frozenset()
+    return _ROUTE_PREFIX_PROVIDERS
 
 
 class ModelLike(Protocol):

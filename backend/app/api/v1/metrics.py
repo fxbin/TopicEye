@@ -366,7 +366,7 @@ async def metrics_snapshot():
     }
 
 
-# ── 历史快照端点（从 SQLite 查询持久化的指标历史）──
+# ── 历史快照端点（从 PostgreSQL 查询持久化的指标历史）──
 
 
 @router.get("/history")
@@ -374,7 +374,7 @@ async def metrics_history(
     hours: int = Query(1, ge=1, le=168, description="Look-back window in hours (max 7 days)"),
     limit: int = Query(500, ge=1, le=2000, description="Max rows to return"),
 ):
-    """Historical metrics snapshots from SQLite.
+    """Historical metrics snapshots from PostgreSQL.
 
     Returns persisted snapshot records for the given look-back window.
     Useful for trend charts beyond the 30-minute in-memory ring buffer.
@@ -405,7 +405,7 @@ async def metrics_logs(
     return {"entries": entries, "summary": summary}
 
 
-# ── LLM 调用日志端点（从 SQLite 查询 llm_call_logs 表）──
+# ── LLM 调用日志端点（从 PostgreSQL 查询 llm_call_logs 表）──
 
 
 @router.get("/llm-logs")

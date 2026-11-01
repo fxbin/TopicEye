@@ -49,6 +49,7 @@ import app.models.read_record  # noqa: F401
 import app.models.source  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
+import app.models.web_vitals  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
 import app.models.zhihu  # noqa: F401
 from app.core.database import Base

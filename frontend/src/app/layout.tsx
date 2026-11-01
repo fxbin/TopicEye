@@ -3,6 +3,7 @@ import { DM_Sans, DM_Mono, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import ClientLayout from '@/components/ClientLayout';
 import SkipToContent from '@/components/SkipToContent';
+import WebVitalsReporter from '@/components/WebVitalsReporter';
 import { prefetchInitialData } from '@/lib/server-prefetch';
 
 const dmSans = DM_Sans({
@@ -47,6 +48,8 @@ export default async function RootLayout({
     <html lang="zh-CN" className={`${dmSans.variable} ${dmMono.variable} ${notoSerif.variable}`} suppressHydrationWarning>
       <body>
         <SkipToContent />
+        {/* #179：采集 LCP/INP/CLS/FCP/TTFB 并上报后端监控面（失败静默，不阻塞渲染） */}
+        <WebVitalsReporter />
         <ClientLayout initialData={initialData}>{children}</ClientLayout>
       </body>
     </html>

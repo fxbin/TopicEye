@@ -1255,6 +1255,26 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # 清理过期前端体验样本：每日 03:30 保留 30 天（逐条样本量级远大于聚合快照）
+    async def _cleanup_old_web_vitals_samples() -> None:
+        try:
+            from app.services.web_vitals_service import cleanup_old_samples
+
+            async with async_session() as db:
+                removed = await cleanup_old_samples(db)
+                await db.commit()
+            logger.info("Removed %d expired web vitals samples", removed)
+        except Exception:
+            logger.warning("Web vitals sample cleanup failed", exc_info=True)
+
+    scheduler.add_job(
+        _cleanup_old_web_vitals_samples,
+        trigger=CronTrigger(hour=3, minute=30),
+        id="web_vitals_cleanup",
+        name="清理过期前端体验样本(>30天)",
+        replace_existing=True,
+    )
+
     # WeRead 统计缓存刷新：每日 05:00（错开 04:30 趋势快照）
     scheduler.add_job(
         _refresh_weread_stats_cache,

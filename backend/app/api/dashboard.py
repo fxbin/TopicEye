@@ -163,6 +163,7 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="tab active" data-tab="overview">概览</div>
   <div class="tab" data-tab="llm-logs">LLM 日志 <span class="badge-count" id="llmFailCount" style="display:none">0</span></div>
   <div class="tab" data-tab="app-logs">应用日志</div>
+  <div class="tab" data-tab="web-vitals">前端体验</div>
 </div>
 
 <!-- ── Tab: Overview ── -->
@@ -322,11 +323,60 @@ table td.num{text-align:right;font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<!-- ── Tab: Web Vitals ── -->
+<div id="tab-web-vitals" class="tab-content" style="display:none;padding:14px 24px">
+  <div class="section-title">前端体验指标 <span class="pill" id="webVitalsMeta">--</span></div>
+  <div class="log-filter">
+    <button class="btn active" data-wv-nav="navigate" onclick="setWebVitalsNav('navigate')">首次加载</button>
+    <button class="btn" data-wv-nav="soft-navigation" onclick="setWebVitalsNav('soft-navigation')">软导航</button>
+    <button class="btn" data-wv-nav="all" onclick="setWebVitalsNav('all')">全部</button>
+    <select class="refresh-select" id="webVitalsHours" onchange="fetchWebVitals()">
+      <option value="1">最近 1 小时</option>
+      <option value="24" selected>最近 24 小时</option>
+      <option value="168">最近 7 天</option>
+      <option value="720">最近 30 天</option>
+    </select>
+    <button class="btn" onclick="fetchWebVitals()">刷新</button>
+  </div>
+  <div class="kpi-grid" style="padding:0">
+    <div class="kpi-card">
+      <div class="kpi-label">LCP p75</div>
+      <div class="kpi-value" id="wvLcp">--</div>
+      <div class="kpi-sub" id="wvLcpSub">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">INP p75</div>
+      <div class="kpi-value" id="wvInp">--</div>
+      <div class="kpi-sub" id="wvInpSub">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">CLS p75</div>
+      <div class="kpi-value" id="wvCls">--</div>
+      <div class="kpi-sub" id="wvClsSub">--</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">样本数</div>
+      <div class="kpi-value blue" id="wvSamples">--</div>
+      <div class="kpi-sub" id="wvSamplesSub">--</div>
+    </div>
+  </div>
+  <div class="section" style="padding:14px 0 0">
+    <div class="section-title">按路由拆解 <span class="pill">p75 · 差值由大到小</span></div>
+    <div class="chart-box">
+      <table>
+        <thead><tr><th>路由</th><th>指标</th><th style="text-align:right">p75</th><th style="text-align:right">样本</th><th>档位</th></tr></thead>
+        <tbody id="wvRouteTable"><tr><td colspan="5" class="loading">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = window.location.origin + '/api/v1/metrics/snapshot';
 const API_HISTORY = window.location.origin + '/api/v1/metrics/history';
 const API_LOGS = window.location.origin + '/api/v1/metrics/logs';
 const API_LLM_LOGS = window.location.origin + '/api/v1/metrics/llm-logs';
+const API_WEB_VITALS = window.location.origin + '/api/v1/metrics/web-vitals/summary';
 let lastData = null;
 let refreshTimer = null;
 let currentRefreshMs = 10000;
@@ -334,6 +384,7 @@ let isTabVisible = true;
 let activeTab = 'overview';
 let llmLogFilter = 'FAILED';
 let appLogFilter = 'ALL';
+let webVitalsNav = 'navigate';
 let memHistory = [];
 
 // ── Utilities ──
@@ -784,6 +835,7 @@ document.querySelectorAll('.tab').forEach(tab=>{
     document.getElementById('tab-'+activeTab).style.display='block';
     if(activeTab==='llm-logs')fetchLlmLogs();
     if(activeTab==='app-logs')fetchAppLogs();
+    if(activeTab==='web-vitals')fetchWebVitals();
   });
 });
 
@@ -814,6 +866,97 @@ async function fetchLlmLogs(){
     }).join('');
   }catch(err){
     document.getElementById('llmLogPanel').innerHTML='<div class="loading">加载失败: '+escHtml(err.message)+'</div>';
+  }
+}
+
+// ── Web Vitals（前端体验指标）──
+function setWebVitalsNav(nav){
+  webVitalsNav=nav;
+  document.querySelectorAll('[data-wv-nav]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.wvNav===nav);
+  });
+  fetchWebVitals();
+}
+
+function wvFormatValue(metric,value){
+  if(value==null||value===undefined)return'--';
+  if(metric==='CLS')return Number(value).toFixed(3);
+  return Math.round(value)+'ms';
+}
+
+function wvRatingClass(rating){
+  if(rating==='good')return'ok';
+  if(rating==='poor')return'err';
+  if(rating==='needs-improvement')return'warn';
+  return'half';
+}
+
+function wvRatingLabel(rating){
+  if(rating==='good')return'良好';
+  if(rating==='poor')return'差';
+  if(rating==='needs-improvement')return'待改进';
+  return'--';
+}
+
+function wvMetricOrder(metric){
+  const order=['LCP','INP','CLS','FCP','TTFB'];
+  const i=order.indexOf(metric);
+  return i<0?order.length:i;
+}
+
+function renderWebVitals(data){
+  const metrics=data.metrics||[];
+  const byMetric={};
+  metrics.forEach(m=>{byMetric[m.metric]=m});
+  const cards=[['LCP','wvLcp','wvLcpSub'],['INP','wvInp','wvInpSub'],['CLS','wvCls','wvClsSub']];
+  cards.forEach(([metric,valId,subId])=>{
+    const m=byMetric[metric];
+    const valEl=document.getElementById(valId);
+    const subEl=document.getElementById(subId);
+    if(!m||m.p75==null){
+      valEl.textContent='--';valEl.className='kpi-value';
+      subEl.textContent='暂无样本';return;
+    }
+    valEl.textContent=wvFormatValue(metric,m.p75);
+    valEl.className='kpi-value '+(m.rating==='good'?'green':m.rating==='poor'?'red':'amber');
+    subEl.textContent='P50 '+wvFormatValue(metric,m.p50)+' / P95 '+wvFormatValue(metric,m.p95)+' / '+m.sample_count+' 样本';
+  });
+  document.getElementById('wvSamples').textContent=fmtNum(data.sample_count);
+  document.getElementById('wvSamplesSub').textContent='最近 '+(data.hours||24)+' 小时 · '+(data.navigation_type||'navigate');
+  const navLabel={navigate:'首次加载',"soft-navigation":'软导航',all:'全部'}[data.navigation_type]||data.navigation_type;
+  document.getElementById('webVitalsMeta').textContent=navLabel+' · 截至 '+(data.generated_at?new Date(data.generated_at).toLocaleString('zh-CN',{hour12:false}):'--');
+
+  const routes=(data.routes||[]).slice();
+  routes.sort((a,b)=>{
+    const oa=wvMetricOrder(a.metric),ob=wvMetricOrder(b.metric);
+    if(oa!==ob)return oa-ob;
+    return b.p75-a.p75;
+  });
+  const tbody=document.getElementById('wvRouteTable');
+  if(!routes.length){
+    // 软导航口径在多数浏览器恒为空：只有支持 soft-navigation entry type 的浏览器
+    // 才会把 navigationType 记成 soft-navigation，所以要把原因说清楚。
+    const emptyHint=(data.navigation_type==='soft-navigation')
+      ?'该窗口内没有软导航样本（多数浏览器还不支持 soft-navigation 观测）'
+      :'该窗口内没有样本。上线后由浏览器端上报产生。';
+    tbody.innerHTML='<tr><td colspan="5" class="loading">'+escHtml(emptyHint)+'</td></tr>';
+    return;
+  }
+  tbody.innerHTML=routes.map(r=>{
+    return '<tr><td>'+escHtml(r.path)+'</td><td>'+escHtml(r.metric)+'</td>'
+      +'<td class="num">'+wvFormatValue(r.metric,r.p75)+'</td>'
+      +'<td class="num">'+fmtNum(r.sample_count)+'</td>'
+      +'<td><span class="badge '+wvRatingClass(r.rating)+'">'+wvRatingLabel(r.rating)+'</span></td></tr>';
+  }).join('');
+}
+
+async function fetchWebVitals(){
+  try{
+    const hours=document.getElementById('webVitalsHours').value;
+    const data=await fetchJSON(API_WEB_VITALS+'?hours='+hours+'&navigation_type='+webVitalsNav);
+    renderWebVitals(data);
+  }catch(err){
+    document.getElementById('wvRouteTable').innerHTML='<tr><td colspan="5" class="loading">加载失败: '+escHtml(err.message)+'</td></tr>';
   }
 }
 

@@ -10,10 +10,9 @@ BadRequestError (400) 同样不重试：内容过滤等确定性错误重试只�
 from __future__ import annotations
 
 import pytest
-from litellm import RateLimitError
-from litellm.exceptions import BadRequestError
 
 from app.services.llm._call_engine import _call_with_retry, _should_retry
+from app.services.llm.adapters.errors import LlmBadRequestError, LlmRateLimitError
 
 
 @pytest.mark.asyncio
@@ -24,15 +23,11 @@ async def test_rate_limit_error_not_retried(monkeypatch):
     async def fake_single_call(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        raise RateLimitError(
-            message="Rate limited",
-            model="test-model",
-            llm_provider="openai",
-        )
+        raise LlmRateLimitError("Rate limited", status_code=429)
 
     monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
-    with pytest.raises(RateLimitError):
+    with pytest.raises(LlmRateLimitError):
         await _call_with_retry(
             messages=[],
             model="test-model",
@@ -77,13 +72,13 @@ async def test_string_429_error_not_retried(monkeypatch):
 def test_should_retry_predicate():
     """谓词函数单元测试: 限流(类型+字符串)与 400 不重试, 其他重试。"""
     # RateLimitError 类型
-    assert _should_retry(RateLimitError("429", model="m", llm_provider="openai")) is False
+    assert _should_retry(LlmRateLimitError("429", status_code=429)) is False
     # 字符串 429 (非类型)
     assert _should_retry(RuntimeError("Error 429 rate limit")) is False
     assert _should_retry(RuntimeError("请求过于频繁")) is False
     assert _should_retry(RuntimeError("quota exceeded")) is False
     # BadRequestError 类型不重试
-    assert _should_retry(BadRequestError("400", model="m", llm_provider="openai")) is False
+    assert _should_retry(LlmBadRequestError("400", status_code=400)) is False
     # 字符串 400 (非类型, GLM contentFilter)
     assert _should_retry(RuntimeError("Error code: 400 - contentFilter")) is False
     # 非限流/非 400 错误应重试
@@ -99,15 +94,11 @@ async def test_bad_request_error_not_retried(monkeypatch):
     async def fake_single_call(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        raise BadRequestError(
-            message="Error code: 400 - contentFilter",
-            model="test-model",
-            llm_provider="openai",
-        )
+        raise LlmBadRequestError("Error code: 400 - contentFilter", status_code=400)
 
     monkeypatch.setattr("app.services.llm._call_engine._call_llm_single", fake_single_call)
 
-    with pytest.raises(BadRequestError):
+    with pytest.raises(LlmBadRequestError):
         await _call_with_retry(
             messages=[],
             model="test-model",

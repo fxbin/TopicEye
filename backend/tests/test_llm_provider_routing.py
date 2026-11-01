@@ -2,9 +2,9 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from litellm.exceptions import BadRequestError
 
 from app.services.llm import _call_engine, _rate_limit, provider
+from app.services.llm.adapters.errors import LlmBadRequestError
 from app.services.llm.circuit_breaker import CircuitState, get_llm_circuit_breaker, reset_llm_circuit_breakers
 from app.services.llm.response_cache import LLMCache
 
@@ -99,12 +99,12 @@ async def test_bad_request_does_not_fail_over_or_degrade_healthy_model(monkeypat
         messages, model, api_key, api_base, temperature, max_tokens, response_format, model_config, scene
     ):
         calls.append(model)
-        raise BadRequestError("400 contentFilter", model=model, llm_provider="openai")
+        raise LlmBadRequestError("400 contentFilter", status_code=400)
 
     monkeypatch.setattr(provider._model_cache, "get_route_models", route_models)
     monkeypatch.setattr(provider, "_call_with_retry", fake_call)
 
-    with pytest.raises(BadRequestError):
+    with pytest.raises(LlmBadRequestError):
         await provider.call_llm([{"role": "user", "content": "blocked"}])
 
     assert calls == ["openai/first"]

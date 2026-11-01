@@ -25,8 +25,6 @@ import json
 import logging
 from typing import Any
 
-from litellm.exceptions import UnsupportedParamsError
-
 from app.services.llm._call_engine import (
     _call_with_retry,
     _complete_with_native_transport,
@@ -45,8 +43,9 @@ from app.services.llm._rate_limit import (
     reset_model_rate_limiters,
     reset_token_rate_limiter,
 )
+from app.services.llm.adapters.errors import LlmUnsupportedParamsError
 from app.services.llm.call_trace import current_trace
-from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
+from app.services.llm.model_resolver import normalize_api_base
 from app.services.secret_store import decrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -97,7 +96,6 @@ async def complete_once(
     ``timeout`` 为空时取编排层默认上限；``extra_params.litellm_params.timeout``
     的覆盖关系与主链路一致（配置值优先，再受全局上限约束）。
     """
-    request_model = resolve_litellm_model(model_config)
     raw_key = getattr(model_config, "api_key", None)
     raw_base = getattr(model_config, "api_base", None)
     api_key = decrypt_secret(raw_key) if raw_key else None
@@ -107,7 +105,6 @@ async def complete_once(
     completion_timeout = _completion_timeout_seconds(configured_timeout if configured_timeout is not None else timeout)
 
     return await _complete_with_native_transport(
-        request_model=request_model,
         messages=messages,
         api_key=api_key,
         api_base=api_base,
@@ -167,7 +164,7 @@ async def call_llm_with_metadata(
     """Call LLM with automatic ordered failover and return the selected route metadata.
 
     ``response_format`` is passed through to the transport adapter.
-    When a provider does not support it (``UnsupportedParamsError``),
+    When a provider does not support it (``LlmUnsupportedParamsError``),
     the failover loop retries that candidate without ``response_format``
     so JSON-mode callers still get a usable text response.
 
@@ -310,7 +307,7 @@ async def _call_llm_with_metadata_inner(
             )
             _failover.on_success(key)
             return response, _llm_call_metadata(model_config, request_model, routing_group, scene)
-        except UnsupportedParamsError:
+        except LlmUnsupportedParamsError:
             # Provider doesn't support response_format (e.g. some GLM / DeepSeek
             # endpoints). Retry the same candidate without it so JSON-mode
             # callers still get a parseable text response. If the retry also

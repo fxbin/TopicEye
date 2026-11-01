@@ -38,12 +38,12 @@ from app.services.llm.adapters import (
     classify_gemini_error,
     native_unavailable_reason,
     resolve_protocol,
-    to_litellm_exception,
 )
 from app.services.llm.adapters.anthropic_native import AnthropicNativeAdapter, build_request_body as anthropic_body
 from app.services.llm.adapters.base import NativeRequest
 from app.services.llm.adapters.gemini_native import GeminiNativeAdapter, build_request_body as gemini_body
 from app.services.llm_usage import calculate_cost, extract_usage
+from tests.llm_parity_oracle import legacy_is_deterministic_request_error, legacy_should_retry
 
 # ── 请求级对照用的报文 ──────────────────────────────────────────────────────
 
@@ -332,11 +332,9 @@ async def test_anthropic_error_classification_matches_litellm(http_capture, stat
     assert litellm_exc is not None
 
     native = classify_anthropic_error(status, json.dumps(body))
-    mapped = to_litellm_exception(native, model="claude-sonnet-4-5", provider="anthropic")
 
-    assert type(mapped) is type(litellm_exc), f"{status} 映射类型不一致: {type(mapped)} vs {type(litellm_exc)}"
-    assert _should_retry(mapped) is _should_retry(litellm_exc), f"{status} 重试判定不一致"
-    assert _call_engine._is_deterministic_request_error(mapped) is _call_engine._is_deterministic_request_error(
+    assert _should_retry(native) is legacy_should_retry(litellm_exc), f"{status} 重试判定不一致"
+    assert _call_engine._is_deterministic_request_error(native) is legacy_is_deterministic_request_error(
         litellm_exc
     ), f"{status} 确定性判定不一致"
 
@@ -358,11 +356,9 @@ async def test_gemini_error_classification_matches_litellm(http_capture, status,
     assert litellm_exc is not None
 
     native = classify_gemini_error(status, json.dumps(body))
-    mapped = to_litellm_exception(native, model="gemini-2.5-flash", provider="gemini")
 
-    assert type(mapped) is type(litellm_exc), f"{status} 映射类型不一致: {type(mapped)} vs {type(litellm_exc)}"
-    assert _should_retry(mapped) is _should_retry(litellm_exc), f"{status} 重试判定不一致"
-    assert _call_engine._is_deterministic_request_error(mapped) is _call_engine._is_deterministic_request_error(
+    assert _should_retry(native) is legacy_should_retry(litellm_exc), f"{status} 重试判定不一致"
+    assert _call_engine._is_deterministic_request_error(native) is legacy_is_deterministic_request_error(
         litellm_exc
     ), f"{status} 确定性判定不一致"
 

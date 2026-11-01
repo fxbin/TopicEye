@@ -320,8 +320,6 @@ async def test_complete_once_lets_configured_timeout_and_headers_override_defaul
 @pytest.mark.asyncio
 async def test_complete_once_is_a_single_attempt(monkeypatch):
     """探测与评测不重试、不 failover：适配器抛限流就原样抛出，且只打了一次。"""
-    from litellm.exceptions import RateLimitError
-
     from app.services.llm.adapters.errors import LlmRateLimitError
 
     calls = 0
@@ -340,7 +338,7 @@ async def test_complete_once_is_a_single_attempt(monkeypatch):
         extra_params=None,
     )
 
-    with pytest.raises(RateLimitError):
+    with pytest.raises(LlmRateLimitError):
         await complete_once(model, [{"role": "user", "content": "hello"}], temperature=0.3, max_tokens=16)
 
     assert calls == 1

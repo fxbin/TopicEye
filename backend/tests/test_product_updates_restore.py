@@ -1,9 +1,10 @@
 """#182 恢复 changelog 丢失的 product_updates 版本记录：种子迁移回归测试。
 
 覆盖三条线：
-- upgrade head 后 v0.1.0→v0.9.0 共 12 条版本记录齐全（status / items 数 / 关键标题）；
+- upgrade head（含后续 supplement 补录迁移叠加）后 v0.1.0→v0.13.0 共 16 条
+  版本记录齐全（status / items 数 / 关键标题）；
 - 幂等：已存在的 version 不重复插入（version 无唯一约束，靠 SELECT 防重）；
-- downgrade -1 按 version 精确删除种子记录，不动人工录入的其它版本。
+- downgrade 到种子父级按 version 精确删除两层迁移记录，不动人工录入的其它版本。
 """
 
 from __future__ import annotations
@@ -28,6 +29,11 @@ EXPECTED_VERSIONS: dict[str, tuple[str, int, str]] = {
     "v0.7.0": ("shipped", 5, "统计仪表盘可视化升级"),
     "v0.8.0": ("shipped", 3, "母题 per-user 化：系统模板库 + 用户 fork"),
     "v0.9.0": ("shipped", 9, "跨源证据与可信线索体系"),
+    # 以下 4 条由 supplement 迁移（f2c8e6a4b9d1）补录
+    "v0.10.0": ("shipped", 6, "六维评分加四档行为锚点"),
+    "v0.11.0": ("shipped", 6, "日报、周刊全面改版"),
+    "v0.12.0": ("shipped", 6, "同一事件的多篇报道自动归并"),
+    "v0.13.0": ("shipped", 6, "AI 分析同一事件的报道"),
 }
 
 _PREVIOUS_HEAD = "d2b7f9a41c05"
@@ -63,7 +69,7 @@ def _execute(db_url: str, sql: str, params: dict | None = None) -> None:
 
 
 def test_restore_seed_upgrades_to_full_changelog(throwaway_pg_database) -> None:
-    """upgrade head 后 12 个版本齐全，字段与种子一致。"""
+    """upgrade head 后 16 个版本齐全（种子 12 + 补录 4），字段与种子一致。"""
     from alembic import command
 
     command.upgrade(migrations_mod._build_alembic_config(), "head")
@@ -92,6 +98,7 @@ def test_restore_seed_upgrades_to_full_changelog(throwaway_pg_database) -> None:
     assert "OAuth 登录与开源准备" in v050_titles, "v0.5.0 应含 OAuth 路线图追加项"
     assert v050_titles[-1] == "OAuth 登录与开源准备", "OAuth 项按追加顺序应在末位"
     assert rows["v0.9.0"][0][1][-1]["title"] == "安全与工程质量加固"
+    assert rows["v0.13.0"][0][1][-1]["title"] == "依赖安全升级", "v0.13.0 末项应为依赖安全清零"
 
 
 def test_restore_seed_is_idempotent_for_existing_versions(throwaway_pg_database) -> None:
@@ -100,7 +107,7 @@ def test_restore_seed_is_idempotent_for_existing_versions(throwaway_pg_database)
 
     cfg = migrations_mod._build_alembic_config()
     command.upgrade(cfg, "head")
-    assert len(_fetch_rows(throwaway_pg_database)) == 12
+    assert len(_fetch_rows(throwaway_pg_database)) == 16
 
     # 回滚种子后，手工预置 v0.1.0（模拟存量数据/人工录入）+ 一个无关版本
     # （显式指回种子迁移的父级，避免未来迁移落顶时 "-1" 语义漂移）
@@ -118,13 +125,14 @@ def test_restore_seed_is_idempotent_for_existing_versions(throwaway_pg_database)
         " VALUES ('v1.0.0-manual', 'shipped', '[]'::json, now(), now())",
     )
 
-    # 再次 upgrade：v0.1.0 已存在 → 跳过（保留手工行内容），其余 11 条补齐
+    # 再次 upgrade：v0.1.0 已存在 → 跳过（保留手工行内容），其余 11 条补齐；
+    # supplement 层的 4 条此前也被一并回滚，此时同样补齐
     command.upgrade(cfg, "head")
     rows = _fetch_rows(throwaway_pg_database)
     assert len(rows["v0.1.0"]) == 1, "已存在的 v0.1.0 不得重复插入"
     assert rows["v0.1.0"][0][0] == "in_progress", "防重跳过不应覆盖既有行"
     assert rows["v0.1.0"][0][1][0]["title"] == "手工记录"
-    assert len(rows) == 13, "12 个种子版本 + 1 个手工版本"
+    assert len(rows) == 17, "16 个种子+补录版本 + 1 个手工版本"
     assert "v1.0.0-manual" in rows
 
     # 重复 upgrade head（alembic no-op）也不产生重复

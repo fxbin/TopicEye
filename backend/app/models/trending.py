@@ -1,12 +1,12 @@
 """
 TrendingSnapshot — 趋势雷达历史快照。
 
-每天凌晨自动保存一份全量快照，保留15天。
+每天凌晨自动保存一份全量快照，保留 7 天（见 trending_snapshot.SNAPSHOT_RETENTION_DAYS）。
 用于：对比昨日排名、判断话题趋势（上升/下降/新上榜）。
 
 和 TrendingItem 的区别：
 - TrendingItem：实时数据，每次同步替换
-- TrendingSnapshot：历史存档，永久保留15天
+- TrendingSnapshot：历史存档，保留 7 天，超期由 scheduler 清理
 """
 
 from __future__ import annotations

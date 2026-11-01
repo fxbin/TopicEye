@@ -6,9 +6,6 @@ _current_snapshot_hour 在凌晨 0-7 点归到前一天 22 点，因此每天实
 snapshot_hour≈22 的全量快照。保留 7 天（SNAPSHOT_RETENTION_DAYS），超期由
 cleanup_old_snapshots 清理。
 
-注意：scheduler 的 cleanup job 描述写"15 天"，但实际用本模块的 7 天常量；
-模块头与 scheduler 描述存在历史漂移，以本模块常量为准。
-
 用途：持续热度分析、跨时间对比、趋势变化追踪（含网文平台黑岩/点众的周报排名变化）。
 """
 

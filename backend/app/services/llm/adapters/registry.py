@@ -68,9 +68,11 @@ PROTOCOL_BY_PROVIDER: dict[str, str] = {
 
 # provider 未显式配置 api_base 时的默认网关。
 #
-# 与 ``model_catalog_service.FEATURED_PROVIDERS`` 的精选默认值保持一致（有
-# 测试守卫，两处不得漂移）；目录里没给默认值的厂商这里写官方文档端点。
-# ``custom`` 刻意不在这里——「完全自定义」必须由用户自带 api_base。
+# 与 ``model_catalog_service.FEATURED_PROVIDERS`` 的精选默认值保持一致
+# （deepseek / zhipu / minimax / moonshot / openrouter 有镜像测试守卫）；
+# 目录里没给默认值的厂商（anthropic / gemini / xai / mistral）写官方端点，
+# 连同 openai 一起由显式断言钉住，防误改。``custom`` 刻意不在这里——
+# 「完全自定义」必须由用户自带 api_base。
 DEFAULT_API_BASES: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com",

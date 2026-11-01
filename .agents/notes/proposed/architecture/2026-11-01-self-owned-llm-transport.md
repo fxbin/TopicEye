@@ -116,5 +116,5 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
   的 2 个失败是**基线即存在**的既有问题：把本次改动全部移开后在 main 基线上
   同样失败，与本次改动无关）。
 
-相关：[LLM 调用与计费口径](content-event-contract.md) 记录用量与调用轨迹的
+相关：[LLM 调用与计费口径](../../implemented/feature/2026-10-24-content-event-contract.md) 记录用量与调用轨迹的
 既有合同；本次未改动该口径，只保证两条路径产出相同结果。

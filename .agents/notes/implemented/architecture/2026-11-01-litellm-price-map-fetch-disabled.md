@@ -46,12 +46,12 @@ litellm 读的是环境变量，且读时机在 import 时。两种放法的差�
 1. **我们的计价早就不依赖它**：全仓库没有任何地方读 `litellm.model_cost` /
    `get_model_info` / `response_cost`。计价走 `pricing_from_model` →
    `normalized_model_pricing` → `llm_models` 表 + models.dev 目录表
-   （见 [LLM 调用与计费口径](content-event-contract.md)）。
+   （见 [LLM 调用与计费口径](../../implemented/feature/2026-10-24-content-event-contract.md)）。
 2. **线上唯一的模型不在表里**：`minicpm5-2b` 调 `get_model_info` 直接抛
    `This model isn't mapped yet`——那份表对我们唯一的生产模型没有任何上下文
    窗口或价格信息可用。
 3. **它不是我们的价格来源**：我们自己的模型目录表来自 models.dev（见
-   [自建 LLM 传输层的可行性与边界](2026-11-01-self-owned-llm-transport.md)）。
+   [自建 LLM 传输层的可行性与边界](../../proposed/architecture/2026-11-01-self-owned-llm-transport.md)）。
 
 ## Alternatives considered
 
@@ -76,5 +76,5 @@ litellm 读的是环境变量，且读时机在 import 时。两种放法的差�
   （`test_llm_native_transport.py` 52 项 + `test_llm_native_anthropic_gemini.py`
   36 项）——都全绿；同一组请求在两种状态下的异常类型与内容完全一致。
 
-相关：[自建 LLM 传输层的可行性与边界](2026-11-01-self-owned-llm-transport.md)、
-[补 anthropic / gemini 原生协议](2026-11-01-native-anthropic-gemini-protocols.md)
+相关：[自建 LLM 传输层的可行性与边界](../../proposed/architecture/2026-11-01-self-owned-llm-transport.md)、
+[补 anthropic / gemini 原生协议](../../proposed/architecture/2026-11-01-native-anthropic-gemini-protocols.md)

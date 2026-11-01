@@ -118,5 +118,5 @@ litellm 对 anthropic **静默丢弃** `response_format`（实测请求体里没
   不抽到顶层、缓存写入不合并、assistant 角色名不映射、json_object 不映射）。
 - litellm 的对照基线用 httpx mock 抓真实调用取得，不是读代码推断。
 
-相关：[自建 LLM 传输层的可行性与边界](2026-11-01-self-owned-llm-transport.md)
+相关：[自建 LLM 传输层的可行性与边界](../../implemented/architecture/2026-11-01-self-owned-llm-transport.md)
 记录 #181 的整体形状；本次是在其上的协议扩展。

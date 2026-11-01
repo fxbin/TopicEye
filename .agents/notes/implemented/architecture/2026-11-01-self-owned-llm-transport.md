@@ -1,6 +1,6 @@
 # Agent Note: 自建 LLM 传输层的可行性与边界
 
-Status: proposed — 自有传输层已落地试点（开关默认关闭），是否替换 litellm 待生产验证
+Status: implemented — 自有传输层已在生产默认启用（`LLM_TRANSPORT=native`）
 
 ## Problem
 
@@ -32,7 +32,7 @@ Status: proposed — 自有传输层已落地试点（开关默认关闭），�
 litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completion`、1 处
 `provider_list`、7 个异常类。所以自研的成本不在于功能多，而在于**保住行为一致**。
 
-本次落地的形状（issue #181，issue `LLM_TRANSPORT` 开关，默认 `litellm`）：
+本次落地的形状（issue #181，`LLM_TRANSPORT` 开关；**自 issue #200 起默认 `native`**）：
 
 - 新增 `services/llm/adapters/`：自有错误分类、响应归一化、OpenAI 兼容协议实现
   （httpx 直连 `/chat/completions`）。
@@ -45,7 +45,34 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 - 不满足条件的 provider（缺 api_base，或配了 litellm 专属路由串与参数）
   **显式回落 litellm 并记 warning**，不静默换路径。
 - 自 #185 起，anthropic 与 gemini 也有了自有协议实现，不再落在回落名单里；详见
-  [补 anthropic / gemini 原生协议](2026-11-01-native-anthropic-gemini-protocols.md)。
+  [补 anthropic / gemini 原生协议](../../proposed/architecture/2026-11-01-native-anthropic-gemini-protocols.md)。
+
+## 生产切换（issue #200）
+
+自研传输层在三个 PR 合并后（#181 OpenAI 兼容族、#185 anthropic / gemini、#194
+去掉远端价格表拉取），把 compose 的默认值切到 `LLM_TRANSPORT=native`。
+
+切换前的核实：
+
+- **覆盖**：主链路的全部异步 LLM 调用都经过 `_call_engine` 的传输分派；**未覆盖**
+  的是 A/B 评测与模型 ping 的**同步** `litellm.completion`
+  （`api/v1/llm_evaluations.py` / `api/v1/llm_models.py`）——切换后两条路径混用。
+- **线上模型不会回落**：`llm_models` 只有 1 行，provider=`custom`（在已实现协议内）、
+  配了 `api_base`、`extra_params` 里既无 `litellm_params` 也无 `litellm_model`。
+- **能力够用**：编排层只传 model / messages / temperature / max_tokens /
+  num_retries=0，不用流式、不用 tools、不用 function calling。
+- **真实端到端跑通**：同一模型、同一 OpenAI 兼容端点，两条路径各跑一次并落库
+  比对——input_tokens、billable_input、input_cost 完全一致；output 差异来自模型
+  两次采样的生成长度不同，不是计量差异。
+
+**回滚**：设 `LLM_TRANSPORT=litellm` 后重启后端容器（改 compose 默认值或用环境
+变量覆盖都行）。未经 compose 的部署（直接跑 uvicorn）读到代码里的保守默认
+`litellm`，不受这次切换影响。
+
+**长期存在的差异**：自研层每次请求新建 `httpx.AsyncClient`，不复用连接；运行期
+出错（连接失败、超时）**不会自动回落** litellm，而是和 litellm 路径一样走编排层
+的重试 / failover——运行期偷偷换实现会让语义漂移。回落只发生在「provider 不支持 /
+配置不满足」时，且记 warning。litellm 依赖仍在（同步路径 + 回落路径）。
 
 ## Alternatives considered
 
@@ -116,5 +143,5 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
   的 2 个失败是**基线即存在**的既有问题：把本次改动全部移开后在 main 基线上
   同样失败，与本次改动无关）。
 
-相关：[LLM 调用与计费口径](content-event-contract.md) 记录用量与调用轨迹的
+相关：[LLM 调用与计费口径](../feature/2026-10-24-content-event-contract.md) 记录用量与调用轨迹的
 既有合同；本次未改动该口径，只保证两条路径产出相同结果。

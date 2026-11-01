@@ -195,6 +195,11 @@ class Settings(BaseSettings):
     LLM_REQUESTS_PER_MINUTE: int = 60
     LLM_TOKENS_PER_MINUTE: int = 100000
     LLM_WORKER_CONCURRENCY: int = 4
+    # 传输层实现选择（issue #181）：
+    #   litellm —— 走 LiteLLM（默认，行为与既有部署完全一致）
+    #   native  —— OpenAI 兼容族走自建传输层，其余 provider 显式回落 litellm
+    # 编排层（failover / 熔断 / 预算 / 缓存 / 计价）在两条路径下完全相同。
+    LLM_TRANSPORT: str = "litellm"
     # 单次运行时调用的硬上限；模型 extra_params.timeout 只能把它调小，不能放大。
     LLM_COMPLETION_TIMEOUT_SECONDS: float = 45.0
     # 预算熔断（budget_guard）：按 llm_call_logs 实际 DONE 调用数的三窗保险丝，
@@ -250,6 +255,15 @@ class Settings(BaseSettings):
     MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS: float = 120.0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    @field_validator("LLM_TRANSPORT")
+    @classmethod
+    def _validate_llm_transport(cls, v: str) -> str:
+        allowed = {"litellm", "native"}
+        cleaned = (v or "").strip().lower()
+        if cleaned not in allowed:
+            raise ValueError(f"LLM_TRANSPORT 只能是 {' / '.join(sorted(allowed))} 之一，当前值: {v!r}")
+        return cleaned
 
     @field_validator("MODEL_CATALOG_URL")
     @classmethod

@@ -135,6 +135,79 @@ def _parse_reset_time(exc: Exception):
     return None
 
 
+async def _complete_with_selected_transport(
+    *,
+    kwargs: dict[str, Any],
+    messages: list,
+    api_key: str | None,
+    api_base: str | None,
+    temperature: float,
+    max_tokens: int,
+    response_format: dict | None,
+    model_config: Any,
+    timeout: float,
+):
+    """按 ``LLM_TRANSPORT`` 选择传输实现，返回**读取形状一致**的响应。
+
+    两条路径的返回对象都支持 ``response.choices[0].message.content`` 与
+    ``extract_usage`` 需要的 ``.usage`` / ``.model``，因此下游（用量提取、
+    计价、调用轨迹落库）无需区分传输实现。
+
+    - ``litellm``（默认）：行为与改动前完全一致。
+    - ``native``：OpenAI 兼容族走自有传输层；不满足条件的 provider 显式
+      回落 litellm 并记 warning（不静默换路径）。
+    """
+    if settings.LLM_TRANSPORT.strip().lower() != "native":
+        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+
+    from app.services.llm.adapters import (
+        LlmAdapterError,
+        build_native_request,
+        get_openai_compat_adapter,
+        native_unavailable_reason,
+        note_fallback,
+        resolve_provider,
+        to_litellm_exception,
+    )
+
+    reason = native_unavailable_reason(model_config)
+    if reason is not None:
+        note_fallback(resolve_provider(model_config), reason)
+        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+
+    native_request = build_native_request(
+        model_config,
+        messages=messages,
+        api_key=api_key,
+        api_base=api_base,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+        timeout=timeout,
+    )
+    if native_request is None:
+        note_fallback(resolve_provider(model_config), "未能构造自有传输层请求")
+        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+
+    try:
+        return await asyncio.wait_for(
+            get_openai_compat_adapter().complete(native_request),
+            timeout=timeout,
+        )
+    except LlmAdapterError as exc:
+        # 自有错误映射成既有的 litellm 异常类型，让编排层（重试判定、failover、
+        # 熔断、内容降级）保持同一套语义，不因传输实现而漂移。
+        # llm_provider 取**路由串第一段**（litellm 认的 provider 名），不是
+        # 模型表里的 provider 列——后者在本仓库是 "custom"，litellm 那边是
+        # "openai"。
+        route = str(kwargs.get("model") or "")
+        raise to_litellm_exception(
+            exc,
+            model=kwargs.get("model"),
+            provider=route.split("/", 1)[0] or resolve_provider(model_config),
+        ) from exc
+
+
 async def _call_llm_single(
     messages: list,
     model: str,
@@ -195,8 +268,15 @@ async def _call_llm_single(
             trace = current_trace()
             if trace is not None:
                 attempt = trace.begin_attempt(model_config, model, max_tokens)
-            response = await asyncio.wait_for(
-                acompletion(**kwargs),
+            response = await _complete_with_selected_transport(
+                kwargs=kwargs,
+                messages=messages,
+                api_key=api_key,
+                api_base=api_base,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                model_config=model_config,
                 timeout=completion_timeout,
             )
         duration_ms = int((time.monotonic() - start) * 1000)

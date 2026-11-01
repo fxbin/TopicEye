@@ -37,6 +37,7 @@ from app.services.llm.adapters.errors import (
     LlmUnsupportedParamsError,
     classify_status_error,
 )
+from app.services.llm.adapters.http_pool import get_pooled_client
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +178,7 @@ class OpenAICompatAdapter:
         headers.update(request.headers)
 
         try:
-            async with httpx.AsyncClient(timeout=request.timeout) as client:
-                response = await client.post(url, json=body, headers=headers)
+            response = await get_pooled_client().post(url, json=body, headers=headers, timeout=request.timeout)
         except httpx.TimeoutException as exc:
             raise LlmTransportError(f"LLM request timed out: {exc}") from exc
         except httpx.HTTPError as exc:

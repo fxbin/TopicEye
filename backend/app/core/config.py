@@ -197,6 +197,12 @@ class Settings(BaseSettings):
     LLM_WORKER_CONCURRENCY: int = 4
     # 单次运行时调用的硬上限；模型 extra_params.timeout 只能把它调小，不能放大。
     LLM_COMPLETION_TIMEOUT_SECONDS: float = 45.0
+    # LLM 调用共用一个 HTTP 客户端（issue #206）。连接上限要盖住主链路并发
+    # （LLM_WORKER_CONCURRENCY）+ 评测并发（最多 8）+ 探测；超出时排队等空闲
+    # 连接，不报错。空闲保活默认 5 分钟——httpx 自带的 5 秒对间隔几十秒的
+    # LLM 调用等于没复用。
+    LLM_HTTP_POOL_CONNECTIONS: int = 16
+    LLM_HTTP_KEEPALIVE_SECONDS: float = 300.0
     # 预算熔断（budget_guard）：按 llm_call_logs 实际 DONE 调用数的三窗保险丝，
     # 超限直接拒绝新调用（分析链路走本地降级，窗口过后自动恢复）。
     # 默认 0 = 全部关闭（opt-in，不改变现有部署行为）；0 同样适用于单窗关闭。

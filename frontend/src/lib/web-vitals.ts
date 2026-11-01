@@ -27,7 +27,7 @@ export interface WebVitalSamplePayload {
 }
 
 /**
- * 上报端点。`next.config.ts` 有 `/api/:path*` → 后端的同源 rewrite，
+ * 上报端点。`next.config.js` 有 `/api/:path*` → 后端的同源 rewrite，
  * 所以这里是**同源**请求：HttpOnly auth cookie 随行，能关联到用户；
  * 且不需要 CORS 预检。
  */
@@ -89,4 +89,53 @@ export function sendSamples(samples: WebVitalSamplePayload[], sender: BeaconSend
   } catch {
     return false;
   }
+}
+
+/** 浏览器侧 metric 的最小形状（next/web-vitals 的 Metric 类型没有 .d.ts）。 */
+export interface WebVitalMetricLike {
+  name: string;
+  value: number;
+  navigationType?: string;
+}
+
+export interface WebVitalReporterOptions {
+  /** 取当前路径。必须是**惰性**读取：上报时刻的路径才是这次观测对应的页面。 */
+  getPath: () => string;
+  /** 取设备类型。惰性读取。 */
+  getDeviceClass: () => DeviceClass;
+  /** 发送通道，默认走 navigator.sendBeacon。 */
+  send?: (samples: WebVitalSamplePayload[]) => boolean;
+}
+
+/**
+ * 造一个上报回调。
+ *
+ * 抽出来有两个理由：
+ *
+ * 1. **可单测**：payload 整形与失败静默都是纯逻辑，不该只能靠渲染组件来验。
+ * 2. **稳定引用**：web-vitals 的观察器按回调引用注册，回调一变就重挂观察器、
+ *    可能重复上报。所以组件要**长期持有同一个回调实例**（用 ref 拿），
+ *    而不是靠 `useCallback` 的依赖数组写对——后者是约定，前者是结构保证。
+ */
+export function createWebVitalReporter(options: WebVitalReporterOptions) {
+  return (metric: WebVitalMetricLike): boolean => {
+    const payload = buildSamplePayload({
+      name: metric.name,
+      value: metric.value,
+      pathname: options.getPath(),
+      navigationType: metric.navigationType,
+      deviceClass: options.getDeviceClass(),
+    });
+    if (!payload) return false;
+    const send =
+      options.send ??
+      ((samples: WebVitalSamplePayload[]) =>
+        sendSamples(samples, (url, body) => navigator.sendBeacon(url, body)));
+    try {
+      return send([payload]);
+    } catch {
+      // 上报永远不能影响页面：发送通道抛错就当没发出去
+      return false;
+    }
+  };
 }

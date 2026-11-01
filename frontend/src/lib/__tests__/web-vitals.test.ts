@@ -3,9 +3,11 @@ import {
   REPORTABLE_METRICS,
   WEB_VITALS_ENDPOINT,
   buildSamplePayload,
+  createWebVitalReporter,
   isReportableMetric,
   sendSamples,
   toDeviceClass,
+  type WebVitalSamplePayload,
 } from '@/lib/web-vitals';
 
 describe('isReportableMetric', () => {
@@ -121,5 +123,118 @@ describe('sendSamples', () => {
       throw new Error('beacon unavailable');
     });
     expect(sendSamples([{} as never], throwing)).toBe(false);
+  });
+});
+
+describe('createWebVitalReporter', () => {
+  it('整形并发送样本', () => {
+    const sent: WebVitalSamplePayload[][] = [];
+    const report = createWebVitalReporter({
+      getPath: () => '/trending',
+      getDeviceClass: () => 'desktop',
+      send: (samples) => {
+        sent.push(samples);
+        return true;
+      },
+    });
+
+    expect(report({ name: 'LCP', value: 1200, navigationType: 'navigate' })).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0][0]).toEqual({
+      metric: 'LCP',
+      value: 1200,
+      path: '/trending',
+      navigation_type: 'navigate',
+      device_class: 'desktop',
+    });
+  });
+
+  it('路径与设备类型都是上报时刻才取', () => {
+    // 软导航：metric 触发时页面已经切走，取到的应是当前路径
+    let currentPath = '/';
+    const sent: WebVitalSamplePayload[][] = [];
+    const report = createWebVitalReporter({
+      getPath: () => currentPath,
+      getDeviceClass: () => 'mobile',
+      send: (samples) => {
+        sent.push(samples);
+        return true;
+      },
+    });
+
+    currentPath = '/topics/42';
+    report({ name: 'LCP', value: 900 });
+    expect(sent[0][0].path).toBe('/topics/42');
+  });
+
+  it('不认识的指标不发', () => {
+    const send = vi.fn().mockReturnValue(true);
+    const report = createWebVitalReporter({
+      getPath: () => '/',
+      getDeviceClass: () => 'desktop',
+      send,
+    });
+    expect(report({ name: 'FID', value: 100 })).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('发送失败静默返回 false，不抛', () => {
+    const report = createWebVitalReporter({
+      getPath: () => '/',
+      getDeviceClass: () => 'desktop',
+      send: () => {
+        throw new Error('beacon unavailable');
+      },
+    });
+    expect(report({ name: 'LCP', value: 100 })).toBe(false);
+  });
+});
+
+describe('createWebVitalReporter 默认发送通道', () => {
+  it('走 navigator.sendBeacon，投递到上报端点', () => {
+    const original = globalThis.navigator;
+    const sendBeacon = vi.fn().mockReturnValue(true);
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...original, sendBeacon },
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const report = createWebVitalReporter({
+        getPath: () => '/trending',
+        getDeviceClass: () => 'desktop',
+      });
+      expect(report({ name: 'LCP', value: 1200 })).toBe(true);
+      expect(sendBeacon).toHaveBeenCalledTimes(1);
+      expect(sendBeacon.mock.calls[0][0]).toBe(WEB_VITALS_ENDPOINT);
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  it('beacon 不可用时静默返回 false', () => {
+    const original = globalThis.navigator;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { ...original, sendBeacon: () => false },
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const report = createWebVitalReporter({
+        getPath: () => '/trending',
+        getDeviceClass: () => 'desktop',
+      });
+      expect(report({ name: 'LCP', value: 1200 })).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
   });
 });

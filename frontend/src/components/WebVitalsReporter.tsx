@@ -9,43 +9,39 @@
  * 三条纪律：
  *
  * 1. **不拖累被观测的指标**：sendBeacon 不阻塞渲染，失败静默。
- * 2. **回调要稳定**：web-vitals 的观察器按回调引用注册，回回调换会把
- *    观察器重挂一遍、可能重复上报。所以回调用 `useCallback([])` 固定，
- *    当前路径走 ref 读，不把 pathname 放进依赖。
+ * 2. **观察器只注册一次**：web-vitals 的观察器按回调引用注册，回调一变就重挂
+ *    观察器、可能重复上报。所以回调实例用 ref 长期持有（结构保证），
+ *    而不是靠 `useCallback` 的依赖数组写对（约定保证）。
  * 3. **路径按上报时刻取**：软导航时 metric 触发时页面已经切走，
- *    ref 里是当前路径，正是这次观测对应的页面。
+ *    读的是 ref 里的当前路径，正是这次观测对应的页面。
  */
 
-import { useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useReportWebVitals } from 'next/web-vitals';
-import { buildSamplePayload, sendSamples, toDeviceClass } from '@/lib/web-vitals';
-
-/** next/web-vitals 的 Metric 类型在编译产物里没有 .d.ts，这里用最小形状自描述。 */
-type WebVitalMetricLike = {
-  name: string;
-  value: number;
-  navigationType?: string;
-};
+import {
+  createWebVitalReporter,
+  toDeviceClass,
+  type WebVitalMetricLike,
+} from '@/lib/web-vitals';
 
 export default function WebVitalsReporter() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
-  const report = useCallback((metric: WebVitalMetricLike) => {
-    const payload = buildSamplePayload({
-      name: metric.name,
-      value: metric.value,
-      pathname: pathnameRef.current,
-      navigationType: metric.navigationType,
-      deviceClass: toDeviceClass(navigator.userAgent),
+  // 懒初始化一次，之后永远是同一个引用
+  const reportRef = useRef<((metric: WebVitalMetricLike) => boolean) | null>(null);
+  if (!reportRef.current) {
+    reportRef.current = createWebVitalReporter({
+      getPath: () => pathnameRef.current,
+      getDeviceClass: () => toDeviceClass(navigator.userAgent),
     });
-    if (!payload) return;
-    sendSamples([payload], (url, body) => navigator.sendBeacon(url, body));
-  }, []);
+  }
 
-  useReportWebVitals(report);
+  useReportWebVitals(reportRef.current);
 
   return null;
 }

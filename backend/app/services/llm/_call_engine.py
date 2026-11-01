@@ -154,8 +154,9 @@ async def _complete_with_selected_transport(
     计价、调用轨迹落库）无需区分传输实现。
 
     - ``litellm``（默认）：行为与改动前完全一致。
-    - ``native``：OpenAI 兼容族走自有传输层；不满足条件的 provider 显式
-      回落 litellm 并记 warning（不静默换路径）。
+    - ``native``：已实现协议的 provider（OpenAI 兼容 / anthropic / gemini）
+      走自有传输层；不满足条件的 provider 显式回落 litellm 并记 warning
+      （不静默换路径）。
     """
     if settings.LLM_TRANSPORT.strip().lower() != "native":
         return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
@@ -163,16 +164,23 @@ async def _complete_with_selected_transport(
     from app.services.llm.adapters import (
         LlmAdapterError,
         build_native_request,
-        get_openai_compat_adapter,
+        get_adapter,
         native_unavailable_reason,
         note_fallback,
+        resolve_protocol,
         resolve_provider,
         to_litellm_exception,
     )
 
-    reason = native_unavailable_reason(model_config)
+    reason = native_unavailable_reason(model_config, response_format)
     if reason is not None:
         note_fallback(resolve_provider(model_config), reason)
+        return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
+
+    protocol = resolve_protocol(model_config)
+    adapter = get_adapter(protocol) if protocol else None
+    if adapter is None:
+        note_fallback(resolve_provider(model_config), "未找到协议实现")
         return await asyncio.wait_for(acompletion(**kwargs), timeout=timeout)
 
     native_request = build_native_request(
@@ -191,7 +199,7 @@ async def _complete_with_selected_transport(
 
     try:
         return await asyncio.wait_for(
-            get_openai_compat_adapter().complete(native_request),
+            adapter.complete(native_request),
             timeout=timeout,
         )
     except LlmAdapterError as exc:

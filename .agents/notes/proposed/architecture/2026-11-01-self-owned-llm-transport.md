@@ -42,9 +42,10 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
   provider 名，而那份名单随版本变动：实测 litellm 1.103.1 已无 `zhipu`（改名
   `zai`），而本仓库 `model_catalog_service` 仍把智谱 GLM 映射到 `zhipu`。
   自有路径只依赖「协议 + 端点」，不依赖那份名单。
-- 不满足条件的 provider（anthropic / gemini / azure / bedrock / vertex_ai，或缺
-  api_base，或配了 litellm 专属路由串与参数）**显式回落 litellm 并记 warning**，
-  不静默换路径。
+- 不满足条件的 provider（缺 api_base，或配了 litellm 专属路由串与参数）
+  **显式回落 litellm 并记 warning**，不静默换路径。
+- 自 #185 起，anthropic 与 gemini 也有了自有协议实现，不再落在回落名单里；详见
+  [补 anthropic / gemini 原生协议](2026-11-01-native-anthropic-gemini-protocols.md)。
 
 ## Alternatives considered
 
@@ -72,8 +73,9 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 - **zhipu 路由存在既有隐患**：litellm 1.103.1 不认 `zhipu`，`get_llm_provider`
   会直接抛 `Provider NOT provided`。本次未改动该路径（超出本 issue 范围），
   但自有传输层按协议处理，天然不受 provider 名单变动影响。
-- 下一步若要继续，需要单独决策：是否补 anthropic/gemini 原生协议、是否把 A/B
-  评测与 ping 的同步路径也切过来、以及何时才允许删除 litellm 依赖。
+- 下一步若要继续，需要单独决策：是否把 A/B 评测与 ping 的同步路径也切过来、
+  是否补 azure / bedrock / vertex_ai 的托管端点、以及何时才允许删除 litellm 依赖。
+  （anthropic / gemini 原生协议已由 #185 补上。）
 
 ## Verification
 

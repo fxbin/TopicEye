@@ -297,8 +297,11 @@ def test_openai_compatible_provider_supports_native():
 
 
 def test_non_openai_protocol_provider_falls_back():
-    """anthropic / gemini 等协议不同，回落 litellm。"""
-    for provider in ("anthropic", "gemini", "azure", "bedrock", "vertex_ai"):
+    """azure / bedrock / vertex_ai 协议不同，回落 litellm。
+
+    anthropic 与 gemini 自 #185 起有自有协议实现，不再落在这份名单里。
+    """
+    for provider in ("azure", "bedrock", "vertex_ai"):
         reason = native_unavailable_reason(_model(provider, api_base="https://x.example.com"))
         assert reason is not None
         assert provider in reason
@@ -432,7 +435,10 @@ async def test_native_path_maps_error_to_litellm_exception(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_supported_provider_falls_back_to_litellm(monkeypatch):
-    """native 模式下不支持的 provider 回落 litellm，而不是报错。"""
+    """native 模式下不支持的 provider 回落 litellm，而不是报错。
+
+    用 vertex_ai 举例——它的认证与端点跟第一方不同，没有自有实现（#185）。
+    """
     called = {"litellm": False}
 
     async def fake_acompletion(**kwargs):
@@ -450,12 +456,12 @@ async def test_non_supported_provider_falls_back_to_litellm(monkeypatch):
     monkeypatch.setattr(_call_engine, "acompletion", fake_acompletion)
     monkeypatch.setattr("app.services.llm.adapters.openai_compat.OpenAICompatAdapter.complete", fail_native)
 
-    model_config = _model("anthropic", "claude-3", api_base="https://api.anthropic.com")
+    model_config = _model("vertex_ai", "gemini-2.5-flash", api_base="https://x.example.com")
     content = await _call_engine._call_llm_single(
         messages=[{"role": "user", "content": "hi"}],
-        model="anthropic/claude-3",
+        model="vertex_ai/gemini-2.5-flash",
         api_key="k",
-        api_base="https://api.anthropic.com",
+        api_base="https://x.example.com",
         temperature=0.3,
         max_tokens=100,
         response_format=None,

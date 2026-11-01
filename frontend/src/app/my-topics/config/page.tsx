@@ -18,6 +18,7 @@ import { FieldLabel } from '@/components/form';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { runTopicMutation } from './_mutation';
+import KeywordExtractAssist from './_KeywordExtractAssist';
 import { useAppContext } from '@/components/ClientLayout';
 
 /* ── helpers ── */
@@ -156,6 +157,12 @@ function TopicCard({
               当前 {form.keywords.split(',').filter(k => k.trim()).length} 个关键词
             </div>
           </div>
+          {!isSystem && (
+            <KeywordExtractAssist
+              keywordsText={form.keywords}
+              onApply={next => setForm(prev => ({ ...prev, keywords: next }))}
+            />
+          )}
           <div className="flex gap-3">
             <div className="flex-1">
               <FieldLabel htmlFor={`${fieldId}-weight`}>权重乘数</FieldLabel>
@@ -363,6 +370,10 @@ function NewTopicForm({ onCreate }: { onCreate: (data: Partial<MotherTopic>) => 
             className="w-full resize-y rounded-xs border border-gray-300 px-2.5 py-1.5 font-mono text-xs outline-none focus:border-primary"
           />
         </div>
+        <KeywordExtractAssist
+          keywordsText={form.keywords}
+          onApply={next => setForm(prev => ({ ...prev, keywords: next }))}
+        />
         <div className="flex gap-3">
           <div className="flex-1">
             <FieldLabel htmlFor={`${fieldId}-weight`}>权重乘数</FieldLabel>

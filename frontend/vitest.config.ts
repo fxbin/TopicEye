@@ -40,6 +40,8 @@ export default defineConfig({
         'src/lib/web-vitals.ts',
         // #179：采集器组件（回调稳定性由 ref 持有，不是靠 useCallback 依赖数组）
         'src/components/WebVitalsReporter.tsx',
+        // #187：母题关键词 AI 提取的切分/标注/合并纯逻辑（同目录测试）
+        'src/app/my-topics/config/_keyword-extract.ts',
       ],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

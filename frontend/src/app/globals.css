@@ -228,14 +228,17 @@ svg {
   }
 }
 
-/* Fade in animation */
+/* Fade in animation
+ *
+ * 只动 transform，不动 opacity：opacity 全程为 1，首屏元素从第一帧就具备
+ * LCP 候选资格（从 opacity:0 起步会让内容在动画期间不可选，白白推后 LCP）。
+ * 滑入的过渡效果保留。
+ */
 @keyframes fade-in {
   from {
-    opacity: 0;
     transform: translateY(8px);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }

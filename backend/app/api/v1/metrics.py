@@ -279,6 +279,11 @@ async def metrics_snapshot():
     - LLM 熔断器状态
     - 系统健康状态摘要
     """
+    return await _collect_snapshot_payload()
+
+
+async def _collect_snapshot_payload() -> dict:
+    """采集一次指标快照（快照端点与体检判定端点共用）。"""
     from app.core.request_metrics import get_collector
 
     collector = get_collector()
@@ -364,6 +369,23 @@ async def metrics_snapshot():
         "llm_pool": llm_pool,
         "analysis_pending": analysis_pending,
     }
+
+
+# ── 体检判定端点（阈值与状态判定在服务端算）──
+
+
+@router.get("/checks")
+async def metrics_checks():
+    """体检项的当前值与判定结论。
+
+    判定口径在 ``app/services/metrics_checks.py``：单位换算、阈值比较、
+    「没有样本」与「值为 0」的区分都在那边做，这里只负责取一次快照再交给它判定。
+    """
+    from app.services.metrics_checks import evaluate_checks, summarize_checks
+
+    payload = await _collect_snapshot_payload()
+    checks = evaluate_checks(payload)
+    return {"checks": checks, "summary": summarize_checks(checks)}
 
 
 # ── 历史快照端点（从 PostgreSQL 查询持久化的指标历史）──

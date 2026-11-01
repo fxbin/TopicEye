@@ -11,6 +11,7 @@
  * - cache: 'no-store' 确保用户敏感数据不被 CDN/边缘缓存。
  */
 
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import type { AuthUser } from '@/types';
 
@@ -85,8 +86,11 @@ async function fetchJsonSafe<T>(
  *
  * 3-5 依赖用户信息（需要知道是否是管理员），因此在 /auth/me 完成后再发起。
  * 所有错误均静默降级为 null，客户端 Provider 会 fallback 到 useEffect 拉取。
+ *
+ * 用 React 的 cache() 包住：同一次请求里 layout 与 page 都调用它时，
+ * 只真正跑一次（首页要拿 userId 判断"用户变了要重新取数"）。
  */
-export async function prefetchInitialData(): Promise<PrefetchData> {
+export const prefetchInitialData = cache(async (): Promise<PrefetchData> => {
   const cookieStore = await cookies();
   const authToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 
@@ -138,4 +142,4 @@ export async function prefetchInitialData(): Promise<PrefetchData> {
     featureFlags: featureFlagsResult?.flags ?? {},
     counts,
   };
-}
+});

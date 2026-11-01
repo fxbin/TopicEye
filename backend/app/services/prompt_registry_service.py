@@ -188,6 +188,20 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "module": "app.services.llm.prompts.event_angles",
         "attr": "USER_TEMPLATE",
     },
+    {
+        "name": "mother_topic_keywords_system",
+        "scene": "mother_topic_keywords",
+        "description": "自然语言兴趣描述提取母题关键词系统提示词",
+        "module": "app.services.llm.prompts.mother_topic_keywords",
+        "attr": "SYSTEM_PROMPT",
+    },
+    {
+        "name": "mother_topic_keywords_user",
+        "scene": "mother_topic_keywords",
+        "description": "自然语言兴趣描述提取母题关键词用户提示词",
+        "module": "app.services.llm.prompts.mother_topic_keywords",
+        "attr": "USER_TEMPLATE",
+    },
 ]
 
 

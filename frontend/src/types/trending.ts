@@ -108,6 +108,11 @@ export type MotherTopicMutation = Partial<
   >
 >;
 
+/** POST /mother-topics/extract-keywords 的响应：AI 从兴趣描述提取的候选关键词（1-15 个） */
+export interface KeywordExtractionResult {
+  keywords: string[];
+}
+
 export interface ContentScoringResult {
   title: string;
   topic_scores: Array<{

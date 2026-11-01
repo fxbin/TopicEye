@@ -32,7 +32,7 @@ import {
   levelColor,
 } from './_components';
 import { mergeCategoryOptions } from '@/lib/content-categories';
-import { INITIAL_CONTENT_LIMIT as FEED_PAGE_SIZE } from '@/lib/feed-query';
+import { FEED_PAGE_SIZE } from '@/lib/feed-query';
 import type { InitialFeed } from '@/lib/server-feed';
 import {
   RECOMMEND_FILTERS,
@@ -52,8 +52,8 @@ import {
   formatTimelineDate,
 } from '@/lib/datetime';
 
-// 首屏与"加载更多"用同一个条数：浏览快照按请求的 page_size 切片，
-// 两边不一致会跳过中间的条目。口径与理由见 lib/feed-query.ts。
+// 客户端自己取数时的一页大小：与浏览快照的切片口径一致。
+// 首屏由服务端直出多少条是另一件事（SSR_FIRST_PAGE_SIZE），见 lib/feed-query.ts。
 const INITIAL_CONTENT_LIMIT = FEED_PAGE_SIZE;
 const CONTENT_LOAD_STEP = FEED_PAGE_SIZE;
 
@@ -192,6 +192,11 @@ export default function HomeFeed({ initialFeed }: { initialFeed: InitialFeed }) 
       invalidateSequence();
     };
   }, [activeTimeRange, activeSourceType, activeCategory, searchQuery, activeRecommendLevel, activeTag, reloadRevision, reportContentTotal, currentUser?.id]);
+
+  // 首屏由服务端直出时，列表取数被跳过了，内容总数要在这里报给侧边栏徽标
+  useEffect(() => {
+    if (initialFeed.ok) reportContentTotal(initialFeed.total);
+  }, [initialFeed.ok, initialFeed.total, reportContentTotal]);
 
   // 标签统计与基础口径联动（时间/来源/分类/搜索），覆盖口径内全部内容；
   // 等级/标签筛选不改变 chips 本身，只改变列表结果。

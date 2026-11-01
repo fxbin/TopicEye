@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeCategoryOptions } from '@/lib/content-categories';
 import {
-  INITIAL_CONTENT_LIMIT,
+  FEED_PAGE_SIZE,
   INITIAL_HOURS,
   buildFeedQuery,
   buildTagFacetQuery,
@@ -42,7 +42,7 @@ describe('mergeCategoryOptions', () => {
 describe('首屏查询口径', () => {
   it('列表参数与客户端首屏那次调用逐项一致', () => {
     const params = new URLSearchParams(buildFeedQuery());
-    expect(params.get('page_size')).toBe(String(INITIAL_CONTENT_LIMIT));
+    expect(params.get('page_size')).toBe(String(FEED_PAGE_SIZE));
     expect(params.get('hours')).toBe(String(INITIAL_HOURS));
     expect(params.get('include_trend_sources')).toBe('false');
     expect(params.get('group_events')).toBe('true');
@@ -56,10 +56,10 @@ describe('首屏查询口径', () => {
     expect(params.get('limit')).toBe('16');
   });
 
-  it('默认值就是客户端的首屏口径', () => {
-    // 12 是刻意定的：首屏只看得到 3–4 张卡片，而 payload 与条数线性相关
-    // （40 条的首屏 HTML 有 544KB，弱网下反而更慢）。理由见 lib/feed-query.ts。
-    expect(INITIAL_CONTENT_LIMIT).toBe(12);
+  it('一页 40 条（与改造前一致，用户行为不变）', () => {
+    // 浏览快照把 page_size 绑进了摘要，同一次浏览里必须始终一致，
+    // 所以服务端首屏直出、客户端「加载更多」用同一个数。
+    expect(FEED_PAGE_SIZE).toBe(40);
     expect(INITIAL_HOURS).toBe(24);
   });
 });

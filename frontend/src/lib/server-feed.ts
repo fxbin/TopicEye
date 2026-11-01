@@ -21,7 +21,7 @@ import { cookies } from 'next/headers';
 import type { ContentItem } from '@/types';
 import { mergeCategoryOptions } from './content-categories';
 import {
-  INITIAL_CONTENT_LIMIT,
+  FEED_PAGE_SIZE,
   INITIAL_HOURS,
   buildFeedQuery,
   buildTagFacetQuery,
@@ -98,7 +98,7 @@ interface TagFacetsResponse {
 }
 
 export async function fetchInitialFeed(options: InitialFeedOptions = {}): Promise<InitialFeed> {
-  const limit = options.limit ?? INITIAL_CONTENT_LIMIT;
+  const limit = options.limit ?? FEED_PAGE_SIZE;
   const hours = options.hours ?? INITIAL_HOURS;
 
   const cookieStore = await cookies();

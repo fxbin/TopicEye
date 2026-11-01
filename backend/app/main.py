@@ -487,6 +487,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Interest vector task drain failed", exc_info=True)
 
+    # 关掉 LLM 传输共享的 HTTP 客户端——放在后台任务 drain 之后，
+    # 让在途的 LLM 调用先用完手上的连接。
+    try:
+        from app.services.llm.adapters.http_pool import close_pooled_client
+
+        await close_pooled_client()
+    except Exception:
+        logger.warning("LLM HTTP client close failed", exc_info=True)
+
     # Close DuckDB analytics connection
     try:
         from app.services.duckdb_service import close_analytics

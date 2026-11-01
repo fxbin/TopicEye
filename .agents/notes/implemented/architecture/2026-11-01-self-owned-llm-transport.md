@@ -69,10 +69,9 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 变量覆盖都行）。未经 compose 的部署（直接跑 uvicorn）读到代码里的保守默认
 `litellm`，不受这次切换影响。
 
-**长期存在的差异**：自研层每次请求新建 `httpx.AsyncClient`，不复用连接；运行期
-出错（连接失败、超时）**不会自动回落** litellm，而是和 litellm 路径一样走编排层
-的重试 / failover——运行期偷偷换实现会让语义漂移。回落只发生在「provider 不支持 /
-配置不满足」时，且记 warning。litellm 依赖仍在（同步路径 + 回落路径）。
+**长期存在的差异**（连接复用一项已由 #206 补上，见下文）：运行期出错（连接
+失败、超时）**不会自动回落**，而是走编排层的重试 / failover——运行期偷偷换实现
+会让语义漂移。（本段其余描述对应 #200 时刻的 litellm 依赖状态，随后由 #204 收掉。）
 
 ## 退役 litellm（issue #204）
 
@@ -111,9 +110,9 @@ Settings 的 `extra="ignore"` 会忽略，不影响启动。
 这些已落库的配置键名与语义全部保留（`num_retries` 变成无害的存量键，不再拒绝）；
 目录接口的 `litellm_provider` 字段名保留；`request_model` 列继续记路由串。
 
-**仍然没做**：连接池（每次请求新建 `httpx.AsyncClient`，见下文 Consequences）；
-azure / bedrock / vertex_ai 从「回落 litellm」变成「显式报错，见 #190」——生产零使用，
-出现需求时按 #190 补自有适配器。
+**仍然没做**：azure / bedrock / vertex_ai 从「回落 litellm」变成「显式报错，
+见 #190」——生产零使用，出现需求时按 #190 补自有适配器。连接池已由
+[#206](https://github.com/fxbin/TopicEye/issues/206) 补上（见下文「连接复用」）。
 
 ## Alternatives considered
 
@@ -132,10 +131,12 @@ azure / bedrock / vertex_ai 从「回落 litellm」变成「显式报错，见 #
   分派函数，编排层零改动。
 - **`LLM_TRANSPORT=native` 不等于「不用 litellm」**：编排层仍按 litellm 的异常
   类型判定，litellm 仍是依赖。本次只是证明「传输层可以自己写，且行为能对齐」。
-- **连接复用行为与 litellm 不同**：litellm 复用全局 `aclient_session`，自家实现
-  目前每次请求新建 `httpx.AsyncClient`（不复用连接）。功能上等价，但每次调用
-  多一次 TLS 握手；真要长期启用，需要接上连接池并处理生命周期（关闭、超时、
-  并发上限）。这是本试点已知未做的部分。
+- **连接复用行为与 litellm 不同**（试点期记录，已由 #206 解决）：试点时每次
+  请求新建 `httpx.AsyncClient`，每次调用多一次 TLS 握手。#206 起三个适配器共用
+  一个按事件循环隔离的客户端（`adapters/http_pool.py`）：连接上限
+  `LLM_HTTP_POOL_CONNECTIONS`（默认 16，超出排队）、空闲保活
+  `LLM_HTTP_KEEPALIVE_SECONDS`（默认 300——httpx 自带的 5 秒对间隔几十秒的
+  调用等于没复用）、超时仍按请求下发、停机时在后台任务 drain 之后关闭。
 - 真正的收益要等生产验证：导入耗时、连接池行为、长稳下的错误分类一致性，都需要
   线上数据支撑，不能只凭单测断言。
 - **zhipu 路由存在既有隐患**：litellm 1.103.1 不认 `zhipu`，`get_llm_provider`

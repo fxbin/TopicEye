@@ -7,6 +7,7 @@
 默认限制：
 - /api/v1/auth/*      : 20 req/min（登录/注册防爆破）
 - /api/v1/creation/*  : 30 req/min（LLM 调用昂贵）
+- /api/v1/mother-topics/extract-keywords : 30 req/min（LLM 调用，与 creation 同档）
 - 其他 /api/v1/*      : 200 req/min（常规 API）
 - /mcp/*              : 60 req/min（MCP 工具调用，每次都要查库验 token）
 - /health, /metrics   : 不限（监控 scrape）
@@ -27,6 +28,11 @@ from app.core.request_utils import client_ip
 _RATE_RULES: list[tuple[str, int, int]] = [
     ("/api/v1/auth", 20, 60),
     ("/api/v1/creation", 30, 60),
+    # 前端体验指标上报：每次页面浏览带 5 个指标（LCP/INP/CLS/FCP/TTFB），
+    # 每个指标一次上报。单独开桶，避免挤占通用 /api/v1 的 200 次/分钟预算。
+    # 桶按 client IP 分，公司出口与移动网络 CGNAT 下多用户共用一个 IP，
+    # 限流要给够：300 次/分钟 ≈ 60 次页面浏览/分钟/IP。
+    ("/api/v1/metrics/web-vitals", 300, 60),
     # MCP OAuth 授权服务器端点（未认证面，公网可达）：DCR 收紧防刷注册，
     # authorize/token 覆盖正常客户端节奏（含 PKCE 重试与 refresh 轮换）
     ("/authorize", 30, 60),
@@ -34,6 +40,10 @@ _RATE_RULES: list[tuple[str, int, int]] = [
     ("/register", 10, 60),
     ("/revoke", 30, 60),
     ("/mcp", 60, 60),
+    # 母题关键词提取（LLM 调用，按 description 逐次烧钱）：预算熔断三窗默认
+    # 关闭（config.py LLM_BUDGET_* = 0），靠这条限流兜底，与 creation 同档。
+    # 必须放在 ("/api/v1", 200, 60) 兜底规则之前，前缀匹配才命中。
+    ("/api/v1/mother-topics/extract-keywords", 30, 60),
     ("/api/v1", 200, 60),
 ]
 

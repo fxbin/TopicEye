@@ -4,7 +4,7 @@
  */
 
 import { request } from './_core';
-import type { ContentScoringResult, MotherTopic, MotherTopicMutation } from '@/types/trending';
+import type { ContentScoringResult, KeywordExtractionResult, MotherTopic, MotherTopicMutation } from '@/types/trending';
 import type { FanqieBook, FanqieCategory, QimaoBook, WebnovelWeeklyReport, ZhihuAlbum, ZhihuCategory } from '@/types/webnovel';
 
 // ─── Mother Topics API ──────────────────────────────────────────────
@@ -51,6 +51,14 @@ export const motherTopicsApi = {
   /** Fork 系统模板到当前用户名下（幂等，首次访问 /my-topics 时懒触发） */
   forkDefaults(): Promise<{ forked: number; skipped: number; message: string }> {
     return request('/mother-topics/fork-defaults', { method: 'POST' });
+  },
+
+  /** 从自然语言兴趣描述提取候选关键词（只读；勾选后的词经 create/update 落库） */
+  extractKeywords(description: string): Promise<KeywordExtractionResult> {
+    return request('/mother-topics/extract-keywords', {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    });
   },
 
   /** 对内容按母题打分 */

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,11 @@ from app.models.mother_topic import MotherTopic
 from app.models.user import User, UserRole
 from app.repositories.content_repo import ContentRepo
 from app.repositories.mother_topic_repo import MotherTopicRepository
+from app.schemas.mother_topic import KeywordExtractionRequest, KeywordExtractionResponse
+from app.services.llm.budget_guard import LlmBudgetExceededError
+from app.services.llm.circuit_breaker import CircuitOpenError
+from app.services.llm.provider import LlmCapacityUnavailableError, LlmContextWindowExceededError
+from app.services.mother_topic_keywords import KeywordExtractionError, extract_keywords_from_description
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mother-topics", tags=["母题"])
@@ -238,6 +243,52 @@ async def fork_default_templates(
         "skipped": skipped,
         "message": f"已 fork {forked} 个系统母题" + (f"，跳过 {skipped} 个已存在" if skipped else ""),
     }
+
+
+@router.post("/extract-keywords", response_model=KeywordExtractionResponse)
+async def extract_mother_topic_keywords(
+    req: KeywordExtractionRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """从自然语言兴趣描述提取候选母题关键词。
+
+    只读：不写库、不需要 topic_id。用户勾选后的词经既有的 POST /mother-topics
+    或 PUT /mother-topics/{id} 落库，落库路径和手工填词完全相同。
+    """
+    try:
+        keywords = await extract_keywords_from_description(req.description)
+    except KeywordExtractionError as exc:
+        logger.warning("Keyword extraction unparsable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="关键词提取失败：模型返回的关键词不可用，可直接手动填写关键词",
+        ) from exc
+    except (
+        CircuitOpenError,
+        LlmCapacityUnavailableError,
+        LlmBudgetExceededError,
+        LlmContextWindowExceededError,
+    ) as exc:
+        # LLM 链路失败 → 502 显式文案；不折叠成 200 假成功（AGENTS 2.1）。
+        details = {
+            CircuitOpenError: "关键词提取失败：模型链路熔断中，可直接手动填写关键词",
+            LlmCapacityUnavailableError: "关键词提取失败：模型服务暂不可用，可直接手动填写关键词",
+            LlmBudgetExceededError: "关键词提取失败：模型预算已耗尽，可直接手动填写关键词",
+            LlmContextWindowExceededError: "关键词提取失败：描述超出模型上下文，可直接手动填写关键词",
+        }
+        detail = next(
+            (text for exc_type, text in details.items() if isinstance(exc, exc_type)),
+            "关键词提取失败，可直接手动填写关键词",
+        )
+        logger.warning("Keyword extraction LLM failure: %s", type(exc).__name__)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
+    except Exception as exc:
+        logger.warning("Keyword extraction failed unexpectedly", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="关键词提取失败，请稍后重试，或可直接手动填写关键词",
+        ) from exc
+    return KeywordExtractionResponse(keywords=keywords)
 
 
 @router.put("/{topic_id}", response_model=MotherTopicOut)

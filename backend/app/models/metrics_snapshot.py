@@ -1,6 +1,6 @@
 """Metrics snapshot persistence model.
 
-Stores periodic snapshots of the in-memory RequestMetricsCollector to SQLite,
+Stores periodic snapshots of the in-memory RequestMetricsCollector to PostgreSQL,
 enabling historical trend analysis beyond the 30-minute in-memory ring buffer.
 """
 

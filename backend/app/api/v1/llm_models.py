@@ -102,7 +102,7 @@ def _normalize_optional_config_value(value):
 
 
 def _summarize_llm_error(exc: Exception) -> str:
-    """把 litellm 异常压成一行可读信息：去 traceback、限长、附排查提示。"""
+    """把 LLM 调用异常压成一行可读信息：去 traceback、限长、附排查提示。"""
     message = str(exc).strip() or type(exc).__name__
     traceback_idx = message.find("Traceback (most recent call last)")
     if traceback_idx > 0:
@@ -119,10 +119,6 @@ def _summarize_llm_error(exc: Exception) -> str:
         )
     if "404" in lowered or "not found" in lowered:
         hints.append("端点返回 404：请检查 API Base 是否应以 /v1 结尾，以及模型名是否为服务端实际部署的名称。")
-    if "provider not provided" in lowered or "unsupported model" in lowered:
-        hints.append(
-            "Provider 路由不识别：OpenAI 兼容网关请保持 Provider 为 openai，或模型名直接填完整 LiteLLM 路由（如 openai/模型名）。"
-        )
     if hints:
         message = f"{message}\n提示：{' '.join(hints)}"
     return message

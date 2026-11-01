@@ -1,6 +1,6 @@
 # Agent Note: 自建 LLM 传输层的可行性与边界
 
-Status: implemented — 自有传输层已在生产默认启用（`LLM_TRANSPORT=native`）
+Status: implemented — 自有传输层是唯一实现，litellm 已退出运行时依赖（issue #204）
 
 ## Problem
 
@@ -45,7 +45,7 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 - 不满足条件的 provider（缺 api_base，或配了 litellm 专属路由串与参数）
   **显式回落 litellm 并记 warning**，不静默换路径。
 - 自 #185 起，anthropic 与 gemini 也有了自有协议实现，不再落在回落名单里；详见
-  [补 anthropic / gemini 原生协议](../../proposed/architecture/2026-11-01-native-anthropic-gemini-protocols.md)。
+  [补 anthropic / gemini 原生协议](2026-11-01-native-anthropic-gemini-protocols.md)。
 
 ## 生产切换（issue #200）
 
@@ -74,6 +74,47 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 的重试 / failover——运行期偷偷换实现会让语义漂移。回落只发生在「provider 不支持 /
 配置不满足」时，且记 warning。litellm 依赖仍在（同步路径 + 回落路径）。
 
+## 退役 litellm（issue #204）
+
+生产切到 native 后，litellm 只剩三处用途：评测 / ping 的同步直连、不满足条件时的
+回落、以及编排层判定所依赖的异常类型。这三处一次性收掉，litellm 退出运行时依赖。
+
+四段切片（同一 PR、独立 commit、可逐个 revert）：
+
+1. **同步路径**：新增 `provider.complete_once()`——单次、不重试、不 failover、不过
+   熔断与限流，但经 `_call_engine` 同一传输分派。评测与 ping 改调它，评测测的就是
+   生产跑的那条路径。
+2. **传输唯一化**：删掉 `LLM_TRANSPORT` 开关与四处 `acompletion` 回落。配置不满足
+   条件（provider 无协议实现 / 缺 api_base / 带 litellm 专属路由串或参数）抛
+   `LlmConfigurationError`：候选级问题——冷却该候选、换下一个，不做 tenacity 重试，
+   也不算「换路无解」的确定性请求错。默认网关补齐 deepseek / zhipu / minimax /
+   moonshot / openrouter（取自精选目录，有镜像测试守卫）与 xai / mistral（官方端点；
+   xai 用文档的 `/v1` 而非 litellm 的裸域名）。
+3. **异常族翻转**：编排层判定改认 `adapters.errors` 自有类型，删 `to_litellm_exception`。
+   自有族里 ContextWindow / ContentPolicy / UnsupportedParams 本就是 `LlmBadRequestError`
+   子类，400/422 同归，判定语义不变。
+4. **词汇表固化**：`model_resolver` 的斜杠模型名启发式改用 litellm 1.103.1 的 158 项
+   provider 名单快照，不再 import litellm。
+
+**parity 对照组怎么保住**：litellm 仍装在 dev 依赖组（不进生产镜像，`uv sync --no-dev`
+排除）。`tests/llm_parity_oracle.py` 逐字保留 litellm 时代的三个判定函数；两套 parity
+测试让真实 litellm 走完整异常映射链路，断言「新谓词(自有异常) is legacy 谓词(真实
+litellm 异常)」——结论级对照，不是手写期望表。
+
+**生产依赖集**：115 个包 → 83 个。
+
+**回滚**：`LLM_TRANSPORT=litellm` 这条路径不存在了，回滚手段是 revert 合并提交。
+存量部署若环境里还留着 `LLM_TRANSPORT` / `LITELLM_LOCAL_MODEL_COST_MAP`，
+Settings 的 `extra="ignore"` 会忽略，不影响启动。
+
+**不变的东西**：`extra_params.litellm_params` / `litellm_model` / `litellm_provider`
+这些已落库的配置键名与语义全部保留（`num_retries` 变成无害的存量键，不再拒绝）；
+目录接口的 `litellm_provider` 字段名保留；`request_model` 列继续记路由串。
+
+**仍然没做**：连接池（每次请求新建 `httpx.AsyncClient`，见下文 Consequences）；
+azure / bedrock / vertex_ai 从「回落 litellm」变成「显式报错，见 #190」——生产零使用，
+出现需求时按 #190 补自有适配器。
+
 ## Alternatives considered
 
 - **继续用 litellm，只加一层薄封装**：能挡住 litellm 升级带来的行为变化，但
@@ -100,8 +141,8 @@ litellm 在本仓库的调用面极窄，实测共 3 处 `acompletion`/`completi
 - **zhipu 路由存在既有隐患**：litellm 1.103.1 不认 `zhipu`，`get_llm_provider`
   会直接抛 `Provider NOT provided`。本次未改动该路径（超出本 issue 范围），
   但自有传输层按协议处理，天然不受 provider 名单变动影响。
-- 下一步若要继续，需要单独决策：是否把 A/B 评测与 ping 的同步路径也切过来、
-  是否补 azure / bedrock / vertex_ai 的托管端点、以及何时才允许删除 litellm 依赖。
+- 同步路径迁移与删除 litellm 依赖已由 #204 完成（见上文「退役 litellm」）；
+  azure / bedrock / vertex_ai 的托管端点仍按需决策（#190）。
   （anthropic / gemini 原生协议已由 #185 补上。）
 
 ## Verification

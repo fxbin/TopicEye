@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.llm_model import LlmCallLog, LlmModel
 
 logger = logging.getLogger(__name__)
+
+# LLM 调用记录的保留期（天）。这张表只增不减，不设上界会一直涨。
+#
+# 30 天覆盖了所有现存的消费方：预算熔断读 DONE 调用数但最长窗口只有 24 小时
+# （count_recent_llm_calls 的 minute/hour/day 三窗），Prompt 管理页统计最近 7 天，
+# 成本审计按月结算。超期由 scheduler 的 cleanup job 删除。
+LLM_CALL_LOG_RETENTION_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -376,8 +384,6 @@ async def count_recent_llm_calls() -> tuple[int, int, int]:
     billable (status="DONE") calls count, rejected-by-fuse calls never
     reach this table.
     """
-    from datetime import UTC, datetime, timedelta
-
     from sqlalchemy import case, func
 
     from app.core.database import async_session
@@ -396,3 +402,20 @@ async def count_recent_llm_calls() -> tuple[int, int, int]:
         )
         minute_calls, hour_calls, day_calls = result.one()
         return int(minute_calls), int(hour_calls), int(day_calls)
+
+
+async def cleanup_old_call_logs(db: AsyncSession, days: int = LLM_CALL_LOG_RETENTION_DAYS) -> int:
+    """删除超过保留期的 LLM 调用记录，返回删除条数。
+
+    供 scheduler 的 cleanup job 调用，wrapper 负责 commit。
+
+    边界语义：``created_at < cutoff`` 才删，**正好等于保留期起点的那行保留**
+    （与 read_record / metrics_snapshots 的清理口径一致）。
+    """
+    from app.repositories.llm_call_log_repo import LlmCallLogRepository
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    repo = LlmCallLogRepository(db)
+    removed = await repo.delete_older_than(cutoff)
+    logger.info("llm_call_log cleanup: removed %d records older than %d days", removed, days)
+    return removed

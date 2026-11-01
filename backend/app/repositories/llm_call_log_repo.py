@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.llm_model import LlmCallLog
@@ -66,3 +66,12 @@ class LlmCallLogRepository:
 
         result = await self.db.execute(stmt)
         return result.all()
+
+    async def delete_older_than(self, cutoff: datetime) -> int:
+        """删除 created_at 早于 cutoff 的行，返回删除条数。
+
+        保留期由 service 层决定（LLM_CALL_LOG_RETENTION_DAYS），
+        这里只负责执行删除。
+        """
+        result = await self.db.execute(delete(LlmCallLog).where(LlmCallLog.created_at < cutoff))
+        return int(result.rowcount or 0)

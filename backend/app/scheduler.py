@@ -1255,6 +1255,26 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # 清理过期 LLM 调用记录：每日 03:10 保留 30 天（只增不减的明细表）
+    async def _cleanup_old_llm_call_logs() -> None:
+        try:
+            from app.services.llm_usage import cleanup_old_call_logs
+
+            async with async_session() as db:
+                removed = await cleanup_old_call_logs(db)
+                await db.commit()
+            logger.info("Removed %d expired llm call logs", removed)
+        except Exception:
+            logger.warning("LLM call log cleanup failed", exc_info=True)
+
+    scheduler.add_job(
+        _cleanup_old_llm_call_logs,
+        trigger=CronTrigger(hour=3, minute=10),
+        id="llm_call_log_cleanup",
+        name="清理过期LLM调用记录(>30天)",
+        replace_existing=True,
+    )
+
     # 清理过期前端体验样本：每日 03:30 保留 30 天（逐条样本量级远大于聚合快照）
     async def _cleanup_old_web_vitals_samples() -> None:
         try:

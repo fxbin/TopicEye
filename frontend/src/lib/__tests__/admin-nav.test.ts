@@ -44,25 +44,35 @@ describe('ADMIN_NAV_ITEMS 结构不变式', () => {
    * 「内容事件治理」→「事件治理」、「系统母题模板库」→「母题库」缩名。
    * 2026-10-19（owner 验收反馈定稿）：任务统计从用户侧 /stats/jobs 迁入
    * 后台壳（/admin/jobs「任务监控」，系统组），旧路径留服务端跳转桩。
+   * #209：新增「监控大盘」/dashboard —— 壳外独立页面（后端直出），
+   * 只进侧边栏、不进面包屑，因此 inShell=false 且带 standalone 标记。
    */
-  it('15 项字面值逐项锁死（改导航必须同步改本表）', () => {
-    const actual = ADMIN_NAV_ITEMS.map((i) => [i.id, i.label, i.href, i.inShell, i.group ?? null]);
+  it('16 项字面值逐项锁死（改导航必须同步改本表）', () => {
+    const actual = ADMIN_NAV_ITEMS.map((i) => [
+      i.id,
+      i.label,
+      i.href,
+      i.inShell,
+      i.standalone ?? false,
+      i.group ?? null,
+    ]);
     expect(actual).toEqual([
-      ['dashboard', '概览', '/admin', true, null],
-      ['sources', '信源管理', '/admin/sources', true, 'content'],
-      ['contents', '内容管理', '/admin/contents', true, 'content'],
-      ['content-events', '事件治理', '/admin/content-events', true, 'content'],
-      ['mother-topics', '母题库', '/admin/mother-topics', true, 'content'],
-      ['model-eval', 'AI 引擎', '/admin/model-eval', true, 'eval'],
-      ['scoring-dashboard', '评分看板', '/admin/scoring-dashboard', true, 'eval'],
-      ['evidence', '可信线索', '/admin/evidence', true, 'eval'],
-      ['users', '用户管理', '/admin/users', true, 'users'],
-      ['feedback', '反馈工作台', '/admin/feedback', true, 'users'],
-      ['updates', '发版记录', '/admin/updates', true, 'users'],
-      ['monitor', '任务监控', '/admin/jobs', true, 'system'],
-      ['prompts', 'Prompt 管理', '/admin/prompts', true, 'system'],
-      ['webhook-logs', 'Webhook 日志', '/admin/webhook-logs', true, 'system'],
-      ['settings', '系统设置', '/admin/settings', true, 'system'],
+      ['dashboard', '概览', '/admin', true, false, null],
+      ['sources', '信源管理', '/admin/sources', true, false, 'content'],
+      ['contents', '内容管理', '/admin/contents', true, false, 'content'],
+      ['content-events', '事件治理', '/admin/content-events', true, false, 'content'],
+      ['mother-topics', '母题库', '/admin/mother-topics', true, false, 'content'],
+      ['model-eval', 'AI 引擎', '/admin/model-eval', true, false, 'eval'],
+      ['scoring-dashboard', '评分看板', '/admin/scoring-dashboard', true, false, 'eval'],
+      ['evidence', '可信线索', '/admin/evidence', true, false, 'eval'],
+      ['users', '用户管理', '/admin/users', true, false, 'users'],
+      ['feedback', '反馈工作台', '/admin/feedback', true, false, 'users'],
+      ['updates', '发版记录', '/admin/updates', true, false, 'users'],
+      ['monitor', '任务监控', '/admin/jobs', true, false, 'system'],
+      ['monitoring-dashboard', '监控大盘', '/dashboard', false, true, 'system'],
+      ['prompts', 'Prompt 管理', '/admin/prompts', true, false, 'system'],
+      ['webhook-logs', 'Webhook 日志', '/admin/webhook-logs', true, false, 'system'],
+      ['settings', '系统设置', '/admin/settings', true, false, 'system'],
     ]);
   });
 });
@@ -73,14 +83,30 @@ describe('面包屑映射与清单一致（#88 核心不变量）', () => {
     expect(missing).toEqual([]);
   });
 
-  it('映射表不含任何壳外路径（清单全壳内，防回归）', () => {
+  it('映射表不含任何壳外路径（面包屑只映射壳内路由）', () => {
     expect(ADMIN_PAGE_LABELS['/dashboard']).toBeUndefined();
   });
 
-  it('壳内 15 项、壳外 0 项（任务监控已迁入壳内 /admin/jobs）', () => {
+  it('壳内 15 项、壳外 1 项（监控大盘 /dashboard 是后端直出的独立页面）', () => {
     expect(ADMIN_IN_SHELL_PATHS).toHaveLength(15);
-    expect(ADMIN_NAV_ITEMS).toHaveLength(15);
-    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell)).toEqual([]);
+    expect(ADMIN_NAV_ITEMS).toHaveLength(16);
+    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell).map((i) => i.id)).toEqual(['monitoring-dashboard']);
+  });
+
+  it('监控大盘是壳外独立页面：只进侧边栏，不进面包屑', () => {
+    const item = ADMIN_NAV_ITEMS.find((i) => i.id === 'monitoring-dashboard');
+    expect(item).toBeDefined();
+    expect(item?.standalone).toBe(true);
+    expect(item?.inShell).toBe(false);
+    // 面包屑只映射壳内路由——那个页面没有壳内顶栏，硬塞进去会指错地方
+    expect(ADMIN_PAGE_LABELS['/dashboard']).toBeUndefined();
+    expect(findAdminPageLabel('/dashboard')).toBe(ADMIN_FALLBACK_LABEL);
+  });
+
+  it('standalone 项与 inShell 项互斥（免得既不壳内也不独立）', () => {
+    for (const item of ADMIN_NAV_ITEMS) {
+      expect(Boolean(item.standalone) && item.inShell).toBe(false);
+    }
   });
 
   it('#88 修复的四个页面都有真实页面名，不再回退到「管理」', () => {

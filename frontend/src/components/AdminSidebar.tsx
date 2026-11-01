@@ -8,6 +8,7 @@ import {
   BarChart3,
   BookOpen,
   BrainCircuit,
+  Gauge,
   GitMerge,
   LayoutDashboard,
   MessageSquareWarning,
@@ -30,6 +31,8 @@ interface AdminNavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** 壳外的独立页面（后端直出 HTML），用整页导航跳过去。 */
+  standalone: boolean;
 }
 
 // 图标是渲染关注点，留在组件侧（@/lib/admin-nav 保持纯逻辑、可在 node 环境测）。
@@ -44,6 +47,7 @@ const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'mother-topics': BookOpen,
   updates: Rocket,
   monitor: Activity,
+  'monitoring-dashboard': Gauge,
   prompts: ScrollText,
   'scoring-dashboard': BarChart3,
   evidence: ShieldCheck,
@@ -59,7 +63,13 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = ADMIN_NAV_ENTRIES.map((entry) => {
   if (!icon) {
     throw new Error(`AdminSidebar: 导航项 ${entry.id} 缺少图标映射`);
   }
-  return { id: entry.id, label: entry.label, href: entry.href, icon };
+  return {
+    id: entry.id,
+    label: entry.label,
+    href: entry.href,
+    icon,
+    standalone: entry.standalone === true,
+  };
 });
 
 // 分组渲染结构：概览独立置顶，其余按清单 group 字段聚组（#121 圆桌定稿：
@@ -83,8 +93,29 @@ export default function AdminSidebar({ onNavigate }: { onNavigate?: () => void }
   };
 
   const renderItem = (item: AdminNavItem) => {
-    const active = isActive(item.href);
     const Icon = item.icon;
+    // #121 规格：14px/高 36px/内距 12px/圆角 6px；hover ink-800；
+    // active = 2px 橙左边条 + 文字最高亮度，不叠背景块（避免与徽章抢面积）。
+    const base =
+      'relative flex min-h-10 w-full items-center gap-2.5 rounded-xs px-3 py-2 text-left text-sm transition';
+
+    // 壳外的独立页面不能用 Next 客户端路由：它要的是 RSC 载荷，
+    // 而后端返回的是整页 HTML。这里用原生 <a> 走整页导航。
+    if (item.standalone) {
+      return (
+        <a
+          key={item.id}
+          href={item.href}
+          onClick={onNavigate}
+          className={cx(base, 'font-normal text-ink-500 hover:bg-ink-800 hover:text-white')}
+        >
+          <Icon size={16} strokeWidth={1.8} />
+          <span>{item.label}</span>
+        </a>
+      );
+    }
+
+    const active = isActive(item.href);
     return (
       <Link
         key={item.id}
@@ -92,9 +123,7 @@ export default function AdminSidebar({ onNavigate }: { onNavigate?: () => void }
         aria-current={active ? 'page' : undefined}
         onClick={onNavigate}
         className={cx(
-          // #121 规格：14px/高 36px/内距 12px/圆角 6px；hover ink-800；
-          // active = 2px 橙左边条 + 文字最高亮度，不叠背景块（避免与徽章抢面积）。
-          'relative flex min-h-10 w-full items-center gap-2.5 rounded-xs px-3 py-2 text-left text-sm transition',
+          base,
           active
             ? 'font-medium text-white'
             : 'font-normal text-ink-500 hover:bg-ink-800 hover:text-white',

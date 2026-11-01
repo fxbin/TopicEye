@@ -24,11 +24,19 @@ export interface AdminNavEntry {
   /**
    * 是否在 admin 壳内渲染并出现在面包屑里。
    *
-   * 2026-10-19（owner 验收反馈定稿）：「任务监控」从用户侧 /stats/jobs
-   * 迁入本壳（/admin/jobs）——流水线健康信息本就属于后台；旧路径保留
-   * 服务端跳转桩。清单自此前不再有壳外项。
+   * 「任务监控」曾从用户侧 /stats/jobs 迁入本壳（/admin/jobs）——
+   * 流水线健康信息本就属于后台；旧路径保留服务端跳转桩。
+   * 现在唯一的壳外项是「监控大盘」（/dashboard，后端直出，见 standalone）。
    */
   inShell: boolean;
+  /**
+   * 壳外的独立页面（后端直出 HTML，经前端 rewrite 转发）。
+   *
+   * 这类项只出现在侧边栏，不进面包屑（那个页面没有壳内顶栏）。
+   * 跳转必须是整页导航：Next 的客户端路由只会去要 RSC 载荷，
+   * 后端给的是 HTML，会直接报错。
+   */
+  standalone?: boolean;
   /**
    * 导航分组（圆桌 2026-10-18，issue #121）：领域名词做组名（可猜中，
    * Nielsen 6「识别而非回忆」），组间顺序按操作频率排、组内按管道序。
@@ -57,6 +65,14 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavEntry[] = [
   { id: 'feedback', label: '反馈工作台', href: '/admin/feedback', inShell: true, group: 'users' },
   { id: 'updates', label: '发版记录', href: '/admin/updates', inShell: true, group: 'users' },
   { id: 'monitor', label: '任务监控', href: '/admin/jobs', inShell: true, group: 'system' },
+  {
+    id: 'monitoring-dashboard',
+    label: '监控大盘',
+    href: '/dashboard',
+    inShell: false,
+    standalone: true,
+    group: 'system',
+  },
   { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', inShell: true, group: 'system' },
   { id: 'webhook-logs', label: 'Webhook 日志', href: '/admin/webhook-logs', inShell: true, group: 'system' },
   { id: 'settings', label: '系统设置', href: '/admin/settings', inShell: true, group: 'system' },

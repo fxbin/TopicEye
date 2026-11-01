@@ -17,6 +17,13 @@ from sqlalchemy import create_engine, inspect, text
 
 from app.core import migrations as migrations_mod
 
+# 往返测试要降级到「被测迁移自己的 revision」，不能写 "-1"：
+# "-1" 指当前 head 的上一版，只要后面再新增迁移，被测的就不是这条了。
+# （#179 新增 web_vitals 迁移后，mute_rules 的 "-1" 往返就已经失效过一次。）
+# 注意是**父** revision：降到被测迁移自己，那张表还在，降不下去。
+MUTE_RULES_PARENT_REVISION = "c7a4e9f21b86"
+WEB_VITALS_PARENT_REVISION = "d2b7f9a41c05"
+
 
 def _table_names(db_url: str) -> set[str]:
     engine = create_engine(db_url)
@@ -123,7 +130,12 @@ def test_unknown_legacy_revision_with_stale_schema_refuses_startup(throwaway_pg_
 
 
 def test_mute_rules_migration_roundtrip(throwaway_pg_database) -> None:
-    """#171 mute_rules 迁移可逆：head → downgrade -1 → head，表与约束随迁移增删。"""
+    """#171 mute_rules 迁移可逆：head → 退到该迁移之前 → head，表与约束随迁移增删。
+
+    降级目标写成**显式 revision**（mute_rules 自己的 revision）而不是 "-1"：
+    "-1" 指当前 head 的上一版，只要后面再新增迁移，被测的就不是这条了，
+    断言会随别人的迁移而失效（#179 加了 web_vitals 迁移后即失效过）。
+    """
     from alembic import command
 
     def _cfg():
@@ -151,8 +163,47 @@ def test_mute_rules_migration_roundtrip(throwaway_pg_database) -> None:
     assert ("uq_mute_rules_user_type_value", "u") in constraints, "应创建 (user_id, rule_type, value) 唯一约束"
     assert ("ck_mute_rules_rule_type", "c") in constraints, "应创建 rule_type CHECK 约束"
 
-    command.downgrade(_cfg(), "-1")
+    command.downgrade(_cfg(), MUTE_RULES_PARENT_REVISION)
     assert "mute_rules" not in _tables(), "downgrade 应完整删除 mute_rules"
 
     command.upgrade(_cfg(), "head")
     assert "mute_rules" in _tables(), "再次 upgrade 应重建 mute_rules"
+
+
+def test_web_vitals_migration_roundtrip(throwaway_pg_database) -> None:
+    """#179 web_vitals_samples 迁移可逆，且降级目标写成显式 revision。
+
+    同上：不用 "-1"，免得被后续迁移顶掉。
+    """
+    from alembic import command
+
+    def _cfg():
+        return migrations_mod._build_alembic_config()
+
+    def _tables() -> set[str]:
+        engine = create_engine(throwaway_pg_database)
+        try:
+            return set(inspect(engine).get_table_names())
+        finally:
+            engine.dispose()
+
+    command.upgrade(_cfg(), "head")
+    assert "web_vitals_samples" in _tables()
+
+    engine = create_engine(throwaway_pg_database)
+    with engine.begin() as conn:
+        constraints = {
+            (row[0], row[1])
+            for row in conn.execute(
+                text("SELECT conname, contype FROM pg_constraint " "WHERE conrelid = 'web_vitals_samples'::regclass")
+            )
+        }
+    engine.dispose()
+    assert ("ck_web_vitals_samples_metric", "c") in constraints, "应创建 metric CHECK 约束"
+    assert ("ck_web_vitals_samples_rating", "c") in constraints, "应创建 rating CHECK 约束"
+
+    command.downgrade(_cfg(), WEB_VITALS_PARENT_REVISION)
+    assert "web_vitals_samples" not in _tables(), "downgrade 应完整删除 web_vitals_samples"
+
+    command.upgrade(_cfg(), "head")
+    assert "web_vitals_samples" in _tables(), "再次 upgrade 应重建 web_vitals_samples"

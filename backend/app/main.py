@@ -37,6 +37,7 @@ import app.models.scheduled_job  # noqa: F401
 import app.models.trending  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.user_integration  # noqa: F401
+import app.models.web_vitals  # noqa: F401
 import app.models.webhook_delivery_log  # noqa: F401
 import app.models.weekly_digest  # noqa: F401
 import app.models.zhihu  # noqa: F401

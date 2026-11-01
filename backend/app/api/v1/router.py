@@ -45,6 +45,7 @@ from app.api.v1.trending import router as trending_router
 from app.api.v1.trends import router as trends_router
 from app.api.v1.user_api_tokens import router as user_api_tokens_router
 from app.api.v1.users import router as users_router
+from app.api.v1.web_vitals import router as web_vitals_router
 from app.api.v1.webnovel_reports import router as webnovel_reports_router
 from app.api.v1.weekly_digests import router as weekly_digests_router
 from app.api.v1.zhihu import router as zhihu_router
@@ -95,6 +96,7 @@ router.include_router(model_catalog_router)
 router.include_router(llm_evaluations_router)
 router.include_router(favorites_router)
 router.include_router(read_records_router)
+router.include_router(web_vitals_router)
 router.include_router(admin_prompts_router)
 router.include_router(admin_ranking_eval_router)
 router.include_router(admin_scoring_dashboard_router)

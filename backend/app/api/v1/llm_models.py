@@ -17,7 +17,6 @@ Evaluation:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -43,28 +42,17 @@ from app.services.llm.model_list_cache import (
     set_cached_model_list,
 )
 from app.services.llm.model_pricing import is_free_model, normalized_model_pricing
-from app.services.llm.model_resolver import normalize_api_base, resolve_litellm_model
+from app.services.llm.model_resolver import resolve_litellm_model
 from app.services.llm.presets import apply_model_preset, list_model_presets
-from app.services.llm.provider import invalidate_model_cache
+from app.services.llm.provider import complete_once, invalidate_model_cache
 from app.services.llm_usage import extract_usage, record_llm_call_in_new_session
-from app.services.secret_store import decrypt_secret, encrypt_secret, is_encrypted_secret
+from app.services.secret_store import encrypt_secret, is_encrypted_secret
 
 router = APIRouter(prefix="/models", tags=["models"])
 logger = logging.getLogger(__name__)
 
+# 连通性探测与评测的单次调用上限：比编排层默认更短，探测要快速给出结论。
 LLM_COMPLETION_TIMEOUT_SECONDS = 25
-LITELLM_COMPLETION_PARAM_KEYS = {
-    "api_version",
-    "custom_llm_provider",
-    "default_headers",
-    "drop_params",
-    "extra_headers",
-    "extra_query",
-    "metadata",
-    "num_retries",
-    "organization",
-    "timeout",
-}
 
 
 def _model_snapshot(model: LlmModel) -> SimpleNamespace:
@@ -111,38 +99,6 @@ def _normalize_optional_config_value(value):
         return None
     cleaned = str(value).strip()
     return cleaned or None
-
-
-def _completion_kwargs(
-    model: LlmModel,
-    resolved_model: str,
-    messages: list[dict],
-    *,
-    temperature: float,
-    max_tokens: int,
-) -> dict:
-    kwargs = {
-        "model": resolved_model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "timeout": LLM_COMPLETION_TIMEOUT_SECONDS,
-    }
-    extra_params = model.extra_params if isinstance(model.extra_params, dict) else {}
-    litellm_params = extra_params.get("litellm_params")
-    if isinstance(litellm_params, dict):
-        kwargs.update(
-            {
-                key: value
-                for key, value in litellm_params.items()
-                if key in LITELLM_COMPLETION_PARAM_KEYS and value is not None
-            }
-        )
-    if model.api_key:
-        kwargs["api_key"] = decrypt_secret(model.api_key)
-    if model.api_base:
-        kwargs["api_base"] = normalize_api_base(model.api_base)
-    return kwargs
 
 
 def _summarize_llm_error(exc: Exception) -> str:
@@ -662,8 +618,6 @@ async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{model_id}/test", dependencies=[Depends(get_current_admin_user)])
 async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
     """Test a model by sending a simple prompt."""
-    from litellm import completion
-
     model = await LlmModelRepository(db).get_by_id(model_id)
     if not model:
         raise HTTPException(404, f"Model {model_id} not found")
@@ -681,17 +635,16 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db)):
     # 连通性探测语义（配置时验证路由/可达/鉴权/模型存在）：提示词 ping +
     # max_tokens=16 把输出上限压到短语级——成本趋近于零、推理型模型也来不及
     # 长思考；思考占满 16 token 导致正文为空时，由下方 note 分支提示调大重试。
-    kwargs = _completion_kwargs(
-        model,
-        resolved_model,
-        [{"role": "user", "content": "ping"}],
-        temperature=0.3,
-        max_tokens=16,
-    )
-
+    # 走与主链路相同的传输分派，探测的就是生产实际跑的那条路径。
     start = time.monotonic()
     try:
-        response = await asyncio.to_thread(completion, **kwargs)
+        response = await complete_once(
+            model,
+            [{"role": "user", "content": "ping"}],
+            temperature=0.3,
+            max_tokens=16,
+            timeout=LLM_COMPLETION_TIMEOUT_SECONDS,
+        )
         duration_ms = int((time.monotonic() - start) * 1000)
         content = response.choices[0].message.content or ""
         # reasoning 模型（如 MiniCPM-Qwen / DeepSeek-R1）可能把 max_tokens 全部

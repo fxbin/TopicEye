@@ -239,9 +239,9 @@ async def test_dashboard_exposes_web_vitals_tab(web_vitals_api_setup: Setup):
     """大盘是后端直出的大段 HTML 字符串，锚点写错不会有任何编译期报错。"""
     client, tokens, _ = web_vitals_api_setup
 
-    assert (await client.get("/dashboard")).status_code in (401, 403)
+    assert (await client.get("/api/v1/metrics/dashboard")).status_code in (401, 403)
 
-    resp = await client.get("/dashboard", headers={"Authorization": f"Bearer {tokens['admin']}"})
+    resp = await client.get("/api/v1/metrics/dashboard", headers={"Authorization": f"Bearer {tokens['admin']}"})
     assert resp.status_code == 200
     html = resp.text
     assert 'data-tab="web-vitals"' in html

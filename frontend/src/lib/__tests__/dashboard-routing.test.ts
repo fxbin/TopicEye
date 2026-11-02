@@ -9,8 +9,8 @@ const config = loadConfig('../../../next.config.js') as {
 };
 
 describe('监控大盘路由归属', () => {
-  it('旧入口进入后台页面，不再转发为独立 HTML 文档', async () => {
-    expect((await config.redirects()).find(r => r.source === '/dashboard')).toEqual({ source: '/dashboard', destination: '/admin/dashboard', permanent: false });
+  it('只保留后台入口，不维护旧路径的重定向或转发', async () => {
+    expect((await config.redirects()).some(r => r.source === '/dashboard')).toBe(false);
     expect((await config.rewrites()).some(r => r.source === '/dashboard')).toBe(false);
   });
   it('新入口仍要求管理员身份', () => {

@@ -3,6 +3,7 @@
 import pytest
 
 from app.api.dashboard import _DASHBOARD_HTML, embedded_dashboard, router
+from app.api.v1.auth import get_current_admin_user
 
 
 @pytest.mark.asyncio
@@ -17,8 +18,7 @@ async def test_embedded_dashboard_keeps_shared_canvas_and_compact_navigation():
         assert f'data-tab="{tab}"' in html
 
 
-def test_embedded_dashboard_requires_same_admin_dependency():
-    original = next(r for r in router.routes if r.path == '/dashboard')
+def test_embedded_dashboard_requires_admin_dependency():
     embedded = next(r for r in router.routes if r.path == '/api/v1/metrics/dashboard')
-    assert [d.call for d in embedded.dependant.dependencies] == [d.call for d in original.dependant.dependencies]
-    assert embedded.dependant.dependencies
+    assert [d.call for d in embedded.dependant.dependencies] == [get_current_admin_user]
+    assert not any(r.path == '/dashboard' for r in router.routes)

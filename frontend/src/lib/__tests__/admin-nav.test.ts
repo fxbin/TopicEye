@@ -45,7 +45,7 @@ describe('ADMIN_NAV_ITEMS 结构不变式', () => {
    * 2026-10-19（owner 验收反馈定稿）：任务统计从用户侧 /stats/jobs 迁入
    * 后台壳（/admin/jobs「任务监控」，系统组），旧路径留服务端跳转桩。
    * 监控大盘归入 /admin/dashboard，后端画布嵌入统一后台壳。
-   * 导航和面包屑共同保留；旧 /dashboard 通过重定向兼容。
+   * 导航和面包屑共同保留；不保留旧 /dashboard 访问入口。
    */
   it('16 项字面值逐项锁死（改导航必须同步改本表）', () => {
     const actual = ADMIN_NAV_ITEMS.map((i) => [

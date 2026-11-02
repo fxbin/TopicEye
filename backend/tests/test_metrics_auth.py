@@ -135,8 +135,8 @@ async def test_metrics_checks_allows_admin(monitored_app):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["/dashboard", "/api/v1/metrics/dashboard"])
-async def test_dashboard_requires_admin(monitored_app, path):
+async def test_dashboard_requires_admin(monitored_app):
+    path = "/api/v1/metrics/dashboard"
     app, session_factory = monitored_app
 
     resp = await _get(app, path)
@@ -150,3 +150,9 @@ async def test_dashboard_requires_admin(monitored_app, path):
     resp = await _get(app, path, token)
     assert resp.status_code == 200
     assert "<!DOCTYPE html>" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_legacy_dashboard_path_is_not_available(monitored_app):
+    app, _ = monitored_app
+    assert (await _get(app, "/dashboard")).status_code == 404

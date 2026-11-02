@@ -2,7 +2,7 @@
 内置监控大盘 — 自包含 HTML 页面（零外部依赖）。
 
 路由：
-  GET /dashboard  →  返回自包含 HTML 页面
+  GET /api/v1/metrics/dashboard  →  后台内嵌监控画布
 
 设计（#209）：
 - 皮肤回到产品本色：浅底 #F7F7F8 + 品牌橙 #FF6B35 + 与主站同款字体栈；
@@ -1196,13 +1196,7 @@ startAutoRefresh();
 """
 
 
-@router.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_admin_user)])
-async def dashboard():
-    """监控大盘页面（自包含 HTML）。"""
-    return HTMLResponse(_DASHBOARD_HTML)
-
-
-# 嵌入模式只改变壳与页签布局；体检判定、图表和数据请求复用同一份实现。
+# 后台壳承载系统导航；画布保留监控页签、体检判定、图表和数据请求。
 _EMBEDDED_CSS = """
 body.embedded .shell{flex-direction:column}
 body.embedded .rail{width:100%;flex:0 0 auto;background:var(--surface);color:var(--text-2);border-bottom:1px solid var(--border)}

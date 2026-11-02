@@ -96,6 +96,10 @@ class Settings(BaseSettings):
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
+    # 60s 聚合 API（小红书热榜通道）实例地址。官方公共实例有每日额度限制，
+    # 且单个榜单渠道可能临时不可用；额度不够或延迟差时可换自部署实例
+    # （开源项目，Docker 一键部署）。
+    API60S_BASE_URL: str = "https://60s-api.viki.moe"
     # User-triggered reader mode.  This is intentionally a narrow, public-page
     # fetcher: no browser automation, cookies, proxies, or anti-bot bypass.
     ARTICLE_READER_ENABLED: bool = True

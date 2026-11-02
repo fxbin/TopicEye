@@ -27,6 +27,8 @@ class TrendingSource(enum.StrEnum):
     DOUYIN = "douyin"
     TOUTIAO = "toutiao"
     ZHIHU = "zhihu"
+    # 小红书 App 接口反爬严，经 60s 聚合 API 代理（见 _xiaohongshu.py）
+    XIAOHONGSHU = "xiaohongshu"
     HUPU = "hupu"
     TIEBA = "tieba"
     ITHOME = "ithome"

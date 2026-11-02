@@ -169,6 +169,8 @@ from . import (  # noqa: E402, F401
     _toutiao,
     _v2ex,
     _weibo,
+    # 小红书热榜（经 60s 聚合 API 代理，App 接口反爬严无法直连）
+    _xiaohongshu,
     # 中文播客榜（公开 API）
     _xyzrank,
     # 以下接口暂不可用，保留代码待修复

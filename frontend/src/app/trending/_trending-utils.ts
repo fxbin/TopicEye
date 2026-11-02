@@ -35,6 +35,7 @@ export const SOURCE_BRAND: Record<string, { label: string; color: string; bg: st
   douyin:      { label: '抖音',     color: '#161823', bg: '#F5F5F7' },
   toutiao:     { label: '头条',     color: '#F85959', bg: '#FFF0F0' },
   zhihu:       { label: '知乎',     color: '#0066FF', bg: '#EBF2FF' },
+  xiaohongshu: { label: '小红书',   color: '#FF2442', bg: '#FFF0F2' },
   bilibili:    { label: 'B站',      color: '#FB7299', bg: '#FFF0F5' },
   hackernews:  { label: 'HN',       color: '#FF6600', bg: '#FFF5EB' },
   ithome:      { label: 'IT之家',   color: '#D22222', bg: '#FFF0F0' },

@@ -1,5 +1,7 @@
 'use client';
 
+import { StatTile } from '@/components/StatTile';
+
 /**
  * 评分反馈看板（推荐质量评估、反馈分布与个性化向量统计）。
  *
@@ -61,7 +63,7 @@ export default function ScoringDashboardPage() {
   const maxDailyFav = Math.max(...(data?.daily_favorites.map((d) => d.count) || [1]), 1);
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="评分反馈看板"
         icon={BarChart3}
@@ -105,31 +107,31 @@ export default function ScoringDashboardPage() {
         <div className="space-y-5">
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <SummaryCard
+            <StatTile
               icon={TrendingUp}
               label="已分析内容"
               value={summary.analyzed_count}
               tone="neutral"
             />
-            <SummaryCard
+            <StatTile
               icon={Heart}
               label="收藏数"
               value={summary.favorites_count}
-              sub={`${summary.favorite_rate}% 收藏率`}
+              hint={`${summary.favorite_rate}% 收藏率`}
               tone="teal"
             />
-            <SummaryCard
+            <StatTile
               icon={EyeOff}
               label="忽略数"
               value={summary.ignores_count}
-              sub={`${summary.ignore_rate}% 忽略率`}
+              hint={`${summary.ignore_rate}% 忽略率`}
               tone="amber"
             />
-            <SummaryCard
+            <StatTile
               icon={MessageCircle}
               label="反馈数"
               value={summary.total_feedback}
-              sub={`${summary.feedback_rate}% 反馈率`}
+              hint={`${summary.feedback_rate}% 反馈率`}
               tone="primary"
             />
           </div>
@@ -285,39 +287,5 @@ export default function ScoringDashboardPage() {
         </div>
       )}
     </AdminPageShell>
-  );
-}
-
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
-  label: string;
-  value: number;
-  sub?: string;
-  tone: 'teal' | 'amber' | 'primary' | 'neutral';
-}) {
-  const toneClass = {
-    teal: 'text-teal bg-teal-light/30',
-    amber: 'text-amber bg-amber-light/30',
-    primary: 'text-primary bg-primary-light/30',
-    neutral: 'text-ink-500 bg-ink-100',
-  }[tone];
-
-  return (
-    <Panel className="p-3">
-      <div className="mb-1 flex items-center gap-1.5">
-        <div className={cx('grid h-6 w-6 place-items-center rounded-sm', toneClass)}>
-          <Icon size={13} strokeWidth={2.2} />
-        </div>
-        <span className="text-[11px] font-semibold text-ink-500">{label}</span>
-      </div>
-      <div className="font-mono text-xl font-black text-ink-900">{value}</div>
-      {sub && <div className="text-[10px] text-ink-500">{sub}</div>}
-    </Panel>
   );
 }

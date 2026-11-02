@@ -317,7 +317,7 @@ export default function ProfilePage() {
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-sm bg-primary-light text-primary">
             <UserRound size={22} />
           </div>
-          <h1 className="mb-2 text-2xl font-black text-gray-900">需要登录后配置个人集成</h1>
+          <h1 className="page-title mb-2 text-gray-900">需要登录后配置个人集成</h1>
           <p className="mb-5 text-sm leading-7 text-gray-500">
             微信读书 API Key 属于个人凭据，只会绑定到你的账号，不会显示给其他用户。
           </p>
@@ -339,19 +339,19 @@ export default function ProfilePage() {
   const envCommand = `export TOPICEYE_API_URL="${hostOrigin}"\nexport TOPICEYE_API_TOKEN="${newTokenSecret || '<上方创建的 Token>'}"`;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[1120px] space-y-5">
+    <div className="workspace-scroll">
+      <div className="mx-auto w-full max-w-[1200px] space-y-5">
         {/* ── Header ── */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="mb-2 flex items-center gap-2">
+            <h1 className="page-title text-gray-900">个人中心</h1>
+            <div className="mt-2 flex items-center gap-2">
               <Badge tone={currentUser.plan === 'free' ? 'neutral' : 'primary'}>
                 {currentUser.plan === 'free' ? '免费版' : '付费版'}
               </Badge>
               <Badge tone={readiness.tone}>{readiness.label}</Badge>
             </div>
-            <h1 className="text-[26px] font-black leading-tight text-gray-900">个人中心</h1>
-            <p className="mt-2 max-w-[720px] text-sm leading-7 text-gray-500">
+                        <p className="mt-2 max-w-[720px] text-sm leading-7 text-gray-500">
               管理账号、外部素材接入和同步状态。微信读书素材会进入内容流，后续可参与选题、收藏和创作方案生成。
             </p>
           </div>

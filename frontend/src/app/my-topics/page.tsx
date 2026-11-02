@@ -347,13 +347,13 @@ export default function MyTopicsPage() {
   }, [contentFavoriteState, toggleFavorite]);
 
   return (
-    <div className="h-full overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)] px-4 pb-8 sm:px-6 lg:px-10">
-      <header className="sticky top-0 z-10 -mx-4 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 py-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
-        <div className="mx-auto flex max-w-[1220px] flex-wrap items-center justify-between gap-3">
+    <div className="workspace-scroll">
+      <header className="sticky top-0 z-10 -mx-4 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 pb-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <Pin size={18} className="text-primary" strokeWidth={2.2} />
-              <h1 className="m-0 text-xl font-black text-gray-900">我的母题</h1>
+              <h1 className="page-title m-0 text-gray-900">我的母题</h1>
               <Badge tone="primary" className="font-mono text-[10px]">TOPIC DESK</Badge>
             </div>
             <p className="mt-1.5 text-xs leading-5 text-gray-500">
@@ -369,7 +369,7 @@ export default function MyTopicsPage() {
         </div>
       </header>
 
-      <main className="mx-auto mt-5 grid max-w-[1220px] grid-cols-1 items-start gap-4 lg:grid-cols-[286px_minmax(0,1fr)]">
+      <main className="mx-auto mt-5 grid max-w-[1200px] grid-cols-1 items-start gap-4 lg:grid-cols-[286px_minmax(0,1fr)]">
         <aside className="flex flex-col gap-3.5 lg:sticky lg:top-[92px]">
           <Panel className="p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
             <div className="mb-3 flex items-center justify-between">

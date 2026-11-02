@@ -63,7 +63,7 @@ export default function PromptsAdminPage() {
   }
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="Prompt 管理"
         icon={ScrollText}

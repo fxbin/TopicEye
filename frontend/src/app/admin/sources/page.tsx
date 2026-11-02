@@ -1381,7 +1381,7 @@ export default function SourcesPage() {
   );
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       {/* Header */}
       <AdminPageHeader
         title="信源管理"

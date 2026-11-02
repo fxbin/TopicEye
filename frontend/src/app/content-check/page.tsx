@@ -80,13 +80,9 @@ export default function ContentCheckPage() {
   }
 
   return (
-    <div className="fade-in h-full overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
+    <div className="workspace-scroll">
       <div className="mb-6">
-        <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-border bg-primary-light px-3 py-1.5 text-xs font-black text-primary">
-          <SpellCheck size={14} />
-          创作工具
-        </div>
-        <h1 className="mb-1.5 text-[26px] font-black text-gray-900">文稿检测</h1>
+        <h1 className="page-title mb-1.5 text-gray-900">文稿检测</h1>
         <p className="max-w-[760px] text-[13px] leading-6 text-gray-500">
           发布前粘贴文稿，检测广告法极限词、高危违禁词与平台限流词。命中原文高亮显示，悬停查看替换建议；
           文稿只在本次检测中使用，不落库、不留存。

@@ -164,6 +164,7 @@ export function Surface({
   icon: Icon,
   title,
   hint,
+  actions,
   children,
   className,
 }: {
@@ -171,6 +172,7 @@ export function Surface({
   icon?: LucideIcon;
   title: string;
   hint?: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -179,8 +181,9 @@ export function Surface({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {Icon && <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />}
-          <span className="text-sm font-black text-gray-900">{title}</span>
+          <h2 className="text-sm font-black text-gray-900">{title}</h2>
         </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         {hint && <span className="text-xs leading-5 text-gray-600">{hint}</span>}
       </div>
       {children}

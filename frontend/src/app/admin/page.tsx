@@ -340,7 +340,7 @@ export default function AdminDashboardPage() {
   const router = useRouter();
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="管理后台概览"
         icon={LayoutDashboard}

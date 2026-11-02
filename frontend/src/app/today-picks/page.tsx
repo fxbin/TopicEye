@@ -233,14 +233,14 @@ function TodayPicksPage() {
   };
 
   return (
-    <div className="fade-in min-h-full overflow-y-auto bg-gradient-to-b from-[#F8FAFC] via-[#F4F6F8] to-[#EEF2F5] px-4 pb-12 sm:px-6 lg:px-10">
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 sm:px-6 lg:px-10 py-4.5 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3">
+    <div className="workspace-scroll">
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 sm:px-6 lg:px-10 pb-4 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              <RadarSignature size={40} />
+              <RadarSignature size={20} />
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="display-title text-xl text-gray-900">当日精选</h1>
+                <h1 className="page-title text-gray-900">当日精选</h1>
                 <Badge tone="primary" className="!hidden font-mono text-[10px] sm:!inline-flex">
                   CURATION DESK
                 </Badge>
@@ -261,7 +261,7 @@ function TodayPicksPage() {
         </div>
       </div>
 
-      <div className="mx-auto mt-6 grid max-w-[1180px] grid-cols-[minmax(0,1fr)_260px] items-start gap-4.5 max-lg:grid-cols-1">
+      <div className="mx-auto mt-6 grid max-w-[1200px] grid-cols-[minmax(0,1fr)_260px] items-start gap-4.5 max-lg:grid-cols-1">
         <main className="min-w-0">
           <OverviewStrip
             total={selectedLevel ? filteredItems.length : total}

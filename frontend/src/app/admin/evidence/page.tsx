@@ -1,5 +1,7 @@
 'use client';
 
+import { StatTile } from '@/components/StatTile';
+
 import React, { useState } from 'react';
 import {
   BarChart3,
@@ -44,36 +46,6 @@ const INTERACTION_LABELS: Record<string, string> = {
   feedback_negative: '负面反馈',
 };
 
-function StatTile({
-  label,
-  value,
-  sub,
-  icon,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: number | string;
-  sub?: string;
-  icon: React.ReactNode;
-  tone?: 'primary' | 'teal' | 'amber' | 'neutral';
-}) {
-  const classes = {
-    primary: 'border-primary-border bg-primary-light text-primary',
-    teal: 'border-teal-border bg-teal-light text-teal',
-    amber: 'border-amber-border bg-amber-light text-amber',
-    neutral: 'border-ink-200 bg-ink-100 text-ink-700',
-  }[tone];
-  return (
-    <div className={cx('rounded-sm border p-3', classes)}>
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-black">
-        {icon}
-        {label}
-      </div>
-      <div className="font-mono text-2xl font-black tabular-nums leading-none">{value}</div>
-      {sub && <div className="mt-1 text-[10px] opacity-70">{sub}</div>}
-    </div>
-  );
-}
 
 function RateBar({
   label,
@@ -162,7 +134,7 @@ export default function EvidenceDashboardPage() {
   const typeRows = [...allTypes].sort();
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="可信线索看板"
         icon={ShieldCheck}
@@ -209,26 +181,26 @@ export default function EvidenceDashboardPage() {
           {/* ── Summary tiles ── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatTile
-              icon={<Sparkles size={14} />}
+              icon={Sparkles}
               label="证据标记总数"
               value={stats?.marks.total ?? 0}
-              sub={stats ? `跨 ${stats.profiles.profiled_sources} 个已画像信源` : ''}
+              hint={stats ? `跨 ${stats.profiles.profiled_sources} 个已画像信源` : ''}
               tone="primary"
             />
             <StatTile
-              icon={<Link2 size={14} />}
+              icon={Link2}
               label="证据链接数"
               value={stats?.links.total ?? 0}
               tone="teal"
             />
             <StatTile
-              icon={<CheckCircle2 size={14} />}
+              icon={CheckCircle2}
               label="原始发布标记"
               value={stats?.marks.has_primary_source ?? 0}
               tone="amber"
             />
             <StatTile
-              icon={<Globe size={14} />}
+              icon={Globe}
               label="官方一手链接"
               value={stats?.marks.has_official_source ?? 0}
               tone="neutral"

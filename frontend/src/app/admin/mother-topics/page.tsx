@@ -278,7 +278,7 @@ export default function MotherTopicsConfigPage() {
   };
 
   return (
-    <AdminPageShell maxWidth={860}>
+    <AdminPageShell>
       <AdminPageHeader
         title="系统母题模板库"
         icon={Settings}
@@ -297,7 +297,7 @@ export default function MotherTopicsConfigPage() {
       />
 
       {/* Info box */}
-      <Panel className="mb-6 border-teal-border bg-teal-light px-4 py-3 text-[13px] leading-6 text-teal">
+      <Panel className="border-teal-border bg-teal-light px-4 py-3 text-[13px] leading-6 text-teal">
         <b>打分规则:</b> 母题匹配分 × 权重 + 新鲜度加成 <ArrowRight size={13} strokeWidth={2} className="inline align-[-2px]" /> 最终得分<br/>
         <b>阈值:</b> 80+ 今日主选题 / 65-79 值得储备 / 50-64 观察池 / &lt;50 过滤
       </Panel>
@@ -325,7 +325,7 @@ export default function MotherTopicsConfigPage() {
       )}
 
       {/* Scoring explanation */}
-      <Panel className="mt-8 bg-ink-100 p-4">
+      <Panel className="bg-ink-100 p-4">
         <h3 className="mb-3 text-sm font-bold text-ink-700">打分公式详解</h3>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2">
           {[

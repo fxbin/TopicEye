@@ -25,7 +25,7 @@ import { useDialogFocus } from '@/components/useDialogFocus';
  * 统一规范：
  * - 外层 `h-full overflow-y-auto` 保证内容超长时可滚动
  * - 响应式内边距 `px-4 sm:px-6 lg:px-10`，垂直 `py-5`
- * - 内层 `mx-auto max-w-[xxx] pb-8` 居中 + 底部留白
+ * - 内层 `mx-auto max-w-[1200px] pb-8` 居中 + 底部留白
  *
  * 用法：
  * ```tsx
@@ -37,19 +37,15 @@ import { useDialogFocus } from '@/components/useDialogFocus';
  */
 export function AdminPageShell({
   children,
-  maxWidth = 1100,
   className,
 }: {
   children: React.ReactNode;
-  /** 内容区最大宽度（px）。默认 1100。 */
-  maxWidth?: number;
   className?: string;
 }) {
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
+    <div className="admin-workspace h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
       <div
-        className={cx('mx-auto w-full space-y-5 pb-8', className)}
-        style={{ maxWidth }}
+        className={cx('mx-auto w-full max-w-[1200px] space-y-5 pb-8', className)}
       >
         {children}
       </div>
@@ -63,7 +59,7 @@ export function AdminPageShell({
  * 管理后台统一标题区。
  *
  * 规范：
- * - H1 字号统一 `text-[26px]`，字重 `font-black`
+ * - H1 字号统一 `text-lg`，字重 `font-semibold`
  * - 可选图标（LucideIcon），放在 H1 左侧
  * - 可选描述文本，`text-sm text-gray-500`
  * - 可选右侧操作区（按钮等）
@@ -92,8 +88,7 @@ export function AdminPageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        {/* #121 规格：标题 18px/600（原 26px font-black 与卡片标题拉差过大，
-            扫读定位不了页面结构）；icon 18px 跟随字号降档。 */}
+        {/* 页标题是稳定导航锚点，所有后台页面保持相同字号和位置。 */}
         <h1 className="flex items-center gap-2 text-lg font-semibold leading-tight text-ink-900">
           {Icon && <Icon size={18} className="text-admin-accent" strokeWidth={2.2} />}
           {title}
@@ -102,7 +97,7 @@ export function AdminPageHeader({
           <p className="mt-1.5 text-[13px] leading-6 text-ink-500">{description}</p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
     </div>
   );
 }

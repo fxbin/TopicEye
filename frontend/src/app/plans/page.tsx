@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Check, Gem, LockKeyhole, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Check, LockKeyhole, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { plansApi } from '@/lib/api';
 import { Badge, Panel, cx } from '@/components/ui';
@@ -46,14 +46,10 @@ export default function PlansPage() {
   );
 
   return (
-    <div className="fade-in h-full overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
+    <div className="workspace-scroll">
       <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-border bg-primary-light px-3 py-1.5 text-xs font-black text-primary">
-            <Gem size={14} />
-            功能权益
-          </div>
-          <h1 className="mb-1.5 text-[26px] font-black text-gray-900">功能边界与后续规划</h1>
+            <h1 className="page-title mb-1.5 text-gray-900">功能边界与后续规划</h1>
           <p className="max-w-[760px] text-[13px] leading-6 text-gray-500">
             这里展示当前已经开放的访问边界，以及还没有正式上线的付费和团队能力。未标为当前可用的内容只作为路线图，不作为已交付承诺。
           </p>

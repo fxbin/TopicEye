@@ -13,7 +13,7 @@ export default function Header({ title, subtitle, date, stats }: HeaderProps) {
   return (
     <div className="mb-7 max-w-[820px]">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-2xl font-bold leading-snug sm:text-[26px] text-gray-900">{title}</h1>
+        <h1 className="page-title">{title}</h1>
         {date && <span className="text-sm text-gray-500">{date}</span>}
       </div>
       {subtitle && (

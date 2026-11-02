@@ -658,7 +658,7 @@ export default function ContentEventsAdminPage() {
   const emptyMeta = EMPTY_STATE_BY_STATUS[reviewStatus];
 
   return (
-    <AdminPageShell maxWidth={1480}>
+    <AdminPageShell>
       <AdminPageHeader
         title="内容事件治理"
         icon={GitMerge}

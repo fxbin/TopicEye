@@ -394,3 +394,34 @@ dialog[open] > .navigation-drawer-panel {
 @media (prefers-reduced-motion: reduce) {
   dialog[open] > .navigation-drawer-panel { animation: none; }
 }
+
+/* 工作台页面的稳定锚点；阅读器、刊物和登录页保留各自的任务版式。 */
+@layer components {
+  .page-title {
+    @apply text-xl font-semibold leading-snug text-gray-900;
+  }
+}
+
+/* 表格密度由后台壳统一；避免调用方 px-2/px-3 各自改变列起点。 */
+.admin-workspace table {
+  @apply w-full text-[13px] tabular-nums;
+}
+.admin-workspace thead th {
+  @apply whitespace-nowrap px-4 py-3 text-xs font-medium leading-5 text-ink-500;
+}
+.admin-workspace tbody td {
+  @apply px-4 py-3 leading-5;
+}
+
+@layer components {
+  .workspace-scroll {
+    @apply h-full min-h-0 w-full overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10;
+  }
+}
+
+/* 限制内容行宽，不收窄滚动容器，宽屏切页时滚动条仍贴在视口右侧。 */
+@media (min-width: 64rem) {
+  .workspace-scroll {
+    padding-inline: max(2.5rem, calc((100% - 1200px) / 2));
+  }
+}

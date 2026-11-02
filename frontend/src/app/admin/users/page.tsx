@@ -188,7 +188,7 @@ export default function UsersAdminPage() {
 
   return (
     <>
-    <AdminPageShell maxWidth={1100}>
+    <AdminPageShell>
       <AdminPageHeader
         title="用户管理"
         icon={ShieldCheck}

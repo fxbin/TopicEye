@@ -4,22 +4,27 @@
 路由：
   GET /dashboard  →  返回自包含 HTML 页面
 
-页面内嵌 JS 轮询 /api/v1/metrics/snapshot 获取实时指标 + 时间序列，
-用纯 Canvas API 绘制交互式趋势图（无 Chart.js / D3 / CDN 依赖）。
+设计（#209）：
+- 皮肤回到产品本色：浅底 #F7F7F8 + 品牌橙 #FF6B35 + 与主站同款字体栈；
+  状态语义三档（灰=正常 / 橙=注意 / 红=严重），不再一个指标一种颜色。
+- 首屏只有一个主角：状态判定条（"现在能不能发稿" + 依据 + 采样时间）。
+- 其下是体检表（指标 / 值 / 阈值 / 迷你趋势 / 状态），点任一行就地展开该指标的
+  趋势与相关日志——值班真正要的主动作。
+- 顶部 4 个页签移进左侧墨色栏（与主站后台壳一致）；删掉"速率/累计"开关，
+  刷新间隔并入时间窗。
 
-图表引擎特性：
+数据来源：
+- 当前值：/api/v1/metrics/snapshot（实时）
+- 趋势：/api/v1/metrics/history（PG 每 60 秒落一次的快照，含 P50/P95/P99 序列）
+
+图表引擎特性（纯 Canvas API，无 Chart.js / D3 / CDN 依赖）：
 - 交互式 tooltip（hover 十字光标 + 数值面板）
 - 双 Y 轴支持（不同量级数据同图展示）
-- 速率计算（累计值 → req/s、USD/s）
+- 速率计算（累计值 → req/s）
 - 渐变面积填充
-- KPI 卡片 sparkline 迷你趋势线
+- 迷你趋势线（体检表行内）
 - 响应式（ResizeObserver 自动重绘）
-- 延迟分位数图表（P50 / P95 / P99）
-- 可配置刷新间隔（5s / 10s / 30s / 1m / 5m / 15m / 关闭）
 - Page Visibility API：标签页隐藏时自动暂停轮询
-- LLM 失败日志面板
-- 应用日志面板（内存 ring buffer）
-- 进程内存/CPU 指标
 """
 
 from __future__ import annotations
@@ -39,406 +44,675 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <title>TopicEye 监控大盘</title>
 <style>
 :root{
-  --bg:#0b1120;--surface:#151e30;--surface2:#1c2840;--border:#293b5c;
-  --text:#e2e8f0;--text-dim:#7c8db0;--text-faint:#4a5b7e;
-  --blue:#3b82f6;--cyan:#06b6d4;--green:#22c55e;--amber:#f59e0b;
-  --red:#ef4444;--purple:#a855f7;--pink:#ec4899;
+  --bg:#F7F7F8; --surface:#FFFFFF; --surface-2:#FAFAFA;
+  --border:#E5E7EB; --border-soft:#F0F0F1;
+  --text:#1A1A2E; --text-2:#4B5563; --text-3:#5F6773;
+  --accent:#FF6B35; --accent-soft:#FFF4EE; --accent-border:#FFD0B5;
+  --ok:#9CA3AF; --warn:#FF6B35; --crit:#EF4444;
+  /* 小字用的深色变体：品牌色本身在白底上只有 2.8:1，当文字读不清 */
+  --accent-text:#C2410C; --warn-text:#B45309; --crit-text:#B91C1C;
+  --ink:#1D1D20; --ink-2:#2A2A2E; --ink-line:#3F3F46;
+  --ink-text:#E4E4E7; --ink-muted:#A1A1AA;
+  --r-lg:12px; --r-md:10px; --r-sm:8px; --r-xs:6px;
+  --sans:-apple-system,BlinkMacSystemFont,"DM Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono","DM Mono",Menlo,Consolas,monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-.header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
-.header h1{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
-.status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0}
-.status-dot.warn{background:var(--amber)}
-.status-dot.err{background:var(--red)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-.header-right{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--text-dim);flex-wrap:wrap}
-.header-right a{color:var(--blue);text-decoration:none}
-.header-right a:hover{text-decoration:underline}
-.toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
-.toggle input{display:none}
-.toggle .track{width:34px;height:18px;background:var(--surface2);border-radius:9px;position:relative;transition:background .2s}
-.toggle .track::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:var(--text-dim);top:2px;left:2px;transition:all .2s}
-.toggle input:checked+.track{background:var(--blue)}
-.toggle input:checked+.track::after{left:18px;background:#fff}
-.btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;transition:background .15s}
-.btn:hover{background:var(--border)}
-.btn.active{background:var(--blue);border-color:var(--blue)}
-select.refresh-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:var(--accent-text);text-decoration:none}
+a:hover{text-decoration:underline}
 
-/* Tab bar */
-.tab-bar{display:flex;gap:0;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
-.tab{padding:8px 18px;font-size:13px;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
-.tab:hover{color:var(--text)}
-.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
-.tab .badge-count{display:inline-block;background:var(--red);color:#fff;font-size:10px;padding:0 5px;border-radius:8px;margin-left:4px;min-width:16px;text-align:center}
+/* ── 壳：左墨色栏 + 右工作区 ── */
+.shell{display:flex;height:100vh;overflow:hidden}
+.rail{width:196px;flex:0 0 196px;background:var(--ink);color:var(--ink-text);display:flex;flex-direction:column}
+.rail-brand{display:flex;align-items:center;gap:8px;padding:16px 16px 12px;font-size:14px;font-weight:700;letter-spacing:.01em}
+.rail-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 8px}
+.rail-caption{padding:10px 16px 4px;font-size:10px;letter-spacing:.08em;color:var(--ink-muted);text-transform:uppercase}
+.rail-nav{display:flex;flex-direction:column;padding:4px 8px;gap:1px}
+.rail-item{appearance:none;background:none;border:0;color:var(--ink-muted);text-align:left;font:inherit;font-size:13px;padding:8px 10px;border-radius:var(--r-sm);cursor:pointer;position:relative}
+.rail-item:hover{background:var(--ink-2);color:var(--ink-text)}
+.rail-item.is-active{background:var(--ink-2);color:#fff;font-weight:600}
+.rail-item.is-active::before{content:"";position:absolute;left:-8px;top:6px;bottom:6px;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
+.rail-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--ink-line);display:flex;flex-direction:column;gap:6px;font-size:12px}
+.rail-foot a{color:var(--ink-muted)}
+.rail-foot a:hover{color:var(--ink-text);text-decoration:none}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
 
-/* KPI Grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px 24px}
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
-.kpi-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em}
-.kpi-value{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
-.kpi-sub{font-size:11px;color:var(--text-faint)}
-.kpi-value.green{color:var(--green)}.kpi-value.red{color:var(--red)}
-.kpi-value.amber{color:var(--amber)}.kpi-value.blue{color:var(--blue)}
-.kpi-value.cyan{color:var(--cyan)}.kpi-value.purple{color:var(--purple)}
-.kpi-spark{position:absolute;bottom:0;right:0;width:80px;height:30px;opacity:0.5}
+/* ── 顶栏 ── */
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 24px;background:rgba(247,247,248,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.topbar-head{display:flex;align-items:baseline;gap:12px;min-width:0}
+.topbar-head h1{font-size:16px;font-weight:700;letter-spacing:.01em}
+.topbar-sub{font-size:12px;color:var(--text-2)}
+.topbar-tools{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2)}
+select,input[type=text]{appearance:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 26px 5px 9px;font:inherit;font-size:12px;color:var(--text);cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 8px center}
+select:hover,input[type=text]:hover{border-color:#D1D5DB}
+.btn{appearance:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 12px;font:inherit;font-size:12px;color:var(--text);cursor:pointer}
+.btn:hover{border-color:#D1D5DB;background:var(--surface-2)}
+.btn:active{transform:translateY(1px)}
+.updated{font-size:12px;color:var(--text-2);font-family:var(--mono)}
 
-/* Sections */
-.section{padding:0 24px 14px}
-.section-title{font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;display:flex;align-items:center;gap:8px}
-.section-title .pill{background:var(--surface2);padding:1px 8px;border-radius:4px;font-size:10px;color:var(--text-faint);font-weight:400}
-.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative}
-canvas{display:block;width:100%}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-@media(max-width:900px){.two-col,.three-col{grid-template-columns:1fr}}
+/* ── 主体 ── */
+.content{padding:20px 24px 56px;display:flex;flex-direction:column;gap:20px;max-width:1180px}
 
-/* Tables */
-table{width:100%;border-collapse:collapse;font-size:13px}
-table th{text-align:left;padding:7px 10px;color:var(--text-dim);font-weight:600;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase}
-table td{padding:7px 10px;border-bottom:1px solid var(--surface);color:var(--text)}
-table td.num{text-align:right;font-variant-numeric:tabular-nums}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.badge.ok{background:#142a1a;color:var(--green)}
-.badge.warn{background:#2a200a;color:var(--amber)}
-.badge.err{background:#2a0e0e;color:var(--red)}
-.badge.closed{background:#142a1a;color:var(--green)}
-.badge.open{background:#2a0e0e;color:var(--red)}
-.badge.half{background:#2a200a;color:var(--amber)}
-.loading{text-align:center;padding:30px;color:var(--text-faint);font-size:13px}
+/* ── 状态判定条（首屏唯一主角）── */
+.verdict{display:flex;align-items:flex-start;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 20px}
+.verdict-bar{width:4px;align-self:stretch;border-radius:2px;background:var(--ok);flex:0 0 4px}
+.verdict[data-state="ok"] .verdict-bar{background:var(--ok)}
+.verdict[data-state="warn"] .verdict-bar{background:var(--warn)}
+.verdict[data-state="crit"] .verdict-bar{background:var(--crit)}
+.verdict[data-state="pending"] .verdict-bar{background:var(--border)}
+.verdict-text{flex:1;min-width:0}
+.verdict-title{font-size:19px;font-weight:700;letter-spacing:.01em;line-height:1.35}
+.verdict[data-state="warn"] .verdict-title{color:var(--warn-text)}
+.verdict[data-state="crit"] .verdict-title{color:var(--crit-text)}
+.verdict-meta{font-size:12px;color:var(--text-2);margin-top:4px}
+.verdict-acts{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.verdict-act{appearance:none;font:inherit;font-size:12px;font-weight:600;border:1px solid var(--accent-border);background:var(--accent-soft);color:#B23A0F;border-radius:var(--r-sm);padding:4px 10px;cursor:pointer}
+.verdict-act:hover{background:#FFE9DE}
 
-/* Log panels */
-.log-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;max-height:400px;overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px}
-.log-entry{padding:4px 12px;border-bottom:1px solid var(--surface);display:flex;gap:8px;align-items:flex-start}
-.log-entry:hover{background:var(--surface2)}
-.log-ts{color:var(--text-faint);flex-shrink:0;width:70px}
-.log-level{flex-shrink:0;width:60px;font-weight:600}
-.log-level.ERROR,.log-level.CRITICAL{color:var(--red)}
-.log-level.WARNING{color:var(--amber)}
-.log-level.INFO{color:var(--blue)}
-.log-level.DEBUG{color:var(--text-faint)}
-.log-msg{flex:1;word-break:break-word;color:var(--text)}
-.log-source{color:var(--text-faint);font-size:11px;margin-left:8px}
-.log-filter{display:flex;gap:6px;margin-bottom:8px}
-.log-filter .btn{padding:3px 10px}
+/* ── 面板 ── */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 18px 0}
+.panel-head h2{font-size:13px;font-weight:700;letter-spacing:.01em}
+.panel-sub{font-size:12px;color:var(--text-3)}
+.panel-body{padding:12px 18px 16px}
 
-/* Tooltip */
-.chart-tooltip{position:absolute;background:rgba(15,23,42,0.95);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:10;backdrop-filter:blur(4px);display:none;white-space:nowrap}
-.chart-tooltip .tt-time{color:var(--text-dim);font-size:11px;margin-bottom:4px}
-.chart-tooltip .tt-row{display:flex;align-items:center;gap:6px;margin:2px 0}
-.chart-tooltip .tt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.chart-tooltip .tt-label{color:var(--text-dim)}
-.chart-tooltip .tt-val{font-weight:600;font-variant-numeric:tabular-nums;margin-left:auto}
+/* ── 体检表 ── */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--text-2);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:0 10px;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+th.num,td.num{text-align:right}
+.check-row{cursor:pointer}
+.check-row:hover td{background:var(--surface-2)}
+.check-row.is-open td{background:var(--accent-soft)}
+.check-name{font-weight:600;font-size:13px}
+.check-sub{color:var(--text-3);font-size:11px}
+.check-value{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;text-align:right;white-space:nowrap}
+.check-thr{color:var(--text-2);font-size:11.5px;white-space:nowrap}
+.check-spark{width:132px}
+.check-spark canvas{display:block;width:132px;height:22px}
+.check-state{width:78px;text-align:right}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:18px;white-space:nowrap}
+.pill.ok{background:#F3F4F6;color:var(--text-2)}
+.pill.warn{background:var(--accent-soft);color:var(--accent-text)}
+.pill.crit{background:#FEE2E2;color:var(--crit-text)}
+.pill.info{background:#F9FAFB;color:var(--text-3)}
+.check-detail td{background:#FCFCFD;padding:14px 18px}
+.detail-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
+.detail-title{font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:8px}
+.detail-canvas{width:100%;height:120px;display:block}
+.detail-logs{max-height:190px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.7;color:var(--text-2)}
+.detail-logs div{padding:1px 0;border-bottom:1px solid var(--border-soft);white-space:pre-wrap;word-break:break-all}
+.detail-logs div:last-child{border-bottom:0}
+.detail-empty{color:var(--text-3);font-size:11.5px;font-family:var(--sans)}
+
+/* ── 图表 ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+/* 图表格子不自带边框：外层面板已经是容器，格子再套一层卡片就成了卡片套卡片 */
+.chart-cell{background:transparent;border:0;padding:4px 0 0;position:relative;min-width:0}
+.chart-title{font-size:11.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.chart-cell canvas{display:block;width:100%;height:160px}
+.chart-tip{display:none;position:absolute;z-index:10;background:rgba(26,26,46,.96);color:#fff;border-radius:var(--r-sm);padding:7px 10px;font-size:11px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.16)}
+.chart-tip .tt-time{color:#C7CBD6;margin-bottom:3px}
+.chart-tip .tt-row{display:flex;align-items:center;gap:6px}
+.chart-tip .tt-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+.chart-tip .tt-label{color:#C7CBD6}
+.chart-tip .tt-val{margin-left:auto;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-2);padding:6px 2px 0}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+/* ── 运行时状态卡 ── */
+.stat{padding:10px 14px;border-left:1px solid var(--border)}
+.stat:first-child{border-left:0;padding-left:0}
+.stat-label{font-size:11px;color:var(--text-2);margin-bottom:6px}
+.stat-value{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:17px;font-weight:700}
+.stat-meta{font-size:11px;color:var(--text-3);margin-top:4px;font-family:var(--sans)}
+
+/* ── 日志面板 ── */
+.log-filter{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.log-panel{max-height:420px;overflow-y:auto;font-family:var(--mono);font-size:11.5px}
+.log-entry{padding:5px 8px;border-bottom:1px solid var(--border-soft);display:flex;gap:10px;align-items:flex-start}
+.log-entry:hover{background:var(--surface-2)}
+.log-ts{color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.log-level{font-weight:600;white-space:nowrap}
+.log-level.ERROR,.log-level.CRITICAL{color:var(--crit-text)}
+.log-level.WARNING{color:var(--warn-text)}
+.log-level.INFO{color:var(--accent-text)}
+.log-level.DEBUG{color:var(--text-3)}
+.log-msg{flex:1;min-width:0;word-break:break-all}
+.log-source{color:var(--text-3);font-size:10.5px;white-space:nowrap}
+.loading{padding:24px;text-align:center;color:var(--text-3);font-size:12px}
+.empty{padding:28px;text-align:center;color:var(--text-3);font-size:12.5px}
+
+@media(max-width:900px){
+  .grid2,.grid3,.detail-grid{grid-template-columns:1fr}
+  .rail{width:56px;flex:0 0 56px}
+  .rail-brand span:not(.rail-dot),.rail-caption,.rail-item{font-size:0}
+  .rail-item::after{content:attr(data-short);font-size:12px}
+  .rail-foot a{font-size:0}
+  .rail-foot a::after{content:"↗";font-size:13px}
+  .check-spark,.check-thr{display:none}
+}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1><span class="status-dot" id="statusDot"></span>TopicEye 监控大盘</h1>
-  <div class="header-right">
-    <span id="uptime">运行时间: --</span>
-    <span id="lastUpdate">最后更新: --</span>
-    <label class="toggle">
-      <input type="checkbox" id="rateMode" checked>
-      <span class="track"></span>
-      <span>速率</span>
-    </label>
-    <span>刷新:</span>
-    <select class="refresh-select" id="refreshInterval">
-      <option value="5000">5s</option>
-      <option value="10000" selected>10s</option>
-      <option value="30000">30s</option>
-      <option value="60000">1m</option>
-      <option value="300000">5m</option>
-      <option value="900000">15m</option>
-      <option value="0">关闭</option>
-    </select>
-    <a href="/metrics" target="_blank">Prometheus</a>
-    <a href="/health/ready" target="_blank">健康</a>
-    <button class="btn" onclick="fetchData()">刷新</button>
-  </div>
-</div>
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-brand"><span class="rail-dot"></span><span>TopicEye</span></div>
+    <div class="rail-caption">监控</div>
+    <nav class="rail-nav">
+      <button class="rail-item is-active" data-tab="overview" data-short="概览">概览</button>
+      <button class="rail-item" data-tab="llm-logs" data-short="LLM">LLM 日志</button>
+      <button class="rail-item" data-tab="app-logs" data-short="日志">应用日志</button>
+      <button class="rail-item" data-tab="web-vitals" data-short="体验">前端体验</button>
+    </nav>
+    <div class="rail-foot">
+      <a href="/metrics" target="_blank">Prometheus</a>
+      <a href="/health/ready" target="_blank">健康检查</a>
+    </div>
+  </aside>
 
-<div class="tab-bar">
-  <div class="tab active" data-tab="overview">概览</div>
-  <div class="tab" data-tab="llm-logs">LLM 日志 <span class="badge-count" id="llmFailCount" style="display:none">0</span></div>
-  <div class="tab" data-tab="app-logs">应用日志</div>
-  <div class="tab" data-tab="web-vitals">前端体验</div>
-</div>
-
-<!-- ── Tab: Overview ── -->
-<div id="tab-overview" class="tab-content">
-<div class="kpi-grid" id="kpiGrid">
-  <div class="kpi-card">
-    <div class="kpi-label">HTTP 请求总数</div>
-    <div class="kpi-value blue" id="kpiTotalReq">--</div>
-    <div class="kpi-sub" id="kpiReqRate">-- req/s</div>
-    <canvas class="kpi-spark" id="sparkReq" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">错误率 (5xx)</div>
-    <div class="kpi-value" id="kpiErrorRate">--</div>
-    <div class="kpi-sub" id="kpiErrors">5xx: --</div>
-    <canvas class="kpi-spark" id="sparkErr" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">HTTP P95 延迟</div>
-    <div class="kpi-value cyan" id="kpiP95">--</div>
-    <div class="kpi-sub" id="kpiLatencySub">P50: -- / P99: --</div>
-    <canvas class="kpi-spark" id="sparkLat" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">LLM 调用</div>
-    <div class="kpi-value green" id="kpiLlmCalls">--</div>
-    <div class="kpi-sub" id="kpiLlmSuccess">成功率: --</div>
-    <canvas class="kpi-spark" id="sparkLlm" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">LLM 成本 (USD)</div>
-    <div class="kpi-value amber" id="kpiLlmCost">--</div>
-    <div class="kpi-sub" id="kpiLlmTokens">Token: --</div>
-    <canvas class="kpi-spark" id="sparkCost" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">DB 连接池</div>
-    <div class="kpi-value purple" id="kpiDbPool">--</div>
-    <div class="kpi-sub" id="kpiDbUtil">利用率: --</div>
-    <canvas class="kpi-spark" id="sparkDb" width="80" height="30"></canvas>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">进程内存 (RSS)</div>
-    <div class="kpi-value" id="kpiMem" style="color:var(--pink)">--</div>
-    <div class="kpi-sub" id="kpiCpu">CPU: --</div>
-    <canvas class="kpi-spark" id="sparkMem" width="80" height="30"></canvas>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-title">请求速率 & 错误趋势 <span class="pill" id="tsRange">最近 30 分钟</span></div>
-  <div class="chart-box">
-    <canvas id="chartRequests" height="200"></canvas>
-    <div class="chart-tooltip" id="ttRequests"></div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="two-col">
-    <div>
-      <div class="section-title">LLM 调用 & 成本趋势</div>
-      <div class="chart-box">
-        <canvas id="chartLlm" height="200"></canvas>
-        <div class="chart-tooltip" id="ttLlm"></div>
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-head">
+        <h1>监控大盘</h1>
+        <span class="topbar-sub" id="uptime">--</span>
       </div>
-    </div>
-    <div>
-      <div class="section-title">HTTP 延迟分位数 (P50 / P95 / P99)</div>
-      <div class="chart-box">
-        <canvas id="chartLatency" height="200"></canvas>
-        <div class="chart-tooltip" id="ttLatency"></div>
+      <div class="topbar-tools">
+        <label class="field">时间窗
+          <select id="timeWindow">
+            <option value="1">最近 1 小时</option>
+            <option value="6">最近 6 小时</option>
+            <option value="24" selected>最近 24 小时</option>
+            <option value="168">最近 7 天</option>
+          </select>
+        </label>
+        <button class="btn" id="refreshBtn">刷新</button>
+        <span class="updated" id="lastUpdate">--</span>
       </div>
-    </div>
-  </div>
-</div>
+    </header>
 
-<div class="section">
-  <div class="two-col">
-    <div>
-      <div class="section-title">DB 连接池利用趋势</div>
-      <div class="chart-box">
-        <canvas id="chartDbPool" height="180"></canvas>
-        <div class="chart-tooltip" id="ttDbPool"></div>
-      </div>
-    </div>
-    <div>
-      <div class="section-title">LLM 延迟分位数 (P50 / P95 / P99)</div>
-      <div class="chart-box">
-        <canvas id="chartLlmLatency" height="180"></canvas>
-        <div class="chart-tooltip" id="ttLlmLatency"></div>
-      </div>
-    </div>
-  </div>
-</div>
+    <!-- 概览 -->
+    <section class="content" id="tab-overview">
+      <section class="verdict" id="verdict" data-state="pending">
+        <span class="verdict-bar"></span>
+        <div class="verdict-text">
+          <div class="verdict-title" id="verdictTitle">正在读取…</div>
+          <div class="verdict-meta" id="verdictMeta">--</div>
+        </div>
+        <div class="verdict-acts" id="verdictActs"></div>
+      </section>
 
-<div class="section">
-  <div class="two-col">
-    <div>
-      <div class="section-title">熔断器 & 缓存状态</div>
-      <div class="chart-box">
-        <table>
-          <tr><th>组件</th><th>状态</th><th class="num">详情</th></tr>
-          <tr><td>LLM 熔断器</td><td><span class="badge" id="cbBadge">--</span></td><td class="num" id="cbDetail">--</td></tr>
-          <tr><td>LLM 响应缓存</td><td><span class="badge" id="cacheBadge">--</span></td><td class="num" id="cacheDetail">--</td></tr>
-          <tr><td>慢查询累计</td><td><span class="badge" id="slowBadge">--</span></td><td class="num" id="slowDetail">--</td></tr>
-        </table>
-      </div>
-    </div>
-    <div>
-      <div class="section-title">Top 请求路径</div>
-      <div class="chart-box">
-        <table>
-          <thead><tr><th>路径</th><th class="num">请求数</th></tr></thead>
-          <tbody id="topPathsTable"><tr><td colspan="2" class="loading">加载中...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>系统体检</h2>
+          <span class="panel-sub" id="checkSummary">--</span>
+        </div>
+        <div class="panel-body" style="padding:6px 10px 8px">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32%">检查项</th>
+                <th class="num" style="width:18%">当前值</th>
+                <th style="width:20%">阈值</th>
+                <th class="check-spark">趋势</th>
+                <th class="check-state">状态</th>
+              </tr>
+            </thead>
+            <tbody id="checkBody"></tbody>
+          </table>
+        </div>
+      </section>
 
-<div class="section">
-  <div class="section-title">LLM 各场景调用明细</div>
-  <div class="chart-box">
-    <table>
-      <thead><tr><th>场景</th><th class="num">成功</th><th class="num">失败</th><th class="num">Token</th><th class="num">成本 (USD)</th><th class="num">P95 延迟</th></tr></thead>
-      <tbody id="llmSceneTable"><tr><td colspan="6" class="loading">加载中...</td></tr></tbody>
-    </table>
-  </div>
-</div>
-</div>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>趋势</h2>
+          <span class="panel-sub" id="trendWindow">--</span>
+        </div>
+        <div class="panel-body">
+          <div class="grid2">
+            <div class="chart-cell">
+              <div class="chart-title">请求速率 &amp; 错误</div>
+              <canvas id="chartRequests" height="170"></canvas>
+              <div class="chart-tip" id="ttRequests"></div>
+            </div>
+            <div class="chart-cell">
+              <div class="chart-title">LLM 调用 &amp; 成本</div>
+              <canvas id="chartLlm" height="170"></canvas>
+              <div class="chart-tip" id="ttLlm"></div>
+            </div>
+            <div class="chart-cell">
+              <div class="chart-title">HTTP 延迟分位数</div>
+              <canvas id="chartLatency" height="150"></canvas>
+              <div class="chart-tip" id="ttLatency"></div>
+            </div>
+            <div class="chart-cell">
+              <div class="chart-title">DB 连接池</div>
+              <canvas id="chartDbPool" height="150"></canvas>
+              <div class="chart-tip" id="ttDbPool"></div>
+            </div>
+            <div class="chart-cell">
+              <div class="chart-title">LLM 延迟分位数</div>
+              <canvas id="chartLlmLatency" height="150"></canvas>
+              <div class="chart-tip" id="ttLlmLatency"></div>
+            </div>
+            <div class="chart-cell">
+              <div class="chart-title">Top 请求路径</div>
+              <table style="margin-top:2px"><tbody id="topPathsTable"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </section>
 
-<!-- ── Tab: LLM Logs ── -->
-<div id="tab-llm-logs" class="tab-content" style="display:none;padding:14px 24px">
-  <div class="section-title">LLM 调用日志（最近 24h） <span class="pill" id="llmLogCount">0 条</span></div>
-  <div class="log-filter">
-    <button class="btn active" data-llm-filter="FAILED" onclick="setLlmLogFilter('FAILED')">仅失败</button>
-    <button class="btn" data-llm-filter="ALL" onclick="setLlmLogFilter('ALL')">全部</button>
-    <button class="btn" onclick="fetchLlmLogs()">刷新</button>
-  </div>
-  <div class="log-panel" id="llmLogPanel">
-    <div class="loading">点击刷新加载...</div>
-  </div>
-</div>
+      <section class="panel">
+        <div class="panel-head"><h2>运行时状态</h2></div>
+        <div class="panel-body">
+          <div class="grid3">
+            <div class="stat">
+              <div class="stat-label">熔断器</div>
+              <div class="stat-value"><span class="pill info" id="cbBadge">--</span></div>
+              <div class="stat-meta" id="cbDetail">--</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">LLM 响应缓存</div>
+              <div class="stat-value"><span class="pill info" id="cacheBadge">--</span></div>
+              <div class="stat-meta" id="cacheDetail">--</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">慢查询</div>
+              <div class="stat-value"><span class="pill info" id="slowBadge">--</span></div>
+              <div class="stat-meta" id="slowDetail">--</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-<!-- ── Tab: App Logs ── -->
-<div id="tab-app-logs" class="tab-content" style="display:none;padding:14px 24px">
-  <div class="section-title">应用日志（内存 Ring Buffer） <span class="pill" id="appLogCount">0 条</span></div>
-  <div class="log-filter">
-    <button class="btn active" data-log-filter="ALL" onclick="setAppLogFilter('ALL')">全部</button>
-    <button class="btn" data-log-filter="ERROR" onclick="setAppLogFilter('ERROR')">ERROR</button>
-    <button class="btn" data-log-filter="WARNING" onclick="setAppLogFilter('WARNING')">WARNING</button>
-    <button class="btn" data-log-filter="INFO" onclick="setAppLogFilter('INFO')">INFO</button>
-    <button class="btn" onclick="fetchAppLogs()">刷新</button>
-  </div>
-  <div class="log-panel" id="appLogPanel">
-    <div class="loading">点击刷新加载...</div>
-  </div>
-</div>
+      <section class="panel">
+        <div class="panel-head"><h2>LLM 各场景调用</h2></div>
+        <div class="panel-body" style="padding:6px 10px 8px">
+          <table>
+            <thead><tr><th>场景</th><th class="num">完成</th><th class="num">失败</th><th class="num">Token</th><th class="num">成本</th></tr></thead>
+            <tbody id="llmSceneTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
 
-<!-- ── Tab: Web Vitals ── -->
-<div id="tab-web-vitals" class="tab-content" style="display:none;padding:14px 24px">
-  <div class="section-title">前端体验指标 <span class="pill" id="webVitalsMeta">--</span></div>
-  <div class="log-filter">
-    <button class="btn active" data-wv-nav="navigate" onclick="setWebVitalsNav('navigate')">首次加载</button>
-    <button class="btn" data-wv-nav="soft-navigation" onclick="setWebVitalsNav('soft-navigation')">软导航</button>
-    <button class="btn" data-wv-nav="all" onclick="setWebVitalsNav('all')">全部</button>
-    <select class="refresh-select" id="webVitalsHours" onchange="fetchWebVitals()">
-      <option value="1">最近 1 小时</option>
-      <option value="24" selected>最近 24 小时</option>
-      <option value="168">最近 7 天</option>
-      <option value="720">最近 30 天</option>
-    </select>
-    <button class="btn" onclick="fetchWebVitals()">刷新</button>
-  </div>
-  <div class="kpi-grid" style="padding:0">
-    <div class="kpi-card">
-      <div class="kpi-label">LCP p75</div>
-      <div class="kpi-value" id="wvLcp">--</div>
-      <div class="kpi-sub" id="wvLcpSub">--</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">INP p75</div>
-      <div class="kpi-value" id="wvInp">--</div>
-      <div class="kpi-sub" id="wvInpSub">--</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">CLS p75</div>
-      <div class="kpi-value" id="wvCls">--</div>
-      <div class="kpi-sub" id="wvClsSub">--</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">样本数</div>
-      <div class="kpi-value blue" id="wvSamples">--</div>
-      <div class="kpi-sub" id="wvSamplesSub">--</div>
-    </div>
-  </div>
-  <div class="section" style="padding:14px 0 0">
-    <div class="section-title">按路由拆解 <span class="pill">p75 · 差值由大到小</span></div>
-    <div class="chart-box">
-      <table>
-        <thead><tr><th>路由</th><th>指标</th><th style="text-align:right">p75</th><th style="text-align:right">样本</th><th>档位</th></tr></thead>
-        <tbody id="wvRouteTable"><tr><td colspan="5" class="loading">加载中...</td></tr></tbody>
-      </table>
-    </div>
-  </div>
+    <!-- LLM 日志 -->
+    <section class="content" id="tab-llm-logs" style="display:none">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>LLM 调用日志</h2>
+          <span class="panel-sub" id="llmLogCount">0 条</span>
+        </div>
+        <div class="panel-body">
+          <div class="log-filter">
+            <button class="btn" data-llm-filter="FAILED" onclick="setLlmLogFilter('FAILED')">仅失败</button>
+            <button class="btn" data-llm-filter="ALL" onclick="setLlmLogFilter('ALL')">全部</button>
+          </div>
+          <div class="log-panel" id="llmLogPanel"><div class="loading">点击刷新加载…</div></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- 应用日志 -->
+    <section class="content" id="tab-app-logs" style="display:none">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>应用日志</h2>
+          <span class="panel-sub" id="appLogCount">0 条</span>
+        </div>
+        <div class="panel-body">
+          <div class="log-filter">
+            <button class="btn" data-log-filter="ALL" onclick="setAppLogFilter('ALL')">全部</button>
+            <button class="btn" data-log-filter="ERROR" onclick="setAppLogFilter('ERROR')">ERROR</button>
+            <button class="btn" data-log-filter="WARNING" onclick="setAppLogFilter('WARNING')">WARNING</button>
+            <button class="btn" data-log-filter="INFO" onclick="setAppLogFilter('INFO')">INFO</button>
+          </div>
+          <div class="log-panel" id="appLogPanel"><div class="loading">点击刷新加载…</div></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- 前端体验 -->
+    <section class="content" id="tab-web-vitals" style="display:none">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>前端体验指标</h2>
+          <span class="panel-sub" id="webVitalsMeta">--</span>
+        </div>
+        <div class="panel-body">
+          <div class="log-filter">
+            <button class="btn" data-wv-nav="navigate" onclick="setWebVitalsNav('navigate')">首次加载</button>
+            <button class="btn" data-wv-nav="soft-navigation" onclick="setWebVitalsNav('soft-navigation')">软导航</button>
+            <button class="btn" data-wv-nav="all" onclick="setWebVitalsNav('all')">全部</button>
+            <button class="btn" onclick="fetchWebVitals()">刷新</button>
+          </div>
+          <div class="grid3" style="margin-bottom:14px">
+            <div class="stat">
+              <div class="stat-label">LCP p75</div>
+              <div class="stat-value" id="wvLcp">--</div>
+              <div class="stat-meta" id="wvLcpSub">--</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">INP p75</div>
+              <div class="stat-value" id="wvInp">--</div>
+              <div class="stat-meta" id="wvInpSub">--</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">CLS p75</div>
+              <div class="stat-value" id="wvCls">--</div>
+              <div class="stat-meta" id="wvClsSub">--</div>
+            </div>
+          </div>
+          <div class="detail-title">按路由拆解（p75）</div>
+          <table>
+            <thead><tr><th>路由</th><th>指标</th><th class="num">p75</th><th class="num">样本</th><th class="check-state">状态</th></tr></thead>
+            <tbody id="wvRouteTable"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
 </div>
 
 <script>
-const API = window.location.origin + '/api/v1/metrics/snapshot';
+const API_SNAPSHOT = window.location.origin + '/api/v1/metrics/snapshot';
 const API_HISTORY = window.location.origin + '/api/v1/metrics/history';
+const API_CHECKS = window.location.origin + '/api/v1/metrics/checks';
 const API_LOGS = window.location.origin + '/api/v1/metrics/logs';
 const API_LLM_LOGS = window.location.origin + '/api/v1/metrics/llm-logs';
 const API_WEB_VITALS = window.location.origin + '/api/v1/metrics/web-vitals/summary';
-let lastData = null;
-let refreshTimer = null;
-let currentRefreshMs = 10000;
-let isTabVisible = true;
+
+// 图表配色：语义优先，一个系列一个颜色且与状态对应
+const C = {
+  accent:'#FF6B35', accentSoft:'rgba(255,107,53,0.14)',
+  teal:'#00C9A7', tealSoft:'rgba(0,201,167,0.14)',
+  crit:'#EF4444', critSoft:'rgba(239,68,68,0.12)',
+  amber:'#D97706', amberSoft:'rgba(217,119,6,0.12)',
+  purple:'#8B5CF6', purpleSoft:'rgba(139,92,246,0.12)',
+  grid:'#E5E7EB', axis:'#5F6773', text:'#1A1A2E', faint:'#7B8391',
+};
+
 let activeTab = 'overview';
+let refreshTimer = null;
+let isTabVisible = !document.hidden;
+let lastData = null;
+let lastSeries = [];
+let lastChecks = [];
+let lastSummary = {};
 let llmLogFilter = 'FAILED';
 let appLogFilter = 'ALL';
 let webVitalsNav = 'navigate';
-let memHistory = [];
+let historyHours = 24;
 
-// ── Utilities ──
-function fmtNum(n){if(n==null||n===undefined)return'--';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
-function fmtCost(n){return n!=null?'$'+n.toFixed(4):'--'}
-function fmtMs(s){if(s==null||s===0)return'--';if(s<1)return(s*1000).toFixed(0)+'ms';return s.toFixed(2)+'s'}
+// ── 工具 ──
+function fmtNum(n){if(n==null||n===undefined)return'--';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(Math.round(n*100)/100)}
+// 延迟一律按毫秒入参，秒只是展示选择——别让「1.5 秒」被当成「1.5 毫秒」
+function fmtMs(ms){if(ms==null||ms===undefined)return'--';if(ms<1000)return ms.toFixed(ms<10?1:0)+'ms';return(ms/1000).toFixed(2)+'s'}
+function fmtCost(n){return n!=null?'$'+Number(n).toFixed(4):'--'}
+// 趋势图刻度：跟着体检项自己的单位走，别丢裸数字让人猜
+function fmtByUnit(unit,v){
+  if(v==null)return'--';
+  if(unit==='ms')return fmtMs(v);
+  if(unit==='%')return Number(v).toFixed(Math.abs(v)<10?2:1)+'%';
+  if(unit==='$')return fmtCost(v);
+  if(unit===' 次/小时')return Number(v).toFixed(1)+' 次/小时';
+  if(unit===' 次')return Math.round(v)+' 次';
+  if(unit===' req/s')return Number(v).toFixed(1)+' req/s';
+  return fmtNum(v);
+}
+function fmtMb(m){if(m==null)return'--';if(m>=1024)return(m/1024).toFixed(2)+'GB';return(m).toFixed(0)+'MB'}
 function fmtTime(s){if(!s)return'--';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);if(h>0)return h+'h '+m+'m';if(m>0)return m+'m '+sec+'s';return sec+'s'}
 function fmtClock(ts){if(!ts)return'--';return new Date(ts*1000).toLocaleTimeString('zh-CN',{hour12:false})}
-function fmtMb(mb){if(mb==null)return'--';if(mb>=1024)return(mb/1024).toFixed(1)+'GB';return mb.toFixed(0)+'MB'}
-function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escHtml(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function stateLabel(s){return s==='ok'?'正常':s==='warn'?'注意':s==='crit'?'严重':s==='info'?'—':'待定'}
 
-// Calculate rate (delta/s) from cumulative time series
-function calcRate(ts, key){
-  if(!ts||ts.length<2)return[];
-  const rates=[];
-  for(let i=1;i<ts.length;i++){
-    const dt=ts[i].ts-ts[i-1].ts;
-    if(dt<=0){rates.push({t:ts[i].ts,v:0});continue}
-    rates.push({t:ts[i].ts,v:(ts[i][key]-ts[i-1][key])/dt});
+// 累计值 → 速率
+function calcRate(series,key){
+  if(!series||series.length<2)return[];
+  const out=[];
+  for(let i=1;i<series.length;i++){
+    const dt=series[i].ts-series[i-1].ts;
+    if(dt<=0){out.push({t:series[i].ts,v:0});continue}
+    // 进程重启后累计值会归零，差值可能为负 → 不是真实速率，裁掉
+    const v=(series[i][key]-series[i-1][key])/dt;
+    out.push({t:series[i].ts,v:v>0?v:0});
   }
-  return rates;
+  return out;
 }
 
-// ── Sparkline renderer ──
-function drawSparkline(canvasId, data, color){
+// ── 体检项 ──
+// 判定（当前值 / 阈值 / 状态）由服务端 /api/v1/metrics/checks 给，
+// 前端不自己算状态——单位换算和「没有样本」的区分只有服务端知道。
+// 这里只负责：把结论画出来，以及把历史快照映射成对应的趋势序列。
+
+// ── 趋势序列（PG 历史快照 → 统一字段）──
+function seriesFromHistory(records){
+  return (records||[]).map(r=>({
+    ts:Date.parse(r.captured_at)/1000,
+    total_requests:r.http_total_requests||0,
+    total_errors_5xx:r.http_total_errors_5xx||0,
+    error_rate:r.http_error_rate==null?null:r.http_error_rate,
+    total_llm_calls:r.llm_total_calls||0,
+    total_llm_cost_usd:r.llm_total_cost_usd||0,
+    db_pool_checked_out:r.db_pool_checked_out||0,
+    db_pool_size:r.db_pool_size||0,
+    db_utilization:r.db_pool_utilization==null?null:r.db_pool_utilization,
+    p50:r.http_p50||0,p95:r.http_p95||0,p99:r.http_p99||0,
+    llm_p50:r.llm_p50||0,llm_p95:r.llm_p95||0,llm_p99:r.llm_p99||0,
+    llm_success_rate:r.llm_success_rate==null?null:r.llm_success_rate,
+  }));
+}
+
+// 各体检项的趋势序列。trend 键由服务端下发，这里只负责取对应那一列。
+// 趋势口径必须跟该项的当前值一致：错误率画比率（不是累计 5xx 个数），
+// 连接池画利用率（不是已借出连接数）——否则同一行里两个数字说的不是一回事。
+function trendFor(trendKey,series){
+  if(!trendKey||!series.length)return[];
+  const s=series;
+  switch(trendKey){
+    case 'errors': return s.map(p=>({t:p.ts,v:p.error_rate==null?0:p.error_rate}));
+    case 'p95': return s.map(p=>({t:p.ts,v:p.p95*1000}));
+    case 'llmok': return s.map(p=>({t:p.ts,v:p.llm_success_rate==null?null:p.llm_success_rate})).filter(p=>p.v!=null);
+    case 'db': return s.map(p=>({t:p.ts,v:p.db_utilization!=null?p.db_utilization:(p.db_pool_size?p.db_pool_checked_out/p.db_pool_size*100:0)}));
+    case 'reqrate': return calcRate(s,'total_requests');
+    case 'cost': return s.map(p=>({t:p.ts,v:p.total_llm_cost_usd}));
+    default: return [];
+  }
+}
+
+// ── 数据获取 ──
+async function fetchJSON(url){
+  const r=await fetch(url);
+  if(!r.ok)throw new Error(url+' -> '+r.status);
+  return r.json();
+}
+
+async function loadOverview(){
+  try{
+    const [snap,hist,checks]=await Promise.all([
+      fetchJSON(API_SNAPSHOT),
+      fetchJSON(API_HISTORY+'?hours='+historyHours+'&limit=1000'),
+      fetchJSON(API_CHECKS),
+    ]);
+    lastData=snap;
+    lastSeries=seriesFromHistory(hist.records);
+    lastChecks=checks.checks||[];
+    lastSummary=checks.summary||{};
+    renderOverview(snap);
+  }catch(err){
+    document.getElementById('verdictTitle').textContent='读取失败';
+    document.getElementById('verdictMeta').textContent=err.message;
+    document.getElementById('verdict').dataset.state='crit';
+  }
+  document.getElementById('lastUpdate').textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});
+}
+
+function renderOverview(data){
+  const snap=data.snapshot||{};
+  const up=Math.floor(snap.uptime_seconds||0);
+  document.getElementById('uptime').textContent=up>0?('运行 '+fmtTime(up)):'刚启动';
+
+  renderVerdict();
+  renderChecks();
+  renderCharts(data);
+  renderStatusCards(data);
+  renderTopPaths(data);
+  renderLlmScenes(data);
+}
+
+function renderVerdict(){
+  const el=document.getElementById('verdict');
+  const acts=document.getElementById('verdictActs');
+  acts.innerHTML='';
+  const problems=lastChecks.filter(c=>c.state==='warn'||c.state==='crit');
+  const pending=!lastSeries.length;
+  if(pending){
+    el.dataset.state='pending';
+    document.getElementById('verdictTitle').textContent='尚无采样快照';
+    const next=new Date(Date.now()+60000);
+    document.getElementById('verdictMeta').textContent='监控快照每 60 秒落一次库；下一次约 ' + next.toLocaleTimeString('zh-CN',{hour12:false}) + '。实时值仍可看下方体检表。';
+    return;
+  }
+  if(!problems.length){
+    el.dataset.state='ok';
+    const ok=lastSummary.ok||0;
+    const noData=lastSummary.no_data||0;
+    const title=ok?('系统正常 · '+ok+' 项检查通过'):'系统正常';
+    document.getElementById('verdictTitle').textContent=noData?(title+`，${noData} 项暂无数据`):title;
+    document.getElementById('verdictMeta').textContent=noData
+      ?('采样自最近 '+historyHours+' 小时；标「—」的项还没有样本，不计入通过。')
+      :('采样自最近 '+historyHours+' 小时；判定依据是下方每项的当前值与阈值。');
+    return;
+  }
+  const crit=problems.filter(c=>c.state==='crit');
+  const warn=problems.filter(c=>c.state==='warn');
+  el.dataset.state=crit.length?'crit':'warn';
+  const parts=[];
+  if(crit.length)parts.push(crit.length+' 项严重');
+  if(warn.length)parts.push(warn.length+' 项注意');
+  document.getElementById('verdictTitle').textContent=parts.join('、');
+  document.getElementById('verdictMeta').textContent='超标项：'+problems.map(c=>c.label).join('、');
+  problems.slice(0,3).forEach(c=>{
+    const b=document.createElement('button');
+    b.className='verdict-act';
+    b.textContent=c.label;
+    b.onclick=()=>openDetail(c.key,true);
+    acts.appendChild(b);
+  });
+}
+
+function renderChecks(){
+  const body=document.getElementById('checkBody');
+  body.innerHTML='';
+  lastChecks.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.className='check-row';
+    tr.dataset.key=c.key;
+    tr.innerHTML=
+      '<td><div class="check-name">'+escHtml(c.label)+'</div><div class="check-sub">'+escHtml(c.hint)+'</div></td>'+
+      '<td class="num"><div class="check-value">'+escHtml(c.display)+'</div></td>'+
+      '<td class="check-thr">'+escHtml(c.threshold)+'</td>'+
+      '<td class="check-spark"><canvas id="spark_'+c.key+'"></canvas></td>'+
+      '<td class="check-state"><span class="pill '+c.state+'">'+stateLabel(c.state)+'</span></td>';
+
+    const detail=document.createElement('tr');
+    detail.className='check-detail';
+    detail.dataset.key=c.key;
+    detail.dataset.open='0';
+    detail.style.display='none';
+    detail.innerHTML=
+      '<td colspan="5"><div class="detail-grid">'+
+        '<div><div class="detail-title">'+escHtml(c.label)+' 趋势</div><canvas class="detail-canvas" id="detail_'+c.key+'"></canvas></div>'+
+        '<div><div class="detail-title">相关日志</div><div class="detail-logs" id="logs_'+c.key+'"><div class="detail-empty">展开后加载…</div></div></div>'+
+      '</div></td>';
+
+    tr.onclick=()=>openDetail(c.key);
+    body.appendChild(tr);
+    body.appendChild(detail);
+
+    const spark=trendFor(c.trend,lastSeries);
+    if(spark.length>1)drawSparkline('spark_'+c.key,spark,c.state==='crit'?C.crit:c.state==='warn'?C.accent:C.faint);
+  });
+
+  const parts=[];
+  const crit=lastSummary.crit||0,warn=lastSummary.warn||0,ok=lastSummary.ok||0,noData=lastSummary.no_data||0;
+  if(crit)parts.push(crit+' 项严重');
+  if(warn)parts.push(warn+' 项注意');
+  if(!crit&&!warn)parts.push(ok+' 项正常');
+  if(noData)parts.push(noData+' 项暂无数据');
+  document.getElementById('checkSummary').textContent=parts.join(' · ')+'　共 '+lastChecks.length+' 项';
+}
+
+async function openDetail(key,scroll){
+  const detail=document.querySelector('.check-detail[data-key="'+key+'"]');
+  if(!detail)return;
+  if(detail.dataset.open==='1'){
+    detail.dataset.open='0';detail.style.display='none';
+    const row=document.querySelector('.check-row[data-key="'+key+'"]');
+    if(row)row.classList.remove('is-open');
+    return;
+  }
+  document.querySelectorAll('.check-detail').forEach(r=>{r.dataset.open='0';r.style.display='none'});
+  document.querySelectorAll('.check-row').forEach(r=>r.classList.remove('is-open'));
+  detail.dataset.open='1';detail.style.display='table-row';
+  const row=document.querySelector('.check-row[data-key="'+key+'"]');
+  if(row)row.classList.add('is-open');
+
+  const c=lastChecks.find(x=>x.key===key);
+  if(!c)return;
+  const spark=trendFor(c.trend,lastSeries);
+  const canvas=document.getElementById('detail_'+key);
+  if(canvas)drawDetail(canvas,spark,c);
+  await fillLogs(key,c);
+  if(scroll&&row)row.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+async function fillLogs(key,c){
+  const box=document.getElementById('logs_'+key);
+  if(!box)return;
+  box.innerHTML='<div class="detail-empty">加载中…</div>';
+  try{
+    const url=c.logs==='llm'?API_LLM_LOGS+'?status=ALL&limit=20':API_LOGS+'?level=ALL&limit=20';
+    const data=await fetchJSON(url);
+    const rows=c.logs==='llm'?(data.logs||[]):(data.entries||[]);
+    if(!rows.length){box.innerHTML='<div class="detail-empty">窗口内没有相关日志</div>';return}
+    box.innerHTML=rows.slice(0,20).map(r=>{
+      if(c.logs==='llm'){
+        const t=r.created_at?new Date(r.created_at).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+        return '<div>'+escHtml(t)+'  '+escHtml(r.scene||'')+'  '+escHtml(r.status||'')+'  '+
+          escHtml((r.error||'').slice(0,120)||'ok')+'</div>';
+      }
+      const t=r.ts?new Date(r.ts).toLocaleTimeString('zh-CN',{hour12:false}):'--';
+      return '<div>'+escHtml(t)+'  '+escHtml(r.level||'')+'  '+escHtml(r.logger||'')+'  '+escHtml(r.message||'')+'</div>';
+    }).join('');
+  }catch(err){
+    box.innerHTML='<div class="detail-empty">日志读取失败：'+escHtml(err.message)+'</div>';
+  }
+}
+
+// ── 迷你趋势线 ──
+function drawSparkline(canvasId,data,color){
   const c=document.getElementById(canvasId);
   if(!c)return;
   const ctx=c.getContext('2d');
   const dpr=window.devicePixelRatio||1;
-  const W=c.offsetWidth||80,H=c.offsetHeight||30;
+  const W=c.offsetWidth||132,H=c.offsetHeight||22;
   c.width=W*dpr;c.height=H*dpr;
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   if(!data||data.length<2){
-    ctx.fillStyle='#4a5b7e';ctx.font='9px monospace';ctx.textAlign='center';
-    ctx.fillText('···',W/2,H/2);return;
+    ctx.fillStyle=C.faint;ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('—',W/2,H/2+3);return;
   }
   let min=Infinity,max=-Infinity;
-  for(const d of data){if(d.v<min)min=d.v;if(d.v>max)max=d.v}
-  if(min===max){min-=1;max+=1}
+  for(const d of data){if(d.v==null)continue;if(d.v<min)min=d.v;if(d.v>max)max=d.v}
+  if(min===max){min=Math.max(0,min-1);max+=1}
   const pad=2;
-  const grad=ctx.createLinearGradient(0,0,0,H);
-  grad.addColorStop(0,color+'40');
-  grad.addColorStop(1,color+'00');
-  ctx.beginPath();
-  for(let i=0;i<data.length;i++){
-    const x=pad+(i/(data.length-1))*(W-2*pad);
-    const y=pad+(1-(data[i].v-min)/(max-min))*(H-2*pad);
-    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-  }
-  ctx.lineTo(W-pad,H-pad);
-  ctx.lineTo(pad,H-pad);
-  ctx.closePath();
-  ctx.fillStyle=grad;ctx.fill();
   ctx.beginPath();
   for(let i=0;i<data.length;i++){
     const x=pad+(i/(data.length-1))*(W-2*pad);
@@ -448,20 +722,62 @@ function drawSparkline(canvasId, data, color){
   ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
 }
 
-// ── Interactive Chart Engine ──
+// ── 详情大图（单线，无交互）──
+function drawDetail(canvas,data,c){
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||360,H=canvas.offsetHeight||120;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  const pad={top:10,right:10,bottom:18,left:54};
+  const cw=W-pad.left-pad.right,ch=H-pad.top-pad.bottom;
+  if(!data||data.length<2){
+    ctx.fillStyle=C.faint;ctx.font='12px sans-serif';ctx.textAlign='center';
+    ctx.fillText('该窗口内没有可画的数据',W/2,H/2);return;
+  }
+  let min=Infinity,max=-Infinity;
+  for(const p of data){if(p.v==null)continue;if(p.v<min)min=p.v;if(p.v>max)max=p.v}
+  if(min===max){min=Math.max(0,min-1);max+=1}
+  const range=(max-min)||1;
+  // 延迟、速率这类不可能为负的量，坐标轴不要因为留白而伸到 0 以下
+  min=min>=0?Math.max(0,min-range*0.1):min-range*0.1;
+  max+=range*0.1;
+  ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.setLineDash([3,4]);
+  ctx.font='10px monospace';ctx.fillStyle=C.axis;ctx.textAlign='right';
+  for(let i=0;i<=3;i++){
+    const y=pad.top+(ch/3)*i;
+    ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cw,y);ctx.stroke();
+    ctx.fillText(fmtByUnit(c.unit,max-((max-min)/3)*i),pad.left-6,y+3);
+  }
+  ctx.setLineDash([]);
+  const color=c.key==='errrate'||c.key==='p95'||c.key==='req'||c.key==='cost'?C.accent:(c.key==='db'?C.purple:C.teal);
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<data.length;i++){
+    const p=data[i];if(p.v==null)continue;
+    const x=pad.left+(i/(data.length-1))*cw;
+    const y=pad.top+(1-(p.v-min)/(max-min))*ch;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=C.axis;ctx.font='10px monospace';ctx.textAlign='center';
+  ctx.fillText(fmtClock(data[0].ts),pad.left+10,H-4);
+  ctx.fillText(fmtClock(data[data.length-1].ts),pad.left+cw-10,H-4);
+}
+
+// ── 交互式图表引擎 ──
 class InteractiveChart{
   constructor(canvasId,tooltipId,options){
     this.canvas=document.getElementById(canvasId);
     this.tooltip=document.getElementById(tooltipId);
     this.ctx=this.canvas.getContext('2d');
-    this.opts=Object.assign({leftAxis:true,rightAxis:false,pad:{top:12,right:12,bottom:22,left:52}},options);
+    this.opts=Object.assign({leftAxis:true,rightAxis:false,pad:{top:14,right:26,bottom:22,left:52}},options);
     this.series=[];
     this.hoverIdx=-1;
     this.hoverX=null;
     this.bindEvents();
-    if(window.ResizeObserver){
-      new ResizeObserver(()=>this.render()).observe(this.canvas.parentElement);
-    }
+    if(window.ResizeObserver){new ResizeObserver(()=>this.render()).observe(this.canvas.parentElement)}
   }
   bindEvents(){
     this.canvas.addEventListener('mousemove',(e)=>{
@@ -493,61 +809,57 @@ class InteractiveChart{
     }
     this.hoverIdx=best;
   }
-  setData(series){
-    this.series=series||[];
-    this.render();
-  }
+  setData(series){this.series=series||[];this.render()}
   render(){
     const ctx=this.ctx,dpr=window.devicePixelRatio||1;
-    const W=this.canvas.offsetWidth,H=this.canvas.offsetHeight||200;
+    const W=this.canvas.offsetWidth,H=this.canvas.offsetHeight||160;
     this.canvas.width=W*dpr;this.canvas.height=H*dpr;
     ctx.scale(dpr,dpr);
     ctx.clearRect(0,0,W,H);
     const pad=this.opts.pad;
     const cw=W-pad.left-pad.right,ch=H-pad.top-pad.bottom;
     if(!this.series.length||this.series[0].data.length===0){
-      ctx.fillStyle='#4a5b7e';ctx.font='13px sans-serif';ctx.textAlign='center';
-      ctx.fillText('暂无数据（等待采样中...）',W/2,H/2);return;
+      ctx.fillStyle=C.faint;ctx.font='12px sans-serif';ctx.textAlign='center';
+      ctx.fillText('该窗口内没有采样数据',W/2,H/2);return;
     }
     const hasRight=this.opts.rightAxis&&this.series.some(s=>s.axis==='right');
     let lMin=Infinity,lMax=-Infinity,rMin=Infinity,rMax=-Infinity;
     for(const s of this.series){
       for(const p of s.data){
-        if(s.axis==='right'){
-          if(p.v<rMin)rMin=p.v;if(p.v>rMax)rMax=p.v;
-        }else{
-          if(p.v<lMin)lMin=p.v;if(p.v>lMax)lMax=p.v;
-        }
+        if(s.axis==='right'){if(p.v<rMin)rMin=p.v;if(p.v>rMax)rMax=p.v}
+        else{if(p.v<lMin)lMin=p.v;if(p.v>lMax)lMax=p.v}
       }
     }
-    if(lMin===lMax){lMin-=1;lMax+=1}
-    if(rMin===rMax){rMin-=1;rMax+=1}
+    // 整条线都在 0 上时别把坐标轴拉到 -1..1：那会让「没有量」看起来像「有正有负」
+    if(lMin===lMax){lMin=Math.max(0,lMin-1);lMax+=1}
+    if(rMin===rMax){rMin=Math.max(0,rMin-1);rMax+=1}
     const lRange=lMax-lMin,rRange=rMax-rMin;
-    lMin-=lRange*0.1;lMax+=lRange*0.1;
-    rMin-=rRange*0.1;rMax+=rRange*0.1;
+    // 速率、计数这类不可能为负的量，坐标轴不要因为留白而伸到 0 以下
+    lMin=lMin>=0?Math.max(0,lMin-lRange*0.1):lMin-lRange*0.1;
+    lMax+=lRange*0.1;
+    rMin=rMin>=0?Math.max(0,rMin-rRange*0.1):rMin-rRange*0.1;
+    rMax+=rRange*0.1;
     const data=this.series[0].data;
     const minTs=data[0].t,maxTs=data[data.length-1].t;
     const tsRange=(maxTs-minTs)||1;
-    ctx.strokeStyle='#1c2840';ctx.lineWidth=0.5;
-    ctx.font='10px monospace';ctx.fillStyle='#4a5b7e';
-    ctx.textAlign='right';
+    ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.setLineDash([3,4]);
+    ctx.font='10px monospace';ctx.fillStyle=C.axis;ctx.textAlign='right';
+    const lFmt=this.opts.axisFmt||fmtNum;
+    const rFmt=this.opts.rightAxisFmt||this.opts.axisFmt||fmtNum;
     for(let i=0;i<=4;i++){
       const y=pad.top+(ch/4)*i;
-      ctx.beginPath();ctx.setLineDash([3,4]);ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cw,y);ctx.stroke();
-      const lVal=lMax-((lMax-lMin)/4)*i;
-      ctx.fillText(fmtNum(lVal),pad.left-6,y+3);
+      ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cw,y);ctx.stroke();
+      ctx.fillText(lFmt(lMax-((lMax-lMin)/4)*i),pad.left-6,y+3);
     }
     ctx.setLineDash([]);
     if(hasRight){
       ctx.textAlign='left';
       for(let i=0;i<=4;i++){
         const y=pad.top+(ch/4)*i;
-        const rVal=rMax-((rMax-rMin)/4)*i;
-        ctx.fillStyle='#4a5b7e';
-        ctx.fillText(fmtNum(rVal),pad.left+cw+6,y+3);
+        ctx.fillText(rFmt(rMax-((rMax-rMin)/4)*i),pad.left+cw+6,y+3);
       }
     }
-    ctx.textAlign='center';ctx.fillStyle='#4a5b7e';
+    ctx.textAlign='center';
     for(let i=0;i<=4;i++){
       const x=pad.left+(cw/4)*i;
       const ts=minTs+(tsRange/4)*i;
@@ -559,7 +871,7 @@ class InteractiveChart{
       if(s.fill){
         const grad=ctx.createLinearGradient(0,pad.top,0,pad.top+ch);
         grad.addColorStop(0,s.fill);
-        grad.addColorStop(1,'rgba(0,0,0,0)');
+        grad.addColorStop(1,'rgba(255,255,255,0)');
         ctx.beginPath();
         for(let i=0;i<s.data.length;i++){
           const p=s.data[i];
@@ -584,7 +896,7 @@ class InteractiveChart{
     if(this.hoverIdx>=0&&this.hoverIdx<data.length){
       const p=data[this.hoverIdx];
       const hx=pad.left+((p.t-minTs)/tsRange)*cw;
-      ctx.strokeStyle='rgba(124,141,176,0.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+      ctx.strokeStyle='rgba(156,163,175,0.55)';ctx.lineWidth=1;ctx.setLineDash([4,3]);
       ctx.beginPath();ctx.moveTo(hx,pad.top);ctx.lineTo(hx,pad.top+ch);ctx.stroke();
       ctx.setLineDash([]);
       for(const s of this.series){
@@ -595,7 +907,7 @@ class InteractiveChart{
         const y=pad.top+(1-(sp.v-dMin)/dRange)*ch;
         ctx.fillStyle=s.color;
         ctx.beginPath();ctx.arc(hx,y,4,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle='#0b1120';ctx.lineWidth=2;ctx.stroke();
+        ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
       }
       if(this.tooltip){
         let html='<div class="tt-time">'+fmtClock(p.t)+'</div>';
@@ -614,232 +926,120 @@ class InteractiveChart{
         this.tooltip.style.top=(pad.top+4)+'px';
       }
     }
-    ctx.font='11px sans-serif';ctx.textAlign='left';
-    let lx=pad.left+8;
+    ctx.font='10.5px sans-serif';ctx.textAlign='left';
+    let lx=pad.left+6;
     for(const s of this.series){
       ctx.fillStyle=s.color;
-      ctx.fillRect(lx,pad.top+2,14,3);
-      ctx.fillStyle='#7c8db0';
-      ctx.fillText(s.label,lx+18,pad.top+7);
-      lx+=ctx.measureText(s.label).width+44;
+      ctx.fillRect(lx,pad.top+2,12,3);
+      ctx.fillStyle=C.axis;
+      ctx.fillText(s.label,lx+16,pad.top+7);
+      lx+=ctx.measureText(s.label).width+38;
     }
   }
 }
 
-// ── Chart instances ──
 const chartReq=new InteractiveChart('chartRequests','ttRequests',{leftAxis:true});
-const chartLlm=new InteractiveChart('chartLlm','ttLlm',{leftAxis:true,rightAxis:true});
-const chartLat=new InteractiveChart('chartLatency','ttLatency',{leftAxis:true});
+// 双轴图的右侧刻度要放得下，否则 "-0.12" 这种标签会被画布边缘截断
+const chartLlm=new InteractiveChart('chartLlm','ttLlm',{leftAxis:true,rightAxis:true,pad:{top:14,right:52,bottom:22,left:52}});
+const chartLat=new InteractiveChart('chartLatency','ttLatency',{leftAxis:true,axisFmt:v=>fmtMs(v*1000)});
 const chartDb=new InteractiveChart('chartDbPool','ttDbPool',{leftAxis:true});
-const chartLlmLat=new InteractiveChart('chartLlmLatency','ttLlmLatency',{leftAxis:true});
+const chartLlmLat=new InteractiveChart('chartLlmLatency','ttLlmLatency',{leftAxis:true,axisFmt:v=>fmtMs(v*1000)});
 
-// ── Data fetching ──
-async function fetchJSON(url){
-  const r=await fetch(url);
-  if(!r.ok)throw new Error(url+' -> '+r.status);
-  return r.json();
-}
+function renderCharts(data){
+  const s=lastSeries;
+  document.getElementById('trendWindow').textContent='最近 '+historyHours+' 小时 · 每 60 秒一个采样点';
 
-function fetchData(){
-  fetchJSON(API).then(d=>{
-    lastData=d;renderData(d);
-  }).catch(err=>{
-    document.getElementById('lastUpdate').textContent='获取失败: '+err.message;
-    document.getElementById('statusDot').className='status-dot err';
-  });
-}
+  const reqRates=calcRate(s,'total_requests');
+  const errRates=calcRate(s,'total_errors_5xx');
+  chartReq.setData([
+    {label:'请求/s',color:C.accent,fill:C.accentSoft,data:reqRates,fmt:v=>v.toFixed(2)},
+    {label:'错误/s',color:C.crit,data:errRates,fmt:v=>v.toFixed(2)},
+  ]);
 
-function renderData(data){
-  const snap=data.snapshot||{};
-  const ts=data.timeseries||[];
-  const cb=data.circuit_breaker||{};
-  const cache=data.llm_cache||{};
-  const slow=data.slow_queries||0;
-  const proc=data.process||{};
-  const rateMode=document.getElementById('rateMode').checked;
+  const llmRates=calcRate(s,'total_llm_calls');
+  const costRates=calcRate(s,'total_llm_cost_usd');
+  chartLlm.setData([
+    {label:'LLM 调用/s',color:C.teal,fill:C.tealSoft,data:llmRates,fmt:v=>v.toFixed(2)},
+    {label:'成本/s (USD)',color:C.amber,axis:'right',data:costRates,fmt:v=>'$'+v.toFixed(4)},
+  ]);
 
-  // Status dot
-  const errRate=snap.http?.error_rate||0;
-  const dot=document.getElementById('statusDot');
-  if(errRate>5)dot.className='status-dot err';
-  else if(errRate>1||cb.state==='OPEN')dot.className='status-dot warn';
-  else dot.className='status-dot';
-
-  // KPI cards
-  document.getElementById('kpiTotalReq').textContent=fmtNum(snap.http?.total_requests);
-  const reqRate=ts.length>=2?(ts[ts.length-1].total_requests-(ts[ts.length-2]?.total_requests||0))/Math.max(ts[ts.length-1].ts-ts[ts.length-2].ts,1):0;
-  document.getElementById('kpiReqRate').textContent=reqRate.toFixed(1)+' req/s';
-
-  const errEl=document.getElementById('kpiErrorRate');
-  errEl.textContent=(snap.http?.error_rate??0).toFixed(2)+'%';
-  errEl.className='kpi-value '+(errRate>5?'red':errRate>1?'amber':'green');
-  document.getElementById('kpiErrors').textContent='5xx: '+(snap.http?.total_errors_5xx||0);
-
-  const lat=snap.http?.latency||{};
-  document.getElementById('kpiP95').textContent=fmtMs(lat.p95);
-  document.getElementById('kpiLatencySub').textContent='P50: '+fmtMs(lat.p50)+' / P99: '+fmtMs(lat.p99);
-
-  document.getElementById('kpiLlmCalls').textContent=fmtNum(snap.llm?.total_calls);
-  document.getElementById('kpiLlmSuccess').textContent='成功率: '+(snap.llm?.success_rate??0).toFixed(1)+'%';
-  document.getElementById('kpiLlmCost').textContent=fmtCost(snap.llm?.total_cost_usd);
-  document.getElementById('kpiLlmTokens').textContent='Token: '+fmtNum((snap.llm?.total_input_tokens||0)+(snap.llm?.total_output_tokens||0));
-  document.getElementById('kpiDbPool').textContent=(snap.db_pool?.checked_out||0)+' / '+(snap.db_pool?.size||0);
-  document.getElementById('kpiDbUtil').textContent='利用率: '+(snap.db_pool?.utilization??0).toFixed(0)+'%';
-
-  // Process metrics
-  const rssMb=proc.process_rss_mb||0;
-  document.getElementById('kpiMem').textContent=fmtMb(rssMb);
-  document.getElementById('kpiCpu').textContent='CPU: '+(proc.process_cpu_user_s||0).toFixed(1)+'s user / '+(proc.process_cpu_sys_s||0).toFixed(1)+'s sys';
-  // Track memory history for sparkline
-  if(rssMb>0){
-    memHistory.push({t:Date.now()/1000,v:rssMb});
-    if(memHistory.length>30)memHistory.shift();
-  }
-
-  document.getElementById('uptime').textContent='运行时间: '+fmtTime(snap.uptime_seconds);
-  document.getElementById('lastUpdate').textContent='最后更新: '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
-
-  // Circuit breaker
-  const cbBadge=document.getElementById('cbBadge');
-  cbBadge.textContent=cb.state||'UNKNOWN';
-  cbBadge.className='badge '+(cb.state==='CLOSED'?'closed':cb.state==='OPEN'?'open':'half');
-  document.getElementById('cbDetail').textContent='失败: '+(cb.failure_count||0)+'/'+(cb.failure_threshold||5);
-
-  // Cache
-  const cacheBadge=document.getElementById('cacheBadge');
-  const hitRate=cache.hit_rate||0;
-  cacheBadge.textContent=hitRate>0.3?'有效':hitRate>0?'低':'无';
-  cacheBadge.className='badge '+(hitRate>0.3?'ok':hitRate>0?'warn':'err');
-  document.getElementById('cacheDetail').textContent='命中: '+(cache.hits||0)+'/'+((cache.hits||0)+(cache.misses||0))+' ('+(hitRate*100).toFixed(1)+'%)';
-
-  // Slow queries
-  const slowBadge=document.getElementById('slowBadge');
-  slowBadge.textContent=slow>50?'高':slow>10?'中':'正常';
-  slowBadge.className='badge '+(slow>50?'err':slow>10?'warn':'ok');
-  document.getElementById('slowDetail').textContent=slow+' 次';
-
-  // Top paths
-  const topPaths=snap.http?.top_paths||[];
-  const tpTable=document.getElementById('topPathsTable');
-  tpTable.innerHTML=topPaths.length?topPaths.map(p=>'<tr><td>'+escHtml(p.path)+'</td><td class="num">'+p.count+'</td></tr>').join(''):'<tr><td colspan="2" style="text-align:center;color:#4a5b7e">暂无数据</td></tr>';
-
-  // LLM scene table
-  const scenes=snap.llm?.by_scene||{};
-  let sceneHtml='';
-  for(const[scene,d]of Object.entries(scenes)){
-    sceneHtml+='<tr><td>'+escHtml(scene)+'</td><td class="num">'+(d.done||0)+'</td><td class="num">'+(d.failed||0)+'</td><td class="num">'+fmtNum(d.tokens||0)+'</td><td class="num">'+fmtCost(d.cost||0)+'</td><td class="num">--</td></tr>';
-  }
-  document.getElementById('llmSceneTable').innerHTML=sceneHtml||'<tr><td colspan="6" style="text-align:center;color:#4a5b7e">暂无数据</td></tr>';
-
-  // Sparklines
-  const tsReq=ts.map(p=>({t:p.ts,v:p.total_requests}));
-  const tsErr=ts.map(p=>({t:p.ts,v:p.total_errors_5xx}));
-  const tsLlm=ts.map(p=>({t:p.ts,v:p.total_llm_calls}));
-  const tsCost=ts.map(p=>({t:p.ts,v:p.total_llm_cost_usd}));
-  const tsDb=ts.map(p=>({t:p.ts,v:p.db_pool_checked_out}));
-  const tsReqRate=calcRate(ts,'total_requests');
-  drawSparkline('sparkReq',tsReqRate,'#3b82f6');
-  drawSparkline('sparkErr',tsErr,'#ef4444');
-  drawSparkline('sparkLat',tsReqRate,'#06b6d4');
-  drawSparkline('sparkLlm',tsLlm,'#22c55e');
-  drawSparkline('sparkCost',tsCost,'#f59e0b');
-  drawSparkline('sparkDb',tsDb,'#a855f7');
-  drawSparkline('sparkMem',memHistory,'#ec4899');
-
-  // ── Main charts ──
-  if(rateMode){
-    const reqRates=calcRate(ts,'total_requests');
-    const errRates=calcRate(ts,'total_errors_5xx');
-    chartReq.setData([
-      {label:'请求/s',color:'#3b82f6',fill:'rgba(59,130,246,0.15)',data:reqRates,fmt:v=>v.toFixed(1)},
-      {label:'错误/s',color:'#ef4444',data:errRates,fmt:v=>v.toFixed(1)},
-    ]);
-    const llmRates=calcRate(ts,'total_llm_calls');
-    const costRates=calcRate(ts,'total_llm_cost_usd');
-    chartLlm.setData([
-      {label:'LLM 调用/s',color:'#22c55e',fill:'rgba(34,197,94,0.15)',data:llmRates,fmt:v=>v.toFixed(2)},
-      {label:'成本/s (USD)',color:'#f59e0b',axis:'right',data:costRates,fmt:v=>'$'+v.toFixed(4)},
-    ]);
-  }else{
-    chartReq.setData([
-      {label:'请求总数',color:'#3b82f6',fill:'rgba(59,130,246,0.15)',data:ts.map(p=>({t:p.ts,v:p.total_requests}))},
-      {label:'5xx 错误',color:'#ef4444',data:ts.map(p=>({t:p.ts,v:p.total_errors_5xx}))},
-    ]);
-    chartLlm.setData([
-      {label:'LLM 调用',color:'#22c55e',fill:'rgba(34,197,94,0.15)',data:ts.map(p=>({t:p.ts,v:p.total_llm_calls}))},
-      {label:'成本 (USD)',color:'#f59e0b',axis:'right',data:ts.map(p=>({t:p.ts,v:p.total_llm_cost_usd})),fmt:v=>'$'+v.toFixed(4)},
-    ]);
-  }
+  chartLat.setData([
+    {label:'P50',color:C.teal,data:s.map(p=>({t:p.ts,v:p.p50})),fmt:v=>fmtMs(v*1000)},
+    {label:'P95',color:C.accent,data:s.map(p=>({t:p.ts,v:p.p95})),fmt:v=>fmtMs(v*1000)},
+    {label:'P99',color:C.crit,data:s.map(p=>({t:p.ts,v:p.p99})),fmt:v=>fmtMs(v*1000)},
+  ]);
 
   chartDb.setData([
-    {label:'已借出',color:'#a855f7',fill:'rgba(168,85,247,0.15)',data:ts.map(p=>({t:p.ts,v:p.db_pool_checked_out}))},
-    {label:'池大小',color:'#4a5b7e',data:ts.map(p=>({t:p.ts,v:p.db_pool_size}))},
+    {label:'已借出',color:C.purple,fill:C.purpleSoft,data:s.map(p=>({t:p.ts,v:p.db_pool_checked_out}))},
+    {label:'池大小',color:C.faint,data:s.map(p=>({t:p.ts,v:p.db_pool_size}))},
   ]);
 
-  const latSnap=snap.http?.latency||{};
-  const llmLatSnap=snap.llm?.latency||{};
-  const reqRateTs=calcRate(ts,'total_requests');
-  chartLat.setData([
-    {label:'P50 ('+fmtMs(latSnap.p50)+')',color:'#22c55e',data:reqRateTs.map(p=>({t:p.t,v:latSnap.p50||0})),fmt:v=>fmtMs(v)},
-    {label:'P95 ('+fmtMs(latSnap.p95)+')',color:'#f59e0b',data:reqRateTs.map(p=>({t:p.t,v:latSnap.p95||0})),fmt:v=>fmtMs(v)},
-    {label:'P99 ('+fmtMs(latSnap.p99)+')',color:'#ef4444',data:reqRateTs.map(p=>({t:p.t,v:latSnap.p99||0})),fmt:v=>fmtMs(v)},
-  ]);
   chartLlmLat.setData([
-    {label:'P50 ('+fmtMs(llmLatSnap.p50)+')',color:'#22c55e',data:reqRateTs.map(p=>({t:p.t,v:llmLatSnap.p50||0})),fmt:v=>fmtMs(v)},
-    {label:'P95 ('+fmtMs(llmLatSnap.p95)+')',color:'#f59e0b',data:reqRateTs.map(p=>({t:p.t,v:llmLatSnap.p95||0})),fmt:v=>fmtMs(v)},
-    {label:'P99 ('+fmtMs(llmLatSnap.p99)+')',color:'#ef4444',data:reqRateTs.map(p=>({t:p.t,v:llmLatSnap.p99||0})),fmt:v=>fmtMs(v)},
+    {label:'P50',color:C.teal,data:s.map(p=>({t:p.ts,v:p.llm_p50})),fmt:v=>fmtMs(v*1000)},
+    {label:'P95',color:C.accent,data:s.map(p=>({t:p.ts,v:p.llm_p95})),fmt:v=>fmtMs(v*1000)},
+    {label:'P99',color:C.crit,data:s.map(p=>({t:p.ts,v:p.llm_p99})),fmt:v=>fmtMs(v*1000)},
   ]);
 }
 
-// ── Auto refresh with Page Visibility ──
-function startAutoRefresh(){
-  if(refreshTimer)clearInterval(refreshTimer);
-  if(currentRefreshMs<=0)return; // 关闭
-  refreshTimer=setInterval(()=>{
-    if(document.hidden||!isTabVisible)return; // 标签页隐藏时暂停
-    if(activeTab==='overview')fetchData();
-  },currentRefreshMs);
+function findCheck(key){
+  return lastChecks.find(c=>c.key===key);
 }
 
-document.getElementById('refreshInterval').addEventListener('change',(e)=>{
-  currentRefreshMs=parseInt(e.target.value);
-  startAutoRefresh();
-  if(currentRefreshMs>0&&activeTab==='overview')fetchData();
-});
+// 运行时状态卡直接用服务端的判定结论，不在前端再抄一份阈值与状态映射。
+function renderStatusCards(data){
+  const cb=findCheck('cb');
+  const cbBadge=document.getElementById('cbBadge');
+  cbBadge.textContent=cb?cb.display:'—';
+  cbBadge.className='pill '+(cb?cb.state:'info');
+  const breaker=data.circuit_breaker||{};
+  document.getElementById('cbDetail').textContent='失败 '+(breaker.failure_count||0)+'/'+(breaker.failure_threshold||5);
 
-// Page Visibility API
-document.addEventListener('visibilitychange',()=>{
-  isTabVisible=!document.hidden;
-  if(isTabVisible&&currentRefreshMs>0&&activeTab==='overview'){
-    fetchData(); // 回到页面时立即刷新一次
-  }
-});
+  const cache=data.llm_cache||{};
+  const cacheTotal=(cache.hits||0)+(cache.misses||0);
+  const cbadge=document.getElementById('cacheBadge');
+  // 缓存命中率只是参考数字，没有行动阈值，不判档位
+  cbadge.textContent=cacheTotal?((cache.hit_rate*100).toFixed(1)+'%'):'无记录';
+  cbadge.className='pill info';
+  document.getElementById('cacheDetail').textContent='命中 '+(cache.hits||0)+'/'+cacheTotal;
 
-// Rate mode toggle
-document.getElementById('rateMode').addEventListener('change',()=>{
-  if(lastData)renderData(lastData);
-});
+  const slow=findCheck('slow');
+  const sbadge=document.getElementById('slowBadge');
+  sbadge.textContent=slow?slow.display:'—';
+  sbadge.className='pill '+(slow?slow.state:'info');
+  document.getElementById('slowDetail').textContent='进程运行至今累计 '+(data.slow_queries==null?'—':data.slow_queries)+' 次';
+}
 
-// Window resize
-window.addEventListener('resize',()=>{
-  if(lastData)renderData(lastData);
-});
+function renderTopPaths(data){
+  const paths=(data.snapshot&&data.snapshot.http&&data.snapshot.http.top_paths)||[];
+  document.getElementById('topPathsTable').innerHTML=paths.length
+    ? paths.slice(0,8).map(p=>'<tr><td style="word-break:break-all">'+escHtml(p.path)+'</td><td class="num">'+fmtNum(p.count)+'</td></tr>').join('')
+    : '<tr><td class="empty" colspan="2">暂无数据</td></tr>';
+}
 
-// ── Tab switching ──
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    tab.classList.add('active');
-    activeTab=tab.dataset.tab;
-    document.querySelectorAll('.tab-content').forEach(c=>c.style.display='none');
-    document.getElementById('tab-'+activeTab).style.display='block';
+function renderLlmScenes(data){
+  const scenes=(data.snapshot&&data.snapshot.llm&&data.snapshot.llm.by_scene)||{};
+  const html=Object.entries(scenes).map(([scene,d])=>
+    '<tr><td>'+escHtml(scene)+'</td><td class="num">'+(d.done||0)+'</td><td class="num">'+(d.failed||0)+'</td>'+
+    '<td class="num">'+fmtNum(d.tokens||0)+'</td><td class="num">'+fmtCost(d.cost||0)+'</td></tr>').join('');
+  document.getElementById('llmSceneTable').innerHTML=html||'<tr><td class="empty" colspan="5">暂无数据</td></tr>';
+}
+
+// ── 页签切换 ──
+document.querySelectorAll('.rail-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    document.querySelectorAll('.rail-item').forEach(i=>i.classList.remove('is-active'));
+    item.classList.add('is-active');
+    activeTab=item.dataset.tab;
+    document.querySelectorAll('.content').forEach(c=>c.style.display='none');
+    document.getElementById('tab-'+activeTab).style.display='flex';
     if(activeTab==='llm-logs')fetchLlmLogs();
     if(activeTab==='app-logs')fetchAppLogs();
     if(activeTab==='web-vitals')fetchWebVitals();
+    if(activeTab==='overview')loadOverview();
   });
 });
 
-// ── LLM Logs ──
+// ── LLM 日志 ──
 function setLlmLogFilter(f){
   llmLogFilter=f;
   document.querySelectorAll('[data-llm-filter]').forEach(b=>{
@@ -850,117 +1050,26 @@ function setLlmLogFilter(f){
 
 async function fetchLlmLogs(){
   try{
-    const url=API_LLM_LOGS+'?status='+llmLogFilter+'&limit=50';
-    const data=await fetchJSON(url);
+    const data=await fetchJSON(API_LLM_LOGS+'?status='+llmLogFilter+'&limit=50');
     const logs=data.logs||[];
     document.getElementById('llmLogCount').textContent=data.count+' 条';
     const panel=document.getElementById('llmLogPanel');
-    if(!logs.length){
-      panel.innerHTML='<div class="loading">暂无日志记录</div>';
-      return;
-    }
+    if(!logs.length){panel.innerHTML='<div class="empty">窗口内没有日志记录</div>';return}
     panel.innerHTML=logs.map(l=>{
-      const cls=l.status==='FAILED'?'err':'ok';
       const time=l.created_at?new Date(l.created_at).toLocaleTimeString('zh-CN',{hour12:false}):'--';
-      return '<div class="log-entry"><span class="log-ts">'+time+'</span><span class="log-level '+(l.status==='FAILED'?'ERROR':'INFO')+'">'+l.status+'</span><span class="log-msg">'+escHtml(l.scene)+' / '+escHtml(l.model)+' — '+(l.error?escHtml(l.error):'OK')+' <span class="log-source">['+l.duration_ms+'ms, $'+(l.cost_usd||0).toFixed(4)+', in:'+l.input_tokens+'/out:'+l.output_tokens+']</span></span></div>';
+      const level=l.status==='FAILED'?'ERROR':'INFO';
+      return '<div class="log-entry"><span class="log-ts">'+escHtml(time)+'</span>'+
+        '<span class="log-level '+level+'">'+escHtml(l.status||'')+'</span>'+
+        '<span class="log-msg">'+escHtml(l.scene||'')+' · '+escHtml(l.model||'')+
+        (l.error?' — '+escHtml(l.error):'')+'</span>'+
+        '<span class="log-source">'+fmtMs(l.duration_ms||0)+' '+(l.cost_usd?fmtCost(l.cost_usd):'')+'</span></div>';
     }).join('');
   }catch(err){
-    document.getElementById('llmLogPanel').innerHTML='<div class="loading">加载失败: '+escHtml(err.message)+'</div>';
+    document.getElementById('llmLogPanel').innerHTML='<div class="empty">读取失败：'+escHtml(err.message)+'</div>';
   }
 }
 
-// ── Web Vitals（前端体验指标）──
-function setWebVitalsNav(nav){
-  webVitalsNav=nav;
-  document.querySelectorAll('[data-wv-nav]').forEach(b=>{
-    b.classList.toggle('active',b.dataset.wvNav===nav);
-  });
-  fetchWebVitals();
-}
-
-function wvFormatValue(metric,value){
-  if(value==null||value===undefined)return'--';
-  if(metric==='CLS')return Number(value).toFixed(3);
-  return Math.round(value)+'ms';
-}
-
-function wvRatingClass(rating){
-  if(rating==='good')return'ok';
-  if(rating==='poor')return'err';
-  if(rating==='needs-improvement')return'warn';
-  return'half';
-}
-
-function wvRatingLabel(rating){
-  if(rating==='good')return'良好';
-  if(rating==='poor')return'差';
-  if(rating==='needs-improvement')return'待改进';
-  return'--';
-}
-
-function wvMetricOrder(metric){
-  const order=['LCP','INP','CLS','FCP','TTFB'];
-  const i=order.indexOf(metric);
-  return i<0?order.length:i;
-}
-
-function renderWebVitals(data){
-  const metrics=data.metrics||[];
-  const byMetric={};
-  metrics.forEach(m=>{byMetric[m.metric]=m});
-  const cards=[['LCP','wvLcp','wvLcpSub'],['INP','wvInp','wvInpSub'],['CLS','wvCls','wvClsSub']];
-  cards.forEach(([metric,valId,subId])=>{
-    const m=byMetric[metric];
-    const valEl=document.getElementById(valId);
-    const subEl=document.getElementById(subId);
-    if(!m||m.p75==null){
-      valEl.textContent='--';valEl.className='kpi-value';
-      subEl.textContent='暂无样本';return;
-    }
-    valEl.textContent=wvFormatValue(metric,m.p75);
-    valEl.className='kpi-value '+(m.rating==='good'?'green':m.rating==='poor'?'red':'amber');
-    subEl.textContent='P50 '+wvFormatValue(metric,m.p50)+' / P95 '+wvFormatValue(metric,m.p95)+' / '+m.sample_count+' 样本';
-  });
-  document.getElementById('wvSamples').textContent=fmtNum(data.sample_count);
-  document.getElementById('wvSamplesSub').textContent='最近 '+(data.hours||24)+' 小时 · '+(data.navigation_type||'navigate');
-  const navLabel={navigate:'首次加载',"soft-navigation":'软导航',all:'全部'}[data.navigation_type]||data.navigation_type;
-  document.getElementById('webVitalsMeta').textContent=navLabel+' · 截至 '+(data.generated_at?new Date(data.generated_at).toLocaleString('zh-CN',{hour12:false}):'--');
-
-  const routes=(data.routes||[]).slice();
-  routes.sort((a,b)=>{
-    const oa=wvMetricOrder(a.metric),ob=wvMetricOrder(b.metric);
-    if(oa!==ob)return oa-ob;
-    return b.p75-a.p75;
-  });
-  const tbody=document.getElementById('wvRouteTable');
-  if(!routes.length){
-    // 软导航口径在多数浏览器恒为空：只有支持 soft-navigation entry type 的浏览器
-    // 才会把 navigationType 记成 soft-navigation，所以要把原因说清楚。
-    const emptyHint=(data.navigation_type==='soft-navigation')
-      ?'该窗口内没有软导航样本（多数浏览器还不支持 soft-navigation 观测）'
-      :'该窗口内没有样本。上线后由浏览器端上报产生。';
-    tbody.innerHTML='<tr><td colspan="5" class="loading">'+escHtml(emptyHint)+'</td></tr>';
-    return;
-  }
-  tbody.innerHTML=routes.map(r=>{
-    return '<tr><td>'+escHtml(r.path)+'</td><td>'+escHtml(r.metric)+'</td>'
-      +'<td class="num">'+wvFormatValue(r.metric,r.p75)+'</td>'
-      +'<td class="num">'+fmtNum(r.sample_count)+'</td>'
-      +'<td><span class="badge '+wvRatingClass(r.rating)+'">'+wvRatingLabel(r.rating)+'</span></td></tr>';
-  }).join('');
-}
-
-async function fetchWebVitals(){
-  try{
-    const hours=document.getElementById('webVitalsHours').value;
-    const data=await fetchJSON(API_WEB_VITALS+'?hours='+hours+'&navigation_type='+webVitalsNav);
-    renderWebVitals(data);
-  }catch(err){
-    document.getElementById('wvRouteTable').innerHTML='<tr><td colspan="5" class="loading">加载失败: '+escHtml(err.message)+'</td></tr>';
-  }
-}
-
-// ── App Logs ──
+// ── 应用日志 ──
 function setAppLogFilter(f){
   appLogFilter=f;
   document.querySelectorAll('[data-log-filter]').forEach(b=>{
@@ -971,34 +1080,123 @@ function setAppLogFilter(f){
 
 async function fetchAppLogs(){
   try{
-    const url=API_LOGS+'?level='+appLogFilter+'&limit=200';
-    const data=await fetchJSON(url);
+    const data=await fetchJSON(API_LOGS+'?level='+appLogFilter+'&limit=200');
     const entries=data.entries||[];
     const summary=data.summary||{};
-    document.getElementById('appLogCount').textContent=summary.total+' 条 / 上限 '+summary.capacity;
+    document.getElementById('appLogCount').textContent=(summary.total!=null?summary.total:entries.length)+' 条';
     const panel=document.getElementById('appLogPanel');
-    if(!entries.length){
-      panel.innerHTML='<div class="loading">暂无日志记录</div>';
-      return;
-    }
+    if(!entries.length){panel.innerHTML='<div class="empty">窗口内没有日志记录</div>';return}
     panel.innerHTML=entries.map(e=>{
       const time=e.ts?new Date(e.ts).toLocaleTimeString('zh-CN',{hour12:false}):'--';
-      return '<div class="log-entry"><span class="log-ts">'+time+'</span><span class="log-level '+e.level+'">'+e.level+'</span><span class="log-msg">'+escHtml(e.logger)+': '+escHtml(e.message)+' <span class="log-source">'+escHtml(e.source||'')+'</span></span></div>';
+      return '<div class="log-entry"><span class="log-ts">'+escHtml(time)+'</span>'+
+        '<span class="log-level '+escHtml(e.level||'INFO')+'">'+escHtml(e.level||'INFO')+'</span>'+
+        '<span class="log-msg">'+escHtml(e.logger||'')+': '+escHtml(e.message||'')+'</span>'+
+        (e.source?'<span class="log-source">'+escHtml(e.source)+'</span>':'')+'</div>';
     }).join('');
   }catch(err){
-    document.getElementById('appLogPanel').innerHTML='<div class="loading">加载失败: '+escHtml(err.message)+'</div>';
+    document.getElementById('appLogPanel').innerHTML='<div class="empty">读取失败：'+escHtml(err.message)+'</div>';
   }
 }
 
-// ── Init ──
-fetchData();
+// ── 前端体验指标 ──
+function setWebVitalsNav(nav){
+  webVitalsNav=nav;
+  document.querySelectorAll('[data-wv-nav]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.wvNav===nav);
+  });
+  fetchWebVitals();
+}
+
+function wvFormatValue(metric,value){
+  if(value==null)return'--';
+  if(metric==='CLS')return Number(value).toFixed(3);
+  return Math.round(value)+'ms';
+}
+
+function wvRatingClass(rating){
+  if(rating==='good')return'ok';
+  if(rating==='poor')return'crit';
+  if(rating==='needs-improvement')return'warn';
+  return'info';
+}
+
+function wvRatingLabel(rating){
+  if(rating==='good')return'良好';
+  if(rating==='poor')return'差';
+  if(rating==='needs-improvement')return'待改进';
+  return'--';
+}
+
+async function fetchWebVitals(){
+  try{
+    const data=await fetchJSON(API_WEB_VITALS+'?hours=24&navigation_type='+webVitalsNav);
+    const metrics=data.metrics||[];
+    const byMetric={};
+    metrics.forEach(m=>{byMetric[m.metric]=m});
+    [['LCP','wvLcp','wvLcpSub'],['INP','wvInp','wvInpSub'],['CLS','wvCls','wvClsSub']].forEach(([metric,valId,subId])=>{
+      const m=byMetric[metric];
+      const valEl=document.getElementById(valId);
+      const subEl=document.getElementById(subId);
+      if(!m||m.p75==null){
+        valEl.textContent='--';valEl.style.color='';
+        subEl.textContent='暂无样本';return;
+      }
+      valEl.textContent=wvFormatValue(metric,m.p75);
+      valEl.style.color=m.rating==='good'?'':(m.rating==='poor'?'var(--crit-text)':m.rating==='needs-improvement'?'var(--warn-text)':'');
+      subEl.textContent='P50 '+wvFormatValue(metric,m.p50)+' / P95 '+wvFormatValue(metric,m.p95)+' / '+m.sample_count+' 样本';
+    });
+    const navLabel={navigate:'首次加载','soft-navigation':'软导航',all:'全部'}[data.navigation_type]||data.navigation_type;
+    document.getElementById('webVitalsMeta').textContent=navLabel+' · 共 '+(data.sample_count||0)+' 个样本';
+    const routes=data.routes||[];
+    document.getElementById('wvRouteTable').innerHTML=routes.length
+      ? routes.map(r=>'<tr><td style="word-break:break-all">'+escHtml(r.path)+'</td><td>'+escHtml(r.metric)+'</td>'+
+        '<td class="num">'+wvFormatValue(r.metric,r.p75)+'</td><td class="num">'+fmtNum(r.sample_count)+'</td>'+
+        '<td class="check-state"><span class="pill '+wvRatingClass(r.rating)+'">'+wvRatingLabel(r.rating)+'</span></td></tr>').join('')
+      : '<tr><td class="empty" colspan="5">该窗口内没有样本。上线后由浏览器端上报产生。</td></tr>';
+  }catch(err){
+    document.getElementById('wvRouteTable').innerHTML='<tr><td class="empty" colspan="5">读取失败：'+escHtml(err.message)+'</td></tr>';
+  }
+}
+
+// ── 刷新与轮询 ──
+function startAutoRefresh(){
+  if(refreshTimer)clearInterval(refreshTimer);
+  refreshTimer=setInterval(()=>{
+    if(document.hidden||!isTabVisible)return;
+    if(activeTab==='overview')loadOverview();
+  },15000);
+}
+
+document.getElementById('refreshBtn').addEventListener('click',()=>{
+  if(activeTab==='overview')loadOverview();
+  else if(activeTab==='llm-logs')fetchLlmLogs();
+  else if(activeTab==='app-logs')fetchAppLogs();
+  else if(activeTab==='web-vitals')fetchWebVitals();
+});
+
+document.getElementById('timeWindow').addEventListener('change',(e)=>{
+  historyHours=parseInt(e.target.value);
+  if(activeTab==='overview')loadOverview();
+});
+
+document.addEventListener('visibilitychange',()=>{
+  isTabVisible=!document.hidden;
+  if(isTabVisible&&activeTab==='overview')loadOverview();
+});
+
+window.addEventListener('resize',()=>{
+  if(lastData)renderOverview(lastData);
+});
+
+loadOverview();
 startAutoRefresh();
 </script>
 </body>
-</html>"""
+</html>
+"""
 
 
 @router.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_admin_user)])
 async def dashboard():
-    """内置监控大盘（自包含 HTML，零外部依赖；仅管理员可见）。"""
-    return HTMLResponse(content=_DASHBOARD_HTML)
+    """监控大盘页面（自包含 HTML）。"""
+    return HTMLResponse(_DASHBOARD_HTML)

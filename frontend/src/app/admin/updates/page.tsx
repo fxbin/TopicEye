@@ -26,7 +26,7 @@ import {
 } from '@/lib/api';
 
 const KIND_OPTIONS: { value: ProductUpdateKind; label: string; tone: 'teal' | 'primary' | 'purple' | 'amber' }[] = [
-  { value: 'release', label: '发布', tone: 'teal' },
+  { value: 'release', label: '新增', tone: 'teal' },
   { value: 'improvement', label: '改进', tone: 'primary' },
   { value: 'fix', label: '修复', tone: 'purple' },
   { value: 'roadmap', label: '规划', tone: 'amber' },
@@ -58,6 +58,8 @@ interface DraftEntry {
 
 const EMPTY_DRAFT = {
   version: '',
+  title: '',
+  summary: '',
   status: 'planned' as ProductUpdateStatus,
   target_date: '',
   shipped_at: '',
@@ -103,6 +105,8 @@ export default function AdminUpdatesPage() {
     setEditing(item);
     setDraft({
       version: item.version,
+      title: item.title || '',
+      summary: item.summary || '',
       status: item.status,
       target_date: toDateInput(item.target_date),
       shipped_at: toDateInput(item.shipped_at),
@@ -138,6 +142,10 @@ export default function AdminUpdatesPage() {
       setFormError('请填写版本号');
       return;
     }
+    if (draft.title.trim().length < 2 || draft.summary.trim().length < 5) {
+      setFormError('请填写更新主题和版本摘要');
+      return;
+    }
     if (draft.items.length === 0) {
       setFormError('至少添加一个更新项');
       return;
@@ -151,6 +159,8 @@ export default function AdminUpdatesPage() {
     try {
       const payload = {
         version: draft.version.trim(),
+        title: draft.title.trim(),
+        summary: draft.summary.trim(),
         status: draft.status,
         target_date: fromDateInput(draft.target_date),
         shipped_at: fromDateInput(draft.shipped_at),
@@ -162,10 +172,10 @@ export default function AdminUpdatesPage() {
       };
       if (editing) {
         await productFeedbackApi.updateProductUpdate(editing.id, payload);
-        setNotice(`已更新 v${payload.version}`);
+        setNotice(`已更新 ${payload.version}`);
       } else {
         await productFeedbackApi.createUpdate(payload);
-        setNotice(`已创建 v${payload.version}`);
+        setNotice(`已创建 ${payload.version}`);
       }
       await refetch();
       closeDialog();
@@ -189,7 +199,7 @@ export default function AdminUpdatesPage() {
       if (!res.ok) {
         throw new Error(`删除失败: HTTP ${res.status}`);
       }
-      setNotice(`已删除 v${item.version}`);
+      setNotice(`已删除 ${item.version}`);
       await refetch();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : String(err));
@@ -206,7 +216,7 @@ export default function AdminUpdatesPage() {
       <AdminPageHeader
         title="发版记录管理"
         icon={Rocket}
-        description="创建和编辑产品发版记录 · 用户在「更新记录」页面看到的就是这里的内容"
+        description="每次更新一个主题，写清用户能感知的变化；已发布记录展示在更新记录页。"
         actions={
           <>
             <Button type="button" onClick={openCreate}>
@@ -250,8 +260,8 @@ export default function AdminUpdatesPage() {
                 type="text"
                 value={versionQuery}
                 onChange={(e) => setVersionQuery(e.target.value)}
-                placeholder="按版本号搜索"
-                aria-label="按版本号搜索"
+                placeholder="搜索日期、主题或功能"
+                aria-label="搜索更新记录"
                 className="flex-1 min-w-[180px] rounded-sm border border-ink-200 bg-white px-3 py-1 text-[12px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
               />
               {([
@@ -287,7 +297,7 @@ export default function AdminUpdatesPage() {
             {(() => {
               const filtered = (items || [])
                 .filter((u) => statusFilter === 'all' || u.status === statusFilter)
-                .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
+                .filter((u) => !versionQuery.trim() || [u.version, u.title, u.summary, ...u.items.map(entry => entry.title)].some(value => value?.toLowerCase().includes(versionQuery.trim().toLowerCase())));
               if (filtered.length === 0) {
                 return (
                   <Panel className="p-6 text-center">
@@ -345,10 +355,11 @@ function UpdateAdminRow({ item, onEdit, onDelete }: { item: ProductUpdateItem; o
             <span className="font-mono text-[15px] font-black text-ink-900">{item.version}</span>
             <Badge tone={STATUS_TONES[item.status]}>{STATUS_LABELS[item.status]}</Badge>
             <span className="text-[12px] tabular-nums text-ink-500">
-              {item.shipped_at ? `发布于 ${item.shipped_at.slice(0, 10)}` :
-                item.target_date ? `计划 ${item.target_date}` : '近期规划'}
+              {item.status === 'shipped' ? item.shipped_at ? `上线于 ${item.shipped_at.slice(0, 10)}` : '历史归档' : item.target_date ? `计划 ${item.target_date}` : '近期规划'}
             </span>
           </div>
+          <h2 className="mb-1 text-sm font-semibold text-ink-900">{item.title || item.version}</h2>
+          {item.summary && <p className="mb-1 text-[13px] leading-6 text-ink-500">{item.summary}</p>}
           <p className="text-[12px] tabular-nums text-ink-500">
             {item.items.length} 个更新项
           </p>
@@ -412,7 +423,7 @@ function UpdateEditor({
       <div className="pointer-events-auto flex h-full max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-ink-200 px-5 py-3.5">
           <h2 id="update-editor-title" className="text-base font-semibold text-ink-900">
-            {editing ? `编辑 v${editing.version}` : '新建发版'}
+            {editing ? `编辑 ${editing.version}` : '新建发版'}
           </h2>
           <Button type="button" variant="ghost" onClick={() => requestClose()} disabled={saving} className="!px-2 !py-1" aria-label="关闭发版编辑器">
             <X size={16} />
@@ -425,15 +436,25 @@ function UpdateEditor({
             </div>
           )}
           <fieldset disabled={saving} className="min-w-0">
+            <div className="mb-4 space-y-3">
+              <div>
+                <label htmlFor={`${fieldId}-title`} className="mb-1 block text-[13px] font-medium text-ink-700">更新主题 *</label>
+                <input id={`${fieldId}-title`} value={draft.title} onChange={e => onChange({ ...draft, title: e.target.value })} placeholder="一句话说清这次更新的重点" maxLength={200} className="w-full rounded-sm border border-ink-200 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor={`${fieldId}-summary`} className="mb-1 block text-[13px] font-medium text-ink-700">版本摘要 *</label>
+                <textarea id={`${fieldId}-summary`} value={draft.summary} onChange={e => onChange({ ...draft, summary: e.target.value })} placeholder="这次更新为用户解决了什么问题？" maxLength={1000} rows={2} className="w-full resize-y rounded-sm border border-ink-200 px-3 py-2 text-sm" />
+              </div>
+            </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor={`${fieldId}-version`} className="mb-1 block text-[12px] font-medium text-ink-700">版本号 *</label>
+              <label htmlFor={`${fieldId}-version`} className="mb-1 block text-[12px] font-medium text-ink-700">日期版本 *</label>
               <input
                 id={`${fieldId}-version`}
                 type="text"
                 value={draft.version}
                 onChange={(e) => onChange({ ...draft, version: e.target.value })}
-                placeholder="如 v0.2.0"
+                placeholder="如 2026.11.02"
                 className="w-full rounded-sm border border-ink-200 bg-white px-3 py-1.5 text-[13px] text-ink-900 placeholder:text-ink-500 focus:border-admin-accent focus:outline-none"
               />
             </div>
@@ -469,7 +490,7 @@ function UpdateEditor({
               />
             </div>
             <div>
-              <label htmlFor={`${fieldId}-shipped`} className="mb-1 block text-[12px] font-medium text-ink-700">发布日期</label>
+              <label htmlFor={`${fieldId}-shipped`} className="mb-1 block text-[12px] font-medium text-ink-700">实际上线日期（可选）</label>
               <input
                 id={`${fieldId}-shipped`}
                 type="date"

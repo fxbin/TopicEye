@@ -57,7 +57,7 @@ export const SEVERITY_TONES: Record<IssueFeedbackSeverity, Tone> = {
 // ── Product update kind ──────────────────────────────────────────────
 
 export const UPDATE_KIND_LABELS: Record<ProductUpdateKind, string> = {
-  release: '发布',
+  release: '新增',
   improvement: '改进',
   fix: '修复',
   roadmap: '规划',

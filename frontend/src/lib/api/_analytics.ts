@@ -362,6 +362,8 @@ export const productFeedbackApi = {
 
   createUpdate(data: {
     version: string;
+    title: string;
+    summary: string;
     status: ProductUpdateStatus;
     target_date?: string | null;
     shipped_at?: string | null;
@@ -375,6 +377,8 @@ export const productFeedbackApi = {
 
   updateProductUpdate(id: number, data: Partial<{
     version: string;
+    title: string;
+    summary: string;
     status: ProductUpdateStatus;
     target_date: string | null;
     shipped_at: string | null;

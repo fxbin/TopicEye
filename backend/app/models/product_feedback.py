@@ -76,8 +76,8 @@ class IssueFeedback(Base):
 class ProductUpdate(Base):
     """1 个版本 = 1 行; items 是 JSON 数组, 每项含 {title, description, kind}.
 
-    title/description/kind 三个旧字段保留为 nullable, 仅用于历史数据兼容;
-    新写入路径用 items, 旧字段不再读。
+    title 为更新主题，description 存版本摘要；items 为具体变化。
+    kind 为退役字段，条目类别由 items 管理。
     """
 
     __tablename__ = "product_updates"
@@ -103,7 +103,7 @@ class ProductUpdate(Base):
         onupdate=lambda: datetime.now(UTC),
     )
 
-    # 历史/兼容字段 (新代码不读)
+    # 版本主题与摘要复用已有列，避免为内容整理引入 schema 迁移。
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     kind: Mapped[str | None] = mapped_column(value_enum(ProductUpdateKind), nullable=True)

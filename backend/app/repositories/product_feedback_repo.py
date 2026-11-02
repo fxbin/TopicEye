@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import case as sa_case, func, select
+from sqlalchemy import case as sa_case, delete, func, select, text
 
 from app.models.product_feedback import (
     IssueFeedback,
@@ -190,8 +190,8 @@ class ProductUpdateRepository(BaseRepository[ProductUpdate]):
                     (ProductUpdate.status == ProductUpdateStatus.shipped, 1),
                     else_=0,
                 ).desc(),
-                ProductUpdate.shipped_at.desc().nullslast(),
-                ProductUpdate.updated_at.desc(),
+                ProductUpdate.version.desc(),
+                ProductUpdate.id.desc(),
             )
             .limit(limit)
             .offset(offset)
@@ -210,3 +210,20 @@ class ProductUpdateRepository(BaseRepository[ProductUpdate]):
         """删除已加载的 ProductUpdate 实例并 flush。"""
         await self.db.delete(update)
         await self.db.flush()
+
+    async def lock_catalog(self) -> None:
+        if self.db.bind is not None and self.db.bind.dialect.name == "postgresql":
+            await self.db.execute(text("LOCK TABLE product_updates IN EXCLUSIVE MODE"))
+
+    async def list_all_for_rebuild(self) -> Sequence[ProductUpdate]:
+        result = await self.db.execute(select(ProductUpdate).order_by(ProductUpdate.id))
+        return result.scalars().all()
+
+    async def replace_catalog(self, rows: list[ProductUpdate]) -> None:
+        await self.db.execute(delete(ProductUpdate))
+        self.db.add_all(rows)
+        await self.db.flush()
+
+    async def find_by_version(self, version: str) -> ProductUpdate | None:
+        result = await self.db.execute(select(ProductUpdate).where(ProductUpdate.version == version).limit(1))
+        return result.scalar_one_or_none()

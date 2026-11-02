@@ -10,7 +10,6 @@ from app.core.database import get_db
 from app.models.product_feedback import (
     IssueFeedback,
     IssueFeedbackStatus,
-    ProductUpdate,
     ProductUpdateKind,
     ProductUpdateStatus,
 )
@@ -29,6 +28,7 @@ from app.schemas.product_feedback import (
     ProductUpdatePatch,
     ProductUpdateResponse,
 )
+from app.services import product_updates
 
 router = APIRouter(prefix="/product-feedback", tags=["product-feedback"])
 
@@ -159,7 +159,7 @@ async def update_issue_feedback(
 
 
 # ── Product updates: 1 version = 1 record, items[] 装该版本的多条更新 ────────
-# 数据全部在 DB (product_updates 表), 通过 alembic migration seed.
+# 数据全部在 DB (product_updates 表)，历史归档通过受控导入工具重建。
 # 历史 BUILTIN_PRODUCT_UPDATES 已废弃, 避免数据/代码双源.
 
 
@@ -194,22 +194,7 @@ async def create_product_update(
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(get_current_admin_user),
 ):
-    shipped_at = data.shipped_at
-    if data.status == ProductUpdateStatus.shipped and shipped_at is None:
-        shipped_at = datetime.now(UTC)
-
-    item = ProductUpdate(
-        version=data.version,
-        status=data.status,
-        target_date=data.target_date,
-        shipped_at=shipped_at,
-        items=[entry.model_dump(mode="json") for entry in data.items],
-        created_by_id=current_admin.id,
-    )
-    ProductUpdateRepository(db).add_instance(item)
-    await db.flush()
-    await db.refresh(item)
-    return item
+    return await product_updates.create_update(db, data, current_admin.id)
 
 
 @router.patch("/updates/{update_id}", response_model=ProductUpdateResponse)
@@ -219,30 +204,7 @@ async def update_product_update(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin_user),
 ):
-    item = await ProductUpdateRepository(db).get_by_id(update_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Product update not found")
-
-    changes = data.model_dump(exclude_unset=True)
-    if "version" in changes:
-        item.version = changes["version"]
-    if "status" in changes:
-        item.status = changes["status"]
-    if "target_date" in changes:
-        item.target_date = changes["target_date"]
-    if "items" in changes and changes["items"] is not None:
-        item.items = changes["items"]
-    if "shipped_at" in changes:
-        item.shipped_at = changes["shipped_at"]
-    if data.status == ProductUpdateStatus.shipped and item.shipped_at is None:
-        item.shipped_at = datetime.now(UTC)
-    if data.status is not None and data.status != ProductUpdateStatus.shipped and "shipped_at" not in changes:
-        item.shipped_at = None
-    item.updated_at = datetime.now(UTC)
-
-    await db.flush()
-    await db.refresh(item)
-    return item
+    return await product_updates.patch_update(db, update_id, data)
 
 
 @router.delete("/updates/{update_id}", status_code=204)
@@ -254,8 +216,4 @@ async def delete_product_update(
     """删除管理员在 DB 中创建的 ProductUpdate (builtin 不可删)."""
     if update_id <= 0:
         raise HTTPException(status_code=400, detail="Builtin updates cannot be deleted")
-    repo = ProductUpdateRepository(db)
-    item = await repo.get_by_id(update_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Product update not found")
-    await repo.delete_instance(item)
+    await product_updates.delete_update(db, update_id)

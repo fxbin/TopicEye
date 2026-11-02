@@ -42,6 +42,8 @@ export interface ProductUpdateItem {
   /** 1 个版本 = 1 记录; items[] 装该版本的全部更新 */
   id: number;
   version: string;
+  title?: string | null;
+  summary?: string | null;
   status: ProductUpdateStatus;
   target_date?: string | null;
   shipped_at?: string | null;

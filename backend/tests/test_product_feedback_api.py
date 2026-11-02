@@ -35,7 +35,9 @@ async def product_feedback_client() -> AsyncGenerator[tuple[httpx.AsyncClient, s
 
         db.add(
             ProductUpdate(
-                version="v0.2.1",
+                version="2026.05.22",
+                title="第一版选题工作台",
+                description="开始按评分浏览内容并整理选题。",
                 status="shipped",
                 shipped_at=datetime.now(UTC),
                 items=[
@@ -182,7 +184,9 @@ async def test_product_updates_are_public_read_and_admin_managed(product_feedbac
         "/product-feedback/updates",
         headers={"Authorization": f"Bearer {admin_token}"},
         json={
-            "version": "v0.3.0",
+            "version": "2026.06.09",
+            "title": "选题分析更方便",
+            "summary": "围绕已有内容补充分析与选题参考。",
             "status": "planned",
             "target_date": "2026-06-09",
             "items": [
@@ -193,12 +197,39 @@ async def test_product_updates_are_public_read_and_admin_managed(product_feedbac
     assert created.status_code == 201
     update_id = created.json()["id"]
     assert created.json()["target_date"] == "2026-06-09"
+    assert created.json()["title"] == "选题分析更方便"
+    assert created.json()["summary"] == "围绕已有内容补充分析与选题参考。"
+    duplicate = await client.post(
+        "/product-feedback/updates",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "version": "2026-06-09",
+            "title": "重复日期的记录",
+            "summary": "不应覆盖原有内容",
+            "items": [{"title": "测试条目", "description": "这是一条测试更新", "kind": "improvement"}],
+        },
+    )
+    assert duplicate.status_code == 409
+
+    invalid = await client.patch(
+        f"/product-feedback/updates/{update_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"title": None},
+    )
+    assert invalid.status_code == 422
 
     shipped = await client.patch(
         f"/product-feedback/updates/{update_id}",
         headers={"Authorization": f"Bearer {admin_token}"},
-        json={"status": "shipped", "version": "v0.2.0"},
+        json={"status": "shipped", "version": "2026.06.10"},
     )
     assert shipped.status_code == 200
     assert shipped.json()["status"] == "shipped"
-    assert shipped.json()["shipped_at"] is not None
+    assert shipped.json()["shipped_at"] is None
+    edited = await client.patch(
+        f"/product-feedback/updates/{update_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"status": "shipped", "title": "调整后的更新主题", "shipped_at": None},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["shipped_at"] is None

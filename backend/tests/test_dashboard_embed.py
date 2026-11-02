@@ -10,15 +10,15 @@ from app.api.v1.auth import get_current_admin_user
 async def test_embedded_dashboard_keeps_shared_canvas_and_compact_navigation():
     html = (await embedded_dashboard()).body.decode()
     assert 'data-dashboard="embedded"' in html
-    assert 'body.embedded .rail-nav{flex-direction:row' in html
-    assert 'body.embedded .rail-brand,body.embedded .rail-caption,body.embedded .rail-foot{display:none}' in html
+    assert "body.embedded .rail-nav{flex-direction:row" in html
+    assert "body.embedded .rail-brand,body.embedded .rail-caption,body.embedded .rail-foot{display:none}" in html
     # 数据逻辑保持原样，没有在 Next 侧复制图表和阈值。
-    assert html.split('<script>', 1)[1] == _DASHBOARD_HTML.split('<script>', 1)[1]
-    for tab in ('overview', 'llm-logs', 'app-logs', 'web-vitals'):
+    assert html.split("<script>", 1)[1] == _DASHBOARD_HTML.split("<script>", 1)[1]
+    for tab in ("overview", "llm-logs", "app-logs", "web-vitals"):
         assert f'data-tab="{tab}"' in html
 
 
 def test_embedded_dashboard_requires_admin_dependency():
-    embedded = next(r for r in router.routes if r.path == '/api/v1/metrics/dashboard')
+    embedded = next(r for r in router.routes if r.path == "/api/v1/metrics/dashboard")
     assert [d.call for d in embedded.dependant.dependencies] == [get_current_admin_user]
-    assert not any(r.path == '/dashboard' for r in router.routes)
+    assert not any(r.path == "/dashboard" for r in router.routes)

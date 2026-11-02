@@ -92,28 +92,54 @@ class ProductUpdateCreate(BaseModel):
     """创建一个版本记录。items 必填，至少 1 条。"""
 
     version: str = Field(min_length=1, max_length=50)
+    title: str = Field(min_length=2, max_length=200)
+    summary: str = Field(min_length=5, max_length=1000)
     status: ProductUpdateStatus = ProductUpdateStatus.planned
     target_date: date | None = None
     shipped_at: datetime | None = None
     items: list[ProductUpdateEntry] = Field(min_length=1)
 
+    @field_validator("title", "summary", mode="before")
+    @classmethod
+    def clean_text(cls, value: str) -> str:
+        return _clean_text(value)
+
     @field_validator("version", mode="before")
     @classmethod
-    def clean_version(cls, value: str) -> str:
-        return _clean_text(value)
+    def clean_calendar_version(cls, value):
+        value = _clean_text(value)
+        if value is None:
+            return value
+        try:
+            return date.fromisoformat(value.replace(".", "-")).strftime("%Y.%m.%d")
+        except (ValueError, AttributeError) as error:
+            raise ValueError("版本号请使用有效日期，如 2026.11.02") from error
 
 
 class ProductUpdatePatch(BaseModel):
     version: str | None = Field(default=None, min_length=1, max_length=50)
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    summary: str | None = Field(default=None, min_length=5, max_length=1000)
     status: ProductUpdateStatus | None = None
     target_date: date | None = None
     shipped_at: datetime | None = None
     items: list[ProductUpdateEntry] | None = Field(default=None, min_length=1)
 
+    @field_validator("title", "summary", mode="before")
+    @classmethod
+    def clean_text(cls, value: str | None) -> str | None:
+        return _clean_text(value)
+
     @field_validator("version", mode="before")
     @classmethod
-    def clean_version(cls, value: str | None) -> str | None:
-        return _clean_text(value)
+    def clean_calendar_version(cls, value):
+        value = _clean_text(value)
+        if value is None:
+            return value
+        try:
+            return date.fromisoformat(value.replace(".", "-")).strftime("%Y.%m.%d")
+        except (ValueError, AttributeError) as error:
+            raise ValueError("版本号请使用有效日期，如 2026.11.02") from error
 
 
 class ProductUpdateResponse(BaseModel):
@@ -121,6 +147,8 @@ class ProductUpdateResponse(BaseModel):
 
     id: int
     version: str
+    title: str | None = None
+    summary: str | None = Field(default=None, validation_alias="description")
     status: ProductUpdateStatus
     target_date: date | None = None
     shipped_at: datetime | None = None

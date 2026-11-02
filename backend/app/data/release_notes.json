@@ -1,0 +1,551 @@
+{
+  "schema_version": 1,
+  "date_basis": "git_committer_day",
+  "description": "产品里程碑历史归档；版本日期不是已核实的生产上线时间。",
+  "records": [
+    {
+      "version": "2026.11.02",
+      "title": "工作台与后台导航统一",
+      "summary": "页面切换更连贯，后台监控和日常管理回到同一套导航。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "improvement",
+          "title": "工作台布局统一",
+          "description": "页面标题、卡片留白和表格密度采用统一规格，减少切换页面时的视觉跳变。"
+        },
+        {
+          "kind": "improvement",
+          "title": "窄屏阅读更规整",
+          "description": "整理状态标签、工具栏和表格的排列，宽表格在内容区域内滚动。"
+        },
+        {
+          "kind": "release",
+          "title": "监控大盘纳入后台",
+          "description": "系统体检、运行日志和前端体验保留后台侧栏与面包屑，可直接切换其他管理页面。"
+        },
+        {
+          "kind": "improvement",
+          "title": "返回前台有即时反馈",
+          "description": "返回入口增加页面预取和等待提示，首页数据尚未返回时先显示加载骨架。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "64844f5097485b35683d8311cc2ba7bf2bab0949",
+          "committed_at": "2026-11-02T23:20:02+08:00",
+          "subject": "fix(ui): 统一工作台布局并修正后台导航 (#212)"
+        },
+        {
+          "commit": "07ad03f7564946ba80a666766fd0a56d0df9687f",
+          "committed_at": "2026-11-02T21:37:36+08:00",
+          "subject": "feat(dashboard): 监控大盘改版，体检判定挪到服务端算，并把入口归入后台管理 (#211)"
+        }
+      ]
+    },
+    {
+      "version": "2026.11.01",
+      "title": "首页直接看到内容，AI 配置更方便",
+      "summary": "缩短进入内容的等待路径，让母题配置、模型测试与实际使用更一致。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "improvement",
+          "title": "首页内容随页面返回",
+          "description": "首屏内容、分类和标签一起准备，减少页面出现后再逐步补齐内容的等待。"
+        },
+        {
+          "kind": "release",
+          "title": "一句话建立母题关键词",
+          "description": "描述关注方向后，可让 AI 提取关键词，再由你检查和调整。"
+        },
+        {
+          "kind": "improvement",
+          "title": "模型测试贴近实际调用",
+          "description": "模型测试与 A/B 评测复用实际请求链路，减少测试配置和日常分析配置的偏差。"
+        },
+        {
+          "kind": "release",
+          "title": "扩展模型协议接入",
+          "description": "模型调用支持 OpenAI 兼容接口，以及 Anthropic、Gemini 原生协议。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "7b3348dd968cb04a3d813b466334ef103c693efc",
+          "committed_at": "2026-11-01T16:12:07+08:00",
+          "subject": "feat(home): 首页首屏内容服务端直出，LCP 不再等客户端取数 (#197)"
+        },
+        {
+          "commit": "88992a84f6055c975f7d51b13a31e6449655d9db",
+          "committed_at": "2026-11-01T14:57:35+08:00",
+          "subject": "feat(mother-topics): 用一句话描述兴趣，AI 自动提取母题关键词 (#187)"
+        },
+        {
+          "commit": "a9cc77ec70788d2897d6e36ac302b53952236e4c",
+          "committed_at": "2026-11-01T21:39:56+08:00",
+          "subject": "fix(llm): 模型 ping 与 A/B 评测改走主链路同一条传输路径，评测不再偏离生产 (#204)"
+        },
+        {
+          "commit": "2bcd3430e8f621672c13abca7f5a9a721622b6d8",
+          "committed_at": "2026-11-01T15:15:53+08:00",
+          "subject": "feat(llm): 自有传输层补上 anthropic 与 gemini 原生协议 (#185)"
+        }
+      ]
+    },
+    {
+      "version": "2026.10.31",
+      "title": "从发现热点到形成写作角度",
+      "summary": "把热点判断、内容取舍和发布前检查接到同一个创作流程中。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "查看事件中的补充报道角度",
+          "description": "围绕同一事件查看报道侧重、可补充的角度和受众可能关心的问题，作为选题判断的参考。"
+        },
+        {
+          "kind": "release",
+          "title": "隐藏不想看的内容",
+          "description": "按关键词、信源或域名建立屏蔽规则，让内容流更贴近自己的关注范围。"
+        },
+        {
+          "kind": "release",
+          "title": "辨认热点所处阶段",
+          "description": "榜单条目标注发酵、爆发、回落或常青阶段，帮助判断何时跟进。"
+        },
+        {
+          "kind": "release",
+          "title": "发布前检查文稿用词",
+          "description": "粘贴文稿后查看高风险用词及替换建议；修改文稿会使旧结果作废，避免误用过期检查。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "1cae015089e8e4bcd0d31f5e250fa06c255bc1eb",
+          "committed_at": "2026-10-31T23:56:39+08:00",
+          "subject": "feat(content-events): AI 分析同一事件的报道，提示还没人写的角度和受众在问的问题 (#169)"
+        },
+        {
+          "commit": "26f59cdc780cd2bb23144926f579c59fb9312f34",
+          "committed_at": "2026-10-31T23:56:39+08:00",
+          "subject": "feat(contents): 支持按关键词、信源、域名隐藏不想看的内容 (#171)"
+        },
+        {
+          "commit": "1cae26e17f44ef8600379837b7c379956e98fcfb",
+          "committed_at": "2026-10-31T23:56:39+08:00",
+          "subject": "feat(trending): 热榜条目标注所处阶段：发酵、爆发、回落、常青 (#173)"
+        },
+        {
+          "commit": "f561c11f1f8e3eda45fb3a375d5fa3c8b6783787",
+          "committed_at": "2026-10-31T23:56:39+08:00",
+          "subject": "feat(content-check): 发布前检测文稿里的违禁词和广告法极限词 (#175)"
+        },
+        {
+          "commit": "67116afcc4ef62db2793487d2c434bc29d5c777f",
+          "committed_at": "2026-10-31T23:56:39+08:00",
+          "subject": "fix(content-check): 编辑文稿后旧检测结果作废，并补对应测试 (#175)"
+        }
+      ]
+    },
+    {
+      "version": "2026.10.28",
+      "title": "模型配置更容易理解",
+      "summary": "把模型接入拆成清楚的步骤，也让已有配置更容易检查和维护。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "improvement",
+          "title": "按步骤添加模型",
+          "description": "依次选择渠道、模型和协议，再填写密钥，减少一次面对过多参数的负担。"
+        },
+        {
+          "kind": "improvement",
+          "title": "优先看到关键配置",
+          "description": "模型卡片分层展示名称、状态、调用配置和限制信息，方便先判断能否使用。"
+        },
+        {
+          "kind": "fix",
+          "title": "删除前再次确认",
+          "description": "删除模型配置需要二次确认，降低误删正在使用配置的风险。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "2e09b01a25fc7f0b15f0b9a52d1bcd2b2b8db2a7",
+          "committed_at": "2026-10-28T08:04:10+08:00",
+          "subject": "feat(model-eval): 添加模型改为渠道到模型到协议的流程 (#164)"
+        },
+        {
+          "commit": "67138380444cb4eb9214524ee0a6ab434d4d8c52",
+          "committed_at": "2026-10-28T08:04:10+08:00",
+          "subject": "feat(model-eval): 模型卡片信息分级重排，删除改二次确认弹窗 (#164)"
+        }
+      ]
+    },
+    {
+      "version": "2026.10.22",
+      "title": "切换情报版本更稳妥",
+      "summary": "整理个人与公共情报的边界，让日期、生成版本和正在阅读的内容保持一致。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "fix",
+          "title": "公共与个人日报分开读取",
+          "description": "公共日报与用户自己的日报按归属读取，减少进入错误报告的情况。"
+        },
+        {
+          "kind": "fix",
+          "title": "生成与回读对应同一版本",
+          "description": "生成任务和后续读取使用同一份版本标识，避免不同版本的内容混在一起。"
+        },
+        {
+          "kind": "fix",
+          "title": "切换日期不被旧请求覆盖",
+          "description": "快速切换日期时，较早发出的响应不会覆盖当前选择。"
+        },
+        {
+          "kind": "improvement",
+          "title": "补齐手机阅读与操作状态",
+          "description": "调整导航、弹窗焦点、错误反馈和窄屏内容排布。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "5ea35d752fb33850e4ac7de95a61bfd7c56b4bf7",
+          "committed_at": "2026-10-22T23:50:37+08:00",
+          "subject": "fix(daily): 合并日报隔离修复与阅读体验优化 (#136)"
+        }
+      ]
+    },
+    {
+      "version": "2026.10.18",
+      "title": "情报阅读与授权接入",
+      "summary": "让日报更适合连续阅读，也让 AI 客户端接入有清楚的登录和授权过程。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "improvement",
+          "title": "重整日报阅读层级",
+          "description": "按重点线索和内容段落组织情报，便于先扫读，再展开感兴趣的内容。"
+        },
+        {
+          "kind": "improvement",
+          "title": "周报与月报阅读同步调整",
+          "description": "不同周期的情报采用相近的阅读结构，降低来回切换的学习成本。"
+        },
+        {
+          "kind": "release",
+          "title": "通过浏览器授权 AI 客户端",
+          "description": "接入支持 OAuth 的客户端时，可在浏览器完成登录并确认访问授权。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "b38b9875bd6745f83dc8fdd45a67b802cff5f0d1",
+          "committed_at": "2026-10-18T21:42:52+08:00",
+          "subject": "feat(daily): 日报改版 (#119) (#120)"
+        },
+        {
+          "commit": "2b6823974f54c36e66da0630d7d7f11140d36047",
+          "committed_at": "2026-10-18T00:38:25+08:00",
+          "subject": "feat(mcp): 动态 OAuth 授权（浏览器弹窗登录）——AS + 同意页 + 前端回跳 (#117)"
+        }
+      ]
+    },
+    {
+      "version": "2026.10.08",
+      "title": "在 AI 客户端中使用选题雷达",
+      "summary": "通过 MCP 查询选题与内容，把已经积累的信息带进自己的 AI 工作流。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "接入 MCP 客户端",
+          "description": "让支持 MCP 的 AI 客户端连接 TopicEye，查询已有内容和选题信息。"
+        },
+        {
+          "kind": "release",
+          "title": "使用个人凭据访问",
+          "description": "通过个人 API Token 连接，查询仍遵循账号原有的数据访问范围。"
+        },
+        {
+          "kind": "improvement",
+          "title": "查询与批量操作边界更清楚",
+          "description": "提供只读查询工具，并对批量评分数量设置边界，避免一次请求处理过多内容。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "1090d3721fce257052f65a7afe39059828d316a1",
+          "committed_at": "2026-10-08T07:53:21+08:00",
+          "subject": "feat: MCP server —— 用户经 /mcp 用 Bearer token 直连选题雷达 (#98)"
+        }
+      ]
+    },
+    {
+      "version": "2026.09.24",
+      "title": "筛选更清楚，阅读更连续",
+      "summary": "把筛选、加载更多和个人内容取舍连成可持续浏览的内容流。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "按推荐等级和标签筛选",
+          "description": "在内容列表中组合推荐等级与标签，更快收窄值得继续看的内容。"
+        },
+        {
+          "kind": "fix",
+          "title": "加载更多保持连续",
+          "description": "按固定分页追加内容，减少排序接近时重复出现或跳过条目的情况。"
+        },
+        {
+          "kind": "improvement",
+          "title": "加载失败可以就地重试",
+          "description": "保留已有内容并提供重试入口，不必从头重新浏览。"
+        },
+        {
+          "kind": "fix",
+          "title": "个人取舍互不影响",
+          "description": "“不感兴趣”记录按用户隔离，避免一个人的选择改变其他人的内容流。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "473afe65e37081966a97c805645a0936958dd233",
+          "committed_at": "2026-09-24T23:59:23+08:00",
+          "subject": "feat(frontend): 首页推荐等级与标签筛选下沉服务端，标签口径统一"
+        },
+        {
+          "commit": "b943d692b54ce044619dd13c43322622bfce7135",
+          "committed_at": "2026-09-24T23:57:15+08:00",
+          "subject": "feat(backend): 内容列表支持推荐等级与标签服务端筛选"
+        },
+        {
+          "commit": "4ce4d8e094f7bfbce61c37a53d2a2ca1426106ad",
+          "committed_at": "2026-09-24T08:21:21+08:00",
+          "subject": "fix(frontend): 首页加载更多改为固定分页追加并给出可重试的错误提示"
+        },
+        {
+          "commit": "76ea1dff31ab0abcaabe2234a46af1a2d1ce0c6e",
+          "committed_at": "2026-09-24T08:10:12+08:00",
+          "subject": "fix(backend): 不感兴趣记录按用户隔离，管理员全局屏蔽独立口径"
+        }
+      ]
+    },
+    {
+      "version": "2026.07.29",
+      "title": "看见报道关系与线索依据",
+      "summary": "把相似报道背后的关系展示出来，让内容判断有更多可检查的依据。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "查看同一事件的不同报道",
+          "description": "在内容中查看已经确认的报道关系，理解不同来源如何讲述同一件事。"
+        },
+        {
+          "kind": "release",
+          "title": "查看关系与归并依据",
+          "description": "展示关系依据，帮助判断哪些内容可以一起阅读、哪些应保持独立。"
+        },
+        {
+          "kind": "release",
+          "title": "管理员审核事件关系",
+          "description": "通过专门工作台检查并审核关系，保留人工判断。"
+        },
+        {
+          "kind": "release",
+          "title": "查看可信线索看板",
+          "description": "集中查看内容的证据标记和来源覆盖，为选题判断提供参考。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "6d233f4ade6d86e3c57df6b47334a8a2b2db59c5",
+          "committed_at": "2026-07-29T18:26:28+08:00",
+          "subject": "feat(frontend): 折叠展示同事件消息"
+        },
+        {
+          "commit": "143c9df7d88fdfff63744c1078ae00756760be09",
+          "committed_at": "2026-07-29T21:28:22+08:00",
+          "subject": "feat(frontend): 展示事件归并依据"
+        },
+        {
+          "commit": "56e3ae10641cc20f3e65fba6e770cc0ca3fb3d53",
+          "committed_at": "2026-07-29T20:04:05+08:00",
+          "subject": "feat(frontend): 新增内容事件审核工作台"
+        },
+        {
+          "commit": "6bdc06945ddc269b5f0a296800671c2a2a3add6b",
+          "committed_at": "2026-07-29T18:06:11+08:00",
+          "subject": "feat(frontend): 新增可信线索看板页面"
+        }
+      ]
+    },
+    {
+      "version": "2026.06.14",
+      "title": "建立自己的信源与情报空间",
+      "summary": "除了公共内容，也可以围绕自己的关注范围组织素材与日报。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "管理个人信源",
+          "description": "在“我的信源”中维护关注的来源，建立自己的持续输入。"
+        },
+        {
+          "kind": "fix",
+          "title": "个人内容按账号归属隔离",
+          "description": "个人内容和个人情报按用户归属管理，与公共信息保持边界。"
+        },
+        {
+          "kind": "release",
+          "title": "生成个人日报",
+          "description": "围绕账号自己的内容范围生成日报，便于回看和持续跟进。"
+        },
+        {
+          "kind": "release",
+          "title": "拓展素材来源",
+          "description": "录入 YouTube、播客和 Newsletter 等信源，集中管理不同形式的输入。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "a683d71cde5335dcfe2fa27a03e7468c4a29d1a0",
+          "committed_at": "2026-06-14T15:51:16+08:00",
+          "subject": "feat(frontend): 我的信源页面 + /me 系列 API 客户端"
+        },
+        {
+          "commit": "49fccf59b0028c218d4da281321ee2c540fa4f5d",
+          "committed_at": "2026-06-14T12:37:47+08:00",
+          "subject": "feat(backend): 内容列表与详情按 owner_user_id 可见性隔离"
+        },
+        {
+          "commit": "5f6e521db7a7e3a8ccd6aa36a3a07bc3d70ae917",
+          "committed_at": "2026-06-14T21:28:52+08:00",
+          "subject": "feat(backend): 用户专属日报 + /me API 系列 + 按用户生成调度"
+        },
+        {
+          "commit": "06e598ceb2157f5a76476b43554247b58e8ce605",
+          "committed_at": "2026-06-14T20:22:38+08:00",
+          "subject": "feat(backend): 信源类型扩展（YouTube/Podcast/Newsletter + URL 自动识别）"
+        }
+      ]
+    },
+    {
+      "version": "2026.06.02",
+      "title": "把收藏变成创作工作台",
+      "summary": "让值得写的内容不只停留在收藏夹，而是继续进入整理和创作。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "集中整理收藏",
+          "description": "按处理进度组织收藏，拖拽调整顺序，补充备注和标签。"
+        },
+        {
+          "kind": "release",
+          "title": "从素材生成创作方案",
+          "description": "围绕收藏的素材生成创作方案，并保存后续继续查看。"
+        },
+        {
+          "kind": "improvement",
+          "title": "在整理与创作之间接续工作",
+          "description": "把素材、备注和创作方案放在同一工作流里，减少来回查找。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "9d118c70ff9215f7ba6a5254451c44d40ce850f0",
+          "committed_at": "2026-06-02T10:00:16+08:00",
+          "subject": "feat(favorites): 升级收藏工作台"
+        },
+        {
+          "commit": "0eaa46d995ec168aec4c4dda2f87e8ef1860e45f",
+          "committed_at": "2026-06-02T12:04:49+08:00",
+          "subject": "feat(favorites): 支持收藏拖拽排序"
+        },
+        {
+          "commit": "767355d83410b6b6ad9310404d24cde6430995c5",
+          "committed_at": "2026-06-02T13:27:55+08:00",
+          "subject": "feat(favorites): 支持编辑收藏备注标签"
+        },
+        {
+          "commit": "917d26fde7cf92b88718664a35c45b1d03b1b7d6",
+          "committed_at": "2026-06-02T12:42:28+08:00",
+          "subject": "feat(favorites): 支持收藏生成创作方案"
+        },
+        {
+          "commit": "643b526711557841b997813e1080d038565c0110",
+          "committed_at": "2026-06-02T13:38:37+08:00",
+          "subject": "feat(favorites): 持久化收藏创作方案"
+        }
+      ]
+    },
+    {
+      "version": "2026.05.19",
+      "title": "从内容流到选题雷达",
+      "summary": "集中阅读不同来源的内容，用评分辅助筛选，再回到情报中查看整体线索。",
+      "status": "shipped",
+      "target_date": null,
+      "shipped_at": null,
+      "items": [
+        {
+          "kind": "release",
+          "title": "按推荐分浏览内容",
+          "description": "在内容流中优先查看更值得关注的条目，再根据兴趣继续筛选。"
+        },
+        {
+          "kind": "release",
+          "title": "多维信号辅助选题",
+          "description": "结合不同维度的信号组织推荐，给选题判断提供参考。"
+        },
+        {
+          "kind": "release",
+          "title": "按日期回看历史日报",
+          "description": "查看不同日期的日报，持续跟进已经出现的线索。"
+        }
+      ],
+      "evidence": [
+        {
+          "commit": "e9d4de15dc7e3f96ce032e481a0948350e653834",
+          "committed_at": "2026-05-19T20:52:41+08:00",
+          "subject": "feat(backend): 首页支持 sort_by=curation_score，接入评分引擎做精选分排序"
+        },
+        {
+          "commit": "d62971b5d14e3c8901fd8bf5db26dd6105d7fc23",
+          "committed_at": "2026-05-19T16:25:43+08:00",
+          "subject": "feat(backend): 实现多维信号评分引擎，改造今日精选管线"
+        },
+        {
+          "commit": "a43fa130d33dd3ff7199eb1158d05a2effb6ebea",
+          "committed_at": "2026-05-19T13:16:13+08:00",
+          "subject": "feat(backend+frontend): AI日报历史浏览功能，支持按日期查询历史报告"
+        }
+      ]
+    }
+  ]
+}

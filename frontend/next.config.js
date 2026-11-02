@@ -27,6 +27,7 @@ const nextConfig = {
   // 迁移历史：v0.7.0 路由收口，admin 页面统一到 /admin/* 前缀
   async redirects() {
     return [
+      { source: '/dashboard', destination: '/admin/dashboard', permanent: false },
       { source: '/sources', destination: '/admin/sources', permanent: true },
       { source: '/model-eval', destination: '/admin/model-eval', permanent: true },
       { source: '/feedback', destination: '/admin/feedback', permanent: true },
@@ -63,11 +64,6 @@ const nextConfig = {
       { source: '/register', destination: `${backendApiUrl}/register` },
       { source: '/revoke', destination: `${backendApiUrl}/revoke` },
       { source: '/.well-known/:path*', destination: `${backendApiUrl}/.well-known/:path*` },
-      // 内置监控大盘（后端自包含 HTML 页面，纯 Canvas 图表）
-      {
-        source: '/dashboard',
-        destination: `${backendApiUrl}/dashboard`,
-      },
       // Prometheus 标准采集端点（根路径别名）
       {
         source: '/metrics',

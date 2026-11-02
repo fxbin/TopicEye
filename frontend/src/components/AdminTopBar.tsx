@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import Link, { useLinkStatus } from 'next/link';
 import { Menu, ChevronRight, ExternalLink, LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { findAdminPageLabel } from '@/lib/admin-nav';
@@ -13,7 +14,6 @@ import { findAdminPageLabel } from '@/lib/admin-nav';
  */
 export default function AdminTopBar({ onMenuOpen }: { onMenuOpen?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentUser, logout } = useAppContext();
   // 页面名由 @/lib/admin-nav 的导航清单派生（#88），不再手写第二份映射表。
   const pageLabel = findAdminPageLabel(pathname);
@@ -58,15 +58,14 @@ export default function AdminTopBar({ onMenuOpen }: { onMenuOpen?: () => void })
 
       <div className="flex items-center gap-2">
         {/* 返回前台：管理员的日常是跨前后台跳转，常驻顶栏 */}
-        <button
-          type="button"
-          onClick={() => router.push('/')}
+        <Link
+          href="/"
+          prefetch={true}
           aria-label="返回前台"
           className="flex min-h-10 items-center gap-1.5 rounded-xs border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-300 hover:text-ink-900"
         >
-          <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
-          <span className="hidden sm:inline">返回前台</span>
-        </button>
+          <ReturnToFrontLabel />
+        </Link>
 
         {/* 账号菜单：会话操作收敛于此（侧栏底部只留身份展示） */}
         {currentUser && (
@@ -105,5 +104,16 @@ export default function AdminTopBar({ onMenuOpen }: { onMenuOpen?: () => void })
         )}
       </div>
     </div>
+  );
+}
+
+function ReturnToFrontLabel() {
+  const { pending } = useLinkStatus();
+  return (
+    <>
+      <ExternalLink size={13} strokeWidth={2} aria-hidden="true" className={pending ? 'animate-pulse' : undefined} />
+      <span className="hidden sm:inline">{pending ? '正在返回…' : '返回前台'}</span>
+      <span role="status" className="sr-only">{pending ? '正在打开前台页面' : ''}</span>
+    </>
   );
 }

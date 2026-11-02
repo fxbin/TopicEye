@@ -135,17 +135,18 @@ async def test_metrics_checks_allows_admin(monitored_app):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_requires_admin(monitored_app):
+@pytest.mark.parametrize("path", ["/dashboard", "/api/v1/metrics/dashboard"])
+async def test_dashboard_requires_admin(monitored_app, path):
     app, session_factory = monitored_app
 
-    resp = await _get(app, "/dashboard")
+    resp = await _get(app, path)
     assert resp.status_code == 401
 
     token = await _seed_account(session_factory, "metrics-user@test.local", UserRole.USER.value)
-    resp = await _get(app, "/dashboard", token)
+    resp = await _get(app, path, token)
     assert resp.status_code == 403
 
     token = await _seed_account(session_factory, "metrics-admin@test.local", UserRole.ADMIN.value)
-    resp = await _get(app, "/dashboard", token)
+    resp = await _get(app, path, token)
     assert resp.status_code == 200
     assert "<!DOCTYPE html>" in resp.text

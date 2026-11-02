@@ -44,6 +44,8 @@ Status: implemented — #209（Owner 指派「改吧，并把入口归入后台�
 
 ### 三、入口归入后台管理
 
+> 此节记录当时的入口选择；当前导航方式已由[后台内嵌与前后台跳转合同](2026-11-02-dashboard-admin-navigation.md)替代。数据判定与图表口径仍以本文为准。
+
 `frontend/src/lib/admin-nav.ts` 的唯一清单新增「监控大盘」（`/dashboard`，系统组）。它是**壳外独立页面**：后端直出 HTML，经 `next.config.js` 的 rewrite 以同源暴露。
 
 因此清单里新增 `standalone` 标记：
@@ -103,3 +105,7 @@ Status: implemented — #209（Owner 指派「改吧，并把入口归入后台�
 - `cd frontend && npx tsc --noEmit` 与 `npm run test:coverage`：379 条前端用例全绿。
 - 本地起后端实测：四个页签（概览 / LLM 日志 / 应用日志 / 前端体验）渲染正常，无控制台错误；体检行点击可就地展开趋势与日志。
 - 可读性：首屏与各页签截图经默认做法检查，对比度不达标项已全部清零（品牌橙/红在小字上另用深色变体）。
+
+## 后续入口调整
+
+Owner 进一步指出独立页面会中断后台导航。新增嵌入模式消除重复侧栏并保留统一后台壳，详见[后台内嵌与前后台跳转合同](2026-11-02-dashboard-admin-navigation.md)。原文中 iframe 的否决只对应自带完整侧栏的旧模式。

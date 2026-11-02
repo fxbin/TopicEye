@@ -78,12 +78,16 @@ export const contentsApi = {
   },
 
   /** 当日精选（自动 Top 30%） */
-  todayPicks(params?: { category?: string; content_type?: string; time_range?: string; limit?: number }): Promise<{
+  todayPicks(params?: { category?: string; content_type?: string; time_range?: string; limit?: number; offset?: number }): Promise<{
     items: ContentItem[];
     topics: TopicInfo[];
     total: number;
     event_members_hidden: number;
     pending_review?: { items: Pick<ContentItem, 'id' | 'title' | 'source_name'>[]; total: number };
+    /** 已加载条数：本次请求跳过的条目数 */
+    offset?: number;
+    /** 本次返回之后是否还有内容 */
+    has_more?: boolean;
   }> {
     const query = params
       ? '?' + new URLSearchParams(

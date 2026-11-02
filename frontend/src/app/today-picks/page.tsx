@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
@@ -24,12 +24,16 @@ import type { ContentAnalysis, ContentItem, TopicInfo } from '@/types';
 import {
   RECOMMEND_LEVELS,
   DEFAULT_TIME_RANGE,
-  INITIAL_PICK_LIMIT,
-  PICK_LOAD_STEP,
   normalizeTimeRange,
   getAnalysis,
   scoreOf,
 } from './_today-picks-utils';
+import {
+  PICK_PAGE_SIZE,
+  hasMorePicks,
+  mergePickPage,
+  nextPickOffset,
+} from './_paging';
 import {
   OverviewStrip,
   LeadPick,
@@ -55,7 +59,6 @@ function TodayPicksPage() {
   const [selectedContentType, setSelectedContentType] = useState(searchParams.get('content_type') || '');
   const [selectedLevel, setSelectedLevel] = useState(searchParams.get('level') || '');
   const [selectedTimeRange, setSelectedTimeRange] = useState(normalizeTimeRange(searchParams.get('time_range')));
-  const [loadLimit, setLoadLimit] = useState(INITIAL_PICK_LIMIT);
   const [selectedAnalysis, setSelectedAnalysis] = useState<(ContentAnalysis & { _content_id?: number }) | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [groupByTopic, setGroupByTopic] = useState(true);
@@ -75,12 +78,10 @@ function TodayPicksPage() {
 
   const setCategory = (cat: string) => {
     setSelectedCategory(cat);
-    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL(cat, selectedContentType, selectedLevel, selectedTimeRange);
   };
   const setContentType = (ct: string) => {
     setSelectedContentType(ct);
-    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL(selectedCategory, ct, selectedLevel, selectedTimeRange);
   };
   const setLevel = (level: string) => {
@@ -90,7 +91,6 @@ function TodayPicksPage() {
   };
   const setTimeRange = (tr: string) => {
     setSelectedTimeRange(tr);
-    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL(selectedCategory, selectedContentType, selectedLevel, tr);
   };
   const clearFilters = () => {
@@ -98,27 +98,102 @@ function TodayPicksPage() {
     setSelectedContentType('');
     setSelectedLevel('');
     setSelectedTimeRange(DEFAULT_TIME_RANGE);
-    setLoadLimit(INITIAL_PICK_LIMIT);
     updateURL('', '', '', DEFAULT_TIME_RANGE);
   };
 
-  // 数据获取：从手写 useEffect+fetch 迁移到 useFetch（含竞态保护、enabled、refetch）。
-  const fetchPicks = useCallback(() => {
-    const params: { category?: string; content_type?: string; time_range?: string; limit?: number } = {};
+  // 数据获取：首屏取第一页，后续按 offset 追加（#218）。
+  //
+  // 后端 today-picks 的 offset 返回的是同一条稳定序列的下一段，因此追加只做
+  // 按 id 去重合并，已加载条目不会被后续页改写位置。首屏用 useFetch（含竞态
+  // 保护），后续页用 loadMore 单独发起，失败时保留已加载内容可重试。
+  const buildParams = useCallback((offset: number) => {
+    const params: {
+      category?: string;
+      content_type?: string;
+      time_range?: string;
+      limit?: number;
+      offset?: number;
+    } = {};
     if (selectedCategory) params.category = selectedCategory;
     if (selectedContentType) params.content_type = selectedContentType;
     params.time_range = selectedTimeRange;
-    params.limit = selectedTimeRange === '7d' ? Math.max(loadLimit, 80) : loadLimit;
-    return contentsApi.todayPicks(params);
-  }, [loadLimit, selectedCategory, selectedContentType, selectedTimeRange]);
+    params.limit = PICK_PAGE_SIZE;
+    params.offset = offset;
+    return params;
+  }, [selectedCategory, selectedContentType, selectedTimeRange]);
 
-  const { data, loading } = useFetch(fetchPicks, [loadLimit, selectedCategory, selectedContentType, selectedTimeRange]);
+  const fetchPicks = useCallback(() => contentsApi.todayPicks(buildParams(0)), [buildParams]);
 
-  // 从 data 派生各状态
-  const items = data?.items || [];
+  const { data, loading } = useFetch(fetchPicks, [selectedCategory, selectedContentType, selectedTimeRange]);
+
+  // 已加载的条目（首屏 + 后续页）。筛选变化时随首屏重置。
+  const [loadedItems, setLoadedItems] = useState<ContentItem[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [serverHasMore, setServerHasMore] = useState<boolean | undefined>(undefined);
+  const loadMorePending = useRef(false);
+  // 筛选/窗口变化时递增：让在途的后续页请求作废，避免旧筛选的结果混进来
+  const requestSeq = useRef(0);
+
+  // 首屏结果落到已加载列表；筛选变化时整体替换
+  useEffect(() => {
+    requestSeq.current += 1;
+    loadMorePending.current = false;
+    setLoadingMore(false);
+    setLoadMoreError(null);
+    setLoadedItems(data?.items || []);
+    setServerHasMore(data?.has_more);
+  }, [data]);
+
+  const items = loadedItems;
   const total = data?.total || 0;
   const topics = data?.topics || [];
   const eventMemberCount = data?.event_members_hidden || 0;
+  const canLoadMore = hasMorePicks(items.length, total, serverHasMore);
+
+  // 加载下一批：offset 用实际已加载条数，窗口内新增内容导致的位移能被补回
+  const loadMore = useCallback(async () => {
+    if (loadMorePending.current || !canLoadMore) return;
+    loadMorePending.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    const seq = requestSeq.current;
+    try {
+      const res = await contentsApi.todayPicks(buildParams(nextPickOffset(items.length)));
+      if (seq !== requestSeq.current) return;
+      setLoadedItems((prev) => mergePickPage(prev, res.items || []));
+      setServerHasMore(res.has_more);
+    } catch (err) {
+      if (seq === requestSeq.current) {
+        setLoadMoreError(err instanceof Error ? err.message : '加载更多失败，请重试');
+      }
+    } finally {
+      if (seq === requestSeq.current) {
+        loadMorePending.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [buildParams, canLoadMore, items.length]);
+
+  // 滚动到底自动加载下一批。
+  //
+  // 用 IntersectionObserver 而不是 window scroll 事件：本页滚动发生在
+  // ClientLayout 的内部滚动容器里（min-h-0 flex-1 overflow-auto），scroll
+  // 事件不会冒泡到 window，监听 window 收不到事件。
+  const loadMoreAnchorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const anchor = loadMoreAnchorRef.current;
+    if (!anchor) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      // 提前 400px 触发，滚到接近底部时内容已就位，不出现空窗
+      { rootMargin: '0px 0px 400px 0px' },
+    );
+    observer.observe(anchor);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   // 批量获取证据标记（避免每张卡片单独 API 调用 N+1）
   const [evidenceMarks, setEvidenceMarks] = useState<Record<string, EvidenceMark>>({});
@@ -337,16 +412,28 @@ function TodayPicksPage() {
             </div>
           )}
           {!loading && data?.pending_review && !selectedLevel && <PendingReview {...data.pending_review} onRead={handleRead} />}
-          {!loading && items.length < total && (
+          {/* 滚动加载锚点：进入视口即自动接下一批 */}
+          <div ref={loadMoreAnchorRef} aria-hidden="true" className="h-px w-full" />
+          {!loading && canLoadMore && (
             <div className="pb-10 text-center">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setLoadLimit((current) => current + PICK_LOAD_STEP)}
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
               >
-                加载更多（还有 {total - items.length} 条）
+                {loadingMore ? '正在加载…' : `加载更多（还有 ${Math.max(0, total - items.length)} 条）`}
               </Button>
-              <div className="mt-2 text-[11px] text-gray-400">首屏优先呈现高分选题，按需继续展开。</div>
+              <div className="mt-2 text-[11px] text-gray-400">
+                {loadMoreError
+                  ? loadMoreError
+                  : '向下滚动会自动加载更多，也可以点击按钮继续展开。'}
+              </div>
+            </div>
+          )}
+          {!loading && !canLoadMore && items.length > 0 && (
+            <div className="pb-10 text-center text-[11px] text-gray-400">
+              已加载全部 {items.length} 条精选内容
             </div>
           )}
         </main>

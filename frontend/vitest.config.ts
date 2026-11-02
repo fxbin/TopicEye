@@ -42,6 +42,8 @@ export default defineConfig({
         'src/components/WebVitalsReporter.tsx',
         // #187：母题关键词 AI 提取的切分/标注/合并纯逻辑（同目录测试）
         'src/app/my-topics/config/_keyword-extract.ts',
+        // #218：今日选题滚动加载的分页口径（去重追加、offset 计算、has_more 判定）
+        'src/app/today-picks/_paging.ts',
       ],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

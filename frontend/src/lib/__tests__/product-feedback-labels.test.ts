@@ -53,7 +53,7 @@ describe('SEVERITY_TONES', () => {
 
 describe('UPDATE_KIND_LABELS', () => {
   it('maps all update kinds', () => {
-    expect(UPDATE_KIND_LABELS.release).toBe('发布');
+    expect(UPDATE_KIND_LABELS.release).toBe('新增');
     expect(UPDATE_KIND_LABELS.improvement).toBe('改进');
     expect(UPDATE_KIND_LABELS.fix).toBe('修复');
     expect(UPDATE_KIND_LABELS.roadmap).toBe('规划');

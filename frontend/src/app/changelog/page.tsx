@@ -2,18 +2,14 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ChevronDown,
   CircleDot,
   Flag,
   Loader2,
   RefreshCw,
-  Rocket,
-  ShieldCheck,
-  Wrench,
   X,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
+import { Badge, Button, Panel, cx } from '@/components/ui';
 import { ErrorState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { useDialogFocus } from '@/components/useDialogFocus';
@@ -21,122 +17,22 @@ import {
   productFeedbackApi,
   type IssueFeedbackItem,
   type IssueFeedbackSeverity,
-  type IssueFeedbackStatus,
   type ProductUpdateItem,
   type ProductUpdateKind,
-  type ProductUpdateStatus,
 } from '@/lib/api';
+import { ReleaseNote } from './_update-timeline';
+import { filterReleaseNotes } from './_release-filter';
 import { timeAgoShort as formatRelative } from '@/lib/datetime';
 import {
   ISSUE_STATUS_LABELS,
   ISSUE_STATUS_TONES,
   SEVERITY_LABELS,
   SEVERITY_TONES,
-  UPDATE_KIND_LABELS,
-  UPDATE_KIND_TONES,
-  UPDATE_STATUS_LABELS,
-  UPDATE_STATUS_TONES,
 } from '@/lib/product-feedback-labels';
 
 // 注：Tone 类型与 product-feedback 标签映射已收敛到公共模块：
 // - Tone ← @/components/ui
 // - 标签映射 ← @/lib/product-feedback-labels（修复 R9 值冲突）
-
-// ── Helpers (display formatters) ────────────────────────────────────────
-
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// ── Update timeline (发版记录) ──────────────────────────────────────────
-
-function UpdateItemCard({ entry, itemUpdatedAt }: { entry: ProductUpdateItem['items'][number]; itemUpdatedAt: string }) {
-  return (
-    <div className="rounded-sm border border-gray-100 bg-white px-3 py-2.5">
-      <div className="mb-1 flex items-center gap-2">
-        <Badge tone={UPDATE_KIND_TONES[entry.kind]}>{UPDATE_KIND_LABELS[entry.kind]}</Badge>
-        <span className="text-[12px] text-gray-500">{formatRelative(itemUpdatedAt)}</span>
-      </div>
-      <p className="text-[13px] leading-6 text-gray-700">{entry.description}</p>
-    </div>
-  );
-}
-
-function UpdateCard({ item }: { item: ProductUpdateItem }) {
-  const isShipped = item.status === 'shipped';
-  // shipped 默认展开（用户最关心的历史变更），其他状态默认折叠
-  const [expanded, setExpanded] = useState(isShipped);
-
-  // 折叠状态摘要：按 kind 统计
-  const kindCounts = item.items.reduce<Record<string, number>>((acc, it) => {
-    acc[it.kind] = (acc[it.kind] || 0) + 1;
-    return acc;
-  }, {});
-
-  return (
-    <Panel className="p-4.5 sm:p-5">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <div
-            className={cx(
-              'flex h-9 w-9 items-center justify-center rounded-sm',
-              isShipped ? 'bg-teal-light text-teal' : 'bg-amber-light text-amber',
-            )}
-          >
-            {isShipped ? <Rocket size={16} /> : <Wrench size={16} />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[15px] font-black text-gray-900">{item.version}</span>
-              <Badge tone={UPDATE_STATUS_TONES[item.status]}>{UPDATE_STATUS_LABELS[item.status]}</Badge>
-            </div>
-            <p className="text-[12px] text-gray-500">
-              {isShipped && item.shipped_at ? `发布于 ${formatDate(item.shipped_at)}` :
-                item.target_date ? `计划 ${formatDate(item.target_date)}` : '近期规划'}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-[12px] text-gray-500">
-          {!expanded && item.items.length > 0 && (
-            <span className="hidden gap-1 sm:flex">
-              {Object.entries(kindCounts).map(([k, n]) => (
-                <Badge key={k} tone={UPDATE_KIND_TONES[k as ProductUpdateKind]}>
-                  {UPDATE_KIND_LABELS[k as ProductUpdateKind]} {n}
-                </Badge>
-              ))}
-            </span>
-          )}
-          <span>{item.items.length} 项</span>
-          <ChevronDown
-            size={16}
-            className={cx(
-              'transition-transform',
-              expanded && 'rotate-180',
-            )}
-          />
-        </div>
-      </button>
-      {expanded && (
-        <div className="space-y-2">
-          {item.items.length === 0 ? (
-            <p className="py-3 text-center text-[13px] text-gray-500">该版本暂无更新项</p>
-          ) : (
-            item.items.map((entry, idx) => (
-              <UpdateItemCard key={`${item.id}-${idx}`} entry={entry} itemUpdatedAt={item.updated_at} />
-            ))
-          )}
-        </div>
-      )}
-    </Panel>
-  );
-}
 
 // ── Feedback panel (简化版：写表单 + 最近 10 条历史) ───────────────────
 
@@ -350,155 +246,51 @@ function FeedbackPanel({ onClose, onSubmitted }: { onClose: () => void; onSubmit
 export default function ChangelogPage() {
   const { currentUser, authLoading } = useAppContext();
   const [showFeedback, setShowFeedback] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | ProductUpdateStatus>('all');
-  const [versionQuery, setVersionQuery] = useState('');
-
-  const { data: updates, loading, error, refetch } = useFetch<ProductUpdateItem[]>(
-    async () => {
-      const resp = await productFeedbackApi.listUpdates({ limit: 50 });
-      return resp.items;
-    },
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState<'all' | ProductUpdateKind>('all');
+  const { data, loading, error, refetch } = useFetch<ProductUpdateItem[]>(
+    async () => (await productFeedbackApi.listUpdates({ status: 'shipped', limit: 300 })).items,
     [],
     { enabled: !authLoading },
   );
-
-  const filteredUpdates = (updates || [])
-    .filter((u) => statusFilter === 'all' || u.status === statusFilter)
-    .filter((u) => !versionQuery.trim() || u.version.toLowerCase().includes(versionQuery.trim().toLowerCase()));
-
-  if (authLoading || loading) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-page">
-        <div className="inline-flex items-center gap-2 text-sm font-bold text-gray-500">
-          <Loader2 size={16} className="animate-spin" />
-          正在加载更新记录
-        </div>
-      </div>
-    );
-  }
-
-  const shippedCount = (updates || []).filter((u) => u.status === 'shipped').length;
-  const inProgressCount = (updates || []).filter((u) => u.status === 'in_progress').length;
+  const records = filterReleaseNotes(data || [], query, kind);
+  const latest = filterReleaseNotes(data || [], '', 'all')[0];
 
   return (
     <div className="workspace-scroll">
-      <div className="mx-auto w-full max-w-[1200px] space-y-5 pb-8">
-        {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="page-title text-gray-900">更新记录</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge tone="primary">产品更新</Badge>
-              {shippedCount > 0 && <Badge tone="teal">已发布 {shippedCount}</Badge>}
-              {inProgressCount > 0 && <Badge tone="amber">进行中 {inProgressCount}</Badge>}
-            </div>
-                        <p className="mt-2 max-w-[760px] text-sm leading-7 text-gray-500">
-              查看 TopicEye 的最新发版、新增能力和修复。有想法或遇到问题？随时给我们反馈。
-            </p>
+      <div className="mx-auto max-w-[1200px] space-y-6 pb-8">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="page-title">更新记录</h1>
+            <p className="mt-2 text-sm leading-7 text-ink-500">从发现线索到形成作品，看看每次更新带来的变化。</p>
           </div>
-          <div className="flex gap-2">
-            {currentUser ? (
-              <Button type="button" onClick={() => setShowFeedback(true)}>
-                <Flag size={14} />
-                反馈
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => window.location.href = '/login'}
-                title="请先登录后提交反馈"
-              >
-                <Flag size={14} />
-                登录后反馈
-              </Button>
-            )}
-            <Button type="button" variant="secondary" onClick={() => void refetch()}>
-              <RefreshCw size={14} />
-              刷新
-            </Button>
+          <div className="flex flex-wrap gap-2">
+            {currentUser?.role === 'admin' && <a href="/admin/updates" className="inline-flex min-h-10 items-center rounded-sm px-3 text-sm text-ink-500 hover:text-primary-text">管理更新</a>}
+            <Button onClick={() => setShowFeedback(true)}><Flag size={14} />反馈建议</Button>
+          </div>
+        </header>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-ink-200 py-4">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="更新类别">
+            {([['all', '全部更新'], ['release', '新增'], ['improvement', '改进'], ['fix', '修复']] as const).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={cx('min-h-9 rounded-sm px-3 text-[13px] font-medium transition', kind === value ? 'bg-primary-light text-primary-text' : 'text-ink-500 hover:bg-ink-100')}>{label}</button>
+            ))}
+          </div>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <label className="sr-only" htmlFor="release-search">搜索更新记录</label>
+            <input id="release-search" value={query} onChange={event => setQuery(event.target.value)} type="search" placeholder="搜索功能、改进或日期" className="min-h-10 min-w-0 flex-1 rounded-sm border border-ink-200 bg-white px-3 text-sm sm:w-60" />
+            <Button onClick={() => void refetch()} disabled={loading} aria-label="刷新更新记录"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></Button>
           </div>
         </div>
-
-        {error && (
-          <div className="mb-4">
-            <ErrorState error={error} onRetry={() => void refetch()} panel={false} />
+        {error && <ErrorState error={error} onRetry={() => void refetch()} panel={false} />}
+        {(authLoading || loading) && !data ? <div role="status" className="space-y-4"><p className="text-sm text-ink-500">正在加载更新记录…</p><div className="admin-shimmer h-64 rounded-lg" /></div> : records.length ? (
+          <div className="max-w-[1040px] space-y-6">
+            {records.map(item => <ReleaseNote key={`${item.id}-${query ? 'search' : 'list'}`} item={item} latest={item.id === latest?.id} searching={Boolean(query.trim())} />)}
           </div>
-        )}
-
-        {/* Status filter tabs + version search */}
-        {(updates || []).length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={versionQuery}
-              onChange={(e) => setVersionQuery(e.target.value)}
-              placeholder="按版本号搜索（如 v0.2、v1.0）"
-              className="flex-1 min-w-[200px] rounded-sm border border-gray-200 bg-white px-3 py-1 text-[12px] focus:border-orange focus:outline-none"
-            />
-            {([
-              { value: 'all', label: '全部', count: (updates || []).length },
-              { value: 'shipped', label: '已发布', count: (updates || []).filter((u) => u.status === 'shipped').length },
-              { value: 'in_progress', label: '进行中', count: (updates || []).filter((u) => u.status === 'in_progress').length },
-              { value: 'planned', label: '已规划', count: (updates || []).filter((u) => u.status === 'planned').length },
-            ] as const).map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setStatusFilter(tab.value as 'all' | ProductUpdateStatus)}
-                className={cx(
-                  'flex items-center gap-1.5 rounded-sm border px-3 py-1 text-[12px] transition',
-                  statusFilter === tab.value
-                    ? 'border-orange bg-orange text-white'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-orange/50',
-                )}
-              >
-                {tab.label}
-                <span className={cx(
-                  'rounded-full px-1.5 text-[10px]',
-                  statusFilter === tab.value ? 'bg-white/20' : 'bg-gray-100',
-                )}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Timeline */}
-        {filteredUpdates.length === 0 ? (
-          <Panel className="p-8 text-center">
-            <ShieldCheck className="mx-auto mb-3 h-10 w-10 text-gray-300" />
-            <p className="text-[14px] text-gray-500">
-              {versionQuery.trim()
-                ? `没有匹配「${versionQuery}」的发版记录`
-                : statusFilter === 'all'
-                  ? '暂无更新记录'
-                  : `暂无「${statusFilter}」状态的发版记录`}
-            </p>
-          </Panel>
-        ) : (
-          <div className="space-y-3">
-            {filteredUpdates.map((item) => (
-              <UpdateCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
-
-        <p className="pt-2 text-center text-[12px] text-gray-500">
-          反馈对话框只展示最近 10 条 ·{' '}
-          <a href="/admin/feedback" className="text-orange hover:underline">
-            完整反馈工作台（管理员视图、状态机等）&rarr;
-          </a>
-        </p>
+        ) : !error && <Panel className="p-8 text-center"><p className="text-sm text-ink-500">{query || kind !== 'all' ? '没有匹配的更新，试试其他关键词或类别。' : '还没有已发布的更新。'}</p></Panel>}
+        <p className="text-xs leading-6 text-ink-500">历史更新按产品里程碑整理，日期为归档日期。</p>
       </div>
-
-      {showFeedback && (
-        <FeedbackPanel
-          onClose={() => setShowFeedback(false)}
-          onSubmitted={() => void refetch()}
-        />
-      )}
+      {showFeedback && <FeedbackPanel onClose={() => setShowFeedback(false)} onSubmitted={() => setShowFeedback(false)} />}
     </div>
   );
 }

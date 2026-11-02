@@ -318,17 +318,15 @@ export default function WeReadPage() {
     setPage(1);
   }, []);
 
-  if (loading && allItems.length === 0) return <LoadingState />;
-  if (error && allItems.length === 0) return <ErrorState error={error} onRetry={() => refetch()} />;
 
   return (
-    <div className="h-full w-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl space-y-4 p-4">
+    <div className="workspace-scroll">
+      <div className="space-y-5 pb-8">
         {/* 头部 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Library size={20} className="text-primary" />
-            <h1 className="text-lg font-black text-gray-900">微信读书书架</h1>
+            <h1 className="page-title text-gray-900">微信读书书架</h1>
             {total > 0 && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-500">
                 {total} 本
@@ -338,7 +336,7 @@ export default function WeReadPage() {
           <button
             type="button"
             onClick={handleSync}
-            disabled={syncing}
+            disabled={syncing || loading}
             className={cx(
               'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-bold transition',
               syncing
@@ -350,6 +348,9 @@ export default function WeReadPage() {
             {syncing ? '同步中…' : '同步素材'}
           </button>
         </div>
+
+        {loading && allItems.length === 0 && <LoadingState minHeight="200px" />}
+        {error && <ErrorState error={error} onRetry={() => refetch()} />}
 
         {/* 同步反馈 */}
         {syncMsg && (
@@ -366,7 +367,7 @@ export default function WeReadPage() {
         )}
 
         {/* 空状态 */}
-        {allItems.length === 0 && !loading && activeTab === 'shelf' && (
+        {allItems.length === 0 && !loading && !error && activeTab === 'shelf' && (
           <Panel className="p-8 text-center">
             <BookOpen size={32} className="mx-auto mb-3 text-gray-300" />
             <p className="text-sm font-bold text-gray-500">还没有微信读书素材</p>

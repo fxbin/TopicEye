@@ -44,8 +44,8 @@ describe('ADMIN_NAV_ITEMS 结构不变式', () => {
    * 「内容事件治理」→「事件治理」、「系统母题模板库」→「母题库」缩名。
    * 2026-10-19（owner 验收反馈定稿）：任务统计从用户侧 /stats/jobs 迁入
    * 后台壳（/admin/jobs「任务监控」，系统组），旧路径留服务端跳转桩。
-   * #209：新增「监控大盘」/dashboard —— 壳外独立页面（后端直出），
-   * 只进侧边栏、不进面包屑，因此 inShell=false 且带 standalone 标记。
+   * 监控大盘归入 /admin/dashboard，后端画布嵌入统一后台壳。
+   * 导航和面包屑共同保留；不保留旧 /dashboard 访问入口。
    */
   it('16 项字面值逐项锁死（改导航必须同步改本表）', () => {
     const actual = ADMIN_NAV_ITEMS.map((i) => [
@@ -69,7 +69,7 @@ describe('ADMIN_NAV_ITEMS 结构不变式', () => {
       ['feedback', '反馈工作台', '/admin/feedback', true, false, 'users'],
       ['updates', '发版记录', '/admin/updates', true, false, 'users'],
       ['monitor', '任务监控', '/admin/jobs', true, false, 'system'],
-      ['monitoring-dashboard', '监控大盘', '/dashboard', false, true, 'system'],
+      ['monitoring-dashboard', '监控大盘', '/admin/dashboard', true, false, 'system'],
       ['prompts', 'Prompt 管理', '/admin/prompts', true, false, 'system'],
       ['webhook-logs', 'Webhook 日志', '/admin/webhook-logs', true, false, 'system'],
       ['settings', '系统设置', '/admin/settings', true, false, 'system'],
@@ -87,20 +87,18 @@ describe('面包屑映射与清单一致（#88 核心不变量）', () => {
     expect(ADMIN_PAGE_LABELS['/dashboard']).toBeUndefined();
   });
 
-  it('壳内 15 项、壳外 1 项（监控大盘 /dashboard 是后端直出的独立页面）', () => {
-    expect(ADMIN_IN_SHELL_PATHS).toHaveLength(15);
+  it('全部 16 项都在后台壳内，包括监控大盘', () => {
+    expect(ADMIN_IN_SHELL_PATHS).toHaveLength(16);
     expect(ADMIN_NAV_ITEMS).toHaveLength(16);
-    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell).map((i) => i.id)).toEqual(['monitoring-dashboard']);
+    expect(ADMIN_NAV_ITEMS.filter((i) => !i.inShell).map((i) => i.id)).toEqual([]);
   });
 
-  it('监控大盘是壳外独立页面：只进侧边栏，不进面包屑', () => {
-    const item = ADMIN_NAV_ITEMS.find((i) => i.id === 'monitoring-dashboard');
-    expect(item).toBeDefined();
-    expect(item?.standalone).toBe(true);
-    expect(item?.inShell).toBe(false);
-    // 面包屑只映射壳内路由——那个页面没有壳内顶栏，硬塞进去会指错地方
-    expect(ADMIN_PAGE_LABELS['/dashboard']).toBeUndefined();
-    expect(findAdminPageLabel('/dashboard')).toBe(ADMIN_FALLBACK_LABEL);
+  it('监控大盘保留后台导航与面包屑', () => {
+    const item = ADMIN_NAV_ITEMS.find(i => i.id === 'monitoring-dashboard');
+    expect(item?.href).toBe('/admin/dashboard');
+    expect(item?.inShell).toBe(true);
+    expect(item?.standalone).not.toBe(true);
+    expect(findAdminPageLabel('/admin/dashboard')).toBe('监控大盘');
   });
 
   it('standalone 项与 inShell 项互斥（免得既不壳内也不独立）', () => {

@@ -312,7 +312,7 @@ export default function ContentsPage() {
   ];
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="内容列表"
         description={<>从各信源采集到的原始内容 · 共 <b className="font-mono text-gray-600">{total}</b> 条</>}

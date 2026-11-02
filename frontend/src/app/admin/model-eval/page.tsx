@@ -34,7 +34,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Badge, Button, Panel, Toolbar, cx } from '@/components/ui';
+import { Badge, Button, Toolbar, cx } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { AdminPageShell, AdminPageHeader } from '@/components/admin-ui';
 import { modelsApi } from '@/lib/api';
@@ -131,34 +131,27 @@ export default function ModelEvalPage() {
   ];
 
   return (
-    <AdminPageShell maxWidth={1480}>
-      {/* Header */}
-      <Panel className="overflow-hidden p-5 sm:p-6">
-        <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="min-w-0">
-            <AdminPageHeader
-              title="AI 引擎工作台"
-              icon={BrainCircuit}
-              description={`管理内容分析、${EDITION_LABELS.daily}、${EDITION_LABELS.weekly}和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。`}
-            />
-          </div>
-          <Button type="button" variant="secondary" onClick={() => void refreshAll().catch(() => {})} className="w-fit whitespace-nowrap">
-            <RefreshCw size={14} strokeWidth={2.2} />
-            刷新数据
+    <AdminPageShell>
+      <AdminPageHeader
+        title="AI 引擎工作台"
+        icon={BrainCircuit}
+        description={`管理内容分析、${EDITION_LABELS.daily}、${EDITION_LABELS.weekly}和分类任务使用的模型，定期做 A/B 测评，保留人工评分作为模型选择依据。`}
+        actions={
+          <Button type="button" variant="secondary" onClick={() => void refreshAll().catch(() => {})}>
+            <RefreshCw size={14} strokeWidth={2.2} />刷新数据
           </Button>
-        </div>
+        }
+      />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <StatTile icon={Layers3} label="模型配置" value={models.length} hint={`${enabledCount} 个启用`} tone="primary" />
+        <StatTile icon={KeyRound} label="可测模型" value={runnableCount} hint="具备调用条件" tone="teal" />
+        <StatTile icon={ShieldCheck} label="路由组" value={routeGroups} hint="按组独立排序" />
+        <StatTile icon={Clock3} label="首选路由" value={firstRouteModel ? `#${firstRouteModel.routing_priority}` : '-'} hint={firstRouteModel?.name || '未设置'} />
+        <StatTile icon={Gauge} label="30日 Token" value={usage ? formatTokens(usage.total.tokens_total) : '-'} hint={`输入 ${formatTokens(usage?.total.tokens_input || 0)} · 输出 ${formatTokens(usage?.total.tokens_output || 0)}`} />
+        <StatTile icon={Coins} label="费用预估" value={usage ? formatCurrency(usage.total.estimated_cost) : '-'} hint={`${usage?.total.calls || 0} 次模型调用`} />
+      </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-          <StatTile icon={Layers3} label="模型配置" value={models.length} hint={`${enabledCount} 个启用`} tone="primary" />
-          <StatTile icon={KeyRound} label="可测模型" value={runnableCount} hint="具备调用条件" tone="teal" />
-          <StatTile icon={ShieldCheck} label="路由组" value={routeGroups} hint="按组独立排序" />
-          <StatTile icon={Clock3} label="首选路由" value={firstRouteModel ? `#${firstRouteModel.routing_priority}` : '-'} hint={firstRouteModel?.name || '未设置'} />
-          <StatTile icon={Gauge} label="30日 Token" value={usage ? formatTokens(usage.total.tokens_total) : '-'} hint={`输入 ${formatTokens(usage?.total.tokens_input || 0)} · 输出 ${formatTokens(usage?.total.tokens_output || 0)}`} />
-          <StatTile icon={Coins} label="费用预估" value={usage ? formatCurrency(usage.total.estimated_cost) : '-'} hint={`${usage?.total.calls || 0} 次模型调用`} />
-        </div>
-      </Panel>
-
-      <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         {tabs.map((item) => {
           const Icon = item.icon;
           const active = tab === item.key;

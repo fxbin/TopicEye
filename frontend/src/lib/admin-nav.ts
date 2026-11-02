@@ -26,7 +26,7 @@ export interface AdminNavEntry {
    *
    * 「任务监控」曾从用户侧 /stats/jobs 迁入本壳（/admin/jobs）——
    * 流水线健康信息本就属于后台；旧路径保留服务端跳转桩。
-   * 现在唯一的壳外项是「监控大盘」（/dashboard，后端直出，见 standalone）。
+   * 监控大盘也由 /admin/dashboard 承载，保持后台导航与面包屑。
    */
   inShell: boolean;
   /**
@@ -68,9 +68,8 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavEntry[] = [
   {
     id: 'monitoring-dashboard',
     label: '监控大盘',
-    href: '/dashboard',
-    inShell: false,
-    standalone: true,
+    href: '/admin/dashboard',
+    inShell: true,
     group: 'system',
   },
   { id: 'prompts', label: 'Prompt 管理', href: '/admin/prompts', inShell: true, group: 'system' },

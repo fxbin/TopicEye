@@ -534,7 +534,7 @@ export function HeaderStats({
       <div>
         <div className="mb-2 flex items-center gap-2">
           <Star size={20} className="text-primary" fill="currentColor" />
-          <h1 className="m-0 text-[26px] font-black text-gray-900">收藏工作台</h1>
+          <h1 className="page-title">收藏工作台</h1>
         </div>
         <p className="text-[13px] leading-6 text-gray-500">
           共 <b className="font-mono text-primary">{total}</b> 条收藏，当前筛选中 {activeCount} 条待推进

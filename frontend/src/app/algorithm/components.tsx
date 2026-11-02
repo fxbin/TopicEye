@@ -136,18 +136,17 @@ export function AlgorithmHeader({
   onRefresh: () => void;
 }) {
   return (
-    <header className="relative mb-5 overflow-hidden rounded-lg border border-gray-200 bg-white px-5 py-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-teal" />
+    <header className="mb-5">
       <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="hidden">
             <Badge tone="primary" className="gap-1.5 font-mono">
               <GitBranch size={13} strokeWidth={2.4} />
               SCORING FLOW
             </Badge>
             <span className="text-xs font-bold text-gray-500">最近 {windowLabel(hours)}</span>
           </div>
-          <h1 className="display-title m-0 text-[28px] leading-tight text-gray-900">算法流程</h1>
+          <h1 className="page-title">算法流程</h1>
           <p className="mt-2 max-w-3xl text-sm leading-7 text-gray-500">
             从候选样本进入评分漏斗，沿质量、风险、时效和多样性路径扣分或加权，最终形成精选输出。评分完成后，跨源证据发现自动为多来源同事件内容标注「N 来源报道」证据链；人工反馈会回写到样本的路径分。
           </p>

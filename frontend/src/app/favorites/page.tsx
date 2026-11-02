@@ -449,7 +449,7 @@ export default function FavoritesPage() {
   };
 
   return (
-    <div className="fade-in h-full overflow-y-auto bg-[#F8FAFC] px-6 py-6 lg:px-10 lg:py-8">
+    <div className="workspace-scroll">
       <HeaderStats total={total} activeCount={counts.active} counts={counts} />
 
       <FiltersBar

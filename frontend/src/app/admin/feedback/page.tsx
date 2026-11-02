@@ -1,5 +1,7 @@
 'use client';
 
+import { StatTile } from '@/components/StatTile';
+
 /**
  * 反馈工作台（#125 v2 第二片之一：数据密集页原语吃满）。
  *
@@ -36,7 +38,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, PanelTitle, cx, type Tone } from '@/components/ui';
+import { Surface, Badge, Button, PanelTitle, cx, type Tone } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { AdminModal, AdminModalFooter, AdminNoticeBanner, AdminPageHeader, AdminPageShell } from '@/components/admin-ui';
 import {
@@ -180,65 +182,6 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
         props.className,
       )}
     />
-  );
-}
-
-function Surface({
-  title,
-  hint,
-  icon,
-  children,
-  className,
-}: {
-  title: string;
-  hint?: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Panel className={cx('p-4.5 sm:p-5', className)}>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary-light text-primary">
-            {icon}
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-black text-gray-900">{title}</div>
-            {hint && <div className="mt-0.5 text-[11px] leading-5 text-gray-400">{hint}</div>}
-          </div>
-        </div>
-      </div>
-      {children}
-    </Panel>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: number | string;
-  icon: React.ReactNode;
-  tone: 'primary' | 'teal' | 'amber' | 'neutral';
-}) {
-  const classes = {
-    primary: 'border-primary-border bg-primary-light text-primary',
-    teal: 'border-teal-border bg-teal-light text-teal',
-    amber: 'border-amber-border bg-amber-light text-amber',
-    neutral: 'border-gray-200 bg-gray-50 text-gray-700',
-  }[tone];
-  return (
-    <div className={cx('rounded-sm border p-3', classes)}>
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-black">
-        {icon}
-        {label}
-      </div>
-      <div className="font-mono text-2xl font-black leading-none">{value}</div>
-    </div>
   );
 }
 
@@ -777,16 +720,17 @@ export default function FeedbackPage() {
     },
   ];
 
-  if (authLoading || pageLoading) {
+  if (authLoading || (pageLoading && !pageData)) {
     return (
-      <AdminPageShell maxWidth={1280}>
+      <AdminPageShell>
+        <AdminPageHeader title="反馈与更新" icon={MessageSquareWarning} description="反馈可以直接提交；更新路线和记录随版本发布内置展示。" />
         <LoadingState label="正在加载反馈工作台…" minHeight="200px" panel />
       </AdminPageShell>
     );
   }
 
   return (
-    <AdminPageShell maxWidth={1280}>
+    <AdminPageShell>
       <AdminPageHeader
         title="反馈与更新"
         icon={MessageSquareWarning}
@@ -819,21 +763,21 @@ export default function FeedbackPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {currentUser ? (
             <>
-              <StatTile label="我的待处理" value={pageData?.myOpen ?? 0} icon={<CircleDot size={14} />} tone="amber" />
-              <StatTile label="我的已修复" value={pageData?.myFixed ?? 0} icon={<CheckCircle2 size={14} />} tone="teal" />
+              <StatTile label="我的待处理" value={pageData?.myOpen ?? 0} icon={CircleDot} tone="amber" />
+              <StatTile label="我的已修复" value={pageData?.myFixed ?? 0} icon={CheckCircle2} tone="teal" />
             </>
           ) : (
             <>
-              <StatTile label="反馈提交" value="匿名" icon={<CircleDot size={14} />} tone="amber" />
-              <StatTile label="状态跟踪" value="登录" icon={<CheckCircle2 size={14} />} tone="teal" />
+              <StatTile label="反馈提交" value="匿名" icon={CircleDot} tone="amber" />
+              <StatTile label="状态跟踪" value="登录" icon={CheckCircle2} tone="teal" />
             </>
           )}
-          <StatTile label="路线推进" value={roadmapItems.length} icon={<Flag size={14} />} tone="primary" />
-          <StatTile label="更新记录" value={shippedItems.length} icon={<Rocket size={14} />} tone="neutral" />
+          <StatTile label="路线推进" value={roadmapItems.length} icon={Flag} tone="primary" />
+          <StatTile label="更新记录" value={shippedItems.length} icon={Rocket} tone="neutral" />
         </div>
 
         <div className={cx('grid gap-5', currentUser ? 'xl:grid-cols-[420px_1fr]' : 'max-w-[520px]')}>
-          <Surface title="提交问题反馈" hint="问题越具体，越容易定位和修复" icon={<MessageSquareWarning size={16} />}>
+          <Surface title="提交问题反馈" hint="问题越具体，越容易定位和修复" icon={MessageSquareWarning}>
             <form className="space-y-3" onSubmit={submitIssue}>
               <div>
                 <FieldLabel htmlFor="issue-title">标题</FieldLabel>
@@ -893,7 +837,7 @@ export default function FeedbackPage() {
           </Surface>
 
           {currentUser && (
-            <Surface title="我的反馈" hint="修复状态会在这里回流" icon={<ClipboardCheck size={16} />}>
+            <Surface title="我的反馈" hint="修复状态会在这里回流" icon={ClipboardCheck}>
               <div className="space-y-3">
                 {myIssues.length === 0 ? (
                   <div className="rounded-sm border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm font-bold text-gray-400">
@@ -1000,13 +944,13 @@ export default function FeedbackPage() {
         )}
 
         <div className="grid gap-5 xl:grid-cols-2">
-          <Surface title="更新路线" hint="计划中和推进中的事项" icon={<Flag size={16} />}>
+          <Surface title="更新路线" hint="计划中和推进中的事项" icon={Flag}>
             <UpdateList
               items={roadmapItems}
               emptyText="暂无路线图事项"
             />
           </Surface>
-          <Surface title="更新记录" hint="已发布版本、修复和优化" icon={<Rocket size={16} />}>
+          <Surface title="更新记录" hint="已发布版本、修复和优化" icon={Rocket}>
             <UpdateList
               items={shippedItems}
               emptyText="暂无更新记录"

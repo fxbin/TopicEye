@@ -491,13 +491,13 @@ export default function MyTopicsConfigPage() {
   const systemTopics = topics.filter(t => t.owner_user_id === null);
 
   return (
-    <div className="h-full overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#F4F6F8_44%,#EEF2F5_100%)] px-4 pb-8 sm:px-6 lg:px-10">
-      <header className="sticky top-0 z-10 -mx-4 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 py-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
-        <div className="mx-auto flex max-w-[860px] flex-wrap items-center justify-between gap-3">
+    <div className="workspace-scroll">
+      <header className="sticky top-0 z-10 -mx-4 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 pb-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <Settings size={18} className="text-primary" strokeWidth={2.2} />
-              <h1 className="m-0 text-xl font-black text-gray-900">母题配置</h1>
+              <h1 className="page-title m-0 text-gray-900">母题配置</h1>
             </div>
             <p className="mt-1.5 text-xs leading-5 text-gray-500">
               管理你的内容支柱母题，调整关键词以精准匹配你的写作方向
@@ -513,7 +513,7 @@ export default function MyTopicsConfigPage() {
         </div>
       </header>
 
-      <main className="mx-auto mt-5 max-w-[860px]">
+      <main className="mt-5 max-w-[860px]">
         {actionError && <p role="alert" className="mb-4 rounded-sm bg-red-light p-3 text-sm text-red">{actionError}</p>}
         {/* Info box */}
         <Panel className="mb-6 border-teal-border bg-teal-light px-4 py-3 text-[13px] leading-6 text-teal">

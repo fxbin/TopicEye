@@ -381,18 +381,18 @@ export default function ChangelogPage() {
   const inProgressCount = (updates || []).filter((u) => u.status === 'in_progress').length;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-page px-4 py-5 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-[960px] space-y-5 pb-8">
+    <div className="workspace-scroll">
+      <div className="mx-auto w-full max-w-[1200px] space-y-5 pb-8">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h1 className="page-title text-gray-900">更新记录</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge tone="primary">产品更新</Badge>
               {shippedCount > 0 && <Badge tone="teal">已发布 {shippedCount}</Badge>}
               {inProgressCount > 0 && <Badge tone="amber">进行中 {inProgressCount}</Badge>}
             </div>
-            <h1 className="text-[26px] font-black leading-tight text-gray-900">更新记录</h1>
-            <p className="mt-2 max-w-[760px] text-sm leading-7 text-gray-500">
+                        <p className="mt-2 max-w-[760px] text-sm leading-7 text-gray-500">
               查看 TopicEye 的最新发版、新增能力和修复。有想法或遇到问题？随时给我们反馈。
             </p>
           </div>

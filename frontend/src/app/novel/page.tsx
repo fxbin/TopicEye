@@ -520,7 +520,7 @@ export default function FanqiePage() {
             <Library size={22} strokeWidth={2.2} />
           </div>
           <div className="min-w-[220px]">
-            <h1 className="m-0 text-[22px] font-black leading-tight text-gray-900">网文雷达</h1>
+            <h1 className="page-title">网文雷达</h1>
             <div className="mt-1 text-xs text-gray-500">{contextLabel}</div>
           </div>
 

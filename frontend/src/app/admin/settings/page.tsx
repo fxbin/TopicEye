@@ -69,10 +69,10 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <Panel id={id} className="p-5 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <Panel id={id} className="p-4.5 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Icon size={15} className="shrink-0 text-ink-500" strokeWidth={2.2} />
+          <Icon size={16} className="shrink-0 text-primary" strokeWidth={2.2} />
           <h2 className="text-sm font-black text-ink-900">{title}</h2>
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -355,7 +355,7 @@ export default function AdminSettingsPage() {
   // 分组卡结构渲染骨架（布局稳定防跳变），不做全屏 spinner 早退。
 
   return (
-    <AdminPageShell maxWidth={1280}>
+    <AdminPageShell>
       <AdminPageHeader
         title="系统设置"
         icon={Settings}

@@ -96,7 +96,7 @@ export default function WebhookLogsPage() {
   );
 
   return (
-    <AdminPageShell maxWidth={1200}>
+    <AdminPageShell>
       <AdminPageHeader
         title="Webhook 推送日志"
         icon={Send}

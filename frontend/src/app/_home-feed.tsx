@@ -385,7 +385,7 @@ export default function HomeFeed({ initialFeed }: { initialFeed: InitialFeed }) 
   }, []);
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="fade-in h-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+    <div ref={scrollRef} onScroll={handleScroll} className="workspace-scroll">
       {/* Header */}
       <Header
         title="今日选题"

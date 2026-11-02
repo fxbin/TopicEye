@@ -2,7 +2,7 @@
 内置监控大盘 — 自包含 HTML 页面（零外部依赖）。
 
 路由：
-  GET /dashboard  →  返回自包含 HTML 页面
+  GET /api/v1/metrics/dashboard  →  后台内嵌监控画布
 
 设计（#209）：
 - 皮肤回到产品本色：浅底 #F7F7F8 + 品牌橙 #FF6B35 + 与主站同款字体栈；
@@ -1196,7 +1196,30 @@ startAutoRefresh();
 """
 
 
-@router.get("/dashboard", response_class=HTMLResponse, dependencies=[Depends(get_current_admin_user)])
-async def dashboard():
-    """监控大盘页面（自包含 HTML）。"""
-    return HTMLResponse(_DASHBOARD_HTML)
+# 后台壳承载系统导航；画布保留监控页签、体检判定、图表和数据请求。
+_EMBEDDED_CSS = """
+body.embedded .shell{flex-direction:column}
+body.embedded .rail{width:100%;flex:0 0 auto;background:var(--surface);color:var(--text-2);border-bottom:1px solid var(--border)}
+body.embedded .rail-brand,body.embedded .rail-caption,body.embedded .rail-foot{display:none}
+body.embedded .rail-nav{flex-direction:row;flex-wrap:wrap;padding:12px 16px;gap:6px}
+body.embedded .rail-item{font-size:13px;color:var(--text-2);padding:7px 12px}
+body.embedded .rail-item:hover{background:var(--surface-2);color:var(--text)}
+body.embedded .rail-item.is-active{background:var(--accent-soft);color:var(--accent-text)}
+body.embedded .rail-item::after,body.embedded .rail-item.is-active::before{display:none}
+body.embedded .main{min-height:0}
+body.embedded .topbar{position:static;flex-wrap:wrap;padding:12px 16px;background:var(--surface)}
+body.embedded .topbar-head h1{display:none}
+body.embedded .topbar-tools{flex-wrap:wrap;min-width:0}
+body.embedded .content{max-width:none;padding:16px 16px 32px}
+"""
+
+
+@router.get(
+    "/api/v1/metrics/dashboard",
+    response_class=HTMLResponse,
+    dependencies=[Depends(get_current_admin_user)],
+)
+async def embedded_dashboard():
+    """后台壳内的监控画布，沿用管理员鉴权与原大盘数据口径。"""
+    html = _DASHBOARD_HTML.replace("</style>", _EMBEDDED_CSS + "</style>", 1)
+    return HTMLResponse(html.replace("<body>", '<body class="embedded" data-dashboard="embedded">', 1))

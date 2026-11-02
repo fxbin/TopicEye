@@ -532,19 +532,19 @@ export default function StatsPage() {
   const curatedRate = overview ? formatRatePercent(overview.curated, overview.total) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-page">
-      <div className="mx-auto max-w-[1480px] px-10 pb-16 pt-7">
-        <Panel className="relative mb-4.5 overflow-hidden px-6 py-5.5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] before:absolute before:left-0 before:right-0 before:top-0 before:h-1 before:bg-gradient-to-r before:from-primary before:to-teal">
+    <div className="workspace-scroll">
+      <div className="space-y-5 pb-8">
+        <header className="mb-5">
           <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-5 max-md:grid-cols-1">
             <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2.5">
+              <div className="hidden">
                 <Badge tone="primary" className="gap-1.5 font-mono">
                   <BarChart3 size={13} strokeWidth={2.4} />
                   DATA DESK
                 </Badge>
                 <span className="text-xs font-bold text-gray-500">最近 {days} 天</span>
               </div>
-              <h1 className="display-title m-0 text-[28px] leading-[1.12] text-gray-900">
+              <h1 className="page-title m-0 text-gray-900">
                 数据统计工作台
               </h1>
               <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-gray-500">
@@ -566,7 +566,7 @@ export default function StatsPage() {
               </Button>
             </div>
           </div>
-        </Panel>
+        </header>
 
         {loading && (
           <div className="space-y-3.5">

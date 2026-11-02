@@ -293,8 +293,8 @@ export default function AlgorithmPage() {
   );
 
   return (
-    <div className="fade-in h-full overflow-y-auto bg-page px-6 py-6 lg:px-10 lg:py-8">
-      <div className="mx-auto max-w-[1480px]">
+    <div className="workspace-scroll">
+      <div className="mx-auto max-w-[1200px]">
         <AlgorithmHeader
           hours={hours}
           loading={loading}

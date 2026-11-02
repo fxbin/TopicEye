@@ -1,5 +1,7 @@
 'use client';
 
+import { StatTile } from '@/components/StatTile';
+
 import React, { useEffect, useId, useRef, useState } from 'react';
 import {
   Edit3,
@@ -11,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
-import { Badge, Button, Panel, cx, type Tone } from '@/components/ui';
+import { Badge, Button, Panel, cx } from '@/components/ui';
 import { ErrorState, LoadingState } from '@/components/StateView';
 import { AdminPageShell, AdminPageHeader, AdminNoticeBanner } from '@/components/admin-ui';
 import { useFetch } from '@/hooks/useFetch';
@@ -195,20 +197,12 @@ export default function AdminUpdatesPage() {
   };
 
   // admin 守卫已收敛到 app/admin/layout.tsx
-  if (loading) {
-    return (
-      <AdminPageShell maxWidth={1100}>
-        <LoadingState label="正在加载发版管理…" minHeight="200px" panel />
-      </AdminPageShell>
-    );
-  }
-
   const shippedCount = (items || []).filter((it) => it.status === 'shipped').length;
   const inProgressCount = (items || []).filter((it) => it.status === 'in_progress').length;
   const plannedCount = (items || []).filter((it) => it.status === 'planned').length;
 
   return (
-    <AdminPageShell maxWidth={1100}>
+    <AdminPageShell>
       <AdminPageHeader
         title="发版记录管理"
         icon={Rocket}
@@ -219,7 +213,7 @@ export default function AdminUpdatesPage() {
               <Plus size={14} />
               新建发版
             </Button>
-            <Button type="button" variant="secondary" onClick={() => void refetch()}>
+            <Button type="button" variant="secondary" onClick={() => void refetch()} disabled={loading}>
               <RefreshCw size={14} />
               刷新
             </Button>
@@ -244,7 +238,7 @@ export default function AdminUpdatesPage() {
         <AdminNoticeBanner tone="teal">{notice}</AdminNoticeBanner>
       )}
 
-        {(items || []).length === 0 ? (
+        {loading && !items ? <LoadingState label="正在加载发版管理…" minHeight="200px" panel /> : (items || []).length === 0 && !fetchError ? (
           <Panel className="p-8 text-center">
             <p className="text-[14px] text-ink-500">还没有发版记录，点右上角「新建发版」开始。</p>
           </Panel>
@@ -341,17 +335,6 @@ export default function AdminUpdatesPage() {
   );
 }
 
-function StatTile({ label, value, tone }: { label: string; value: number; tone: Tone }) {
-  return (
-    <div className="rounded-sm border border-ink-200 bg-white px-4 py-3 shadow-sm">
-      <div className="mb-1 text-[12px] text-ink-500">{label}</div>
-      <div className="flex items-end gap-2">
-        <span className="font-mono text-2xl font-semibold tabular-nums text-ink-900">{value}</span>
-        <Badge tone={tone} className="mb-0.5">条</Badge>
-      </div>
-    </div>
-  );
-}
 
 function UpdateAdminRow({ item, onEdit, onDelete }: { item: ProductUpdateItem; onEdit: () => void; onDelete: () => void }) {
   return (

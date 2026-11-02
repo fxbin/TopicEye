@@ -63,11 +63,6 @@ const nextConfig = {
       { source: '/register', destination: `${backendApiUrl}/register` },
       { source: '/revoke', destination: `${backendApiUrl}/revoke` },
       { source: '/.well-known/:path*', destination: `${backendApiUrl}/.well-known/:path*` },
-      // 内置监控大盘（后端自包含 HTML 页面，纯 Canvas 图表）
-      {
-        source: '/dashboard',
-        destination: `${backendApiUrl}/dashboard`,
-      },
       // Prometheus 标准采集端点（根路径别名）
       {
         source: '/metrics',

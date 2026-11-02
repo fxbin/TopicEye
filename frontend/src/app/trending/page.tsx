@@ -211,18 +211,18 @@ function TrendingPage() {
     .slice(0, 8);
 
   return (
-    <div className="mx-auto min-h-full max-w-[1480px] px-9 pb-20 pt-7 max-md:px-3.5 max-md:pb-16 max-md:pt-4.5">
-      <Panel className="relative overflow-hidden p-5.5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] before:absolute before:left-0 before:right-0 before:top-0 before:h-1 before:bg-gradient-to-r before:from-primary before:to-teal max-md:p-4.5">
+    <div className="workspace-scroll">
+      <header className="mb-5">
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="hidden sm:flex mb-3 flex flex-wrap items-center gap-2.5">
+            <div className="hidden mb-3 flex-wrap items-center gap-2.5">
               <Badge tone="primary" className="gap-1.5 font-mono">
                 <Radar size={13} strokeWidth={2.4} />
                 TREND RADAR
               </Badge>
               <span className="text-xs font-black text-gray-500">{activeLabel}</span>
             </div>
-            <h1 className="m-0 text-2xl font-black leading-snug sm:text-[28px] text-gray-900">
+            <h1 className="page-title m-0 text-gray-900">
               趋势雷达
             </h1>
             <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-gray-500">
@@ -243,7 +243,7 @@ function TrendingPage() {
           <StatTile icon={Clock3} label="持续" value={stats.persistentCount} hint="近 7 天持续话题" colorClass="text-amber" />
         </div>
         <p className="mt-3 text-sm text-gray-600 sm:hidden">{sources.length} 个信源 · {items.length} 条榜单内容</p>
-      </Panel>
+      </header>
 
       {syncError && <p role="alert" className="mt-3 rounded-sm bg-red-light p-3 text-sm text-red">{syncError}</p>}
       {syncNotice && <p role="status" className="mt-3 text-sm text-teal">{syncNotice}</p>}

@@ -42,14 +42,21 @@ def _select_personalized_slate(
     scored_rows: list[tuple[ScoreBreakdown, dict]],
     boosts: dict[int, float],
     limit: int | None,
+    *,
+    offset: int = 0,
 ) -> list[tuple[ScoreBreakdown, dict]]:
     """个性化优先的最终页选择（纯函数，便于测试）。
 
     - boosts 为空（匿名 / 无兴趣向量 / 无任何标签匹配）：返回与基础
-      排序完全一致的前 limit 条——新用户与匿名行为不变；
-    - 有 boost：先按 ``final_score + boost`` 取 personal_slots 条，再从
-      基础序补 explore_slots 条探索位，最终 slate 按加成分排序。
-      截断前对完整入选池生效，基础排名靠后的高兴趣内容可以进入首屏。
+      排序完全一致的第 offset 起 limit 条——新用户与匿名行为不变；
+    - 有 boost：按「个人位 + 探索位」逐页推进，每页 personal_slots 条按
+      ``final_score + boost`` 排，explore_slots 条从基础序补探索位，页内
+      再按加成分排序。截断前对完整入选池生效，基础排名靠后的高兴趣内容
+      可以进入首屏。
+
+    选池按页推进（而不是按累计条数重选），因此同一入选池 + 同一 limit 下
+    第 k 页一定是第 1 页的稳定延续：追加后续页不会重排已展示的条目，也不
+    会重复或漏项（#218）。offset 只做切片，不参与选池。
     """
 
     def boosted_key(idx: int) -> float:
@@ -58,12 +65,12 @@ def _select_personalized_slate(
 
     if not limit:
         if not boosts:
-            return list(scored_rows)
+            return list(scored_rows[offset:])
         ordered = sorted(range(len(scored_rows)), key=lambda i: (-boosted_key(i), i))
-        return [scored_rows[i] for i in ordered]
+        return [scored_rows[i] for i in ordered[offset:]]
 
     if not boosts:
-        return list(scored_rows[:limit])
+        return list(scored_rows[offset : offset + limit])
 
     explore_slots = min(limit - 1, round(limit * _EXPLORE_RATIO)) if limit > 1 else 0
     personal_slots = limit - explore_slots
@@ -71,22 +78,38 @@ def _select_personalized_slate(
     base_order = sorted(range(len(scored_rows)), key=lambda i: (-scored_rows[i][0].final_score, i))
     personal_order = sorted(range(len(scored_rows)), key=lambda i: (-boosted_key(i), i))
 
-    slate: list[int] = []
-    seen: set[int] = set()
-    for i in personal_order:
-        if len(slate) >= personal_slots:
+    # 逐页推进：个人位与探索位各自从各自的序里往后取，已发出的条目不再
+    # 重复进入后续页。这样第 k 页的内容与前 k-1 页不重叠，页内顺序也稳定。
+    emitted: set[int] = set()
+    personal_cursor = 0
+    base_cursor = 0
+    selected: list[tuple[ScoreBreakdown, dict]] = []
+    page_start = 0
+    while page_start < offset + limit:
+        page: list[int] = []
+        while len(page) < personal_slots and personal_cursor < len(personal_order):
+            idx = personal_order[personal_cursor]
+            personal_cursor += 1
+            if idx in emitted:
+                continue
+            page.append(idx)
+            emitted.add(idx)
+        while len(page) < limit and base_cursor < len(base_order):
+            idx = base_order[base_cursor]
+            base_cursor += 1
+            if idx in emitted:
+                continue
+            page.append(idx)
+            emitted.add(idx)
+        if not page:
             break
-        slate.append(i)
-        seen.add(i)
-    for i in base_order:
-        if len(slate) >= limit:
-            break
-        if i not in seen:
-            slate.append(i)
-            seen.add(i)
+        page.sort(key=lambda i: (-boosted_key(i), i))
+        if page_start + len(page) > offset:
+            skip = max(0, offset - page_start)
+            selected.extend(scored_rows[i] for i in page[skip:])
+        page_start += len(page)
 
-    slate.sort(key=lambda i: (-boosted_key(i), i))
-    return [scored_rows[i] for i in slate]
+    return selected[:limit]
 
 
 @dataclass
@@ -206,6 +229,7 @@ async def build_today_picks(
     content_type: str | None = None,
     hours: int = 48,
     limit: int | None = None,
+    offset: int = 0,
     owner_user_id: int | None = None,
 ) -> dict:
     """Return today-picks payload through DuckDB, with OLTP fallback.
@@ -272,7 +296,7 @@ async def build_today_picks(
             logger.warning("personalization boost computation failed; using base order", exc_info=True)
             boosts = {}
 
-    visible_rows = _select_personalized_slate(scored_rows, boosts, limit)
+    visible_rows = _select_personalized_slate(scored_rows, boosts, limit, offset=offset)
     response_items = [_row_to_content_payload(row, breakdown) for breakdown, row in visible_rows]
     for item in response_items:
         boost = boosts.get(int(item["id"]), 0.0)
@@ -320,6 +344,8 @@ async def build_today_picks(
         total=total,
         event_members_hidden=hidden_member_count,
         pending_review=pending_review,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -678,15 +704,23 @@ def _pack_today_picks(
     total: int,
     event_members_hidden: int = 0,
     pending_review: dict | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> dict:
     topic_ids = {item.get("topic_id") for item in items if item.get("topic_id")}
     visible_topics = [topic for topic in topic_map.values() if topic["id"] in topic_ids]
+    # 分页信息：page / page_size 如实反映本次请求的窗口，has_more 说明后面还有内容。
+    # 旧实现把 page 写死为 1、page_size 写成实际返回条数，前端无法据此判断是否还有下一页。
+    page_size = len(items)
+    page = (offset // page_size + 1) if page_size else 1
     return {
         "items": items,
         "total": total,
         "event_members_hidden": event_members_hidden,
         "topics": visible_topics,
         "pending_review": pending_review or {"items": [], "total": 0},
-        "page": 1,
-        "page_size": len(items),
+        "page": page,
+        "page_size": page_size,
+        "offset": offset,
+        "has_more": offset + page_size < total,
     }

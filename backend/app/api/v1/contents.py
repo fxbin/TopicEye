@@ -333,6 +333,7 @@ async def today_picks(
     content_type: str | None = Query(None, description="Filter by content type (论文/技术/资讯/...)"),
     time_range: str | None = Query(None, description="Time range: 24h, 48h, 7d"),
     limit: int | None = Query(None, ge=1, le=200, description="Limit returned items while preserving total"),
+    offset: int = Query(0, ge=0, description="已加载条数：从第 offset 条继续取，用于滚动加载后续页"),
     current_user: User | None = Depends(get_optional_current_user),
 ):
     """Top picks visible to the current user (public pool plus own private sources)."""
@@ -343,6 +344,7 @@ async def today_picks(
         content_type=content_type,
         hours={"24h": 24, "7d": 168}.get(time_range or "", 48),
         limit=limit,
+        offset=offset,
         user_id=current_user.id if current_user is not None else None,
     )
     try:
@@ -373,6 +375,7 @@ async def today_picks(
                 "content_type": content_type,
                 "hours": params.hours,
                 "limit": params.limit,
+                "offset": params.offset,
             }
             if current_user is not None:
                 build_kwargs["owner_user_id"] = current_user.id

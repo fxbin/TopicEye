@@ -47,6 +47,7 @@ import type {
 } from '@/lib/api';
 import {
   PROVIDER_PRESETS,
+  catalogParamPrefill,
   formatPresetValue,
   formatTokens,
   parameterMeta,
@@ -210,6 +211,34 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
     [catalogModels, form.model_id],
   );
 
+  /**
+   * 目录命中且当前值为空/默认时补填（issue #221），覆盖两类时序：
+   * 编辑模式打开旧模型（context_window 未设但目录知道）、目录数据比输入
+   * 晚到。规则：
+   * - context_window 为 null（= 未设）→ 补目录值，两种模式都生效
+   * - max_tokens 仅添加模式且仍为默认 2000 时补目录输出上限；编辑模式的
+   *   已保存值视为有意设置，不动（重选模型走 handleModelIdChange 才覆盖）
+   * 程序化预填不标记表单为脏：只把目录参考显示出来，用户保存才生效。
+   */
+  useEffect(() => {
+    if (!matchedCatalogModel) return;
+    setForm((f) => {
+      const patch: Partial<typeof f> = {};
+      if (f.context_window == null && matchedCatalogModel.context_window != null) {
+        patch.context_window = matchedCatalogModel.context_window;
+      }
+      if (
+        !isEdit &&
+        f.max_tokens === 2000 &&
+        matchedCatalogModel.max_output_tokens != null &&
+        matchedCatalogModel.max_output_tokens !== 2000
+      ) {
+        patch.max_tokens = matchedCatalogModel.max_output_tokens;
+      }
+      return Object.keys(patch).length ? { ...f, ...patch } : f;
+    });
+  }, [matchedCatalogModel, isEdit]);
+
   /** 当前渠道的默认接入地址：目录渠道取 models.dev 网关，内置渠道取预设 baseUrl */
   const channelDefaultBase = useMemo(() => {
     const option = providerOptionsByKey.get(providerSelectKey);
@@ -311,21 +340,14 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
   };
 
   const handleModelIdChange = (modelId: string) => {
-    // 命中目录时预填价格与上下文窗口（models.dev，价格 USD/百万 tokens 原值）；
-    // 未命中不猜价，留空由用户填写或走后端目录价估算兜底
+    // 命中目录时预填上下文窗口、输出上限与价格（models.dev，价格 USD/百万
+    // tokens 原值）；未命中不猜值，留空由用户填写或走后端目录价估算兜底
     const catalogMatch = catalogModels.find((m) => m.model_id === modelId);
     setDirty(true);
     setForm((f) => ({
       ...f,
       model_id: modelId,
-      ...(catalogMatch
-        ? {
-            context_window: catalogMatch.context_window,
-            cost_per_1m_input: catalogMatch.cost_per_1m_input?.toString() ?? f.cost_per_1m_input,
-            cost_per_1m_input_cache_hit: catalogMatch.cost_per_1m_cache_read?.toString() ?? f.cost_per_1m_input_cache_hit,
-            cost_per_1m_output: catalogMatch.cost_per_1m_output?.toString() ?? f.cost_per_1m_output,
-          }
-        : {}),
+      ...catalogParamPrefill(catalogMatch, f),
     }));
   };
 
@@ -386,7 +408,7 @@ export function ModelEditForm({ model, onClose }: { model?: LlmModelItem | null;
                 {matchedCatalogModel.cost_per_1m_input != null
                   ? ` · $${matchedCatalogModel.cost_per_1m_input}/${matchedCatalogModel.cost_per_1m_output ?? '-'} 每百万 tokens`
                   : ''}
-                （models.dev，费用与上下文窗口已预填，超出窗口的调用会自动跳过该路由）
+                （models.dev，上下文窗口、输出上限与费用已按目录预填，超出窗口的调用会自动跳过该路由）
               </div>
             ) : (
               <div className="mt-1 text-[11px] leading-4 text-ink-500">

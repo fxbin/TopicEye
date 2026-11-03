@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consumeOauthReturnTo, rememberOauthReturnTo } from './_return-to';
+import { consumeOauthReturnTo, rememberOauthReturnTo, oauthRetryLoginHref } from './_return-to';
 
 function storage() {
   const values = new Map<string, string>();
@@ -29,5 +29,19 @@ describe('OAuth login return path', () => {
     rememberOauthReturnTo(store, '/mcp/authorize?request_id=old');
     rememberOauthReturnTo(store, '/');
     expect(consumeOauthReturnTo(store)).toBe('/');
+  });
+});
+
+describe('OAuth 失败后的重试去向', () => {
+  it('通过登录页继续原来的反馈目标，而不是丢回首页', () => {
+    const store = storage();
+    rememberOauthReturnTo(store, '/feedback');
+    expect(oauthRetryLoginHref(store)).toBe('/login?returnTo=%2Ffeedback');
+    expect(consumeOauthReturnTo(store)).toBe('/');
+  });
+  it('回跳存储中的控制字符输入也不能变成站外跳转', () => {
+    const store = storage();
+    store.setItem('topiceye.oauth.returnTo', '/\n/evil.example');
+    expect(oauthRetryLoginHref(store)).toBe('/login?returnTo=%2F');
   });
 });

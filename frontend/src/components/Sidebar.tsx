@@ -1,5 +1,6 @@
 'use client';
 
+import { loginHref } from '@/lib/navigation';
 import React from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
@@ -162,7 +163,7 @@ export default function Sidebar({
         ) : (
           <button
             type="button"
-            onClick={() => { onNavigate?.(); router.push('/login'); }}
+            onClick={() => { onNavigate?.(); router.push(loginHref()); }}
             className={cx(
               'flex w-full items-center rounded-sm text-sm transition hover:bg-gray-50 hover:text-primary',
               compact ? 'justify-center px-0 py-2.5' : 'justify-start gap-2 px-3 py-2.5 text-left text-gray-600',

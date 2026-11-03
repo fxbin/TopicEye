@@ -18,6 +18,7 @@
  * normalizeTags / getItemTags / formatShanghaiToday）来自 _app-utils.ts。
  */
 
+import { loginHref } from '@/lib/navigation';
 import React, { useCallback, useState } from 'react';
 import {
   Ban,
@@ -451,7 +452,7 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
   const handleFeedback = async (type: FeedbackType) => {
     if (activeFeedback === type || pending) return;
     if (!currentUser) {
-      router.push('/login');
+      router.push(loginHref());
       return;
     }
     setPending(true);

@@ -8,10 +8,11 @@
  * 跨 store 依赖：通过 deps.authStore.getState() 读取 currentUser，
  * 不需要 React hooks，可在任意 action 中同步访问。
  *
- * 路由导航：通过 deps.router.push('/login') 实现未登录跳转，
+ * 路由导航：通过 deps.router.push(loginHref()) 实现未登录跳转，
  * router 由 Provider 注入（useRouter() 结果）。
  */
 
+import { loginHref } from '@/lib/navigation';
 import { createStore } from 'zustand';
 import type { StoreApi } from 'zustand';
 
@@ -225,7 +226,7 @@ export function createFavoritesStore(deps: {
       const currentUser = authStore.getState().currentUser;
 
       if (!currentUser) {
-        router.push('/login');
+        router.push(loginHref());
         if (options?.throwOnError) {
           throw new Error('请先登录');
         }
@@ -321,7 +322,7 @@ export function createFavoritesStore(deps: {
       const currentUser = authStore.getState().currentUser;
 
       if (!currentUser) {
-        router.push('/login');
+        router.push(loginHref());
         if (options?.throwOnError) {
           throw new Error('请先登录');
         }

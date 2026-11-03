@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from 'zustand';
 import { getAuthToken, getAuthTokenExpiresAt, setAuthToken, setAuthTokenExpiresAt, authApi, settingsApi } from '@/lib/api';
-import { canAccessPath, requiredAccessForPath } from '@/lib/navigation';
+import { accessRedirect } from '@/lib/navigation';
 import type { AuthUser } from '@/types';
 import { createAuthStore, type AuthStore, type AuthState, type AuthContextType } from '@/stores/authStore';
 
@@ -155,12 +155,8 @@ export function AuthProvider({
   // 路由守卫：feature 关闭或权限不足时踢回首页/登录
   useEffect(() => {
     if (authLoading || featuresLoading) return;
-    if (canAccessPath(pathname, currentUser, enabledFeatures)) return;
-    router.replace(
-      requiredAccessForPath(pathname, enabledFeatures) === 'admin' && currentUser
-        ? '/'
-        : '/login',
-    );
+    const destination = accessRedirect(pathname, currentUser, enabledFeatures, window.location.search);
+    if (destination) router.replace(destination);
   }, [authLoading, featuresLoading, currentUser, enabledFeatures, pathname, router]);
 
   return <AuthStoreContext.Provider value={store}>{children}</AuthStoreContext.Provider>;

@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Crosshair,
   Gem,
+  MessageSquare,
   GitBranch,
   Lightbulb,
   Newspaper,
@@ -85,6 +86,7 @@ export const NAV_SPACES: NavSpace[] = [
     label: '账户',
     items: [
       { id: 'plans', label: '权益规划', href: '/plans', icon: Gem, access: 'public' },
+      { id: 'feedback', label: '反馈建议', href: '/feedback', icon: MessageSquare, access: 'user' },
       { id: 'changelog', label: '更新记录', href: '/changelog', icon: Rocket, access: 'public' },
     ],
   },
@@ -123,6 +125,12 @@ const PUBLIC_PATHS = ['/login', '/oauth/callback', '/mcp/authorize'];
 export function sanitizeReturnTo(value: string | null | undefined): string {
   if (!value) return '/';
   if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/';
+  if ([...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return '/';
+  try {
+    if (new URL(value, 'https://topiceye.invalid').origin !== 'https://topiceye.invalid') return '/';
+  } catch {
+    return '/';
+  }
   return value;
 }
 
@@ -198,4 +206,17 @@ export function canAccessPath(pathname: string, user: AuthUser | null, enabledFe
   if (access === 'public') return true;
   if (access === 'admin') return isAdmin(user);
   return Boolean(user);
+}
+
+/** 无登录态才进入登录页；已登录但权限/功能不可用时回到前台。 */
+export function accessRedirect(pathname: string, user: AuthUser | null, enabledFeatures?: Record<string, boolean>, search = ''): string | null {
+  if (canAccessPath(pathname, user, enabledFeatures)) return null;
+  if (user) return '/';
+  return loginHref(pathname + search);
+}
+
+/** 用户操作被登录拦截后，回到原页面及筛选条件。 */
+export function loginHref(returnTo?: string): string {
+  const current = typeof window === 'undefined' ? '/' : window.location.pathname + window.location.search;
+  return `/login?returnTo=${encodeURIComponent(sanitizeReturnTo(returnTo ?? current))}`;
 }

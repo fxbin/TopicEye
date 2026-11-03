@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { AuthUser } from '@/types';
 import {
   NAV_SPACES,
+  accessRedirect,
+  loginHref,
+  sanitizeReturnTo,
   USER_ONLY_PATHS,
   ADMIN_ONLY_PATHS,
   isAdmin,
@@ -121,5 +124,43 @@ describe('派生路径集合', () => {
     expect(requiredAccessForPath('/admin/jobs')).toBe('admin');
     expect(USER_ONLY_PATHS).toContain('/profile');
     expect(USER_ONLY_PATHS).toContain('/daily');
+  });
+});
+
+describe('登录与权限拦截去向', () => {
+  it('普通用户反馈入口与个人历史同属前台', () => {
+    expect(itemById('feedback').href).toBe('/feedback');
+    expect(canAccessNavItem(itemById('feedback'), normalUser)).toBe(true);
+    expect(canAccessNavItem(itemById('feedback'), null)).toBe(false);
+    expect(requiredAccessForPath('/feedback')).toBe('user');
+    expect(accessRedirect('/feedback', normalUser)).toBeNull();
+  });
+  it('未登录时保留路径和查询参数以便登录后回跳', () => {
+    expect(accessRedirect('/daily', null, {}, '?scope=mine&date=2026-11-03')).toBe('/login?returnTo=%2Fdaily%3Fscope%3Dmine%26date%3D2026-11-03');
+    expect(accessRedirect('/feedback', null)).toBe('/login?returnTo=%2Ffeedback');
+  });
+  it('已登录但功能关闭或权限不足时不会误送登录', () => {
+    expect(accessRedirect('/novel', normalUser, {})).toBe('/');
+    expect(accessRedirect('/admin/feedback', normalUser)).toBe('/');
+    expect(accessRedirect('/novel', normalUser, { webnovel_module: true })).toBeNull();
+    expect(accessRedirect('/admin/feedback', adminUser)).toBeNull();
+  });
+});
+
+describe('操作要求登录后的回跳', () => {
+  it('保留原页面和筛选条件并拒绝站外地址', () => {
+    expect(loginHref('/trending?category=tech')).toBe('/login?returnTo=%2Ftrending%3Fcategory%3Dtech');
+    expect(loginHref('//evil.example')).toBe('/login?returnTo=%2F');
+    expect(loginHref()).toBe('/login?returnTo=%2F');
+  });
+});
+
+describe('登录回跳地址安全', () => {
+  it.each(['/\n/evil.example', '/\t/evil.example', '/\r/evil.example', '//evil.example', '/\\evil.example', '/\u0000/evil.example', '/x\u007f'])('拒绝浏览器可能归一化为站外的输入 %j', value => {
+    expect(sanitizeReturnTo(value)).toBe('/');
+    expect(new URL(sanitizeReturnTo(value), 'https://topiceye.example').origin).toBe('https://topiceye.example');
+  });
+  it('保留正常站内路径和 OAuth 参数', () => {
+    expect(sanitizeReturnTo('/mcp/authorize?request_id=abc&scope=read')).toBe('/mcp/authorize?request_id=abc&scope=read');
   });
 });

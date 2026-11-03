@@ -8,6 +8,7 @@ import { useAppContext } from '@/components/ClientLayout';
 import AdminSidebar from '@/components/AdminSidebar';
 import AdminTopBar from '@/components/AdminTopBar';
 import { Panel } from '@/components/ui';
+import { loginHref } from '@/lib/navigation';
 import { AdminToaster } from '@/components/admin';
 
 export default function AdminLayout({
@@ -26,7 +27,7 @@ export default function AdminLayout({
   // 渲染期只出占位
   useEffect(() => {
     if (!authLoading && !currentUser) {
-      router.replace('/login');
+      router.replace(loginHref());
     }
   }, [authLoading, currentUser, router]);
 

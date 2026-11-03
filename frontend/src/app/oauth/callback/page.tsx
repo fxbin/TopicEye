@@ -6,7 +6,7 @@ import { ArrowRight, Radar } from 'lucide-react';
 import { useAppContext } from '@/components/ClientLayout';
 import { authApi, setAuthToken } from '@/lib/api';
 import { Button, Panel } from '@/components/ui';
-import { consumeOauthReturnTo } from '../_return-to';
+import { consumeOauthReturnTo, oauthRetryLoginHref } from '../_return-to';
 
 type Status = 'loading' | 'error' | 'success';
 
@@ -85,6 +85,16 @@ export default function OauthCallbackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function retryLogin() {
+    let destination = '/login';
+    try {
+      destination = oauthRetryLoginHref(window.sessionStorage);
+    } catch {
+      // 浏览器禁用存储时仍允许重新登录。
+    }
+    router.replace(destination);
+  }
+
   return (
     <div className="flex h-full min-h-0 items-center justify-center bg-page px-6 py-8">
       <Panel className="w-full max-w-md p-8 shadow-sm">
@@ -107,7 +117,7 @@ export default function OauthCallbackPage() {
             <p className="mb-5 max-w-xs text-xs leading-6 text-gray-500">{errorMsg}</p>
             <Button
               variant="primary"
-              onClick={() => router.replace('/login')}
+              onClick={retryLogin}
             >
               返回登录
               <ArrowRight size={14} />

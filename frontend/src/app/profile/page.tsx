@@ -1,5 +1,6 @@
 'use client';
 
+import { loginHref } from '@/lib/navigation';
 import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -321,7 +322,7 @@ export default function ProfilePage() {
           <p className="mb-5 text-sm leading-7 text-gray-500">
             微信读书 API Key 属于个人凭据，只会绑定到你的账号，不会显示给其他用户。
           </p>
-          <Button type="button" variant="primary" onClick={() => router.push('/login')}>
+          <Button type="button" variant="primary" onClick={() => router.push(loginHref('/profile'))}>
             去登录
             <ArrowRight size={14} />
           </Button>

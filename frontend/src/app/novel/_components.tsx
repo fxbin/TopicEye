@@ -18,6 +18,7 @@
  * 静态配置 + 工具函数来自 _novel-utils.ts。
  */
 
+import SourceLink from '@/components/SourceLink';
 import React, { useEffect, useState } from 'react';
 import {
   ArrowDown,
@@ -100,9 +101,9 @@ export function MovementList({ title, items, tone }: { title: string; items: Web
         {items.length === 0 ? (
           <div className="rounded-sm border border-gray-100 bg-gray-50 p-4 text-center text-xs text-gray-500">暂无明显变化</div>
         ) : items.map((item, index) => (
-          <a
+          <SourceLink
             key={`${item.platform}-${item.title}-${item.rank_type}-${index}`}
-            href={item.url || undefined}
+            href={item.url}
             target="_blank"
             rel="noreferrer"
             className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-2 rounded-sm border border-gray-100 bg-gray-50 p-3 text-left transition hover:border-primary-border hover:bg-white"
@@ -117,7 +118,7 @@ export function MovementList({ title, items, tone }: { title: string; items: Web
               </div>
             </div>
             <MovementBadge change={item.change} />
-          </a>
+          </SourceLink>
         ))}
       </div>
     </Panel>
@@ -273,8 +274,8 @@ export function WebnovelCard({ item, platform }: { item: TrendingItem; platform:
 
   return (
     <article className="fanqie-book-card flex gap-3 rounded-sm border border-gray-200 bg-white p-3 transition hover:border-primary-border">
-      <a
-        href={item.url || '#'}
+      <SourceLink
+        href={item.url}
         target="_blank"
         rel="noopener noreferrer"
         className="relative h-[100px] w-[68px] shrink-0 overflow-hidden rounded-xs bg-gray-100"
@@ -284,17 +285,17 @@ export function WebnovelCard({ item, platform }: { item: TrendingItem; platform:
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">无封面</div>
         )}
-      </a>
+      </SourceLink>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <a
-            href={item.url || '#'}
+          <SourceLink
+            href={item.url}
             target="_blank"
             rel="noopener noreferrer"
             className="line-clamp-1 text-[13px] font-black leading-snug text-gray-900 no-underline"
           >
             {item.title}
-          </a>
+          </SourceLink>
           <span className="font-mono text-[10px] text-gray-400">#{item.rank}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-500">

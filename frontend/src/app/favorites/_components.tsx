@@ -23,7 +23,6 @@ import {
   Filter,
   GripVertical,
   Inbox,
-  Layers3,
   PenLine,
   RefreshCw,
   Search,
@@ -34,6 +33,8 @@ import {
 } from 'lucide-react';
 import type { FavoriteItem, FavoriteStatus, FavoriteTargetType } from '@/types';
 import { Badge, Button, Panel, cx } from '@/components/ui';
+import { useAppContext } from '@/components/ClientLayout';
+import { canAccessPath } from '@/lib/navigation';
 import CreationPlanDisplay from '@/components/CreationPlanDisplay';
 import { timeAgo } from '@/lib/datetime';
 import {
@@ -223,6 +224,12 @@ export function FavoriteColumn({
       </div>
     </section>
   );
+}
+
+function FavoriteBookLink() {
+  const { currentUser, enabledFeatures } = useAppContext();
+  if (!canAccessPath('/novel', currentUser, enabledFeatures)) return null;
+  return <a href="/novel" className="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-200 bg-white px-2 text-xs font-bold text-gray-500 hover:text-primary"><BookOpen size={13} />榜单</a>;
 }
 
 export function FavoriteCard({
@@ -463,24 +470,7 @@ export function FavoriteCard({
             详情
           </a>
         )}
-        {item.target_type === 'book' && (
-          <a
-            href="/novel"
-            className="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-200 bg-white px-2 text-xs font-bold text-gray-500 hover:text-primary"
-          >
-            <BookOpen size={13} />
-            榜单
-          </a>
-        )}
-        {item.target_type === 'source' && (
-          <a
-            href="/admin/sources"
-            className="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-200 bg-white px-2 text-xs font-bold text-gray-500 hover:text-primary"
-          >
-            <Layers3 size={13} />
-            信源
-          </a>
-        )}
+        {item.target_type === 'book' && <FavoriteBookLink />}
         {item.url && (
           <a
             href={item.url}

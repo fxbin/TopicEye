@@ -1,5 +1,6 @@
 'use client';
 
+import { loginHref } from '@/lib/navigation';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -283,7 +284,7 @@ export default function HomeFeed({ initialFeed }: { initialFeed: InitialFeed }) 
 
   const handleIgnore = useCallback(async (id: number) => {
     if (!currentUser) {
-      router.push('/login');
+      router.push(loginHref());
       return;
     }
     try {

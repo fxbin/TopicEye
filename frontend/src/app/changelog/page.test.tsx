@@ -23,6 +23,8 @@ describe('更新记录页面状态', () => {
     expect(html).toContain('工作台与后台导航统一');
     expect(html).not.toContain('尚未完成的计划');
     expect(html).not.toContain('管理更新');
+    expect(html).toContain('href="/feedback"');
+    expect(html).not.toContain('/admin/feedback');
   });
   it('刷新出错仍保留已加载内容', () => {
     Object.assign(state, { data: [record], loading: false, error: '网络错误' });

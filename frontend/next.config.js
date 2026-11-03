@@ -29,7 +29,6 @@ const nextConfig = {
     return [
       { source: '/sources', destination: '/admin/sources', permanent: true },
       { source: '/model-eval', destination: '/admin/model-eval', permanent: true },
-      { source: '/feedback', destination: '/admin/feedback', permanent: true },
       { source: '/contents', destination: '/admin/contents', permanent: true },
       { source: '/mother-topics/config', destination: '/admin/mother-topics', permanent: true },
     ];

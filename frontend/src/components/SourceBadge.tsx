@@ -1,16 +1,13 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { cx } from '@/components/ui';
 
 /**
  * SourceBadge — 信源标注组件。
  *
- * 在内容卡片中显示信源名称，点击跳转到「我的信源」页。
- * 用于"信源透明度"功能：让每条内容的来源可溯源。
- *
- * 使用 Next Link 客户端导航，并阻止触发内容卡片的分析动作。
+ * 在内容卡片中显示来源名称与类型。公共内容来源不等于用户私有信源，
+ * 仅有名称时不提供管理跳转；查看原文使用卡片既有的原文入口。
  */
 interface SourceBadgeProps {
   /** 信源名称 */
@@ -60,14 +57,7 @@ export default function SourceBadge({
 
   return (
     <span className={cx('inline-flex items-center gap-1.5', fontSize, className)}>
-      <Link
-        href="/sources/me"
-        onClick={event => event.stopPropagation()}
-        className="cursor-pointer font-semibold text-gray-600 transition hover:text-primary"
-        title="查看信源管理"
-      >
-        {display}
-      </Link>
+      <span className="font-semibold text-gray-600">{display}</span>
       {typeColor && type && (
         <>
           <span className="text-gray-300">·</span>

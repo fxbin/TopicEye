@@ -17,7 +17,7 @@
  */
 import { EDITION_LABELS } from '@/lib/edition-naming';
 
-import type { LlmModelPresetCatalog, LlmModelPresetItem } from '@/lib/api';
+import type { LlmModelPresetCatalog, LlmModelPresetItem, ModelCatalogModelItem } from '@/lib/api';
 import type { Tone } from '@/components/ui';
 
 export type { Tone };
@@ -137,4 +137,37 @@ export function parseOptionalNumber(value: string): number | null {
   if (value.trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+/**
+ * 目录命中后的表单预填补丁（issue #221）。
+ *
+ * Model ID 精确命中 models.dev 目录项时，用目录值填上下文窗口、输出上限
+ * 与三个价格；目录里缺失的字段保留表单已填值（此前 context_window 会被
+ * 目录的 null 覆盖清空）。prev 是表单当前值，返回可直接 spread 进
+ * setForm 的部分补丁；未命中返回空对象。
+ */
+export function catalogParamPrefill(
+  match: ModelCatalogModelItem | null | undefined,
+  prev: {
+    context_window: number | null;
+    max_tokens: number;
+    cost_per_1m_input: string;
+    cost_per_1m_input_cache_hit: string;
+    cost_per_1m_output: string;
+  },
+): Partial<{
+  context_window: number | null;
+  max_tokens: number;
+  cost_per_1m_input: string;
+  cost_per_1m_input_cache_hit: string;
+  cost_per_1m_output: string;
+}> {
+  if (!match) return {};
+  return {
+    context_window: match.context_window ?? prev.context_window,
+    max_tokens: match.max_output_tokens ?? prev.max_tokens,
+    cost_per_1m_input: match.cost_per_1m_input?.toString() ?? prev.cost_per_1m_input,
+    cost_per_1m_input_cache_hit: match.cost_per_1m_cache_read?.toString() ?? prev.cost_per_1m_input_cache_hit,
+    cost_per_1m_output: match.cost_per_1m_output?.toString() ?? prev.cost_per_1m_output,
+  };
 }

@@ -4,9 +4,10 @@
  * 覆盖：
  * - STAGE_META 四阶段的文案与 tone（常青=teal / 爆发=primary / 回落=amber / 发酵=neutral）
  * - stageMeta 的 null/undefined/未知值透传（不渲染徽章的依据）
+ * - sourceBrand 已知信源出品牌标签，未知信源回退裸 slug（issue #215）
  */
 import { describe, expect, it } from 'vitest';
-import { STAGE_META, stageMeta } from './_trending-utils';
+import { STAGE_META, sourceBrand, stageMeta } from './_trending-utils';
 
 describe('trending stage badge mapping', () => {
   it('maps all four stages to the agreed label and tone', () => {
@@ -29,5 +30,16 @@ describe('trending stage badge mapping', () => {
   it('returns the mapping entry for known stages', () => {
     expect(stageMeta('evergreen')).toBe(STAGE_META.evergreen);
     expect(stageMeta('ferment')).toBe(STAGE_META.ferment);
+  });
+});
+
+describe('source brand mapping', () => {
+  it('labels registered sources with their brand name', () => {
+    expect(sourceBrand('xiaohongshu').label).toBe('小红书');
+    expect(sourceBrand('weibo').label).toBe('微博');
+  });
+
+  it('falls back to the raw slug for unknown sources', () => {
+    expect(sourceBrand('not-a-source').label).toBe('not-a-source');
   });
 });

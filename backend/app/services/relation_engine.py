@@ -35,6 +35,7 @@ from app.models.content_event import (
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.relation_repo import RelationRepository
 from app.services.llm import call_llm_json
+from app.services.llm.prompts.discovery import RELATION_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -203,18 +204,11 @@ def _build_llm_prompt(target: dict[str, Any], candidates: list[dict[str, Any]]) 
     return [
         {
             "role": "user",
-            "content": (
-                "你是内容关联分析师。判断以下目标内容与每条候选内容的关系类型。\n\n"
-                "关系类型：\n"
-                "- causal: 目标是候选的原因/背景，或反过来（A 事件导致 B 发生）\n"
-                "- response: 候选是对目标的回应、评论、观点输出\n"
-                "- contrast: 候选与目标观点对立或呈现不同角度\n"
-                "- none: 无明显关联\n\n"
-                f"目标内容：[{target['id']}] {target['title']} — {target.get('summary', '')[:200]}\n\n"
-                f"候选内容：\n{chr(10).join(candidate_lines)}\n\n"
-                "只输出有关系（非 none）的，返回JSON：\n"
-                '[{"target_id": 123, "type": "causal", "confidence": 0.8, "reason": "简述依据"}]\n'
-                "规则：confidence 取 0.5-1.0；reason 不超过 30 字；没有关联返回空数组 []"
+            "content": RELATION_USER_TEMPLATE.format(
+                target_id=target["id"],
+                title=target["title"],
+                summary=target.get("summary", "")[:200],
+                candidates=chr(10).join(candidate_lines),
             ),
         }
     ]

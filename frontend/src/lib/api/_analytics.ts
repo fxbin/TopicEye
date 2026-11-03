@@ -406,35 +406,46 @@ export interface PromptRegistryItem {
   content_preview: string;
   version_hash: string;
   updated_at: string | null;
-  stats_7d: {
-    call_count_7d: number;
-    total_cost_7d: number;
-    avg_duration_ms_7d: number;
-  };
+ }
+
+export interface PromptAttemptStats {
+  call_count: number;
+  success_count: number;
+  failed_count: number;
+  other_count: number;
+  total_cost: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  avg_duration_ms: number;
+}
+
+export interface PromptAttribution {
+  unit: 'scene_request_attempt';
+  versions: 'all';
+  template_version_attribution: false;
+  retry_count: null;
+  response_cache_hits: null;
+}
+
+export interface PromptScene {
+  scene: string;
+  template_count: number;
+  stats_7d: PromptAttemptStats;
 }
 
 export interface PromptRegistryListResponse {
   items: PromptRegistryItem[];
+  scenes: PromptScene[];
   total: number;
+  catalog_expected: number;
+  attribution: PromptAttribution;
 }
 
-export interface PromptDetailResponse {
-  id: number;
-  name: string;
-  scene: string;
-  description: string;
-  source_file: string;
+export interface PromptDetailResponse extends PromptRegistryItem {
   full_content: string;
-  version_hash: string;
-  updated_at: string | null;
-  stats_30d: {
-    call_count: number;
-    total_cost: number;
-    total_input_tokens: number;
-    total_output_tokens: number;
-    avg_duration_ms: number;
-  };
-  daily_trend: Array<{ date: string; calls: number; cost: number }>;
+  attribution: PromptAttribution;
+  stats_30d: PromptAttemptStats;
+  daily_trend: Array<PromptAttemptStats & { date: string }>;
 }
 
 export const adminPromptsApi = {

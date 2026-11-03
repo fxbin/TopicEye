@@ -389,7 +389,7 @@ export type {
   ContentEventNormalizeResponse,
 } from './api/_domains';
 export { settingsApi, statsApi, statsJobsApi, trendsApi, feedbackApi, productFeedbackApi, adminPromptsApi, scoringDashboardApi } from './api/_analytics';
-export type { PromptRegistryItem, PromptRegistryListResponse, PromptDetailResponse, ScoringDashboardSummary, ScoringDashboardResponse } from './api/_analytics';
+export type { PromptAttemptStats, PromptScene, PromptRegistryItem, PromptRegistryListResponse, PromptDetailResponse, ScoringDashboardSummary, ScoringDashboardResponse } from './api/_analytics';
 export { weeklyDigestApi, monthlyDigestApi } from './api/_digests';
 export { readRecordApi } from './api/_read-records';
 export type { ReadTargetType, ReadRecordReportPayload, ReadRecordResponse } from './api/_read-records';

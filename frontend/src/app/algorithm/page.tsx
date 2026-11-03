@@ -8,7 +8,7 @@ import {
   AlgorithmHeader,
   DiagnosticsPanel,
   FlowErrorPanel,
-  Funnel,
+  DecisionOverview,
   MixList,
   PathPanel,
   SampleList,
@@ -35,19 +35,9 @@ function formatWindow(hours: number) {
   return hours >= 168 ? `${hours / 24} 天` : `${hours} 小时`;
 }
 
-function selectedStageKey(sample?: ScoringFlowSample) {
-  if (!sample) return undefined;
-  if (sample.selected) return 'selected';
-  if (sample.quality_factor <= 0.55) return 'quality';
-  if (sample.risk_factor <= 0.55) return 'risk';
-  if (sample.time_decay < 0.6) return 'freshness';
-  if (sample.diversity_factor < 0.85) return 'diversity';
-  return 'candidates';
-}
-
 export default function AlgorithmPage() {
   const router = useRouter();
-  const { favorites, favoritePendingIds, toggleFavorite } = useAppContext();
+  const { currentUser, favorites, favoritePendingIds, toggleFavorite } = useAppContext();
   const [hours, setHours] = useState(DEFAULT_HOURS);
   const [data, setData] = useState<ScoringFlowResponse | null>(null);
   const [selected, setSelected] = useState<ScoringFlowSample | undefined>();
@@ -56,10 +46,8 @@ export default function AlgorithmPage() {
   const [feedbacking, setFeedbacking] = useState(false);
   const [createPendingId, setCreatePendingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
-  const initialFallbackRef = useRef(false);
   const analysisPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisPollStateRef = useRef<AnalysisPollState | null>(null);
   const scheduleAnalysisPollRef = useRef<((pollState: AnalysisPollState) => void) | null>(null);
@@ -80,20 +68,6 @@ export default function AlgorithmPage() {
     try {
       const result = await contentsApi.scoringFlow({ hours, limit: 160 });
       if (requestSeq !== requestSeqRef.current) return;
-      const recommendedHours = result.diagnostics?.recommended_hours;
-      if (
-        !initialFallbackRef.current &&
-        hours === DEFAULT_HOURS &&
-        result.diagnostics?.empty_reason === 'no_content_in_window' &&
-        recommendedHours &&
-        recommendedHours !== hours
-      ) {
-        initialFallbackRef.current = true;
-        requestSeqRef.current = requestSeq + 1;
-        setFallbackNotice(`默认 ${formatWindow(DEFAULT_HOURS)}窗口暂无样本，已自动切到 ${formatWindow(recommendedHours)} 调试窗口。`);
-        setHours(recommendedHours);
-        return;
-      }
       setData(result);
       setSelected((prev) => result.samples.find((s) => s.id === prev?.id) || result.samples[0]);
       return result;
@@ -187,8 +161,6 @@ export default function AlgorithmPage() {
 
   const handleHoursChange = useCallback((nextHours: number) => {
     clearAnalysisPolling();
-    initialFallbackRef.current = true;
-    setFallbackNotice(null);
     setAnalysisNotice(null);
     setHours(nextHours);
   }, [clearAnalysisPolling]);
@@ -286,7 +258,6 @@ export default function AlgorithmPage() {
     }
   }, [favorites, router, setSampleFavorite, toggleFavorite]);
 
-  const selectedKey = useMemo(() => selectedStageKey(selected), [selected]);
   const selectedForPanel = useMemo(
     () => selected ? { ...selected, is_favorited: selected.is_favorited || favorites.has(selected.id) } : undefined,
     [favorites, selected],
@@ -308,12 +279,6 @@ export default function AlgorithmPage() {
           </div>
         )}
 
-        {fallbackNotice && (
-          <div className="mb-4 rounded-sm border border-amber/20 bg-amber-light px-4 py-3 text-sm font-bold text-amber">
-            {fallbackNotice}
-          </div>
-        )}
-
         {loading && !data ? (
           <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-400">
             加载算法流程...
@@ -327,16 +292,19 @@ export default function AlgorithmPage() {
         ) : data ? (
           <>
             <SummaryGrid data={data} />
-            <DiagnosticsPanel
-              data={data}
-              onHoursChange={handleHoursChange}
-              onAnalyzePending={handleAnalyzePending}
-              analyzing={analyzing}
-              analysisNotice={analysisNotice}
-            />
-            <Funnel data={data} selectedKey={selectedKey} />
+            <DecisionOverview data={data} />
+            <details className="mb-4 rounded-sm border border-gray-200 bg-white p-4" open={!data.scored}>
+              <summary className="cursor-pointer text-sm font-medium text-gray-600">数据范围与高级诊断</summary>
+              <DiagnosticsPanel
+                data={data}
+                onHoursChange={handleHoursChange}
+                onAnalyzePending={currentUser?.role === 'admin' ? handleAnalyzePending : undefined}
+                analyzing={analyzing}
+                analysisNotice={analysisNotice}
+              />
+            </details>
 
-            <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(560px,1fr)_380px]">
+            <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[240px_minmax(0,1fr)_340px]">
               <div className="order-3 min-w-0 space-y-4 lg:col-start-1 lg:row-start-2 2xl:order-none 2xl:col-start-1 2xl:row-start-1">
                 <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-1">
                   <MixList title="类别混排压力" items={data.category_mix} tone="purple" />

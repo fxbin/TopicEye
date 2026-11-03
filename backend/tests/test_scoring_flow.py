@@ -275,7 +275,7 @@ def test_scoring_flow_cache_can_be_invalidated():
     assert get_cached_scoring_flow_json(hours=48, limit=160) is None
 
 
-def test_scoring_flow_cache_uses_explicit_invalidation():
+def test_scoring_flow_cache_expires_and_can_be_invalidated(monkeypatch):
     invalidate_scoring_flow_cache()
 
     _cache_and_return(
@@ -300,6 +300,27 @@ def test_scoring_flow_cache_uses_explicit_invalidation():
     content, age_seconds = cached
     assert age_seconds > 0
     assert b'"mode":"invalidation"' in content
+    from app.services import scoring_flow
+
+    monkeypatch.setattr(scoring_flow, "SCORING_FLOW_CACHE_TTL", 0)
+    assert get_cached_scoring_flow_json(hours=24, limit=160) is None
+    invalidate_scoring_flow_cache()
+
+
+def test_scoring_flow_cache_isolated_by_user_and_event_revision():
+    invalidate_scoring_flow_cache()
+    payload = build_empty_payload(
+        hours=24,
+        analyzed_total=0,
+        window_total=0,
+        ignored_count=0,
+        limit=160,
+        sample_limit=80,
+    )
+    _cache_and_return(24, 160, 80, 7, payload, "event-before")
+    assert get_cached_scoring_flow_json(hours=24, limit=160, visible_user_id=7, revision="event-before") is not None
+    assert get_cached_scoring_flow_json(hours=24, limit=160, visible_user_id=7, revision="event-after") is None
+    assert get_cached_scoring_flow_json(hours=24, limit=160, visible_user_id=8, revision="event-before") is None
     invalidate_scoring_flow_cache()
 
 
@@ -307,6 +328,9 @@ def test_scoring_flow_cache_uses_explicit_invalidation():
 async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
     invalidate_scoring_flow_cache()
     monkeypatch.setattr(contents_api, "async_session", _dummy_session_factory)
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(contents_api, "read_scoring_flow_revision", AsyncMock(return_value=""))
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -335,7 +359,7 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
     transport = httpx.ASGITransport(app=app)
     calls = {"count": 0}
 
-    async def fake_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
+    async def fake_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None, revision=""):
         calls["count"] += 1
         return _cache_and_return(
             hours,
@@ -376,7 +400,7 @@ async def test_scoring_flow_api_cache_headers_and_503(monkeypatch):
 
     invalidate_scoring_flow_cache()
 
-    async def fail_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None):
+    async def fail_build_scoring_flow_payload(db, *, hours, limit, visible_user_id=None, revision=""):
         raise RuntimeError("scoring flow failed")
 
     monkeypatch.setattr(contents_api, "build_scoring_flow_payload", fail_build_scoring_flow_payload)

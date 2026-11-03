@@ -1139,3 +1139,40 @@ def test_thin_primary_report_cannot_hide_a_curatable_member():
         2: EventAssignment(2, 10, 1, False, canonical_locked=True),
     }
     assert [item["id"] for item in today_picks._apply_event_assignments(rows, assignments)] == [2]
+
+
+@pytest.mark.asyncio
+async def test_explanation_uses_full_real_pool_regardless_of_display_limit(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.repositories.ignored_repo import IgnoredRepo
+    from app.services import scoring_flow
+
+    rows = []
+    for index in range(201):
+        row = {
+            **_duckdb_rows()[0],
+            "id": index + 1,
+            "source_name": f"来源{index}",
+            "summary_source": "llm",
+            "curation_score": 95 - index * 0.01,
+        }
+        rows.append(row)
+
+    async def query(fn):
+        return [] if fn is today_picks.query_topics else rows
+
+    monkeypatch.setattr(today_picks, "run_query", query)
+    monkeypatch.setattr(IgnoredRepo, "list_ignored_ids", AsyncMock(return_value=set()))
+    monkeypatch.setattr(ContentRepo, "count_for_scoring", AsyncMock(return_value=201))
+    monkeypatch.setattr(ContentRepo, "count_collected_for_scoring_window", AsyncMock(return_value=201))
+    scoring_flow.invalidate_scoring_flow_cache()
+    actual = await today_picks.build_today_picks(FailingSession(), hours=24)
+    small = await scoring_flow.build_scoring_flow_payload(FailingSession(), hours=24, limit=20)
+    large = await scoring_flow.build_scoring_flow_payload(FailingSession(), hours=24, limit=160)
+    assert small["scored"] == large["scored"] == 201
+    assert small["decision_context"]["selected_count"] == large["decision_context"]["selected_count"] == actual["total"]
+    actual_ids = {item["id"] for item in actual["items"]}
+    assert {s["id"] for s in large["samples"] if s["selected"]} == actual_ids
+    assert len(small["samples"]) == 20
+    scoring_flow.invalidate_scoring_flow_cache()

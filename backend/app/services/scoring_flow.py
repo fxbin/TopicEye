@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.content_event_consumption_repo import ContentEventConsumptionRepository
 from app.repositories.content_repo import ContentRepo, ScoringContentRow
 from app.repositories.ignored_repo import IgnoredRepo
-from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.json_cache import (
     get_cached_json as _get_cached_json,
@@ -18,7 +19,8 @@ from app.services.json_cache import (
     invalidate_json_cache as _invalidate_json_cache,
     set_cached_json as _set_cached_json,
 )
-from app.services.scoring_engine import CONFIG, ScoreBreakdown, ScoringInput, score_items
+from app.services.scoring_engine import CONFIG, ScoreBreakdown, ScoringInput
+from app.services.today_picks import _decode_json_value, _row_to_scoring_input, load_today_pick_decisions
 
 STAGE_KEYS = ["candidates", "quality", "risk", "freshness", "diversity", "selected"]
 STAGE_LABELS = ["候选样本", "质量门槛", "风险降权", "时效衰减", "多样性混排", "精选输出"]
@@ -30,17 +32,16 @@ SCORING_FLOW_WARMUP_TARGETS = (
     (48, DEFAULT_SCORING_FLOW_LIMIT),
 )
 # Cache delegates to the shared json_cache with a "scoring_flow:" prefix.
-# Eviction is invalidation-based (no TTL) — callers call
-# invalidate_scoring_flow_cache() when content changes.
-SCORING_FLOW_CACHE_PREFIX = "scoring_flow:v2:"
-# Eviction is invalidation-based; TTL is effectively infinite.
-SCORING_FLOW_CACHE_TTL = float("inf")
+# 显式失效之外设置30秒上限，防止滚动时间窗长期停留在旧样本。
+SCORING_FLOW_CACHE_PREFIX = "scoring_flow:v3:"
+# 事件版本参与key；所有权/内容变更还会触发显式失效。
+SCORING_FLOW_CACHE_TTL = 30.0
 
 
-def _cache_key_str(hours: int, limit: int, sample_limit: int, visible_user_id: int | None) -> str:
+def _cache_key_str(hours: int, limit: int, sample_limit: int, visible_user_id: int | None, revision: str = "") -> str:
     """Build a string cache key for json_cache (was tuple before migration)."""
     uid = visible_user_id if visible_user_id is not None else ""
-    return f"{SCORING_FLOW_CACHE_PREFIX}hours={hours}&limit={limit}&sample={sample_limit}&uid={uid}"
+    return f"{SCORING_FLOW_CACHE_PREFIX}hours={hours}&limit={limit}&sample={sample_limit}&uid={uid}&event={revision}"
 
 
 def get_cached_scoring_flow_json(
@@ -49,14 +50,19 @@ def get_cached_scoring_flow_json(
     limit: int,
     sample_limit: int = 80,
     visible_user_id: int | None = None,
+    revision: str = "",
 ) -> tuple[bytes, float] | None:
     """Return pre-serialized cached payload for hot scoring-flow requests."""
-    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id, revision)
     return _get_cached_json(key, ttl_seconds=SCORING_FLOW_CACHE_TTL)
 
 
 def invalidate_scoring_flow_cache() -> None:
     _invalidate_json_cache(SCORING_FLOW_CACHE_PREFIX)
+
+
+async def read_scoring_flow_revision(db: AsyncSession, visible_user_id: int | None) -> str:
+    return await ContentEventConsumptionRepository(db).read_cache_revision(visible_user_id=visible_user_id)
 
 
 async def build_scoring_flow_payload(
@@ -66,15 +72,18 @@ async def build_scoring_flow_payload(
     limit: int,
     sample_limit: int = 80,
     visible_user_id: int | None = None,
+    revision: str | None = None,
 ) -> dict[str, Any]:
     """Return scoring funnel stages, candidate samples, and mix pressure data."""
-    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    if revision is None:
+        revision = await read_scoring_flow_revision(db, visible_user_id)
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id, revision)
     cached = _get_cached_value(key, ttl_seconds=SCORING_FLOW_CACHE_TTL)
     if cached:
         return cached[0]
 
     time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
-    ignored_ids = await IgnoredRepo(db).list_ignored_ids()
+    ignored_ids = await IgnoredRepo(db).list_ignored_ids(user_id=visible_user_id)
     content_repo = ContentRepo(db)
     window_counts = await build_window_counts(
         content_repo, ignored_ids, requested_hours=hours, visible_user_id=visible_user_id
@@ -105,7 +114,11 @@ async def build_scoring_flow_payload(
             time_cutoff=time_cutoff,
             visible_user_id=visible_user_id,
         )
-    if window_total <= 0:
+    # 诊断计数只用于解释，不能先于真实候选池决定是否为空。
+    pool = await load_today_pick_decisions(db, hours=hours, owner_user_id=visible_user_id)
+    if pool is None:
+        raise RuntimeError("真实精选候选暂时不可用")
+    if window_total <= 0 and pool.candidate_count <= 0:
         analyzed_total = await content_repo.count_for_scoring(exclude_ids=ignored_ids, visible_user_id=visible_user_id)
         payload = build_empty_payload(
             hours=hours,
@@ -118,24 +131,38 @@ async def build_scoring_flow_payload(
             limit=limit,
             sample_limit=sample_limit,
         )
-        return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload)
+        return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload, revision)
 
     analyzed_total = window_total
-    items = await content_repo.list_scoring_rows(
-        exclude_ids=ignored_ids,
-        time_cutoff=time_cutoff,
-        limit=limit,
-        visible_user_id=visible_user_id,
-    )
-
-    scoring_inputs, item_map, feedback_scores = await build_scoring_inputs_from_rows(db, items)
-    scored = score_items(scoring_inputs)
-
+    scored = [(breakdown, _row_to_scoring_input(row)) for breakdown, row in pool.scored]
+    item_map = {
+        row["id"]: SimpleNamespace(
+            **{
+                **row,
+                "ai_summary": row.get("ai_summary"),
+                "analysis_tags": _decode_json_value(row.get("ai_tags")),
+                "tags": _decode_json_value(row.get("tags")),
+                "creator_angles": _decode_json_value(row.get("creator_angles")),
+            }
+        )
+        for _bd, row in pool.scored
+    }
+    feedback_scores = {row["id"]: row.get("feedback_score") or 0 for _bd, row in pool.scored}
     category_counts = Counter((item.category or "未分类") for _, item in scored)
     source_counts = Counter((item.source_name or "未知来源") for _, item in scored)
 
     payload = {
-        "total": window_total,
+        "total": pool.candidate_count,
+        "decision_context": {
+            "source": pool.source,
+            "candidate_count": pool.candidate_count,
+            "filters": pool.filters,
+            "pool_size": len(pool.rows),
+            "selected_count": sum(bd.selected for bd, _row in pool.scored),
+            "pending_review_count": sum(row.get("summary_source") == "local_fallback" for _bd, row in pool.scored),
+            "scope": "today_picks",
+            "ranking": "base_score_before_personalized_display",
+        },
         "scored": len(scored),
         "hours": hours,
         "diagnostics": build_diagnostics(
@@ -144,8 +171,8 @@ async def build_scoring_flow_payload(
             collected_window_total=collected_window_total,
             window_counts=window_counts,
             collected_window_counts=collected_window_counts,
-            loaded_count=len(items),
-            scoring_input_count=len(scoring_inputs),
+            loaded_count=pool.candidate_count,
+            scoring_input_count=len(pool.rows),
             scored_count=len(scored),
             ignored_count=len(ignored_ids),
             limit=limit,
@@ -155,7 +182,7 @@ async def build_scoring_flow_payload(
         "stages": build_stage_counts(scored),
         "samples": [
             sample
-            for breakdown, scoring_input in scored[:sample_limit]
+            for breakdown, scoring_input in scored[: min(limit, sample_limit)]
             if (
                 sample := build_sample_payload(
                     breakdown,
@@ -168,7 +195,7 @@ async def build_scoring_flow_payload(
         "category_mix": [{"label": k, "count": v} for k, v in category_counts.most_common(8)],
         "source_mix": [{"label": k, "count": v} for k, v in source_counts.most_common(8)],
     }
-    return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload)
+    return _cache_and_return(hours, limit, sample_limit, visible_user_id, payload, revision)
 
 
 async def build_window_counts(
@@ -224,6 +251,7 @@ def _cache_and_return(
     sample_limit: int,
     visible_user_id: int | None,
     payload: dict[str, Any],
+    revision: str = "",
 ) -> dict[str, Any]:
     """Store payload in the shared json_cache and return a cold copy.
 
@@ -242,7 +270,7 @@ def _cache_and_return(
         "mode": "invalidation",
         "age_ms": 0,
     }
-    key = _cache_key_str(hours, limit, sample_limit, visible_user_id)
+    key = _cache_key_str(hours, limit, sample_limit, visible_user_id, revision)
     _set_cached_json(key, cached_payload)
     return cold_payload
 
@@ -257,31 +285,14 @@ async def build_scoring_inputs_from_rows(
     item_map: dict[int, ScoringContentRow] = {}
 
     for item in items:
-        scoring_inputs.append(
-            ScoringInput(
-                content_id=item.id,
-                title=readable_content_title(item.title, item.summary, item.raw_content),
-                content_evidence=has_readable_content(item.title, item.summary, item.raw_content),
-                category=item.category,
-                summary_source=item.summary_source,
-                source_id=item.source_id,
-                source_name=item.source_name,
-                published_at=item.published_at,
-                crawled_at=item.crawled_at,
-                curation_score=item.curation_score or 0,
-                info_density=item.info_density or 50,
-                actionability=item.actionability or 50,
-                source_weight=item.source_weight or 50,
-                creator_score=item.creator_score or 0,
-                viral_score=item.viral_score or 0,
-                freshness_score=item.freshness_score or 0,
-                quality_score=item.quality_score or 0,
-                hot_score=item.hot_score or 0,
-                risk_score=item.risk_score or 0,
-                source_weight_db=item.source_weight_db or 3,
-                feedback_score=feedback_scores.get(item.id, 0),
-            )
+        row = {key: getattr(item, key, None) for key in ScoringInput.__slots__}
+        row.update(
+            id=item.id,
+            summary=getattr(item, "summary", None),
+            raw_content=getattr(item, "raw_content", None),
+            feedback_score=feedback_scores.get(item.id, 0),
         )
+        scoring_inputs.append(_row_to_scoring_input(row))
         item_map[item.id] = item
 
     return scoring_inputs, item_map, feedback_scores
@@ -405,9 +416,9 @@ def build_stage_counts(scored: list[tuple[ScoreBreakdown, ScoringInput]]) -> lis
     total = len(scored)
     quality_pass = [(breakdown, item) for breakdown, item in scored if breakdown.quality_factor > 0.55]
     risk_pass = [(breakdown, item) for breakdown, item in quality_pass if breakdown.risk_factor > 0.55]
-    freshness_pass = [(breakdown, item) for breakdown, item in risk_pass if breakdown.time_decay > 0]
-    diversity_pass = [(breakdown, item) for breakdown, item in freshness_pass if breakdown.diversity_factor > 0]
-    selected = [(breakdown, item) for breakdown, item in diversity_pass if breakdown.selected]
+    freshness_pass = list(risk_pass)
+    diversity_pass = list(freshness_pass)
+    selected = [(breakdown, item) for breakdown, item in scored if breakdown.selected]
     counts = [total, len(quality_pass), len(risk_pass), len(freshness_pass), len(diversity_pass), len(selected)]
     return [
         {
@@ -418,6 +429,34 @@ def build_stage_counts(scored: list[tuple[ScoreBreakdown, ScoringInput]]) -> lis
         }
         for key, label, count in zip(STAGE_KEYS, STAGE_LABELS, counts, strict=False)
     ]
+
+
+DIMENSION_FIELDS = {
+    "info_density": "info_density",
+    "actionability": "actionability",
+    "creator_value": "creator_score",
+    "viral_potential": "viral_score",
+    "source_authority": "source_weight",
+    "freshness": "freshness_score",
+}
+WEIGHT_KEYS = {key: "w_" + key for key in DIMENSION_FIELDS}
+
+
+def explain_decision(breakdown: ScoreBreakdown, item: ScoringInput) -> list[str]:
+    if item.summary_source == "local_fallback":
+        return ["当前是本地降级结果，等待模型复核，不占正式精选名额"]
+    if breakdown.selected:
+        return ["通过质量与风险门槛，进入当前时间窗的正式精选池"]
+    reasons = []
+    if breakdown.base_score < CONFIG["min_selected_base_score"]:
+        reasons.append("基础价值分未达到最低要求")
+    if breakdown.quality_factor <= CONFIG["quality_gate_floor"]:
+        reasons.append("内容质量未达到正式精选要求")
+    if breakdown.risk_factor <= CONFIG["risk_soft_floor"]:
+        reasons.append("风险过高，未通过精选门槛")
+    if breakdown.final_score < breakdown.threshold_used:
+        reasons.append("降权后的最终分低于本批次入选线")
+    return reasons or ["未进入当前批次的精选名额；同分也受名额限制"]
 
 
 def build_sample_payload(
@@ -454,6 +493,13 @@ def build_sample_payload(
         "diversity_factor": breakdown.diversity_factor,
         "feedback_score": feedback_scores.get(item.id, 0),
         "dimension_scores": breakdown.dimension_scores,
+        "raw_dimensions": {key: getattr(scoring_input, attr) for key, attr in DIMENSION_FIELDS.items()},
+        "dimension_weights": {key: CONFIG[WEIGHT_KEYS[key]] for key in DIMENSION_FIELDS},
+        "analysis_source": scoring_input.summary_source or "legacy_unrecorded",
+        "review_status": "pending" if scoring_input.summary_source == "local_fallback" else "reviewed",
+        "decision_reasons": explain_decision(breakdown, scoring_input),
+        "curation_score": scoring_input.curation_score,
+        "base_rule": "curation_blend" if scoring_input.curation_score > 0 else "available_scores_average",
     }
 
 

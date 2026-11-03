@@ -20,6 +20,16 @@ from app.services.content_serialization import content_with_latest_analysis
 from app.services.scoring_flow import build_scoring_flow_payload, invalidate_scoring_flow_cache
 
 
+@pytest.fixture(autouse=True)
+def use_this_test_database_for_shared_candidates(monkeypatch):
+    from app.services import today_picks
+
+    async def unavailable(*args, **kwargs):
+        raise RuntimeError("Use isolated ORM session in repository tests")
+
+    monkeypatch.setattr(today_picks, "run_query", unavailable)
+
+
 @pytest.mark.asyncio
 async def test_scoring_flow_candidates_use_analysis_presence_not_status():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -781,3 +791,55 @@ async def test_scoring_rows_keep_fallback_provenance(test_session_factory):
         inputs, _, _ = await build_scoring_inputs_from_rows(db, rows)
         assert inputs[0].summary_source == "local_fallback"
         assert not score_items(inputs)[0][0].selected
+
+
+@pytest.mark.asyncio
+async def test_explanation_window_matches_published_time_and_never_uses_diagnostics_as_gate(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    now = datetime.now(UTC)
+    try:
+        async with Session() as db:
+            db.add(_window_test_source(now))
+            # 旧文晚抓排除；缺发布时间回退抓取；正常新文与修正发布时间保留。
+            timestamps = [(now, now - timedelta(days=3)), (now, None), (now, now), (now - timedelta(days=3), now)]
+            for item_id, (crawled, published) in enumerate(timestamps, 1):
+                item = _analyzed_item(item_id, crawled_at=crawled, published_at=published)
+                item.summary = "可以核查的原始正文和具体方法。" * 80
+                db.add(item)
+                db.add(
+                    AiAnalysis(
+                        content_id=item_id,
+                        summary_source="llm",
+                        curation_score=90,
+                        quality_score=90,
+                        info_density=90,
+                        actionability=90,
+                        creator_score=90,
+                        viral_score=90,
+                        source_weight=90,
+                        freshness_score=90,
+                        risk_score=0,
+                    )
+                )
+            await db.commit()
+            cutoff = now - timedelta(hours=24)
+            assert await ContentRepo(db).count_for_scoring(time_cutoff=cutoff) == 3
+            assert await ContentRepo(db).count_collected_for_scoring_window(time_cutoff=cutoff) == 3
+            invalidate_scoring_flow_cache()
+            payload = await build_scoring_flow_payload(db, hours=24, limit=160)
+            assert {sample["id"] for sample in payload["samples"]} == {2, 3, 4}
+            assert payload["diagnostics"]["window_total"] == 3
+            # 即使诊断查询因读侧差异暂时返回0，也不能阻止真实候选被评分。
+            monkeypatch.setattr(ContentRepo, "count_for_scoring", AsyncMock(return_value=0))
+            invalidate_scoring_flow_cache()
+            payload = await build_scoring_flow_payload(db, hours=24, limit=160)
+            assert payload["scored"] == 3
+            assert {sample["id"] for sample in payload["samples"]} == {2, 3, 4}
+    finally:
+        invalidate_scoring_flow_cache()
+        await engine.dispose()

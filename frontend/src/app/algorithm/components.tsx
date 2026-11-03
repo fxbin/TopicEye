@@ -6,7 +6,6 @@ import {
   BookmarkCheck,
   CheckCircle2,
   ExternalLink,
-  Filter,
   GitBranch,
   Minus,
   PenLine,
@@ -23,23 +22,10 @@ import type { FeedbackType, ScoringFlowResponse, ScoringFlowSample } from '@/lib
 // 历史本地 COLORS 对象已删除，统一引用 @/lib/design-tokens.T。
 // T 对象字段与原 COLORS 逐字相同（primary/teal/purple/amber/red/gray 系列）。
 
-const STAGE_COLORS: Record<string, { color: string; bg: string; border: string; soft: string }> = {
-  candidates: { color: T.gray700, bg: T.gray50, border: T.gray200, soft: '#F8FAFC' },
-  quality: { color: T.teal, bg: T.tealLight, border: T.tealBorder, soft: '#F2FFFC' },
-  risk: { color: T.amber, bg: T.amberLight, border: T.amberBorder, soft: '#FFFBEB' },
-  freshness: { color: '#3B82F6', bg: '#EFF6FF', border: '#BFDBFE', soft: '#F8FBFF' },
-  diversity: { color: T.purple, bg: T.purpleLight, border: T.purpleBorder, soft: '#FBF8FF' },
-  selected: { color: T.primary, bg: T.primaryLight, border: T.primaryBorder, soft: '#FFF9F6' },
-};
-
 const MIX_TONES = {
   purple: { color: T.purple, bg: T.purpleLight, border: T.purpleBorder },
   teal: { color: T.teal, bg: T.tealLight, border: T.tealBorder },
 } as const;
-
-function pct(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
 
 function fmt(value: number | undefined, digits = 1) {
   return Number(value ?? 0).toFixed(digits);
@@ -57,12 +43,12 @@ function emptyReasonText(reason?: string) {
     no_analyzed_content: {
       title: '还没有可评分内容',
       detail: '评分流程只读取已经写入 AI 分析结果的内容。当前数据库里还没有可用于评分的分析记录。',
-      action: '先同步信源并运行内容分析，再回到这里查看评分路径。',
+      action: '内容完成采集和分析后，这里会展示评分路径。',
     },
     collected_not_analyzed: {
       title: '内容已采集，仍在等待分析',
-      detail: '当前窗口有新内容进入内容流，但这些内容还没有写入 AI 分析结果，所以暂时不能进入评分漏斗。',
-      action: '先运行内容分析任务；分析完成后，24 小时窗口会出现评分样本。',
+      detail: '当前窗口有新内容进入内容流，但这些内容还没有写入 AI 分析结果，所以暂时不能评分。',
+      action: '等待内容分析完成后刷新，也可以切换时间窗查看历史样本。',
     },
     no_content_in_window: {
       title: '当前观察窗口没有样本',
@@ -98,7 +84,7 @@ function emptyReasonText(reason?: string) {
 }
 
 function FactorBar({ label, value, color }: { label: string; value: number; color: string }) {
-  const width = Math.max(4, Math.min(100, value * 100));
+  const width = Math.max(0, Math.min(100, value * 100));
   return (
     <div>
       <div className="mb-1.5 flex justify-between text-[11px] text-gray-500">
@@ -112,16 +98,13 @@ function FactorBar({ label, value, color }: { label: string; value: number; colo
   );
 }
 
-function ProgressRow({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="grid grid-cols-[78px_minmax(0,1fr)_46px] items-center gap-2">
-      <div className="truncate text-xs text-gray-500">{label}</div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-        <div className="h-full rounded-full" style={{ width: `${Math.max(3, Math.min(100, value))}%`, background: color }} />
-      </div>
-      <div className="text-right font-mono text-[11px] text-gray-600">{fmt(value)}</div>
-    </div>
-  );
+function ProgressRow({ label, raw, weight, contribution }: { label: string; raw?: number; weight?: number; contribution: number }) {
+  return <div className="grid grid-cols-[minmax(0,1fr)_42px_42px_48px] items-center gap-2 text-xs">
+    <span className="text-gray-600">{label}</span>
+    <span className="text-right font-mono">{raw == null ? '—' : fmt(raw, 0)}</span>
+    <span className="text-right font-mono text-gray-500">{weight == null ? '—' : `${Math.round(weight * 100)}%`}</span>
+    <span className="text-right font-mono font-semibold text-primary">{fmt(contribution)}</span>
+  </div>;
 }
 
 export function AlgorithmHeader({
@@ -148,7 +131,7 @@ export function AlgorithmHeader({
           </div>
           <h1 className="page-title">算法流程</h1>
           <p className="mt-2 max-w-3xl text-sm leading-7 text-gray-500">
-            从候选样本进入评分漏斗，沿质量、风险、时效和多样性路径扣分或加权，最终形成精选输出。评分完成后，跨源证据发现自动为多来源同事件内容标注「N 来源报道」证据链；人工反馈会回写到样本的路径分。
+            解释你在所选时间窗内的精选结果：哪些内容入选、哪些仍待复核，以及各项规则如何影响分数。候选与当日精选同源，列表仅截取展示，不缩小实际评分池。
           </p>
         </div>
 
@@ -225,8 +208,8 @@ export function SummaryGrid({ data }: { data: ScoringFlowResponse }) {
   const cards: Array<{ label: string; value: number | string; icon: LucideIcon; colorClass: string; iconClass: string }> = [
     { label: '采集内容', value: data.diagnostics?.collected_window_total ?? data.total, icon: SlidersHorizontal, colorClass: 'text-gray-800', iconClass: 'text-gray-800' },
     { label: '待分析', value: data.diagnostics?.pending_analysis_total ?? 0, icon: AlertTriangle, colorClass: 'text-amber', iconClass: 'text-amber' },
-    { label: '参与评分', value: data.scored, icon: GitBranch, colorClass: 'text-teal', iconClass: 'text-teal' },
-    { label: '精选输出', value: data.stages.find((s) => s.key === 'selected')?.count || 0, icon: CheckCircle2, colorClass: 'text-primary', iconClass: 'text-primary' },
+    { label: '真实评分池', value: data.scored, icon: GitBranch, colorClass: 'text-teal', iconClass: 'text-teal' },
+    { label: '正式入选', value: data.decision_context?.selected_count ?? data.stages.find((s) => s.key === 'selected')?.count ?? 0, icon: CheckCircle2, colorClass: 'text-primary', iconClass: 'text-primary' },
   ];
 
   return (
@@ -399,82 +382,16 @@ export function DiagnosticsPanel({
   );
 }
 
-export function Funnel({ data, selectedKey }: { data: ScoringFlowResponse; selectedKey?: string }) {
-  const max = Math.max(...data.stages.map((s) => s.count), 1);
-  const barWidth = (count: number) => {
-    if (count <= 0) return 0;
-    return Math.max(3, Math.min(100, (count / max) * 100));
-  };
-
-  return (
-    <Panel className="overflow-hidden p-4 lg:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Filter size={16} color={T.primary} />
-          <div className="text-sm font-black text-gray-800">评分漏斗</div>
-        </div>
-        <div className="text-xs text-gray-400">横向长度按累计留存比例缩放</div>
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        {data.stages.map((stage, index) => {
-          const palette = STAGE_COLORS[stage.key] || STAGE_COLORS.candidates;
-          const width = barWidth(stage.count);
-          const active = selectedKey === stage.key;
-          const previous = data.stages[index - 1];
-          const lost = previous ? Math.max(0, previous.count - stage.count) : 0;
-          const stageShare = stage.count / max;
-          return (
-            <div
-              key={stage.key}
-              className="grid min-w-0 grid-cols-1 gap-2 rounded-sm border p-3 transition md:grid-cols-[116px_minmax(0,1fr)_84px_76px] md:items-center"
-              style={{
-                borderColor: active ? palette.color : palette.border,
-                background: active ? palette.soft : '#FFFFFF',
-                boxShadow: active ? `0 0 0 2px ${palette.color}18, 0 10px 22px rgba(15,23,42,0.05)` : 'none',
-              }}
-            >
-              <div className="min-w-0">
-                <div className="truncate text-xs font-black" style={{ color: palette.color }}>{stage.label}</div>
-                <div className="mt-1 font-mono text-[11px] text-gray-400">{stage.key.toUpperCase()}</div>
-              </div>
-
-              <div className="min-w-0">
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-gray-500">累计留存</span>
-                  <span className="font-mono text-[11px] font-black text-gray-600">{pct(stageShare)}</span>
-                </div>
-                <div className="relative h-5 overflow-hidden rounded-xs bg-gray-100">
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-xs transition-all"
-                    style={{ width: `${width}%`, background: `linear-gradient(90deg, ${palette.color}, ${palette.border})` }}
-                  />
-                  {stage.count === 0 && (
-                    <div className="absolute inset-y-0 left-0 w-1 rounded-xs" style={{ background: palette.border }} />
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-baseline justify-between gap-2 md:block md:text-right">
-                <span className="text-[11px] text-gray-400 md:block">样本</span>
-                <span className="font-mono text-lg font-black leading-none text-gray-900 md:mt-1 md:block">{stage.count}</span>
-              </div>
-
-              <div className="flex items-baseline justify-between gap-2 md:block md:text-right">
-                <span className="text-[11px] text-gray-400 md:block">{previous ? '流失' : '入口'}</span>
-                <div
-                  className="font-mono text-sm font-black leading-none md:mt-1"
-                  style={{ color: previous && lost > 0 ? T.red : T.gray500 }}
-                >
-                  {previous ? (lost > 0 ? `-${lost}` : '0') : stage.count}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-  );
+export function DecisionOverview({ data }: { data: ScoringFlowResponse }) {
+  const context = data.decision_context;
+  if (!context) return <Panel className="mb-4 p-5 text-sm leading-7 text-gray-600">当前窗口还没有可解释的精选决定。可以等待分析完成后刷新，或主动切换时间窗。</Panel>;
+  const filters = [['缺少可读依据', 'missing_evidence'], ['个人忽略', 'personal_ignored'], ['静音规则', 'muted'], ['同事件补充报道折叠', 'event_members'], ['评分前硬规则', 'engine_rejected']];
+  return <Panel className="mb-4 space-y-4 p-4 lg:p-5">
+    <div><h2 className="text-base font-semibold text-gray-900">本次筛选与排序</h2><p className="mt-1 text-sm leading-6 text-gray-500">候选查询已应用可见性、时间与屏蔽条件。以下是载入后的额外处理量；质量、风险、时效和多样性主要通过分数影响排序。</p></div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[['候选入口', context.candidate_count], ['进入评分', data.scored], ['正式入选', context.selected_count], ['本地降级待复核', context.pending_review_count]].map(([label, value]) => <div key={label} className="rounded-sm bg-gray-50 p-3"><div className="font-mono text-xl font-semibold">{value}</div><div className="mt-1 text-xs text-gray-500">{label}</div></div>)}</div>
+    <div className="flex flex-wrap gap-2">{filters.map(([label, key]) => <span key={key} className="rounded-sm border border-gray-200 px-2 py-1 text-xs text-gray-600">{label} {context.filters[key] ?? 0}</span>)}</div>
+    <p className="text-xs leading-6 text-gray-500">下方展示 {data.samples.length} 条解释样本，入选门槛由完整候选池计算。个人兴趣会进一步调整正式入选后的展示顺序，本页解释基础评分；“降权”不等于删除内容。</p>
+  </Panel>;
 }
 
 export function MixList({ title, items, tone }: { title: string; items: Array<{ label: string; count: number }>; tone: keyof typeof MIX_TONES }) {
@@ -554,9 +471,10 @@ export function SampleList({
                       {sample.category}
                     </Badge>
                     <span className="max-w-[150px] truncate text-[10px] text-gray-500">{sample.source_name || '未知来源'}</span>
+                    {sample.review_status === 'pending' && <Badge tone="amber">待复核</Badge>}
                     {sample.selected && (
                       <Badge tone="primary" className="rounded-xs bg-white px-1.5 py-0.5 text-[10px]">
-                        SELECTED
+                        已入选
                       </Badge>
                     )}
                   </div>
@@ -588,14 +506,7 @@ export function PathPanel({
   createPending?: boolean;
 }) {
   const dims = sample?.dimension_scores || {};
-  const dimRows = [
-    ['信息密度', Number(dims.info_density || 0)],
-    ['可操作性', Number(dims.actionability || 0)],
-    ['创作者价值', Number(dims.creator_value || 0)],
-    ['爆文潜力', Number(dims.viral_potential || 0)],
-    ['来源权威', Number(dims.source_authority || 0)],
-    ['新鲜度', Number(dims.freshness || 0)],
-  ] as const;
+  const dimRows = [['信息密度', 'info_density'], ['可操作性', 'actionability'], ['创作者价值', 'creator_value'], ['传播潜力', 'viral_potential'], ['来源权威', 'source_authority'], ['新鲜度', 'freshness']] as const;
 
   return (
     <Panel className="min-h-[520px] p-4 lg:p-5">
@@ -608,7 +519,7 @@ export function PathPanel({
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Badge tone={sample.selected ? 'primary' : 'neutral'} className="mb-2">
-                {sample.selected ? '进入精选输出' : '未进入精选'}
+                {sample.review_status === 'pending' ? '待模型复核' : sample.selected ? '正式入选' : '本次未入选'}
               </Badge>
               <div className="text-lg font-black leading-snug text-gray-900">{sample.title}</div>
             </div>
@@ -625,6 +536,10 @@ export function PathPanel({
             )}
           </div>
 
+          <div className="mb-4 space-y-2 rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm leading-6">
+            <p className="text-xs font-medium text-gray-500">{sample.analysis_source === 'local_fallback' ? '分析来源：本地规则降级' : sample.analysis_source === 'legacy_unrecorded' ? '历史分析：未记录来源' : '分析来源：模型分析'}</p>
+            {(sample.decision_reasons ?? []).map(reason => <p key={reason}>{reason}</p>)}
+          </div>
           <div className="mb-4 rounded-sm border border-primary-border bg-primary-light p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="text-xs font-black text-gray-800">创作上下文</div>
@@ -727,6 +642,7 @@ export function PathPanel({
             </div>
           </div>
 
+          <p className="mb-3 text-xs leading-6 text-gray-500">{sample.base_rule === 'curation_blend' ? '基础分由模型总评与六维加权混合，再叠加反馈调整。' : '未提供有效模型总评时，基础分采用可用维度的回退计算。'}来源加分后，依次乘以质量、风险、时效与多样性因子得到最终分。下方贡献值不是最终分。</p>
           <div className="mb-5 flex flex-col gap-3 rounded-sm border border-gray-100 bg-gray-50 p-3">
             <div className="text-xs font-black text-gray-800">路径因子</div>
             <FactorBar label="质量因子" value={sample.quality_factor} color={T.teal} />
@@ -736,10 +652,11 @@ export function PathPanel({
           </div>
 
           <div className="border-t border-gray-100 pt-4">
-            <div className="mb-3 text-sm font-black text-gray-800">特征评分路径</div>
+            <div className="mb-2 text-sm font-semibold text-gray-800">原始维度与加权贡献</div>
+            <div className="mb-3 grid grid-cols-[minmax(0,1fr)_42px_42px_48px] gap-2 text-right text-[10px] text-gray-500"><span className="text-left">维度</span><span>原始分</span><span>权重</span><span>贡献</span></div>
             <div className="flex flex-col gap-2.5">
-              {dimRows.map(([label, value]) => (
-                <ProgressRow key={label} label={label} value={value} color={T.primary} />
+              {dimRows.map(([label, key]) => (
+                <ProgressRow key={key} label={label} raw={sample.raw_dimensions?.[key]} weight={sample.dimension_weights?.[key]} contribution={Number(dims[key] ?? 0)} />
               ))}
             </div>
           </div>

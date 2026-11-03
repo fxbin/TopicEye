@@ -42,6 +42,13 @@ export interface ScoringFlowSample {
   diversity_factor: number;
   feedback_score: number;
   dimension_scores: Record<string, number>;
+  raw_dimensions?: Record<string, number>;
+  dimension_weights?: Record<string, number>;
+  analysis_source?: string;
+  review_status?: 'pending' | 'reviewed';
+  decision_reasons?: string[];
+  curation_score?: number;
+  base_rule?: string;
 }
 
 export interface ScoringFlowDiagnostics {
@@ -83,6 +90,16 @@ export interface ScoringFlowResponse {
   total: number;
   scored: number;
   hours: number;
+  decision_context?: {
+    source: string;
+    candidate_count: number;
+    filters: Record<string, number>;
+    pool_size: number;
+    selected_count: number;
+    pending_review_count: number;
+    scope: 'today_picks';
+    ranking: string;
+  };
   diagnostics?: ScoringFlowDiagnostics;
   scoring_config?: ScoringFlowConfig;
   stages: ScoringFlowStage[];

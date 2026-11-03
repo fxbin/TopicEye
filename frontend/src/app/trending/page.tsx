@@ -1,5 +1,6 @@
 'use client';
 
+import SourceLink from '@/components/SourceLink';
 import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import {
   ChevronDown,
@@ -433,9 +434,9 @@ function TrendingPage() {
                           return <WebnovelItemRow key={item.id} item={item} rank={rank} />;
                         }
                         return (
-                        <a
+                        <SourceLink
                           key={item.id}
-                          href={item.url || '#'}
+                          href={item.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={cx(
@@ -462,7 +463,7 @@ function TrendingPage() {
                             </span>
                           )}
                           <TrendBadge trend={item.trend} />
-                        </a>
+                        </SourceLink>
                         );
                       })}
                     </div>

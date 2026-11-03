@@ -1,5 +1,6 @@
 'use client';
 
+import SourceLink from '@/components/SourceLink';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Activity,
@@ -217,9 +218,9 @@ function TopicCard({
       {topic.topItems.length > 0 && (
         <div className="flex flex-col gap-2 border-t border-gray-100 px-4.5 py-3 pl-[72px]">
           {topic.topItems.slice(0, 2).map((item, index) => (
-            <a
+            <SourceLink
               key={`${item.title}-${index}`}
-              href={item.url || '#'}
+              href={item.url}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-xs leading-5 text-gray-600 no-underline hover:text-gray-900"
@@ -228,7 +229,7 @@ function TopicCard({
               <span className="min-w-0 flex-1 truncate">{item.title}</span>
               <span className="font-mono font-black" style={{ color }}>{Math.round(item.score)}</span>
               <ExternalLink size={12} className="shrink-0 text-gray-400" />
-            </a>
+            </SourceLink>
           ))}
         </div>
       )}

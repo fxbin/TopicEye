@@ -19,6 +19,7 @@
  * RESONANCE_COLORS / STAGE_META / isWebnovelSource）来自 _trending-utils.ts。
  */
 
+import SourceLink from '@/components/SourceLink';
 import React, { useState } from 'react';
 import {
   ArrowDown,
@@ -64,8 +65,8 @@ export function WebnovelItemRow({ item, rank }: { item: TrendingItem; rank: numb
   const isShort = (extra.type as number) === 1 || (extra.words as number) <= 30000;
 
   return (
-    <a
-      href={item.url || '#'}
+    <SourceLink
+      href={item.url}
       target="_blank"
       rel="noopener noreferrer"
       className={cx(
@@ -105,7 +106,7 @@ export function WebnovelItemRow({ item, rank }: { item: TrendingItem; rank: numb
       <span className="mt-0.5 shrink-0 whitespace-nowrap text-[9px] text-gray-400">
         {shelf}
       </span>
-    </a>
+    </SourceLink>
   );
 }
 
@@ -149,8 +150,8 @@ export function ResonanceBadge({ resonance }: { resonance: number }) {
 
 export function SourceMiniItem({ item }: { item: CrossPlatformSourceItem }) {
   return (
-    <a
-      href={item.url || '#'}
+    <SourceLink
+      href={item.url}
       target="_blank"
       rel="noopener noreferrer"
       className="flex min-w-0 flex-1 items-center gap-2 rounded-xs border border-gray-100 bg-white px-2.5 py-1.5 no-underline transition hover:border-primary-border hover:bg-primary-light"
@@ -164,7 +165,7 @@ export function SourceMiniItem({ item }: { item: CrossPlatformSourceItem }) {
       <span className="shrink-0 text-[10px] text-gray-400">
         {SOURCE_LABELS[item.source] || item.source}
       </span>
-    </a>
+    </SourceLink>
   );
 }
 
@@ -269,15 +270,15 @@ export function ClusterCardExpanded({ cluster }: { cluster: CrossPlatformCluster
         <span className="text-[11px] text-gray-400">
           平均排名 #{cluster.avg_rank} · {cluster.total_hot.toLocaleString()} 总热度
         </span>
-        <a
-          href={cluster.source_items[0]?.url || '#'}
+        <SourceLink
+          href={cluster.source_items[0]?.url}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[11px] font-black text-primary no-underline"
         >
           查看详情
           <ExternalLink size={12} strokeWidth={2} />
-        </a>
+        </SourceLink>
       </div>
 
       <AnglePanel cluster={cluster} />

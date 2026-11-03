@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
@@ -88,6 +89,116 @@ def _select_personalized_slate(
     return [scored_rows[i] for i in slate]
 
 
+@dataclass
+class PickDecisionPool:
+    source: str
+    candidate_count: int
+    filters: dict[str, int]
+    rows: list[dict]
+    scored: list[tuple[ScoreBreakdown, dict]]
+    event_repo: ContentEventConsumptionRepository
+    event_assignments: dict
+
+
+async def load_today_pick_decisions(
+    db: AsyncSession,
+    *,
+    category: str | None = None,
+    content_type: str | None = None,
+    hours: int = 48,
+    owner_user_id: int | None = None,
+) -> PickDecisionPool | None:
+    """精选与解释共同使用的完整候选/过滤/代表/评分过程；不在评分前截断。"""
+    source = "duckdb"
+    filters = {}
+    duckdb_exc: Exception | None = None
+    try:
+        query_kwargs = {
+            "hours": hours,
+            "category": category,
+            "content_type": content_type,
+            "limit": None,
+            # DuckDB supplies candidates; the unified scorer below is the only final gate.
+            "curation_threshold": 0,
+        }
+        if owner_user_id is not None:
+            query_kwargs["visible_user_id"] = owner_user_id
+            query_kwargs["public_only"] = False
+        rows = await run_query(lambda: query_today_picks(**query_kwargs))
+    except Exception as exc:
+        duckdb_exc = exc
+        logger.warning(
+            "today_picks DuckDB analytical layer unavailable, falling back to OLTP query: %s",
+            exc,
+            exc_info=True,
+        )
+        try:
+            source = "postgres"
+            rows = await _build_today_picks_via_oltp(
+                db,
+                hours=hours,
+                category=category,
+                content_type=content_type,
+                limit=None,
+                owner_user_id=owner_user_id,
+            )
+        except Exception as oltp_exc:
+            # OLTP 路径也挂了：记双错误，回退到空 payload（避免 5xx）
+            logger.error(
+                "today_picks OLTP fallback also failed: %s (original DuckDB error: %s)",
+                oltp_exc,
+                duckdb_exc,
+                exc_info=True,
+            )
+            return None
+
+    candidate_count = len(rows)
+    before = len(rows)
+    # Reject old unsupported analyses before representative choice, percentile
+    # thresholds, diversity and totals. AI-generated summaries are not evidence.
+    rows = [row for row in rows if _row_to_scoring_input(row).content_evidence]
+
+    filters["missing_evidence"] = before - len(rows)
+    filters["personal_ignored"] = 0
+    filters["muted"] = 0
+    # 个人「不感兴趣」按用户隔离：DuckDB SQL 只过滤全局屏蔽行，
+    # 这里在候选进入评分/截断前剔除当前用户自己的忽略，避免结果缺页。
+    if owner_user_id is not None:
+        personal_ignored = await IgnoredRepo(db).list_personal_ignored_ids(owner_user_id)
+        if personal_ignored:
+            before = len(rows)
+            rows = [row for row in rows if row.get("id") not in personal_ignored]
+            filters["personal_ignored"] = before - len(rows)
+        # 用户静音规则（keyword/source/domain）：沿 ignored 的注入位置与
+        # 口径，把 mute 命中并入排除集（对 DuckDB 与 OLTP fallback 两条
+        # 候选来源同样生效；#171）
+        mute_exclusions = await load_mute_exclusions(db, owner_user_id)
+        if mute_exclusions:
+            before = len(rows)
+            rows = filter_muted_rows(rows, mute_exclusions)
+            filters["muted"] = before - len(rows)
+
+    event_repo = ContentEventConsumptionRepository(db)
+    try:
+        event_assignments = await event_repo.resolve_today_pick_assignments(
+            (row["id"] for row in rows if row.get("id") is not None),
+            visible_user_id=owner_user_id,
+        )
+    except Exception:
+        logger.exception("Today-picks event truth unavailable")
+        return None
+
+    working_rows = _apply_event_assignments(rows, event_assignments)
+    hidden_member_count = len(rows) - len(working_rows)
+
+    all_scored_rows = _score_rows(working_rows, selected_only=False)
+    filters["event_members"] = hidden_member_count
+    filters["engine_rejected"] = len(working_rows) - len(all_scored_rows)
+    return PickDecisionPool(
+        source, candidate_count, filters, working_rows, all_scored_rows, event_repo, event_assignments
+    )
+
+
 async def build_today_picks(
     db: AsyncSession,
     *,
@@ -108,77 +219,15 @@ async def build_today_picks(
     构造代码复用。降级路径复刻 DuckDB 的 ignored / feedback_score /
     source_weight 加成 / 风险门口径，保证两条路径行为等价。
     """
-    duckdb_exc: Exception | None = None
-    try:
-        query_kwargs = {
-            "hours": hours,
-            "category": category,
-            "content_type": content_type,
-            "limit": limit,
-            # DuckDB supplies candidates; the unified scorer below is the only final gate.
-            "curation_threshold": 0,
-        }
-        if owner_user_id is not None:
-            query_kwargs["visible_user_id"] = owner_user_id
-            query_kwargs["public_only"] = False
-        rows = await run_query(lambda: query_today_picks(**query_kwargs))
-    except Exception as exc:
-        duckdb_exc = exc
-        logger.warning(
-            "today_picks DuckDB analytical layer unavailable, falling back to OLTP query: %s",
-            exc,
-            exc_info=True,
-        )
-        try:
-            rows = await _build_today_picks_via_oltp(
-                db,
-                hours=hours,
-                category=category,
-                content_type=content_type,
-                limit=limit,
-                owner_user_id=owner_user_id,
-            )
-        except Exception as oltp_exc:
-            # OLTP 路径也挂了：记双错误，回退到空 payload（避免 5xx）
-            logger.error(
-                "today_picks OLTP fallback also failed: %s (original DuckDB error: %s)",
-                oltp_exc,
-                duckdb_exc,
-                exc_info=True,
-            )
-            return _empty_payload()
-
-    # Reject old unsupported analyses before representative choice, percentile
-    # thresholds, diversity and totals. AI-generated summaries are not evidence.
-    rows = [row for row in rows if _row_to_scoring_input(row).content_evidence]
-
-    # 个人「不感兴趣」按用户隔离：DuckDB SQL 只过滤全局屏蔽行，
-    # 这里在候选进入评分/截断前剔除当前用户自己的忽略，避免结果缺页。
-    if owner_user_id is not None:
-        personal_ignored = await IgnoredRepo(db).list_personal_ignored_ids(owner_user_id)
-        if personal_ignored:
-            rows = [row for row in rows if row.get("id") not in personal_ignored]
-        # 用户静音规则（keyword/source/domain）：沿 ignored 的注入位置与
-        # 口径，把 mute 命中并入排除集（对 DuckDB 与 OLTP fallback 两条
-        # 候选来源同样生效；#171）
-        mute_exclusions = await load_mute_exclusions(db, owner_user_id)
-        if mute_exclusions:
-            rows = filter_muted_rows(rows, mute_exclusions)
-
-    event_repo = ContentEventConsumptionRepository(db)
-    try:
-        event_assignments = await event_repo.resolve_today_pick_assignments(
-            (row["id"] for row in rows if row.get("id") is not None),
-            visible_user_id=owner_user_id,
-        )
-    except Exception:
-        logger.exception("Today-picks event truth unavailable")
+    pool = await load_today_pick_decisions(
+        db, category=category, content_type=content_type, hours=hours, owner_user_id=owner_user_id
+    )
+    if pool is None:
         return _empty_payload()
-
-    working_rows = _apply_event_assignments(rows, event_assignments)
-    hidden_member_count = len(rows) - len(working_rows)
-
-    all_scored_rows = _score_rows(working_rows, selected_only=False)
+    all_scored_rows = pool.scored
+    event_repo = pool.event_repo
+    event_assignments = pool.event_assignments
+    hidden_member_count = pool.filters["event_members"]
     scored_rows = [(bd, row) for bd, row in all_scored_rows if bd.selected]
     # Pending candidates remain readable but never contribute to formal counts,
     # quality stats, personalization slots, or topic recommendations.

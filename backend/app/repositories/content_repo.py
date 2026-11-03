@@ -1262,7 +1262,7 @@ class ContentRepo(BaseRepository[ContentItem]):
         """Count items with analysis rows eligible for scoring diagnostics.
 
         ``visible_user_id`` 与 ``list_scoring_rows`` 同口径：非 None 时只计
-        公共池 + 该用户私有内容，保证漏斗计数与加载行口径一致。
+        公共池 + 该用户私有内容，时间窗优先发布时间、缺失时回退抓取时间，与精选候选一致。
         """
         from app.models.analysis import AiAnalysis
 
@@ -1275,8 +1275,10 @@ class ContentRepo(BaseRepository[ContentItem]):
             self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
-            time_cutoff=time_cutoff,
+            time_cutoff=None,
         )
+        if time_cutoff is not None:
+            stmt = stmt.where(func.coalesce(self.model.published_at, self.model.crawled_at) >= time_cutoff)
         stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
 
         result = await self.db.execute(stmt)
@@ -1301,8 +1303,10 @@ class ContentRepo(BaseRepository[ContentItem]):
             self.model,
             exclude_ids=exclude_ids,
             exclude_source_types=exclude_source_types,
-            time_cutoff=time_cutoff,
+            time_cutoff=None,
         )
+        if time_cutoff is not None:
+            stmt = stmt.where(func.coalesce(self.model.published_at, self.model.crawled_at) >= time_cutoff)
         stmt = apply_visibility(stmt, self.model, visible_user_id=visible_user_id)
 
         result = await self.db.execute(stmt)

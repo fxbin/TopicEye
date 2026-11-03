@@ -46,6 +46,7 @@ from app.services.scoring_flow import (
     DEFAULT_SCORING_FLOW_LIMIT,
     build_scoring_flow_payload,
     get_cached_scoring_flow_json,
+    read_scoring_flow_revision,
 )
 from app.services.today_picks_cache import (
     TodayPicksCacheParams,
@@ -565,22 +566,25 @@ async def scoring_flow(
     hours = hours or DEFAULT_SCORING_FLOW_HOURS
     limit = limit or DEFAULT_SCORING_FLOW_LIMIT
 
-    cached = get_cached_scoring_flow_json(hours=hours, limit=limit, visible_user_id=current_user.id)
-    if cached:
-        content, age_seconds = cached
-        return Response(
-            content=content,
-            media_type="application/json",
-            headers={"X-Scoring-Flow-Cache": f"HIT; age={age_seconds:.3f}s"},
-        )
-
     try:
         async with async_session() as db:
+            revision = await read_scoring_flow_revision(db, current_user.id)
+            cached = get_cached_scoring_flow_json(
+                hours=hours, limit=limit, visible_user_id=current_user.id, revision=revision
+            )
+            if cached:
+                content, age_seconds = cached
+                return Response(
+                    content=content,
+                    media_type="application/json",
+                    headers={"X-Scoring-Flow-Cache": f"HIT; age={age_seconds:.3f}s"},
+                )
             payload = await build_scoring_flow_payload(
                 db,
                 hours=hours,
                 limit=limit,
                 visible_user_id=current_user.id,
+                revision=revision,
             )
             return Response(
                 content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str),

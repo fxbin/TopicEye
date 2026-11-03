@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { ContentItem } from '@/types';
+import type { ContentItem, TopicInfo } from '@/types';
 import {
   PICK_PAGE_SIZE,
   hasMorePicks,
   mergePickPage,
+  mergePickTopics,
   nextPickOffset,
 } from './_paging';
 
 function item(id: number): ContentItem {
   return { id, title: `item ${id}` } as ContentItem;
+}
+
+function topic(id: number): TopicInfo {
+  return { id, name: `topic ${id}`, best_score: 100 } as TopicInfo;
 }
 
 describe('今日选题滚动加载分页', () => {
@@ -36,6 +41,23 @@ describe('今日选题滚动加载分页', () => {
   it('空页不改变已加载列表', () => {
     const first = [item(1)];
     expect(mergePickPage(first, [])).toBe(first);
+  });
+
+  it('追加页引入的新话题被合并进来', () => {
+    // 后端每页只返回该页涉及的话题；话题视图按话题列表分组渲染，
+    // 漏合并会让追加页的条目在话题视图下消失
+    const merged = mergePickTopics([topic(1)], [topic(2)]);
+    expect(merged.map((t) => t.id)).toEqual([1, 2]);
+  });
+
+  it('话题按 id 去重，不产生重复分组', () => {
+    const merged = mergePickTopics([topic(1), topic(2)], [topic(2), topic(3)]);
+    expect(merged.map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+
+  it('空话题页不改变已加载话题', () => {
+    const first = [topic(1)];
+    expect(mergePickTopics(first, [])).toBe(first);
   });
 
   it('下一批 offset 用实际已加载条数', () => {

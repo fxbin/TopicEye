@@ -11,7 +11,7 @@
  * 所以这里只需要按 id 去重追加，已加载条目的位置不会被后续页改写。
  */
 
-import type { ContentItem } from '@/types';
+import type { ContentItem, TopicInfo } from '@/types';
 
 /** 每页条数。与后端 limit 一一对应。 */
 export const PICK_PAGE_SIZE = 40;
@@ -30,6 +30,26 @@ export function mergePickPage(existing: ContentItem[], incoming: ContentItem[]):
     if (!seen.has(item.id)) {
       merged.push(item);
       seen.add(item.id);
+    }
+  }
+  return merged;
+}
+
+/**
+ * 把后端返回的一页话题并入已加载话题列表。
+ *
+ * 后端每页只返回该页条目涉及的话题。话题视图按话题列表分组渲染，所以追加页
+ * 引入的新话题必须合并进来，否则这些话题下的条目会因没有对应分组而丢失。
+ * 同 id 的话题以先到的为准，避免重复分组。
+ */
+export function mergePickTopics(existing: TopicInfo[], incoming: TopicInfo[]): TopicInfo[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((topic) => topic.id));
+  const merged = [...existing];
+  for (const topic of incoming) {
+    if (!seen.has(topic.id)) {
+      merged.push(topic);
+      seen.add(topic.id);
     }
   }
   return merged;

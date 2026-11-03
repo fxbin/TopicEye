@@ -32,6 +32,7 @@ import {
   PICK_PAGE_SIZE,
   hasMorePicks,
   mergePickPage,
+  mergePickTopics,
   nextPickOffset,
 } from './_paging';
 import {
@@ -128,6 +129,9 @@ function TodayPicksPage() {
 
   // 已加载的条目（首屏 + 后续页）。筛选变化时随首屏重置。
   const [loadedItems, setLoadedItems] = useState<ContentItem[]>([]);
+  // 已加载条目涉及的话题。后端每页只返回本页涉及的话题，追加页的新话题
+  // 必须合并进来，否则话题视图下这些条目会因为没有对应分组而丢失。
+  const [loadedTopics, setLoadedTopics] = useState<TopicInfo[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [serverHasMore, setServerHasMore] = useState<boolean | undefined>(undefined);
@@ -142,12 +146,13 @@ function TodayPicksPage() {
     setLoadingMore(false);
     setLoadMoreError(null);
     setLoadedItems(data?.items || []);
+    setLoadedTopics(data?.topics || []);
     setServerHasMore(data?.has_more);
   }, [data]);
 
   const items = loadedItems;
   const total = data?.total || 0;
-  const topics = data?.topics || [];
+  const topics = loadedTopics;
   const eventMemberCount = data?.event_members_hidden || 0;
   const canLoadMore = hasMorePicks(items.length, total, serverHasMore);
 
@@ -162,6 +167,7 @@ function TodayPicksPage() {
       const res = await contentsApi.todayPicks(buildParams(nextPickOffset(items.length)));
       if (seq !== requestSeq.current) return;
       setLoadedItems((prev) => mergePickPage(prev, res.items || []));
+      setLoadedTopics((prev) => mergePickTopics(prev, res.topics || []));
       setServerHasMore(res.has_more);
     } catch (err) {
       if (seq === requestSeq.current) {

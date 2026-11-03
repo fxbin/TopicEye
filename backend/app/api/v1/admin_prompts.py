@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user
 from app.core.database import get_db
-from app.repositories.prompt_registry_repo import PromptRegistryRepository
+from app.services.prompt_registry_service import list_prompt_catalog, prompt_catalog_detail
 
 router = APIRouter(
     prefix="/admin/prompts",
@@ -29,10 +29,8 @@ async def list_prompts(
     db: AsyncSession = Depends(get_db),
 ):
     """List all registered prompts with recent 7-day call statistics."""
-    repo = PromptRegistryRepository(db)
     cutoff = datetime.now(UTC) - timedelta(days=7)
-    items = await repo.list_with_stats(scene=scene, stats_cutoff=cutoff)
-    return {"items": items, "total": len(items)}
+    return await list_prompt_catalog(db, scene, cutoff)
 
 
 @router.get("/{prompt_id}")
@@ -41,9 +39,8 @@ async def get_prompt_detail(
     db: AsyncSession = Depends(get_db),
 ):
     """Get full prompt content + detailed 30-day usage statistics."""
-    repo = PromptRegistryRepository(db)
     cutoff_30d = datetime.now(UTC) - timedelta(days=30)
-    detail = await repo.get_detail_with_stats(prompt_id=prompt_id, stats_cutoff=cutoff_30d)
+    detail = await prompt_catalog_detail(db, prompt_id, cutoff_30d)
     if detail is None:
         raise HTTPException(status_code=404, detail="Prompt not found")
     return detail

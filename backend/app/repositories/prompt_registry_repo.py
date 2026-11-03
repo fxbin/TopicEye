@@ -1,4 +1,4 @@
-"""Repository for PromptRegistry and LlmCallLog aggregated reads."""
+"""Read the code-template catalog and aggregate request attempts once per scene."""
 
 from __future__ import annotations
 
@@ -12,119 +12,119 @@ from app.models.prompt_registry import PromptRegistry
 from app.repositories.base import BaseRepository
 
 
+def _prompt_item(prompt: PromptRegistry) -> dict[str, Any]:
+    return {
+        "id": prompt.id,
+        "name": prompt.name,
+        "scene": prompt.scene,
+        "description": prompt.description,
+        "source_file": prompt.source_file,
+        "content_preview": prompt.content_preview,
+        "version_hash": prompt.version_hash[:8],
+        "updated_at": prompt.updated_at.isoformat() if prompt.updated_at else None,
+    }
+
+
+def _stats(row) -> dict[str, Any]:
+    return {
+        "call_count": row.call_count or 0,
+        "success_count": row.success_count or 0,
+        "failed_count": row.failed_count or 0,
+        "other_count": (row.call_count or 0) - (row.success_count or 0) - (row.failed_count or 0),
+        "total_cost": round(float(row.total_cost or 0), 4),
+        "total_input_tokens": row.total_input_tokens or 0,
+        "total_output_tokens": row.total_output_tokens or 0,
+        "avg_duration_ms": round(float(row.avg_duration_ms or 0)),
+    }
+
+
+def _aggregate_columns():
+    return (
+        func.count().label("call_count"),
+        func.count().filter(LlmCallLog.status == "DONE").label("success_count"),
+        func.count().filter(LlmCallLog.status == "FAILED").label("failed_count"),
+        func.sum(LlmCallLog.total_cost).label("total_cost"),
+        func.sum(LlmCallLog.input_tokens).label("total_input_tokens"),
+        func.sum(LlmCallLog.output_tokens).label("total_output_tokens"),
+        func.avg(LlmCallLog.duration_ms).label("avg_duration_ms"),
+    )
+
+
+_EMPTY_STATS = {
+    "call_count": 0,
+    "success_count": 0,
+    "failed_count": 0,
+    "other_count": 0,
+    "total_cost": 0,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "avg_duration_ms": 0,
+}
+ATTRIBUTION = {
+    "unit": "scene_request_attempt",
+    "versions": "all",
+    "template_version_attribution": False,
+    "retry_count": None,
+    "response_cache_hits": None,
+}
+
+
 class PromptRegistryRepository(BaseRepository[PromptRegistry]):
     model = PromptRegistry
 
-    async def list_with_stats(
-        self,
-        scene: str | None,
-        stats_cutoff: datetime,
-    ) -> list[dict[str, Any]]:
-        """List prompts joined with 7-day LlmCallLog stats."""
-        stmt = select(PromptRegistry).order_by(PromptRegistry.scene, PromptRegistry.name)
+    async def catalog_with_stats(self, *, scene: str | None, stats_cutoff: datetime, active_names: set[str]):
+        stmt = (
+            select(PromptRegistry)
+            .where(PromptRegistry.name.in_(active_names))
+            .order_by(PromptRegistry.scene, PromptRegistry.name)
+        )
         if scene:
             stmt = stmt.where(PromptRegistry.scene == scene)
-        result = await self.db.execute(stmt)
-        prompts = result.scalars().all()
-
-        # Batch query: call counts per scene in last 7 days
-        stats_result = await self.db.execute(
-            select(
-                LlmCallLog.scene,
-                func.count().label("call_count"),
-                func.sum(LlmCallLog.total_cost).label("total_cost"),
-                func.avg(LlmCallLog.duration_ms).label("avg_duration_ms"),
-            )
-            .where(LlmCallLog.created_at >= stats_cutoff)
-            .group_by(LlmCallLog.scene)
-        )
-        stats_map: dict[str, dict[str, Any]] = {}
-        for row in stats_result.all():
-            stats_map[row.scene] = {
-                "call_count_7d": row.call_count,
-                "total_cost_7d": round(float(row.total_cost or 0), 4),
-                "avg_duration_ms_7d": round(float(row.avg_duration_ms or 0), 0),
-            }
-
-        items = []
-        for p in prompts:
-            s = stats_map.get(p.scene, {})
-            items.append(
+        prompts = (await self.db.execute(stmt)).scalars().all()
+        calls = select(LlmCallLog.scene, *_aggregate_columns()).where(LlmCallLog.created_at >= stats_cutoff)
+        if scene:
+            calls = calls.where(LlmCallLog.scene == scene)
+        statistics = {r.scene: _stats(r) for r in (await self.db.execute(calls.group_by(LlmCallLog.scene))).all()}
+        items = [_prompt_item(prompt) for prompt in prompts]
+        scenes = sorted({p.scene for p in prompts} | set(statistics))
+        return {
+            "items": items,
+            "total": len(items),
+            "attribution": ATTRIBUTION,
+            "scenes": [
                 {
-                    "id": p.id,
-                    "name": p.name,
-                    "scene": p.scene,
-                    "description": p.description,
-                    "source_file": p.source_file,
-                    "content_preview": p.content_preview,
-                    "version_hash": p.version_hash[:8] if p.version_hash else "",
-                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-                    "stats_7d": s,
+                    "scene": name,
+                    "template_count": sum(p.scene == name for p in prompts),
+                    "stats_7d": statistics.get(name, dict(_EMPTY_STATS)),
                 }
-            )
-        return items
+                for name in scenes
+            ],
+        }
 
     async def get_detail_with_stats(
-        self,
-        prompt_id: int,
-        stats_cutoff: datetime,
-    ) -> dict[str, Any] | None:
-        """Get a single prompt with 30-day usage stats and daily trend."""
-        result = await self.db.execute(select(PromptRegistry).where(PromptRegistry.id == prompt_id))
-        prompt = result.scalar_one_or_none()
+        self, *, prompt_id: int, stats_cutoff: datetime, active_names: set[str] | None = None
+    ):
+        stmt = select(PromptRegistry).where(PromptRegistry.id == prompt_id)
+        if active_names is not None:
+            stmt = stmt.where(PromptRegistry.name.in_(active_names))
+        prompt = (await self.db.execute(stmt)).scalar_one_or_none()
         if prompt is None:
             return None
-
-        # 30-day aggregate stats
-        stats_result = await self.db.execute(
-            select(
-                func.count().label("call_count"),
-                func.sum(LlmCallLog.total_cost).label("total_cost"),
-                func.sum(LlmCallLog.input_tokens).label("total_input_tokens"),
-                func.sum(LlmCallLog.output_tokens).label("total_output_tokens"),
-                func.avg(LlmCallLog.duration_ms).label("avg_duration_ms"),
+        conditions = (LlmCallLog.scene == prompt.scene, LlmCallLog.created_at >= stats_cutoff)
+        row = (await self.db.execute(select(*_aggregate_columns()).where(*conditions))).one()
+        daily = (
+            await self.db.execute(
+                select(func.date(LlmCallLog.created_at).label("date"), *_aggregate_columns())
+                .where(*conditions)
+                .group_by(func.date(LlmCallLog.created_at))
+                .order_by(func.date(LlmCallLog.created_at))
             )
-            .where(LlmCallLog.scene == prompt.scene)
-            .where(LlmCallLog.created_at >= stats_cutoff)
-        )
-        row = stats_result.one()
-
-        # Daily breakdown for trend
-        daily_result = await self.db.execute(
-            select(
-                func.date(LlmCallLog.created_at).label("date"),
-                func.count().label("calls"),
-                func.sum(LlmCallLog.total_cost).label("cost"),
-            )
-            .where(LlmCallLog.scene == prompt.scene)
-            .where(LlmCallLog.created_at >= stats_cutoff)
-            .group_by(func.date(LlmCallLog.created_at))
-            .order_by(func.date(LlmCallLog.created_at))
-        )
-        daily = [
-            {
-                "date": str(r.date),
-                "calls": r.calls,
-                "cost": round(float(r.cost or 0), 4),
-            }
-            for r in daily_result.all()
-        ]
-
+        ).all()
         return {
-            "id": prompt.id,
-            "name": prompt.name,
-            "scene": prompt.scene,
-            "description": prompt.description,
-            "source_file": prompt.source_file,
-            "full_content": prompt.full_content,
+            **_prompt_item(prompt),
             "version_hash": prompt.version_hash,
-            "updated_at": prompt.updated_at.isoformat() if prompt.updated_at else None,
-            "stats_30d": {
-                "call_count": row.call_count or 0,
-                "total_cost": round(float(row.total_cost or 0), 4),
-                "total_input_tokens": row.total_input_tokens or 0,
-                "total_output_tokens": row.total_output_tokens or 0,
-                "avg_duration_ms": round(float(row.avg_duration_ms or 0), 0),
-            },
-            "daily_trend": daily,
+            "full_content": prompt.full_content,
+            "attribution": ATTRIBUTION,
+            "stats_30d": _stats(row),
+            "daily_trend": [{"date": str(r.date), **_stats(r)} for r in daily],
         }

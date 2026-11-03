@@ -29,42 +29,42 @@ logger = logging.getLogger(__name__)
 _PROMPT_CATALOG: list[dict[str, str]] = [
     {
         "name": "analysis_system",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "内容分析系统提示词（中文）",
         "module": "app.services.llm.prompts.analysis",
         "attr": "SYSTEM_PROMPT",
     },
     {
         "name": "analysis_prompt",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "内容分析用户提示词（中文）",
         "module": "app.services.llm.prompts.analysis",
         "attr": "ANALYSIS_PROMPT",
     },
     {
         "name": "analysis_system_en",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "内容分析系统提示词（英文信源）",
         "module": "app.services.llm.prompts.analysis",
         "attr": "SYSTEM_PROMPT_EN",
     },
     {
         "name": "analysis_prompt_en",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "内容分析用户提示词（英文信源）",
         "module": "app.services.llm.prompts.analysis",
         "attr": "ANALYSIS_PROMPT_EN",
     },
     {
         "name": "paper_analysis_system",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "学术论文分析系统提示词",
         "module": "app.services.llm.prompts.analysis",
         "attr": "PAPER_SYSTEM_PROMPT",
     },
     {
         "name": "paper_analysis_prompt",
-        "scene": "analysis",
+        "scene": "content_analysis",
         "description": "学术论文分析用户提示词",
         "module": "app.services.llm.prompts.analysis",
         "attr": "PAPER_ANALYSIS_PROMPT",
@@ -120,14 +120,14 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
     },
     {
         "name": "enrichment_system",
-        "scene": "enrichment",
+        "scene": "content_enrichment",
         "description": "内容Enrichment系统提示词",
         "module": "app.services.llm.prompts.enrichment",
         "attr": "SYSTEM_PROMPT",
     },
     {
         "name": "enrichment_prompt",
-        "scene": "enrichment",
+        "scene": "content_enrichment",
         "description": "内容Enrichment用户提示词",
         "module": "app.services.llm.prompts.enrichment",
         "attr": "ENRICHMENT_PROMPT",
@@ -202,6 +202,37 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "module": "app.services.llm.prompts.mother_topic_keywords",
         "attr": "USER_TEMPLATE",
     },
+    *[
+        {
+            "name": f"creation_plan_{platform}",
+            "scene": "creation_plan",
+            "description": f"快速创作：{label}",
+            "module": "app.services.llm.prompts.creation",
+            "attr": f"PLATFORM_PROMPTS.{platform}.instruction",
+        }
+        for platform, label in (("xiaohongshu", "小红书"), ("short_video", "短视频"), ("wechat", "公众号"))
+    ],
+    {
+        "name": "relation_discovery_user",
+        "scene": "relation_discovery",
+        "description": "内容关系发现",
+        "module": "app.services.llm.prompts.discovery",
+        "attr": "RELATION_USER_TEMPLATE",
+    },
+    {
+        "name": "topic_clustering_system",
+        "scene": "topic_clustering",
+        "description": "话题命名系统模板",
+        "module": "app.services.llm.prompts.discovery",
+        "attr": "TOPIC_CLUSTER_SYSTEM",
+    },
+    {
+        "name": "topic_clustering_user",
+        "scene": "topic_clustering",
+        "description": "话题命名用户模板",
+        "module": "app.services.llm.prompts.discovery",
+        "attr": "TOPIC_CLUSTER_USER_TEMPLATE",
+    },
 ]
 
 
@@ -211,9 +242,12 @@ def _import_prompt_content(module_path: str, attr: str) -> str | None:
         import importlib
 
         mod = importlib.import_module(module_path)
-        val = getattr(mod, attr, None)
+        val = mod
+        for part in attr.split("."):
+            val = val.get(part) if isinstance(val, dict) else getattr(val, part, None)
         if isinstance(val, str):
             return val
+        logger.warning("Prompt attribute is missing or not text: %s.%s", module_path, attr)
         return None
     except Exception:
         logger.warning("Failed to import prompt %s.%s", module_path, attr, exc_info=True)
@@ -239,11 +273,17 @@ async def sync_prompt_registry(db: AsyncSession) -> int:
         existing = result.scalar_one_or_none()
 
         if existing is not None:
-            if existing.version_hash != version_hash:
-                existing.full_content = content
-                existing.content_preview = preview
-                existing.version_hash = version_hash
-                existing.source_file = f"{entry['module']}:{entry['attr']}"
+            values = {
+                "scene": entry["scene"],
+                "description": entry["description"],
+                "source_file": f"{entry['module']}:{entry['attr']}",
+                "full_content": content,
+                "content_preview": preview,
+                "version_hash": version_hash,
+            }
+            if any(getattr(existing, key) != value for key, value in values.items()):
+                for key, value in values.items():
+                    setattr(existing, key, value)
                 synced += 1
         else:
             record = PromptRegistry(
@@ -264,6 +304,25 @@ async def sync_prompt_registry(db: AsyncSession) -> int:
         except Exception:
             logger.warning("Prompt registry sync flush failed (non-fatal)", exc_info=True)
             await db.rollback()
+            return 0
 
     logger.info("Prompt registry synced: %d prompts", synced)
     return synced
+
+
+async def list_prompt_catalog(db: AsyncSession, scene: str | None, cutoff):
+    from app.repositories.prompt_registry_repo import PromptRegistryRepository
+
+    result = await PromptRegistryRepository(db).catalog_with_stats(
+        scene=scene, stats_cutoff=cutoff, active_names={entry["name"] for entry in _PROMPT_CATALOG}
+    )
+    result["catalog_expected"] = sum(not scene or entry["scene"] == scene for entry in _PROMPT_CATALOG)
+    return result
+
+
+async def prompt_catalog_detail(db: AsyncSession, prompt_id: int, cutoff):
+    from app.repositories.prompt_registry_repo import PromptRegistryRepository
+
+    return await PromptRegistryRepository(db).get_detail_with_stats(
+        prompt_id=prompt_id, stats_cutoff=cutoff, active_names={entry["name"] for entry in _PROMPT_CATALOG}
+    )

@@ -25,6 +25,7 @@ from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.llm import call_llm_json
+from app.services.llm.prompts.discovery import TOPIC_CLUSTER_SYSTEM, TOPIC_CLUSTER_USER_TEMPLATE
 from app.services.scoring_engine import ScoringInput, score_items
 
 logger = logging.getLogger(__name__)
@@ -206,27 +207,14 @@ async def _name_clusters(
         prompt = [
             {
                 "role": "system",
-                "content": (
-                    "你是一个话题命名助手。根据多篇内容标题和标签，"
-                    "生成自然、准确的话题名称。\n\n"
-                    "命名规则：\n"
-                    "- 话题名必须是自然语言短语，不要用顿号/逗号拼接关键词\n"
-                    "- 6-15字，概括核心主题而非罗列标签\n"
-                    "- 优先提炼技术/产品/事件名称，避免使用动词\n"
-                    "- 好例子：'大模型上下文缓存优化'、'宇树人形机器人量产'、'arXiv论文精选'\n"
-                    "- 坏例子：'AI、模型'、'推出、发布'、'parser、pricing'\n"
-                ),
+                "content": (TOPIC_CLUSTER_SYSTEM),
             },
             {
                 "role": "user",
                 "content": (
-                    "以下是同一话题的多篇内容标题：\n"
-                    + "\n".join(f"- {t}" for t in titles)
-                    + f"\n\n关键标签：{', '.join(top_tags)}\n\n"
-                    "请为这个话题生成：\n"
-                    "1. 话题名称（自然语言，6-15字）\n"
-                    "2. 一句话摘要（20字以内）\n\n"
-                    '返回JSON：{"name": "话题名", "summary": "一句话"}'
+                    TOPIC_CLUSTER_USER_TEMPLATE.format(
+                        titles="\n".join(f"- {t}" for t in titles), tags=", ".join(top_tags)
+                    )
                 ),
             },
         ]

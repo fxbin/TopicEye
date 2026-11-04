@@ -229,7 +229,9 @@ export function EditorialItem({
       id={`topic-item-${item.id}`}
       onClick={handleCardClick}
       className={cx(
-        'group flex-1 overflow-hidden shadow-sm transition hover:border-primary-border hover:shadow-lg',
+        // 刻意不加 overflow-hidden：反馈菜单是绝对定位在按钮下方的浮层，
+        // 裁剪会让它只剩贴着卡片下边缘的一条白边（#208）。
+        'group flex-1 shadow-sm transition hover:border-primary-border hover:shadow-lg',
         compact ? 'px-[18px] py-3.5' : 'px-[22px] py-[18px]',
         item.url ? 'cursor-pointer' : 'cursor-default',
       )}
@@ -441,6 +443,49 @@ const FEEDBACK_OPTIONS: { type: FeedbackType; icon: LucideIcon; label: string; c
   { type: 'outdated', icon: Clock3, label: '过时了', color: '#d97706' },
 ];
 
+/**
+ * 「更多反馈」下拉菜单本体。
+ *
+ * 独立成组件是为了能单独渲染断言（见 _components.test.tsx）：
+ * 菜单是绝对定位浮层，宿主卡片必须允许溢出，否则它会被裁成一条白边（#208）。
+ */
+export function FeedbackMenu({
+  activeFeedback,
+  pending,
+  onSelect,
+}: {
+  activeFeedback: FeedbackType | null;
+  pending: boolean;
+  onSelect: (type: FeedbackType) => void;
+}) {
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="absolute right-0 top-full z-[100] mt-1 min-w-[120px] rounded-sm border border-gray-200 bg-white p-1 shadow-lg"
+    >
+      {FEEDBACK_OPTIONS.map(({ type, icon: Icon, label, color }) => (
+        <button
+          key={type}
+          type="button"
+          disabled={pending}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(type);
+          }}
+          className={cx(
+            'flex w-full items-center gap-2 rounded border-0 px-2.5 py-1.5 text-left text-xs',
+            activeFeedback === type ? 'cursor-default font-semibold' : 'cursor-pointer font-normal hover:bg-gray-50',
+          )}
+          style={{ color: activeFeedback === type ? color : '#4B5563', background: activeFeedback === type ? `${color}10` : 'transparent' }}
+        >
+          <Icon size={13} strokeWidth={2.2} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function FeedbackButtons({ contentId }: { contentId: number }) {
   const { currentUser } = useAppContext();
   const router = useRouter();
@@ -507,31 +552,14 @@ export function FeedbackButtons({ contentId }: { contentId: number }) {
           <ChevronDown size={13} strokeWidth={2.2} />
         </button>
         {showMore && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute right-0 top-full z-[100] mt-1 min-w-[120px] rounded-sm border border-gray-200 bg-white p-1 shadow-lg"
-          >
-            {FEEDBACK_OPTIONS.map(({ type, icon: Icon, label, color }) => (
-              <button
-                key={type}
-                type="button"
-                disabled={pending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleFeedback(type);
-                  setShowMore(false);
-                }}
-                className={cx(
-                  'flex w-full items-center gap-2 rounded border-0 px-2.5 py-1.5 text-left text-xs',
-                  activeFeedback === type ? 'cursor-default font-semibold' : 'cursor-pointer font-normal hover:bg-gray-50',
-                )}
-                style={{ color: activeFeedback === type ? color : '#4B5563', background: activeFeedback === type ? `${color}10` : 'transparent' }}
-              >
-                <Icon size={13} strokeWidth={2.2} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
+          <FeedbackMenu
+            activeFeedback={activeFeedback}
+            pending={pending}
+            onSelect={(type) => {
+              handleFeedback(type);
+              setShowMore(false);
+            }}
+          />
         )}
       </div>
     </div>

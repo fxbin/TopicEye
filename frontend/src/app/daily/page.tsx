@@ -568,57 +568,54 @@ function DailyReportContent() {
 
               {/* 昨日追踪明细（折叠态：R8 校准后的问责剂量——一行摘要 + 明细可展开） */}
               <details className="bg-white">
-                <summary className="cursor-pointer px-5 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-600">
+                <summary className="cursor-pointer px-5 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-600 sm:px-8">
                   昨日追踪明细（24h 热度与兑现）
                 </summary>
-                <div className="px-5 pb-3">
+                <div className="px-5 pb-3 sm:px-8">
                   <YesterdayTracking data={yesterdayData ?? null} loading={yesterdayData === undefined} />
                 </div>
               </details>
 
-              {/* 内页分版：速览（brief 档按分类分版） */}
+              {/* 速览：分类只作分组，不与选题重复编号。 */}
               {hasBrief && (
-                <div className="mt-4">
-                  <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-                    <span className="font-mono text-lg font-black text-gray-500">→</span>
-                    <h2 className="text-sm font-black text-gray-700">速览 · 分版</h2>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[12px] font-bold text-gray-600">
+                <section aria-labelledby="daily-brief-heading" className="mt-3 border-t border-gray-200 px-5 py-6 sm:px-8">
+                  <div className="mb-6 flex items-baseline justify-between gap-3">
+                    <h2 id="daily-brief-heading" className="text-base font-bold text-gray-900">速览</h2>
+                    <span className="shrink-0 text-[13px] text-gray-500">
                       {briefGroups.reduce((n, [, ps]) => n + ps.length, 0)} 篇
                     </span>
                   </div>
-                  {briefGroups.map(([cat, picks], groupIdx) => (
-                    <div key={`brief-group-${cat}`} className="mb-3">
-                      <div className="mb-1.5 flex items-center gap-2 px-1">
-                        <span className="font-mono text-[13px] font-black text-gray-500">
-                          {String(groupIdx + 1).padStart(2, '0')}
-                        </span>
-                        <span className="text-[12px] font-black text-gray-600">{cat}</span>
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[12px] font-bold text-gray-600">{picks.length} 篇</span>
-                      </div>
-                      <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
-                        {picks.map((pick, j) => {
-                          const globalIdx = pickList.indexOf(pick);
-                          const isExpanded = expandedPick === globalIdx;
-                          const key = pickKey(pick);
-                          return (
-                            <BriefPickRow
-                              key={`brief-${cat}-${j}`}
-                              pick={pick}
-                              globalIdx={globalIdx}
-                              isExpanded={isExpanded}
-                              onToggleExpand={() => setExpandedPick(isExpanded ? null : globalIdx)}
-                              markAction={pickMarks[key]}
-                              showOriginalLang={showOriginalLang}
-                              onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
-                              onMark={handleMark}
-                              onOpenReader={openReader}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  <div className="space-y-7">
+                    {briefGroups.map(([cat, picks]) => (
+                      <section key={`brief-group-${cat}`} aria-label={cat}>
+                        <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-gray-200 pb-2.5">
+                          <h3 className="text-[13px] font-semibold text-gray-600">{cat}</h3>
+                          <span className="shrink-0 text-[13px] text-gray-500">{picks.length} 篇</span>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {picks.map((pick, j) => {
+                            const globalIdx = pickList.indexOf(pick);
+                            const isExpanded = expandedPick === globalIdx;
+                            const key = pickKey(pick);
+                            return (
+                              <BriefPickRow
+                                key={`brief-${cat}-${j}`}
+                                pick={pick}
+                                isExpanded={isExpanded}
+                                onToggleExpand={() => setExpandedPick(isExpanded ? null : globalIdx)}
+                                markAction={pickMarks[key]}
+                                showOriginalLang={showOriginalLang}
+                                onToggleLang={() => setShowOriginalLang(!showOriginalLang)}
+                                onMark={handleMark}
+                                onOpenReader={openReader}
+                              />
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </section>
               )}
 
               {/* 趋势一行（增刊归还：缩为一行跳 /trends） */}
@@ -627,10 +624,10 @@ function DailyReportContent() {
               {/* 平台建议（折叠态） */}
               {platformTipEntries.length > 0 && (
                 <details className="mt-3 bg-white">
-                  <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-gray-600">
+                  <summary className="cursor-pointer px-5 py-3 text-[13px] font-bold text-gray-600 sm:px-8">
                     平台创作建议
                   </summary>
-                  <div className="grid grid-cols-1 gap-3 px-4 pb-4 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 px-5 pb-4 sm:px-8 lg:grid-cols-3">
                     {platformTipEntries.map(([platform, tips]) => (
                       <div key={platform}>
                         <PlatformHeading icon={Smartphone} label={platform} />

@@ -272,7 +272,6 @@ export function PickCard({
 
 export interface BriefPickRowProps {
   pick: DailyPick;
-  globalIdx: number;
   isExpanded: boolean;
   onToggleExpand: () => void;
   markAction?: MarkAction;
@@ -284,7 +283,6 @@ export interface BriefPickRowProps {
 
 export function BriefPickRow({
   pick,
-  globalIdx,
   isExpanded,
   onToggleExpand,
   markAction,
@@ -294,74 +292,77 @@ export function BriefPickRow({
   onOpenReader,
 }: BriefPickRowProps) {
   const key = pickKey(pick);
+  const showSourceTitle = Boolean(pick.source_title && pick.source_title !== pick.title && isEnglishTitle(pick.source_title));
+  const platforms = (pick.platforms ?? []).slice(0, 3);
+  const hasReadingLink = Boolean(pick.content_id || pick.source_url);
 
   return (
-    <div>
+    <article className="py-4 last:pb-0">
       <div
         role="button"
         aria-expanded={isExpanded}
+        aria-label={`${isExpanded ? '收起' : '展开'}选题：${pick.title}`}
         tabIndex={0}
         onClick={onToggleExpand}
         onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggleExpand(); } }}
-        className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2.5 text-left sm:px-4"
+        className="group cursor-pointer rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4"
       >
-        <span className="mt-0.5 shrink-0 font-mono text-[12px] font-bold text-gray-500">{String(globalIdx + 1).padStart(2, '0')}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-2">
-            <h3 className="min-w-0 flex-1 break-words text-[13px] font-bold leading-5 text-gray-800">{pick.title}</h3>
-            {/* 站内阅读：有 content_id 时点开 ReaderDrawer；历史数据无 content_id 回退外链 */}
-            {pick.content_id ? (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onOpenReader(pick.content_id!); }}
-                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
-                title="站内阅读"
-              >
-                <BookOpen size={13} />
-              </button>
-            ) : pick.source_url && (
-              <a
-                href={pick.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="mt-0.5 shrink-0 text-gray-500 hover:text-primary-text"
-                title="查看原文"
-              >
-                <ExternalLink size={13} />
-              </a>
+        <div className="flex items-start gap-3">
+          <h4 className="min-w-0 flex-1 break-words text-[15px] font-semibold leading-6 text-gray-900 transition-colors group-hover:text-primary-text sm:text-base">{pick.title}</h4>
+          <ChevronRight size={16} className={cx('mt-1 shrink-0 text-gray-400 transition-transform motion-reduce:transition-none', isExpanded && 'rotate-90')} />
+        </div>
+        <div className="mt-2 break-words text-sm leading-6 text-gray-600"><AutoLink text={pick.reason} /></div>
+        {/* 原文与平台退到辅助层，保留全文及独立操作。 */}
+        {(showSourceTitle || platforms.length > 0 || hasReadingLink) && (
+          <div className="mt-2.5 space-y-1 text-[13px] leading-5 text-gray-500">
+            {showSourceTitle && (
+              <div className="min-w-0 break-words [text-wrap:balance]">
+                <span>原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="break-words text-gray-500 underline-offset-2 hover:underline" /></span>
+                {pick.source_title_zh && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onToggleLang(); }}
+                    title={showOriginalLang ? '显示中文标题' : '显示英文原标题'}
+                    className="ml-1 inline-flex min-h-8 min-w-8 items-center justify-center rounded-sm px-1.5 align-middle text-[12px] font-medium text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {showOriginalLang ? '中' : 'EN'}
+                  </button>
+                )}
+              </div>
+            )}
+            {(platforms.length > 0 || hasReadingLink) && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {platforms.length > 0 && (
+                  <span>{platforms.join(' · ')}</span>
+                )}
+                {pick.content_id ? (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onOpenReader(pick.content_id!); }}
+                    className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-sm px-1 text-gray-600 hover:text-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    aria-label={`站内阅读：${pick.title}`}
+                  >
+                    <BookOpen size={14} />阅读
+                  </button>
+                ) : pick.source_url && (
+                  <a
+                    href={pick.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-sm px-1 text-gray-600 hover:text-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    aria-label={`查看原文：${pick.title}`}
+                  >
+                    <ExternalLink size={14} />原文
+                  </a>
+                )}
+              </div>
             )}
           </div>
-          <div className="mt-1 text-[13px] leading-6 text-gray-600"><AutoLink text={pick.reason} /></div>
-          {/* 原文标题（英文时默认中文翻译，可切换） */}
-          {pick.source_title && pick.source_title !== pick.title && isEnglishTitle(pick.source_title) && (
-            <div className="mt-0.5 flex items-center gap-1 text-[12px] text-gray-500">
-              <span className="truncate">原文：<AutoLink text={displaySourceTitle(pick, showOriginalLang)} className="text-gray-500 underline-offset-2 hover:underline" /></span>
-              {pick.source_title_zh && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onToggleLang(); }}
-                  className="shrink-0 rounded border border-gray-200 px-1 text-[12px] text-gray-500 hover:text-gray-600"
-                >
-                  {showOriginalLang ? '中' : 'EN'}
-                </button>
-              )}
-            </div>
-          )}
-          {(pick.platforms ?? []).length > 0 && (
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              {(pick.platforms ?? []).slice(0, 3).map((p, k) => (
-                <span key={`${p}-${k}`} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[12px] text-gray-500">{p}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className={cx('mt-0.5 shrink-0 text-gray-500 transition', isExpanded && 'rotate-90')}>
-          <ChevronRight size={14} />
-        </div>
+        )}
       </div>
       {isExpanded && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-3 py-3 sm:px-4">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <a
             href={creationPlanHref(pick)}
             className="flex items-center gap-1 rounded-md bg-primary-solid px-3 py-2 text-[12px] font-bold text-white hover:opacity-90"
@@ -406,7 +407,7 @@ export function BriefPickRow({
           </button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 

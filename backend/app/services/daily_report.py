@@ -305,21 +305,21 @@ def _match_picks_to_curated(
     selected_source_ids: list[int] = []
     picks: list[dict] = []
     if not isinstance(raw_picks, list):
-        logger.warning("日报选题不是列表，转为保守摘要")
+        logger.warning("选题结果不是列表，转为保守摘要")
         return [], []
     for raw_pick in raw_picks:
         if len(picks) >= 9:
-            logger.warning("日报选题超过9条，保留已通过校验的前9条")
+            logger.warning("选题结果超过9条，保留已通过校验的前9条")
             break
         if not isinstance(raw_pick, dict):
-            logger.warning("跳过日报中的无效选题对象")
+            logger.warning("跳过无效选题对象")
             continue
         pick = dict(raw_pick)
         matched_item: dict | None = None
         idx = pick.get("source_idx")
         if "source_idx" in pick:
             if type(idx) is not int or idx not in curated_by_idx:
-                logger.warning("跳过未出现在本次输入中的日报素材编号: value_type=%s", type(idx).__name__)
+                logger.warning("跳过未出现在本次输入中的素材编号: value_type=%s", type(idx).__name__)
                 continue
             matched_item = curated_by_idx[idx]
         if not matched_item:
@@ -343,14 +343,14 @@ def _match_picks_to_curated(
             ]
             matched_item = candidates[0] if len(candidates) == 1 else None
         if not matched_item:
-            logger.warning("跳过无法唯一匹配的日报素材")
+            logger.warning("跳过无法唯一匹配的素材")
             continue
         if matched_item["id"] in selected_source_ids:
-            logger.warning("跳过日报重复素材: content_id=%s", matched_item["id"])
+            logger.warning("跳过重复素材: content_id=%s", matched_item["id"])
             continue
         pick, issues = review_daily_pick(pick, matched_item)
         if issues:
-            logger.warning("日报选题校验/保守回退: content_id=%s issues=%s", matched_item["id"], issues)
+            logger.warning("选题校验/保守回退: content_id=%s issues=%s", matched_item["id"], issues)
         # 注入稳定字段：URL/title/score 由后端按匹配结果填，模型无需也不应改写。
         pick["source_idx"] = next(i for i, item in curated_by_idx.items() if item is matched_item)
         pick["source_url"] = normalize_zhihu_url(matched_item.get("url", ""))
@@ -720,7 +720,7 @@ async def generate_daily_report(
         background_items, limit=80, max_chars=8000, selected=False
     )
     if len(curated_for_prompt) < min(50, len(curated_items)):
-        logger.warning("日报输入预算限制: visible_curated=%s available=%s", len(curated_for_prompt), len(curated_items))
+        logger.warning("生成输入预算限制: visible_curated=%s available=%s", len(curated_for_prompt), len(curated_items))
 
     prompt = REPORT_PROMPT.format(
         date=report_date,
@@ -748,16 +748,16 @@ async def generate_daily_report(
             curated_for_prompt, label=f"{report_date} {_edition_label(normalized_edition)}"
         )
         if not isinstance(result, dict) or "raw_response" in result:
-            logger.warning("日报模型响应无效，使用素材摘要回退")
+            logger.warning("模型响应无效，使用素材摘要回退")
             result = fallback
         result, issues = review_daily_sections(
             result, fallback, "\n".join(i["title"] for i in [*curated_for_prompt, *background_for_prompt])
         )
         if issues:
-            logger.warning("日报公共文案校验/回退: issues=%s", issues)
+            logger.warning("公共文案校验/回退: issues=%s", issues)
         picks, selected_source_ids = _match_picks_to_curated(result.get("top_picks"), curated_for_prompt)
         if not picks:
-            logger.warning("日报未留下有效选题，使用本次可见素材回退")
+            logger.warning("未留下有效选题，使用本次可见素材回退")
             result = fallback
             picks, selected_source_ids = _match_picks_to_curated(fallback["top_picks"], curated_for_prompt)
 

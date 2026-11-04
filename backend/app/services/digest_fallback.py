@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from app.services.daily_report_editorial import editorial_issues
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -115,8 +117,6 @@ _DAILY_ANGLE_TEMPLATES: dict[str, list[str]] = {
     "开源项目": ["给出复现或上手路径", "与同类工具做任务对照", "标出真实适用场景"],
 }
 
-_DAILY_TITLE_PREFIXES = ["先核对事实：", "值得拆开看：", "别只看标题：", "对创作者的含义："]
-
 
 def _compact_title(value: str, limit: int = 30) -> str:
     text = " ".join(value.split())
@@ -132,8 +132,11 @@ def _daily_platforms(category: str) -> list[str]:
 
 
 def _daily_reason(item: dict[str, Any]) -> str:
+    title = _text(item.get("title"))
     summary = _text(item.get("summary"))
     recommendation = _text(item.get("recommendation"))
+    summary = summary if not editorial_issues(summary, title) else ""
+    recommendation = recommendation if not editorial_issues(recommendation, title) else ""
     if summary and recommendation:
         return f"{summary[:120]} 创作价值在于：{recommendation[:80]}"
     if summary:
@@ -155,6 +158,7 @@ def build_daily_editorial_fallback(
     JSON: it has a clear lead, a small feature set with concrete angles, and a
     scan-only brief list. Every claim is derived from the supplied items.
     """
+    source_positions = {id(item): position for position, item in enumerate(items, 1)}
     ranked = sorted(items, key=_score, reverse=True)[:top_limit]
     if not ranked:
         return build_digest_fallback([], label=label, top_limit=top_limit)
@@ -172,9 +176,9 @@ def build_daily_editorial_fallback(
         category = _text(item.get("category"), "未分类")
         feature = index <= min(3, len(ranked))
         pick: dict[str, Any] = {
-            "source_idx": index,
+            "source_idx": source_positions[id(item)],
             "source_title": source_title,
-            "editorial_title": f"{_DAILY_TITLE_PREFIXES[(index - 1) % len(_DAILY_TITLE_PREFIXES)]}{_compact_title(source_title)}",
+            "editorial_title": source_title,
             "tier": "feature" if feature else "brief",
             "category": category,
             "reason": _daily_reason(item),

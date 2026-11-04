@@ -24,6 +24,7 @@ from app.repositories.content_repo import ContentRepo
 from app.repositories.ignored_repo import IgnoredRepo
 from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.content_serialization import latest_analysis_from_item
+from app.services.daily_report_editorial import review_daily_pick, review_daily_sections
 from app.services.digest_base import is_active_generating as _digest_is_active_generating
 from app.services.digest_fallback import build_daily_editorial_fallback
 from app.services.llm import call_llm_json
@@ -239,6 +240,21 @@ def _format_items(items: list[dict], *, limit: int, selected: bool) -> str:
     return "\n".join(lines)
 
 
+def _prepare_prompt_pool(items: list[dict], *, limit: int, max_chars: int, selected: bool) -> tuple[list[dict], str]:
+    """The matching pool is exactly the complete material units visible to the model."""
+    pool: list[dict] = []
+    rendered = "暂无"
+    for item in items[:limit]:
+        candidate = pool + [item]
+        text = _format_items(candidate, limit=len(candidate), selected=selected)
+        # Sanitise complete units before measuring; never cut the final source in half.
+        safe = sanitize_prompt_input(text, max_chars=len(text) * 2 + 32, escape_braces=False)
+        if len(safe) > max_chars:
+            break
+        pool, rendered = candidate, safe
+    return pool, rendered
+
+
 async def get_latest_today_report(
     db: AsyncSession,
     *,
@@ -274,7 +290,7 @@ def _match_picks_to_curated(
 ) -> tuple[list[dict], list[int]]:
     """将 LLM 返回的 top_picks 匹配回精选素材，注入稳定字段并做后端兜底校验。
 
-    匹配优先级：source_idx（精确）→ source_title 子串兜底 → URL 末位兜底。
+    显式 source_idx 必须有效；缺编号时，才按唯一标题（精确优先）或唯一 URL 兜底。
     不信任 LLM 输出的枚举/字段约束，对 tier=lifecycle/angles 做白名单过滤。
 
     Args:
@@ -286,31 +302,59 @@ def _match_picks_to_curated(
     """
     matchable_items = curated_for_prompt
     curated_by_idx = {i + 1: item for i, item in enumerate(matchable_items)}
-    curated_by_title = {item["title"]: item for item in matchable_items}
-    curated_by_url = {normalize_zhihu_url(item.get("url", "")): item for item in matchable_items if item.get("url")}
-    curated_titles = set(curated_by_title)
     selected_source_ids: list[int] = []
     picks: list[dict] = []
-    for pick in raw_picks:
+    if not isinstance(raw_picks, list):
+        logger.warning("日报选题不是列表，转为保守摘要")
+        return [], []
+    for raw_pick in raw_picks:
+        if len(picks) >= 9:
+            logger.warning("日报选题超过9条，保留已通过校验的前9条")
+            break
+        if not isinstance(raw_pick, dict):
+            logger.warning("跳过日报中的无效选题对象")
+            continue
+        pick = dict(raw_pick)
         matched_item: dict | None = None
         idx = pick.get("source_idx")
-        if isinstance(idx, int):
-            matched_item = curated_by_idx.get(idx)
+        if "source_idx" in pick:
+            if type(idx) is not int or idx not in curated_by_idx:
+                logger.warning("跳过未出现在本次输入中的日报素材编号: value_type=%s", type(idx).__name__)
+                continue
+            matched_item = curated_by_idx[idx]
         if not matched_item:
-            source_title = pick.get("source_title", "")
-            matched_title = next(
-                (t for t in curated_titles if source_title and (source_title in t or t in source_title)),
-                None,
-            )
-            matched_item = curated_by_title.get(matched_title) if matched_title else None
+            source_title = pick.get("source_title")
+            candidates = []
+            if isinstance(source_title, str) and source_title:
+                candidates = [item for item in matchable_items if item["title"] == source_title]
+                if not candidates:
+                    candidates = [
+                        item
+                        for item in matchable_items
+                        if source_title in item["title"] or item["title"] in source_title
+                    ]
+            matched_item = candidates[0] if len(candidates) == 1 else None
         if not matched_item:
-            pick_url_norm = normalize_zhihu_url(pick.get("source_url", ""))
-            matched_item = curated_by_url.get(pick_url_norm)
+            pick_url_norm = normalize_zhihu_url(pick["source_url"]) if isinstance(pick.get("source_url"), str) else ""
+            candidates = [
+                item
+                for item in matchable_items
+                if pick_url_norm and normalize_zhihu_url(item.get("url", "")) == pick_url_norm
+            ]
+            matched_item = candidates[0] if len(candidates) == 1 else None
         if not matched_item:
+            logger.warning("跳过无法唯一匹配的日报素材")
             continue
+        if matched_item["id"] in selected_source_ids:
+            logger.warning("跳过日报重复素材: content_id=%s", matched_item["id"])
+            continue
+        pick, issues = review_daily_pick(pick, matched_item)
+        if issues:
+            logger.warning("日报选题校验/保守回退: content_id=%s issues=%s", matched_item["id"], issues)
         # 注入稳定字段：URL/title/score 由后端按匹配结果填，模型无需也不应改写。
+        pick["source_idx"] = next(i for i, item in curated_by_idx.items() if item is matched_item)
         pick["source_url"] = normalize_zhihu_url(matched_item.get("url", ""))
-        pick["source_title"] = pick.get("source_title") or matched_item["title"]
+        pick["source_title"] = matched_item["title"]
         pick["title"] = pick.get("editorial_title") or matched_item["title"]
         pick["score"] = round(float(matched_item.get("adjusted_score") or matched_item.get("curation_score") or 0))
         # 站内阅读：注入底层 content_id（= ContentItem.id），供前端 ReaderDrawer 取正文。
@@ -325,7 +369,7 @@ def _match_picks_to_curated(
         else:
             # feature：生命周期没有足够依据时宁可不显示，也不伪造"上升期"。
             lc = pick.get("lifecycle")
-            if lc in _VALID_LIFECYCLE:
+            if isinstance(lc, str) and lc in _VALID_LIFECYCLE:
                 pick["lifecycle"] = lc
             else:
                 pick.pop("lifecycle", None)
@@ -670,10 +714,13 @@ async def generate_daily_report(
         await db.commit()
         return report
 
-    # 截断一次：prompt 展示列表与下方匹配逻辑共用同一份，保证 source_idx 一致。
-    curated_for_prompt = curated_items[:50]
-    curated_text = _format_items(curated_for_prompt, limit=50, selected=True)
-    background_text = _format_items(background_items, limit=80, selected=False)
+    # 按完整素材单元装入预算；展示列表与匹配逻辑共用同一份，保证 source_idx 一致。
+    curated_for_prompt, curated_text = _prepare_prompt_pool(curated_items, limit=50, max_chars=6000, selected=True)
+    background_for_prompt, background_text = _prepare_prompt_pool(
+        background_items, limit=80, max_chars=8000, selected=False
+    )
+    if len(curated_for_prompt) < min(50, len(curated_items)):
+        logger.warning("日报输入预算限制: visible_curated=%s available=%s", len(curated_for_prompt), len(curated_items))
 
     prompt = REPORT_PROMPT.format(
         date=report_date,
@@ -681,11 +728,13 @@ async def generate_daily_report(
         edition_label=_edition_label(normalized_edition),
         window_start=window_start.strftime("%Y-%m-%d %H:%M"),
         window_end=window_end.strftime("%Y-%m-%d %H:%M"),
-        curated_items_text=sanitize_prompt_input(curated_text, max_chars=6000),
-        background_items_text=sanitize_prompt_input(background_text, max_chars=8000),
+        curated_items_text=curated_text,
+        background_items_text=background_text,
     )
 
     try:
+        if not curated_for_prompt:
+            raise ValueError("精选素材超过单次输入预算，未发送模型请求")
         result = await call_llm_json(
             [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -695,24 +744,30 @@ async def generate_daily_report(
             temperature=0.4,
             max_tokens=4000,
         )
-        overview = result.get("overview", "")
-        if not overview or "raw_response" in result:
-            result = build_daily_editorial_fallback(
-                curated_items,
-                label=f"{report_date} {_edition_label(normalized_edition)}",
-            )
-            overview = result.get("overview", "")
+        fallback = build_daily_editorial_fallback(
+            curated_for_prompt, label=f"{report_date} {_edition_label(normalized_edition)}"
+        )
+        if not isinstance(result, dict) or "raw_response" in result:
+            logger.warning("日报模型响应无效，使用素材摘要回退")
+            result = fallback
+        result, issues = review_daily_sections(
+            result, fallback, "\n".join(i["title"] for i in [*curated_for_prompt, *background_for_prompt])
+        )
+        if issues:
+            logger.warning("日报公共文案校验/回退: issues=%s", issues)
+        picks, selected_source_ids = _match_picks_to_curated(result.get("top_picks"), curated_for_prompt)
+        if not picks:
+            logger.warning("日报未留下有效选题，使用本次可见素材回退")
+            result = fallback
+            picks, selected_source_ids = _match_picks_to_curated(fallback["top_picks"], curated_for_prompt)
 
-        report.overview = overview
-        report.takeaway = result.get("takeaway", "")
+        report.overview = result["overview"]
+        report.takeaway = result["takeaway"]
         report.keywords = json.dumps(result.get("keywords", []), ensure_ascii=False)
         report.trends = json.dumps(result.get("trends", []), ensure_ascii=False)
-
-        raw_picks = result.get("top_picks", [])
-        picks, selected_source_ids = _match_picks_to_curated(raw_picks, curated_for_prompt)
+        report.platform_tips = json.dumps(result.get("platform_tips", {}), ensure_ascii=False)
 
         report.top_picks = json.dumps(picks, ensure_ascii=False)
-        report.platform_tips = json.dumps(result.get("platform_tips", {}), ensure_ascii=False)
         report.topic_count = len(picks)
         report.source_item_ids = json.dumps(
             selected_source_ids or [item["id"] for item in curated_items], ensure_ascii=False

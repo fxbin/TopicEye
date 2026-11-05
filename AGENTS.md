@@ -14,6 +14,7 @@ TopicEye 是内容创作者的选题雷达。agent 接口见 [AGENT_API.md](AGEN
 | 范围 | 入口 |
 |---|---|
 | 事件归并、分页与生产启用门槛 | [事件合同与启用边界](.agents/notes/implemented/feature/2026-10-24-content-event-contract.md) |
+| 今日选题滚动加载与分页口径 | [今日选题分页口径](.agents/notes/implemented/feature/2026-11-03-today-picks-scroll-paging.md) |
 | MCP OAuth 与 client 清理运维 | [client 清理理由与运行合同](.agents/notes/implemented/architecture/2026-10-24-mcp-client-gc-history.md) |
 | SelectBench 手动抽样、校准与导入 | [离线校准与导入合同](.agents/notes/implemented/verification/2026-10-24-selectbench-contract.md) |
 | 依赖审计口径与例外复核 | [审计口径与例外复核](.agents/notes/implemented/risk/2026-10-24-dependency-audit-contract.md) |

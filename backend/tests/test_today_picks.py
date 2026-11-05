@@ -326,7 +326,7 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
     transport = httpx.ASGITransport(app=app)
     calls = {"count": 0}
 
-    async def fake_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None):
+    async def fake_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None, offset=0):
         calls["count"] += 1
         return {"items": [], "total": 0, "event_members_hidden": 0, "topics": [], "page": 1, "page_size": 0}
 
@@ -346,7 +346,7 @@ async def test_today_picks_api_cache_headers_and_duckdb_503(monkeypatch):
 
     invalidate_json_cache()
 
-    async def fail_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None):
+    async def fail_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None, offset=0):
         raise RuntimeError("duckdb unavailable")
 
     monkeypatch.setattr("app.services.today_picks.build_today_picks", fail_build_today_picks)
@@ -394,7 +394,9 @@ async def test_today_picks_cache_and_build_are_user_scoped(monkeypatch):
     transport = httpx.ASGITransport(app=app)
     calls: list[int | None] = []
 
-    async def fake_build_today_picks(db, *, category=None, content_type=None, hours=48, limit=None, owner_user_id=None):
+    async def fake_build_today_picks(
+        db, *, category=None, content_type=None, hours=48, limit=None, offset=0, owner_user_id=None
+    ):
         calls.append(owner_user_id)
         return {
             "items": [{"id": owner_user_id or 0}],
@@ -481,6 +483,9 @@ async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkey
         "topics": [],
         "page": 1,
         "page_size": 0,
+        # 空结果也要带齐分页字段，前端据此判断是否还有下一页（#218）
+        "offset": 0,
+        "has_more": False,
     }
     # 至少一条 WARNING 带 exc_info（即 stack trace 写进了日志）
     fallback_logs = [r for r in caplog.records if "today_picks" in r.message and "unavailable" in r.message]
@@ -1009,6 +1014,117 @@ def test_select_slate_explore_slot_keeps_base_top():
     assert len(ids) == 5
     assert 1 in ids, "探索位应保留基础第一名"
     assert ids[:4] == [6, 7, 8, 9], "加分者按加成分排前"
+
+
+# ── 滚动加载分页（#218） ───────────────────────────────────────────────
+
+
+def test_select_slate_offset_pages_are_stable_continuation():
+    """offset 分页：第 k 页必须是第 1 页的稳定延续。
+
+    回归 #218：旧实现按累计 limit 重选，拉大 limit 会把新条目插到中间，
+    已展示的卡片被重新洗牌。改为 offset 切片后，追加页不得重排前页条目，
+    也不得重复或漏项。
+    """
+    rows = _personalized_rows(120)
+    scored = _fake_scored(rows)
+    boosts = {i: 50.0 for i in range(60, 91)}
+
+    page_size = 40
+    pages: list[list[int]] = []
+    for page_index in range(3):
+        slate = today_picks._select_personalized_slate(scored, boosts, page_size, offset=page_index * page_size)
+        pages.append([row["id"] for _bd, row in slate])
+
+    flat = [item_id for page in pages for item_id in page]
+
+    assert all(len(page) == page_size for page in pages), "每页都应满页"
+    assert len(flat) == len(set(flat)), "各页之间不得出现重复条目"
+    assert len(set(flat)) == 120, "三页应覆盖全部 120 条入选内容，不得漏项"
+
+    # 前一页的条目顺序在后续页里不会被改写：整体顺序唯一确定
+    expected = [row["id"] for _bd, row in today_picks._select_personalized_slate(scored, boosts, page_size, offset=0)]
+    assert flat[:page_size] == expected, "第 1 页内容不得随翻页改变"
+
+
+def test_select_slate_offset_without_boosts_keeps_base_order():
+    """无 boost（匿名 / 无兴趣向量）时，offset 切片保持基础序。"""
+    rows = _personalized_rows(50)
+    scored = _fake_scored(rows)
+
+    first = today_picks._select_personalized_slate(scored, {}, 40)
+    second = today_picks._select_personalized_slate(scored, {}, 40, offset=40)
+
+    assert [row["id"] for _bd, row in first] == list(range(1, 41))
+    assert [row["id"] for _bd, row in second] == list(range(41, 51))
+
+
+def test_select_slate_offset_beyond_pool_returns_empty():
+    """offset 超出入选池时返回空列表，不报错。"""
+    rows = _personalized_rows(20)
+    scored = _fake_scored(rows)
+
+    slate = today_picks._select_personalized_slate(scored, {}, 40, offset=100)
+    assert slate == []
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_offset_page_reports_paging_fields(monkeypatch):
+    """分页响应如实给出 offset / has_more / page，前端据此判断是否还有下一页。"""
+    rows = _personalized_rows(50)
+    _patch_scoring(monkeypatch, rows)
+
+    first = await today_picks.build_today_picks(object(), hours=48, limit=40, offset=0)
+    second = await today_picks.build_today_picks(object(), hours=48, limit=40, offset=40)
+
+    assert first["offset"] == 0
+    assert first["has_more"] is True
+    assert first["total"] == 50
+    assert len(first["items"]) == 40
+
+    assert second["offset"] == 40
+    assert second["has_more"] is False
+    assert len(second["items"]) == 10
+
+    first_ids = {item["id"] for item in first["items"]}
+    second_ids = {item["id"] for item in second["items"]}
+    assert not (first_ids & second_ids), "两页内容不得重叠"
+    assert len(first_ids) + len(second_ids) == 50
+
+
+@pytest.mark.asyncio
+async def test_build_today_picks_total_is_independent_of_limit(monkeypatch):
+    """total 口径不随 limit / offset 变化：today-count 徽标不能被分页参数带偏。"""
+    rows = _personalized_rows(50)
+    _patch_scoring(monkeypatch, rows)
+
+    base = await today_picks.build_today_picks(object(), hours=48, limit=40)
+    paged = await today_picks.build_today_picks(object(), hours=48, limit=10, offset=20)
+    counted = await today_picks.build_today_picks(object(), hours=48, limit=1)
+
+    assert base["total"] == paged["total"] == counted["total"] == 50
+
+
+def test_today_picks_cache_key_includes_offset():
+    """缓存键必须含 offset：否则第 2 页会命中第 1 页的缓存。"""
+    from app.services.today_picks_cache import TodayPicksCacheParams
+
+    first = TodayPicksCacheParams(hours=24, limit=40, offset=0)
+    second = TodayPicksCacheParams(hours=24, limit=40, offset=40)
+
+    assert first.key != second.key, "不同 offset 必须命中不同缓存条目"
+    # 首屏缓存键保持不变，启动预热仍能命中
+    assert "hours=24" in first.key and "limit=40" in first.key
+
+
+def test_empty_payload_carries_same_paging_fields():
+    """空结果与正常结果的响应字段要一致，前端才能统一判断是否还有下一页。"""
+    empty = today_picks._empty_payload()
+    packed = today_picks._pack_today_picks([], {}, total=0, limit=40, offset=0)
+
+    assert set(empty) == set(packed), f"字段不一致：{set(empty) ^ set(packed)}"
+    assert empty["offset"] == 0
+    assert empty["has_more"] is False
 
 
 @pytest.mark.asyncio

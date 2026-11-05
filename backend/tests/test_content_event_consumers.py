@@ -444,6 +444,9 @@ async def test_today_picks_event_truth_error_returns_empty_payload(monkeypatch):
         "topics": [],
         "page": 1,
         "page_size": 0,
+        # 空结果也要带齐分页字段，前端据此判断是否还有下一页（#218）
+        "offset": 0,
+        "has_more": False,
     }
 
 

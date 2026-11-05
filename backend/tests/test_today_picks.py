@@ -483,6 +483,9 @@ async def test_build_today_picks_duckdb_unavailable_returns_empty_payload(monkey
         "topics": [],
         "page": 1,
         "page_size": 0,
+        # 空结果也要带齐分页字段，前端据此判断是否还有下一页（#218）
+        "offset": 0,
+        "has_more": False,
     }
     # 至少一条 WARNING 带 exc_info（即 stack trace 写进了日志）
     fallback_logs = [r for r in caplog.records if "today_picks" in r.message and "unavailable" in r.message]
@@ -1112,6 +1115,16 @@ def test_today_picks_cache_key_includes_offset():
     assert first.key != second.key, "不同 offset 必须命中不同缓存条目"
     # 首屏缓存键保持不变，启动预热仍能命中
     assert "hours=24" in first.key and "limit=40" in first.key
+
+
+def test_empty_payload_carries_same_paging_fields():
+    """空结果与正常结果的响应字段要一致，前端才能统一判断是否还有下一页。"""
+    empty = today_picks._empty_payload()
+    packed = today_picks._pack_today_picks([], {}, total=0, limit=40, offset=0)
+
+    assert set(empty) == set(packed), f"字段不一致：{set(empty) ^ set(packed)}"
+    assert empty["offset"] == 0
+    assert empty["has_more"] is False
 
 
 @pytest.mark.asyncio

@@ -45,3 +45,54 @@ export const SENSITIVE_SEVERITY_LABELS: Record<SensitiveSeverity, string> = {
   medium: '中风险',
   low: '低风险',
 };
+
+// ─── AI 痕迹（启发式统计，非模型检测）───
+
+/** 分档：high/medium/low 是「AI 味」浓度，insufficient=样本不足宁可不判。 */
+export type AiTraceLevel = 'low' | 'medium' | 'high' | 'insufficient';
+
+/** 词维度：buzzword=AI 高频词/黑话，connective=套话连接词。 */
+export type AiTraceWordDimension = 'buzzword' | 'connective';
+
+export interface AiTraceWordHit {
+  word: string;
+  dimension: AiTraceWordDimension;
+  start: number;
+  end: number;
+}
+
+export interface AiTraceDimensionStat {
+  dimension: AiTraceWordDimension;
+  hits: number;
+  density_per_kilochar: number;
+  level: AiTraceLevel;
+}
+
+export interface AiTraceRhythmStat {
+  level: AiTraceLevel;
+  sentence_count: number;
+  cv: number | null;
+}
+
+export interface AiTracesReport {
+  level: AiTraceLevel;
+  character_count: number;
+  buzzword: AiTraceDimensionStat;
+  connective: AiTraceDimensionStat;
+  rhythm: AiTraceRhythmStat;
+  hits: AiTraceWordHit[];
+  advice: string;
+}
+
+/** 分档展示口径：AI 痕迹用紫色系，不复用风险红/黄语义。 */
+export const AI_TRACE_LEVEL_META: Record<AiTraceLevel, { label: string; badgeTone: 'teal' | 'amber' | 'purple' | 'neutral'; text: string }> = {
+  low: { label: '痕迹少', badgeTone: 'teal', text: 'text-teal' },
+  medium: { label: '痕迹中等', badgeTone: 'amber', text: 'text-amber-600' },
+  high: { label: '痕迹明显', badgeTone: 'purple', text: 'text-purple' },
+  insufficient: { label: '样本不足', badgeTone: 'neutral', text: 'text-gray-400' },
+};
+
+export const AI_TRACE_WORD_DIMENSION_LABELS: Record<AiTraceWordDimension, string> = {
+  buzzword: 'AI 高频词',
+  connective: '套话连接词',
+};

@@ -4,7 +4,7 @@
  * 从 app/today-picks/page.tsx 抽出：
  * - CATEGORIES / RECOMMEND_LEVELS（从 design-tokens 复用）
  * - LEVEL_CONFIG（从 design-tokens 复用 LEVEL_CONFIG_CLASSES）
- * - TIME_RANGES / DEFAULT_TIME_RANGE / INITIAL_PICK_LIMIT / PICK_LOAD_STEP
+ * - TIME_RANGES / DEFAULT_TIME_RANGE
  * - normalizeTimeRange
  * - getAnalysis / scoreOf / tagsOf（纯函数工具）
  */
@@ -29,8 +29,6 @@ export const TIME_RANGES = [
 ] as const;
 
 export const DEFAULT_TIME_RANGE = '24h';
-export const INITIAL_PICK_LIMIT = 40;
-export const PICK_LOAD_STEP = 40;
 
 export function normalizeTimeRange(value: string | null) {
   return TIME_RANGES.some((range) => range.value === value) ? value! : DEFAULT_TIME_RANGE;

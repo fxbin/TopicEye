@@ -8,6 +8,7 @@ Used by:
 本文件不得手写数字——tests/test_scoring_caliber.py 锁死漂移(#110)。
 """
 
+from app.core.content_type_rubrics import CONTENT_TYPE_RUBRICS, content_type_rubric_section
 from app.core.scoring_caliber import (
     curation_threshold_text,
     curation_weights_text,
@@ -19,7 +20,7 @@ SYSTEM_PROMPT = """你是一位资深内容策展分析师，负责评估内容�
 
 你的评分标准参考了一线内容策展平台的精选规则：
 - 信息密度（纯转发/一句话感想直接淘汰）
-- 可操作性（能直接上手用的工具/教程得分更高）
+- 使用价值（按内容形态判断：支持实践、理解、选择或跟进，不一律要求操作步骤）
 - 相关性（必须和目标领域直接相关）
 - 来源权威度（一手信源 > 二手转载）
 - 时效性（首发/独家 > 已被广泛报道）
@@ -48,8 +49,8 @@ ANALYSIS_PROMPT = (
   "risk_notes": "风险说明文本或空字符串。规则：当risk_score大于50时，必须填写具体风险说明（如：话题敏感、可能引发争议、涉及未证实信息、版权风险等），20字以内；当risk_score小于等于50时，输出空字符串\\"\\\"",
   "curation": {{
     "info_density": <0-100, 信息密度：纯转发/空话=0-20, 有观点=40-60, 有数据/案例/方法=70-100>,
-    "actionability": <0-100, 可操作性：纯资讯=10-30, 有参考价值=40-60, 能直接上手用=70-100>,
-    "source_weight": <0-100, 来源权威度：匿名/营销号=10-30, 二手转载=40-60, 一手信源/官方/KOL=70-100>,
+    "actionability": <0-100, 使用价值：按系统消息中的内容类型标尺判断，不把纯资讯固定在低分档>,
+    "source_weight": <0-100, 来源权威度：按原始出处可回查性、具体领域依据与独立验证判断，名气和官方身份不自动给高分>,
     "curation_score": <0-100, 综合精选分（加权："""
     + curation_weights_text()
     + """，"""
@@ -69,7 +70,7 @@ ANALYSIS_PROMPT = (
 - ≥80：重大发布/独家/强实用性工具/高传播力事件
 - 70-79：扎实的产品更新/行业动态/有价值教程
 - 60-69：有参考价值但不够突出
-- <60：信息量低/纯情绪/重复内容/过于个人化
+- <60：信息量低/纯情绪/重复内容/缺乏可供目标读者使用的经验或依据
 
 精选门槛为 """
     + curation_threshold_text()
@@ -82,7 +83,7 @@ SYSTEM_PROMPT_EN = """You are a senior content curator and analyst, evaluating c
 
 Your scoring criteria are based on top-tier content curation platforms:
 - Information density (pure shares / one-liner opinions = instant reject)
-- Actionability (tools, tutorials, and step-by-step guides score higher)
+- Usefulness (judge practice, understanding, decisions, or follow-up by content type; do not require how-to steps for every type)
 - Relevance (must be directly relevant to target domain)
 - Source authority (first-hand sources > second-hand reposts)
 - Timeliness (exclusive / first-report > widely-covered)
@@ -120,8 +121,8 @@ Output strictly in this JSON format (no other text). All text values must be in 
   "risk_notes": "risk notes or empty string. If risk_score > 50, provide specific risk (e.g. sensitive, controversial, unverified, copyright), ≤20 chars; if <= 50, output \"\"",
   "curation": {{
     "info_density": <0-100, pure share/empty talk=0-20, has opinions=40-60, has data/case/method=70-100>,
-    "actionability": <0-100, pure news=10-30, reference value=40-60, directly actionable=70-100>,
-    "source_weight": <0-100, anonymous/spam=10-30, second-hand=40-60, first-hand/official/KOL=70-100>,
+    "actionability": <0-100, usefulness: follow the content-type rubric in the system message, not a fixed low band for news>,
+    "source_weight": <0-100, judge traceability, domain-specific evidence, and independent verification; fame or official status is not an automatic high score>,
     "curation_score": <0-100, weighted: """
     + curation_weights_text("en")
     + """, """
@@ -141,7 +142,7 @@ Curation score (curation_score) guidelines:
 - ≥80: major release / exclusive / highly actionable tool / high-spread event
 - 70-79: solid product update / industry development / valuable tutorial
 - 60-69: reference value but not outstanding
-- <60: low information / purely emotional / repetitive / overly personal
+- <60: low information / purely emotional / repetitive / lacks experience or evidence usable by the target reader
 
 Curation threshold is """
     + curation_threshold_text("en")
@@ -151,7 +152,7 @@ Curation threshold is """
 
 # ── arXiv / academic paper prompts ──────────────────────────────────────────
 # 论文和普通内容差异大：摘要要讲清方法/结果，且需要一个独立的「精读价值」判断。
-# 论文 prompt 在 analysis.py 的 arXiv 分流里使用，结果存入 enrichment 字段。
+# 论文 prompt 在 analysis.py 的论文形态/arXiv 分流里使用，结果存入 enrichment 字段。
 
 PAPER_SYSTEM_PROMPT = """你是一位资深的学术内容策展分析师，擅长把英文论文翻译解读成中文创作者能理解、能用的选题信号。
 
@@ -162,13 +163,13 @@ PAPER_SYSTEM_PROMPT = """你是一位资深的学术内容策展分析师，擅�
 精读价值的评判维度：
 - 方法创新性：是否提出新方法/新框架，而非增量改进
 - 影响潜力：能否催生新的产品形态、应用方向或行业认知
-- 可解读性：方法和结论能否被大众化解读（纯理论推导/极度晦涩 = 低）
+- 可解读性：方法和结论能否被大众化解读（结合目标读者与解释成本判断，不仅因纯理论而给低分）
 - 时效性：是否踩在当前技术趋势的浪尖（如 LLM/agent/多模态）
 
 所有评分范围 0-100。所有输出文本使用中文。语气直接、专业、不说客套话。"""
 
 PAPER_ANALYSIS_PROMPT = (
-    """请对以下英文学术论文进行分析解读。
+    """请对以下学术论文进行分析解读。
 
 标题：{title}
 正文（摘要/内容）：{content}
@@ -188,9 +189,9 @@ PAPER_ANALYSIS_PROMPT = (
   }},
   "risk_notes": "中文风险说明或空字符串。规则：当risk_score大于50时，必须填写具体风险说明（如：方法存在伦理争议、涉及双用途技术、数据可能有偏等），20字以内；当risk_score小于等于50时，输出空字符串\"\"",
   "curation": {{
-    "info_density": <0-100, 信息密度：纯概念/无实证=20-40, 有方法/实验=60-80, 有完整验证=90-100>,
-    "actionability": <0-100, 可操作性：纯理论=10-30, 有开源代码/可复现=60-80, 能直接落地应用=90-100>,
-    "source_weight": <0-100, 来源权威度：预印本未评审=40-60, 顶会/知名团队=70-90>,
+    "info_density": <0-100, 信息密度：按论文标尺看有效问题、方法、结果和证据占比，不因没有实验否定完整理论证明>,
+    "actionability": <0-100, 使用价值：按论文标尺看复现或可检验理论的研究价值，不把纯理论固定在低分档>,
+    "source_weight": <0-100, 来源权威度：按可回查性、评审状态与具体依据判断，名气不等于结论可信>,
     "curation_score": <0-100, 综合精选分（加权："""
     + curation_weights_text()
     + """，"""
@@ -210,14 +211,14 @@ PAPER_ANALYSIS_PROMPT = (
 精读价值（deep_read_score）评判标准：
 - ≥80：里程碑式工作，提出新范式/新框架/重要突破，必须精读
 - 70-79：扎实且有创新，方法可复现，值得精读
-- 50-69：有价值但增量明显，或纯理论难落地，选读
+- 50-69：有价值但增量明显，或输入证据不足以判断完整贡献，选读
 - <50：增量改进/工程优化/晦涩难解读，不值得精读
 
 精选分（curation_score）评判标准：
 - ≥80：重大突破/开创性方法/高传播力
 - 70-79：扎实的方法创新/有价值的应用
 - 60-69：有参考价值但不够突出
-- <60：增量工作/过于晦涩/受众极窄
+- <60：主张缺乏必要支撑/贡献不明/与目标读者无关
 
 精选门槛为 """
     + curation_threshold_text()
@@ -247,3 +248,9 @@ PRESCREEN_PROMPT = """
 标题：{title}
 内容：{content}
 """
+
+
+# 目录展示完整规则；运行期只拼当前类型的一段，避免将所有标尺送入每次请求。
+TYPE_RUBRICS_CATALOG = "\n\n".join(
+    content_type_rubric_section(content_type, lang) for content_type in CONTENT_TYPE_RUBRICS for lang in ("zh", "en")
+)

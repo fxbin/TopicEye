@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.content_type_rubrics import content_type_rubric_section, resolve_rubric_type
 from app.core.database import async_session
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem, ContentStatus
@@ -152,10 +153,13 @@ def _analysis_result_from_prescreen(
 
 
 async def _run_lite_prescreen(
-    content: ContentItem, *, title: str, truncated: str
+    content: ContentItem, *, title: str, truncated: str, lang: str
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     messages = [
-        {"role": "system", "content": PRESCREEN_SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": PRESCREEN_SYSTEM_PROMPT + "\n\n" + content_type_rubric_section(content.content_type, lang),
+        },
         {
             "role": "user",
             "content": PRESCREEN_PROMPT.format(
@@ -174,7 +178,7 @@ async def _run_lite_prescreen(
     return _normalize_prescreen_result(result), metadata
 
 
-def _local_analysis_result(content: ContentItem, *, lang: str, is_arxiv: bool = False) -> dict[str, Any]:
+def _local_analysis_result(content: ContentItem, *, lang: str, is_paper: bool = False) -> dict[str, Any]:
     """Build a deterministic baseline analysis when the LLM response is empty."""
     text = f"{content.title}\n{content.summary or ''}\n{content.raw_content or ''}".strip()
     source = f"{content.source_name or ''} {content.source_type or ''} {content.platform or ''}".lower()
@@ -208,10 +212,10 @@ def _local_analysis_result(content: ContentItem, *, lang: str, is_arxiv: bool = 
     if len(summary) > 180:
         summary = summary[:180].rstrip() + "..."
 
-    if is_arxiv:
+    if is_paper:
         # 论文 LLM 兜底：用标题生成中文占位概述，避免英文原文直接展示
-        summary = f"《{title}》是 arXiv 上的学术论文。LLM 暂不可用，建议查看原文获取详细方法与结论。"
-        recommendation = "这篇论文来自 arXiv，涉及前沿研究。LLM 限流未能生成详细中文解读，可先收藏待精读。"
+        summary = f"《{title}》按论文流程处理。LLM 暂不可用，方法与结论尚未核验，请查看原文。"
+        recommendation = "论文解读暂不可用，当前为本地估分；研究贡献与精读价值仍待核验。"
     elif lang == "en":
         recommendation = f"这条内容来自 {content.source_name or '外部信源'}，适合作为跨市场趋势素材先观察，再结合中文语境提炼选题角度。"
     else:
@@ -262,22 +266,31 @@ def _analysis_retryable_status_filter(stale_cutoff: datetime):
 def _select_analysis_prompts(content: ContentItem, *, title: str, content_text: str) -> tuple[str, str, str, bool]:
     """按内容特征选择分析 prompt。
 
-    优先级：arXiv 论文 > 英文内容 > 中文内容。
+    优先级：arXiv 或论文形态 > 英文内容 > 中文内容。类型不由主题 category 推断。
 
     Returns:
-        (system_prompt, analysis_prompt, lang, is_arxiv)
+        (system_prompt, analysis_prompt, lang, is_paper)
     """
     platform_lower = (content.platform or "").lower()
-    is_arxiv = "arxiv" in platform_lower or "arxiv" in (content.source_name or "").lower()
+    is_paper = (
+        resolve_rubric_type(content.content_type) == "论文"
+        or "arxiv" in platform_lower
+        or "arxiv" in (content.source_name or "").lower()
+    )
     lang = _detect_lang(title, content_text or "")
 
-    if is_arxiv:
-        logger.info("Detected arXiv paper, using paper prompts for content id=%d", content.id)
-        return PAPER_SYSTEM_PROMPT, PAPER_ANALYSIS_PROMPT, lang, True
+    if is_paper:
+        logger.info("Detected paper, using paper prompts for content id=%d", content.id)
+        return PAPER_SYSTEM_PROMPT + "\n\n" + content_type_rubric_section("论文"), PAPER_ANALYSIS_PROMPT, lang, True
     if lang == "en":
         logger.info("Detected English content, using EN prompts for content id=%d", content.id)
-        return SYSTEM_PROMPT_EN, ANALYSIS_PROMPT_EN, lang, False
-    return SYSTEM_PROMPT, ANALYSIS_PROMPT, lang, False
+        return (
+            SYSTEM_PROMPT_EN + "\n\n" + content_type_rubric_section(content.content_type, "en"),
+            ANALYSIS_PROMPT_EN,
+            lang,
+            False,
+        )
+    return SYSTEM_PROMPT + "\n\n" + content_type_rubric_section(content.content_type), ANALYSIS_PROMPT, lang, False
 
 
 def _apply_cross_market_bonus(content: ContentItem, *, lang: str, curation_score: float) -> float:
@@ -309,7 +322,7 @@ def _build_analysis_record(
     content: ContentItem,
     result: dict[str, Any],
     *,
-    is_arxiv: bool,
+    is_paper: bool,
     curation_score: float,
     analysis_mode: str,
     prescreen_model: str | None,
@@ -330,9 +343,9 @@ def _build_analysis_record(
 
     scores = result.get("scores", {})
     curation = result.get("curation", {})
-    # arXiv 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
+    # 论文的精读判定嵌套进 enrichment.deep_read（与其他 enrichment schema 兼容）
     # 归一化：调和 worth_deep_read(deep_read_score≥70) 矛盾 + 字符串 bool 解析
-    _deep_read = _normalize_deep_read(result.get("deep_read")) if is_arxiv else None
+    _deep_read = _normalize_deep_read(result.get("deep_read")) if is_paper else None
     return AiAnalysis(
         content_id=content.id,
         quality_score=scores.get("quality_score", 0),
@@ -451,7 +464,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     title = readable_content_title(content.title, content.summary, content.raw_content)
     truncated = content_text[:3000] if content_text else "无正文内容"
 
-    system_prompt, analysis_prompt, lang, is_arxiv = _select_analysis_prompts(
+    system_prompt, analysis_prompt, lang, is_paper = _select_analysis_prompts(
         content, title=title, content_text=content_text
     )
 
@@ -475,13 +488,15 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     prescreen_confidence = None
     result: dict[str, Any] | None = None
 
-    if _cascade_enabled() and not is_arxiv:
+    if _cascade_enabled() and not is_paper:
         # 论文跳过 prescreen：结构化概述 + 精读判定需要完整论文 prompt，
         # prescreen 的 lite 简化结果无法产出 deep_read 字段。
         analysis_mode = "cascade"
         prescreen_model = _cascade_lite_routing_group()
         try:
-            prescreen, prescreen_metadata = await _run_lite_prescreen(content, title=title, truncated=truncated)
+            prescreen, prescreen_metadata = await _run_lite_prescreen(
+                content, title=title, truncated=truncated, lang=lang
+            )
             prescreen_model = prescreen_metadata.get("actual_model") or prescreen_model
         except Exception as exc:
             logger.warning("Lite prescreen failed for content id=%d, escalating to pro: %s", content.id, exc)
@@ -527,7 +542,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
                     content.id,
                     type(llm_exc).__name__,
                 )
-                result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
+                result = _local_analysis_result(content, lang=lang, is_paper=is_paper)
                 fallback_used = True
             else:
                 raise
@@ -549,7 +564,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
                     content.id,
                     str(result)[:200],
                 )
-                result = _local_analysis_result(content, lang=lang, is_arxiv=is_arxiv)
+                result = _local_analysis_result(content, lang=lang, is_paper=is_paper)
                 fallback_used = True
                 result = _normalize_analysis_result(result)
         else:
@@ -563,7 +578,7 @@ async def analyze_content(content: ContentItem, db: AsyncSession) -> AiAnalysis:
     analysis = _build_analysis_record(
         content,
         result,
-        is_arxiv=is_arxiv,
+        is_paper=is_paper,
         curation_score=curation_score,
         analysis_mode=analysis_mode,
         prescreen_model=prescreen_model,

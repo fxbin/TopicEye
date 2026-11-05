@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { scanPhase } from './_scan-state';
-import type { SensitiveCheckResponse } from '@/types/content-check';
+import type { AiTracesReport, SensitiveCheckResponse } from '@/types/content-check';
 
 /**
  * 回归（评审阻断项）：检测结果只对检测时的文稿快照有效。
  * 编辑后必须判 stale——否则「未发现违禁词，可以发布」会贴着新加的极限词展示，
  * 旧偏移也会在新文本上错位高亮。页面渲染以 phase 为准，本测试锁住判定合同。
+ * 合同对两类结果（敏感词 / AI 痕迹）一致：result 泛型化后各自都受同一快照约束。
  */
 
 const clean: SensitiveCheckResponse = { total: 0, hits: [] };
@@ -39,5 +40,19 @@ describe('scanPhase', () => {
 
   it('missing snapshot with a result is treated as stale (defensive)', () => {
     expect(scanPhase(null, '任意文稿', clean)).toEqual({ kind: 'stale', result: clean });
+  });
+
+  it('holds for the AI traces report payload under the same snapshot contract', () => {
+    const aiReport: AiTracesReport = {
+      level: 'high',
+      character_count: 12,
+      buzzword: { dimension: 'buzzword', hits: 2, density_per_kilochar: 166.67, level: 'high' },
+      connective: { dimension: 'connective', hits: 1, density_per_kilochar: 83.33, level: 'high' },
+      rhythm: { level: 'insufficient', sentence_count: 1, cv: null },
+      hits: [{ word: '赋能', dimension: 'buzzword', start: 0, end: 2 }],
+      advice: 'AI 高频词/套话连接词密集，建议逐条改写。启发式统计，仅供参考。',
+    };
+    expect(scanPhase('赋能闭环。', '赋能闭环。', aiReport)).toEqual({ kind: 'current', result: aiReport });
+    expect(scanPhase('赋能闭环。改', '赋能闭环。', aiReport)).toEqual({ kind: 'stale', result: aiReport });
   });
 });

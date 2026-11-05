@@ -55,7 +55,7 @@ async def test_catalog_repairs_metadata_and_counts_each_scene_once():
             assert await sync_prompt_registry(db) == 0
             catalog = await list_prompt_catalog(db, None, datetime.now(UTC) - timedelta(days=7))
             scene = next(s for s in catalog["scenes"] if s["scene"] == "content_analysis")
-            assert scene["template_count"] == 6
+            assert scene["template_count"] == 7
             assert scene["stats_7d"]["call_count"] == 3
             assert scene["stats_7d"]["success_count"] == 2
             assert scene["stats_7d"]["failed_count"] == 1

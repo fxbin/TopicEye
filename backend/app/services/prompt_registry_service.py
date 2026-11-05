@@ -70,6 +70,20 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "attr": "PAPER_ANALYSIS_PROMPT",
     },
     {
+        "name": "analysis_type_rubrics",
+        "scene": "content_analysis",
+        "description": "类型化标尺完整目录（中英）；运行时只按content_type拼接一段，不能据目录归因历史请求",
+        "module": "app.services.llm.prompts.analysis",
+        "attr": "TYPE_RUBRICS_CATALOG",
+    },
+    {
+        "name": "prescreen_type_rubrics",
+        "scene": "content_prescreen",
+        "description": "Lite与Pro共用的类型化标尺目录；论文跳过Lite，不代表每次发送所有类型",
+        "module": "app.services.llm.prompts.analysis",
+        "attr": "TYPE_RUBRICS_CATALOG",
+    },
+    {
         "name": "classification_system",
         "scene": "classification",
         "description": "内容分类系统提示词",

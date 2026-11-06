@@ -5,6 +5,8 @@
  */
 
 import { request } from './_core';
+import type { EventChangeAnalysis, EventChangeRequest, EventRelationFeedbackRequest } from '@/types/event-changes';
+import type { IssueFeedbackItem } from '@/types/product-feedback';
 import type { ContentCategoryItem, ScoringFlowResponse } from '@/types/contents';
 import type { ArticleReaderSnapshot, ContentEventCoverage, ContentItem, ContentRelation, EventAngleAnalysis, EvidenceMark, EvidenceLink, PaginatedResponse, TopicInfo, ContentFilterParams } from '@/types';
 import { BASE_URL } from './_core';
@@ -63,6 +65,14 @@ export const contentsApi = {
   /** 事件切面稀缺度分析（AI 角度缺口建议）。每次调用实时重算，无本地持久化。 */
   analyzeEventAngles(id: number): Promise<EventAngleAnalysis> {
     return request(`/contents/${id}/event/angles`, { method: 'POST' });
+  },
+
+  analyzeEventChanges(id: number, data: EventChangeRequest): Promise<EventChangeAnalysis> {
+    return request(`/contents/${id}/event/changes`, { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  reportEventRelation(id: number, data: EventRelationFeedbackRequest): Promise<IssueFeedbackItem> {
+    return request(`/contents/${id}/event/feedback`, { method: 'POST', body: JSON.stringify(data) });
   },
 
   /** 获取收藏列表 */

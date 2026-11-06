@@ -189,6 +189,20 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "attr": "USER_TEMPLATE",
     },
     {
+        "name": "event_changes_system",
+        "scene": "event_changes",
+        "description": "事件变化对照：当前报道与可见成员的引用约束",
+        "module": "app.services.llm.prompts.event_changes",
+        "attr": "SYSTEM_PROMPT",
+    },
+    {
+        "name": "event_changes_user",
+        "scene": "event_changes",
+        "description": "事件变化对照：有界正文片段与明确锚点",
+        "module": "app.services.llm.prompts.event_changes",
+        "attr": "USER_TEMPLATE",
+    },
+    {
         "name": "event_angles_system",
         "scene": "event_angles",
         "description": "事件切面稀缺度分析系统提示词",

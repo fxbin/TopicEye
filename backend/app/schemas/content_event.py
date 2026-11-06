@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -217,3 +217,56 @@ class ContentEventMutationResponse(BaseModel):
     version: int
     canonical_content_id: int
     canonical_locked: bool
+
+
+class EventChangeRequest(BaseModel):
+    expected_event_id: int = Field(ge=1, strict=True)
+    expected_version: int = Field(ge=1, strict=True)
+    member_ids: list[Annotated[int, Field(ge=1, strict=True)]] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def unique_members(self) -> EventChangeRequest:
+        if len(set(self.member_ids)) != len(self.member_ids):
+            raise ValueError("member_ids must be unique")
+        return self
+
+
+class EventChangeReference(BaseModel):
+    id: int
+    title: str
+    url: str
+    source_name: str | None = None
+    published_at: datetime | None = None
+
+
+class EventChangeQuote(EventChangeReference):
+    excerpt: str
+
+
+class EventChangeItem(EventChangeReference):
+    change_type: Literal["no_new_material", "fact", "evidence", "opinion", "uncertain"]
+    description: str
+    quotes: list[EventChangeQuote]
+
+
+class EventChangeResponse(BaseModel):
+    status: Literal["ok", "partial", "insufficient_material"]
+    event_id: int
+    version: int
+    anchor: EventChangeReference
+    member_ids: list[int]
+    items: list[EventChangeItem]
+
+
+class EventRelationFeedbackRequest(BaseModel):
+    expected_event_id: int = Field(ge=1, strict=True)
+    expected_version: int = Field(ge=1, strict=True)
+    member_id: int = Field(ge=1, strict=True)
+    reason: str = Field(min_length=5, max_length=1500)
+
+    @model_validator(mode="after")
+    def valid_reason(self) -> EventRelationFeedbackRequest:
+        self.reason = self.reason.strip()
+        if len(self.reason) < 5:
+            raise ValueError("reason must contain at least five non-padding characters")
+        return self

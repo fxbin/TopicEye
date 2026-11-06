@@ -14,8 +14,13 @@ from app.schemas.content_event import (
     ContentEventCoverageLookupResponse,
     ContentEventLookupResponse,
     EventAngleAnalysisResponse,
+    EventChangeRequest,
+    EventChangeResponse,
+    EventRelationFeedbackRequest,
 )
+from app.schemas.product_feedback import IssueFeedbackResponse
 from app.services.content_event_angles import EventAngleAnalysisError, analyze_event_angles
+from app.services.content_event_changes import EventChangeAnalysisError, analyze_event_changes, report_event_relation
 from app.services.content_event_coverage import get_event_coverage
 from app.services.content_event_service import (
     ContentEventConflictError,
@@ -138,3 +143,53 @@ async def analyze_content_event_angles(
             detail="事件角度分析失败，请稍后重试",
         ) from exc
     return EventAngleAnalysisResponse.model_validate(result)
+
+
+@router.post("/{content_id}/event/changes", response_model=EventChangeResponse)
+async def compare_content_event_changes(
+    content_id: int,
+    payload: EventChangeRequest,
+    current_user: Any = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EventChangeResponse:
+    """Compare currently displayed reports without mutating event membership."""
+    if content_id in payload.member_ids:
+        raise HTTPException(status_code=422, detail="不能将当前报道与自身对照")
+    try:
+        result = await analyze_event_changes(
+            db,
+            content_id,
+            visible_user_id=current_user.id,
+            expected_event_id=payload.expected_event_id,
+            expected_version=payload.expected_version,
+            member_ids=payload.member_ids,
+        )
+    except ContentEventNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Content not found") from exc
+    except ContentEventConflictError as exc:
+        raise HTTPException(status_code=409, detail="报道分组或材料已变化，请重新加载后再对照") from exc
+    except EventChangeAnalysisError as exc:
+        logger.warning("Event comparison returned unusable citations for content %s", content_id)
+        raise HTTPException(status_code=502, detail="变化对照结果无法核对，请重试或查看原文") from exc
+    except Exception as exc:
+        logger.warning("Event comparison failed for content %s: %s", content_id, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="变化对照暂时不可用，请稍后重试") from exc
+    return EventChangeResponse.model_validate(result)
+
+
+@router.post("/{content_id}/event/feedback", response_model=IssueFeedbackResponse, status_code=201)
+async def report_content_event_relation(
+    content_id: int,
+    payload: EventRelationFeedbackRequest,
+    current_user: Any = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> IssueFeedbackResponse:
+    if content_id == payload.member_id:
+        raise HTTPException(status_code=422, detail="不能反馈当前报道与自身的关联")
+    try:
+        issue = await report_event_relation(db, content_id, user_id=current_user.id, **payload.model_dump())
+    except ContentEventNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Content not found") from exc
+    except ContentEventConflictError as exc:
+        raise HTTPException(status_code=409, detail="报道分组已变化，请重新加载后再反馈") from exc
+    return IssueFeedbackResponse.model_validate(issue, from_attributes=True)

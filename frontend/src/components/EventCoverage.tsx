@@ -7,6 +7,8 @@ import { timeAgo } from '@/lib/datetime';
 import { createEventCoverageLoader } from '@/lib/event-coverage';
 import type { CoverageState } from '@/lib/event-coverage';
 import EventAngleAnalysis from '@/components/EventAngleAnalysis';
+import EventChangeComparison, { ChangeEvidence } from '@/components/EventChangeComparison';
+import EventRelationFeedback from '@/components/EventRelationFeedback';
 import type { ContentItem, ContentNormalizationMember, ContentNormalizationSummary } from '@/types';
 
 const RELATIONS: Record<ContentNormalizationMember['relation_type'], { label: string; className: string }> = {
@@ -54,7 +56,8 @@ function CoverageDisclosure({ contentId, seed }: { contentId: number; seed: Cont
       {expanded && (
         <div id={disclosureId} className="mt-2 rounded-sm border border-gray-200 bg-[#FBFCFE]" aria-label="同一事件的其它报道" aria-busy={state.loading}>
           {state.changed && <p className="px-3 pt-3 text-xs text-gray-500" role="status">{state.loading ? '报道分组已变化，正在重新加载…' : state.error ? '报道分组已变化，请重试加载。' : '报道分组已更新。'}</p>}
-          <ul className="divide-y divide-gray-100">
+          {coverage && <EventChangeComparison contentId={contentId} coverage={coverage} reload={() => void loader.current?.reload()}>
+          {analysis => <ul className="divide-y divide-gray-100">
             {members.map(member => {
               const relation = RELATIONS[member.relation_type] ?? RELATIONS.duplicate;
               const timestamp = member.published_at || member.crawled_at;
@@ -75,10 +78,13 @@ function CoverageDisclosure({ contentId, seed }: { contentId: number; seed: Cont
                       </a>
                     )}
                   </div>
+                  <ChangeEvidence item={analysis?.items.find(item => item.id === member.id)} />
+                  {coverage.event_id !== undefined && coverage.version !== undefined && <EventRelationFeedback contentId={contentId} member={member} eventId={coverage.event_id} version={coverage.version} />}
                 </li>
               );
             })}
-          </ul>
+          </ul>}
+          </EventChangeComparison>}
           {!members.length && !state.loading && !state.error && <p className="px-3 py-3 text-sm text-gray-600">当前没有其它同事件报道。</p>}
           {(coverage?.has_more || state.error || state.loading) && (
             <div className="border-t border-gray-100 px-3 py-2">

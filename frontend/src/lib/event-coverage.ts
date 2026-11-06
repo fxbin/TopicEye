@@ -36,6 +36,11 @@ export function createEventCoverageLoader(
 
   return {
     cancel() { disposed = true; sequence += 1; },
+    async reload() {
+      if (disposed || state.loading) return;
+      emit({ coverage: null, error: null, changed: true });
+      await this.loadMore();
+    },
     async loadMore() {
       if (disposed || state.loading) return;
       const current = ++sequence;

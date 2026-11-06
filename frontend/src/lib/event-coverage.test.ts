@@ -20,6 +20,14 @@ function deferred<T>() {
 }
 
 describe('event coverage request ownership', () => {
+  it('explicit reload discards old pages and starts at zero', async () => {
+    const fetchPage = vi.fn().mockResolvedValue(response({ ...seed, members: [member(9)], next_offset: 1, has_more: false }));
+    const publish = vi.fn();
+    await createEventCoverageLoader(2, seed, fetchPage, publish).reload();
+    expect(fetchPage).toHaveBeenCalledWith(2, { member_offset: 0, member_limit: 20 });
+    expect(publish.mock.lastCall![0].coverage.members.map((m: { id: number }) => m.id)).toEqual([9]);
+  });
+
   it('loads the remaining reports using the same event/version and excludes the displayed report', async () => {
     const fetchPage = vi.fn().mockResolvedValue(response(remaining));
     const publish = vi.fn();

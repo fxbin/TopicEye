@@ -618,7 +618,7 @@ function DailyReportContent() {
                 </section>
               )}
 
-              {/* 趋势一行（增刊归还：缩为一行跳 /trends） */}
+              {/* 趋势一行（辅助信号进入当日精选） */}
               <TrendsOneLiner trends={trendList} />
 
               {/* 平台建议（折叠态） */}

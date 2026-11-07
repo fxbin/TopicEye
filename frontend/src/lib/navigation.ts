@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   SpellCheck,
   Star,
-  TrendingUp,
   type LucideIcon,
 } from 'lucide-react';
 import type { AuthUser } from '@/types';
@@ -47,7 +46,6 @@ export const NAV_SPACES: NavSpace[] = [
     label: '发现',
     items: [
       { id: 'trending', label: '趋势雷达', href: '/trending', icon: Search, access: 'public' },
-      { id: 'trends', label: '趋势追踪', href: '/trends', icon: TrendingUp, access: 'public' },
     ],
   },
   {

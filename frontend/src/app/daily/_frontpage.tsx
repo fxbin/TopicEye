@@ -456,13 +456,13 @@ export function ColophonStrip({
         <span>昨日对账：首期或数据不足</span>
       )}
       <span className="text-gray-500">｜</span>
-      <a href="/trends" className="hover:text-primary-text">趋势实验室 →</a>
+      <a href="/today-picks?view=topics" className="hover:text-primary-text">话题线索 →</a>
       <a href="/today-picks" className="hover:text-primary-text">今日精选 →</a>
     </div>
   );
 }
 
-// ── 趋势一行（增刊归还：缩为一行跳 /trends）─────────────────────────
+// ── 趋势一行（辅助信号归入当日精选）─────────────────────────
 
 export function TrendsOneLiner({
   trends,
@@ -482,7 +482,7 @@ export function TrendsOneLiner({
           {t.title}
         </span>
       ))}
-      <a href="/trends" className="ml-auto font-bold text-teal-text hover:text-primary-text">趋势实验室 →</a>
+      <a href="/today-picks?view=keywords" className="ml-auto font-bold text-teal-text hover:text-primary-text">高频热词 →</a>
     </div>
   );
 }

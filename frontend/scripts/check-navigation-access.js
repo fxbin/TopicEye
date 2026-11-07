@@ -93,7 +93,7 @@ for (const pathName of ['/admin', '/admin/sources', '/admin/model-eval', '/admin
   assert.strictEqual(canAccessPath(pathName, admin), true, `${pathName} should allow admin`);
 }
 
-for (const pathName of ['/', '/trending', '/trends', '/today-picks', '/plans']) {
+for (const pathName of ['/', '/trending', '/today-picks', '/plans']) {
   assert.strictEqual(requiredAccessForPath(pathName), 'public');
   assert.strictEqual(canAccessPath(pathName, null), true, `${pathName} should stay public`);
 }

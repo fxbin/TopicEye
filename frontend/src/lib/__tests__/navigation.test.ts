@@ -164,3 +164,13 @@ describe('登录回跳地址安全', () => {
     expect(sanitizeReturnTo('/mcp/authorize?request_id=abc&scope=read')).toBe('/mcp/authorize?request_id=abc&scope=read');
   });
 });
+
+describe('精选与材料入口收敛', () => {
+  it('各角色只保留一个精选入口', () => {
+    for (const user of [null, normalUser, adminUser]) {
+      const items = visibleNavSpaces(user).flatMap(space => space.items);
+      expect(items.filter(item => item.href === '/today-picks')).toHaveLength(1);
+      expect(items.some(item => item.href === '/trends')).toBe(false);
+    }
+  });
+});

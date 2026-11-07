@@ -297,6 +297,8 @@ async def test_endpoint_no_hit_sentences_returns_422_with_reason(monkeypatch, au
         (LlmCapacityUnavailableError(routing_group="default", next_available_at=None), "暂不可用"),
         (LlmBudgetExceededError("over budget"), "预算"),
         (LlmContextWindowExceededError("too long"), "上下文"),
+        # 末路异常兜底（评审 C-1）：超时/候选耗尽不落 500 英文裸错
+        (RuntimeError("unexpected"), "改写建议生成失败，请稍后重试"),
     ],
 )
 async def test_endpoint_maps_llm_chain_errors_to_502(monkeypatch, authed_client, llm_error, expected_detail):

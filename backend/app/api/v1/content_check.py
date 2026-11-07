@@ -116,4 +116,12 @@ async def check_humanize_rewrite(payload: HumanizeRewriteRequest) -> HumanizeRew
         )
         logger.warning("Humanize rewrite LLM failure: %s", type(exc).__name__)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
+    except Exception as exc:
+        # 超时、全部候选耗尽等末路异常的兜底：也走 502 中文文案，
+        # 不落到全局 500 英文裸错（模式同 content_events / mother_topics）。
+        logger.warning("Humanize rewrite failed unexpectedly", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="改写建议生成失败，请稍后重试",
+        ) from exc
     return HumanizeRewriteResponse(**result)

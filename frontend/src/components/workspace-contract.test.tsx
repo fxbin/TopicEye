@@ -22,7 +22,7 @@ describe('工作台视觉合同', () => {
     expect(html).toContain('tabular-nums');
   });
   it('前台工作台主标题使用同一字号入口', () => {
-    const files = ['_home-feed.tsx', 'stats/page.tsx', 'trending/page.tsx', 'trends/page.tsx', 'today-picks/page.tsx', 'my-topics/page.tsx', 'my-topics/config/page.tsx', 'content-check/page.tsx', 'plans/page.tsx', 'profile/page.tsx', 'changelog/page.tsx', 'weread/page.tsx', 'sources/me/page.tsx', 'novel/page.tsx', 'favorites/_components.tsx', 'algorithm/components.tsx'];
+    const files = ['_home-feed.tsx', 'stats/page.tsx', 'trending/page.tsx', 'today-picks/page.tsx', 'my-topics/page.tsx', 'my-topics/config/page.tsx', 'content-check/page.tsx', 'plans/page.tsx', 'profile/page.tsx', 'changelog/page.tsx', 'weread/page.tsx', 'sources/me/page.tsx', 'novel/page.tsx', 'favorites/_components.tsx', 'algorithm/components.tsx'];
     for (const file of files) {
       const text = readFileSync(join(process.cwd(), 'src/app', file), 'utf8');
       for (const heading of text.matchAll(/<h1 className="([^"]*)"/g)) {

@@ -76,15 +76,15 @@ export function OverviewStrip({
   eventMemberCount: number;
 }) {
   const stats = [
-    { label: '精选内容', value: total, hint: loadedCount < total ? `已加载 ${loadedCount}` : '事件归并后', icon: Target, color: 'text-primary' },
-    { label: '平均分', value: avgScore || '-', hint: '算法校准', icon: BarChart3, color: 'text-teal' },
+    { label: '精选内容', value: total, hint: loadedCount < total ? `已加载 ${loadedCount}` : '事件归并后', icon: Target, color: 'text-primary-text' },
+    { label: '平均分', value: avgScore || '-', hint: '算法校准', icon: BarChart3, color: 'text-teal-text' },
     { label: '话题组', value: topicCount, hint: '聚类结果', icon: Layers3, color: 'text-purple' },
     {
       label: '来源',
       value: sourceCount,
       hint: eventMemberCount ? `归并附属 ${eventMemberCount}` : '有效信源',
       icon: Search,
-      color: 'text-amber',
+      color: 'text-amber-800',
     },
   ];
 
@@ -96,12 +96,12 @@ export function OverviewStrip({
           <Panel key={stat.label} className="min-w-0 p-2.5 sm:p-3.5">
             <div className="mb-2 flex items-center gap-2">
               <Icon size={15} className={cx('hidden shrink-0 sm:block', stat.color)} strokeWidth={2.2} />
-              <span className="text-xs font-bold text-gray-500">{stat.label}</span>
+              <span className="text-xs font-bold text-gray-600">{stat.label}</span>
             </div>
             <div className="font-mono text-2xl sm:text-[28px] font-black leading-none text-gray-900">
               {stat.value}
             </div>
-            <div className="mt-1 hidden text-xs text-gray-500 sm:block">{stat.hint}</div>
+            <div className="mt-1 hidden text-xs text-gray-600 sm:block">{stat.hint}</div>
           </Panel>
         );
       })}
@@ -156,7 +156,7 @@ export function LeadPick({
             <Badge tone="primary" className="gap-1.5">
               <Flame size={13} /> 今日主推
             </Badge>
-            <span className="text-[11px] text-gray-500">{item.source_name}</span>
+            <span className="text-[11px] text-gray-600">{item.source_name}</span>
             {tags.slice(0, 3).map((tag) => (
               <span key={tag} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-600">
                 {tag}
@@ -185,8 +185,8 @@ export function LeadPick({
         </div>
         <div className="flex items-center justify-center rounded-sm border border-primary-border bg-primary-light p-4 max-md:justify-start">
           <div className="text-center max-md:text-left">
-            <div className="mb-1 text-[11px] text-gray-500">SCORE</div>
-            <div className="font-mono text-[40px] font-black leading-none text-primary">{Math.round(score)}</div>
+            <div className="mb-1 text-[11px] text-gray-600">SCORE</div>
+            <div className="font-mono text-[40px] font-black leading-none text-primary-text">{Math.round(score)}</div>
           </div>
         </div>
       </div>
@@ -227,7 +227,7 @@ export function FilterPanel({
       <div className="flex flex-col gap-3.5">
         <div>
           <FilterLabel icon={Clock3}>时间范围</FilterLabel>
-          <Segmented values={TIME_RANGES} active={selectedTimeRange} onChange={onTimeRange} />
+          <Segmented values={TIME_RANGES} active={selectedTimeRange} onChange={onTimeRange} className="[&_button]:text-gray-600 [&_button[aria-pressed=true]]:text-primary-text" />
         </div>
         <div>
           <FilterLabel icon={Target}>推荐等级</FilterLabel>
@@ -277,7 +277,7 @@ export function FilterPanel({
               <button
                 type="button"
                 onClick={() => setCategoriesExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary-border hover:text-primary-text"
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition hover:border-primary-border hover:text-primary-text"
               >
                 {categoriesExpanded ? '收起' : `更多 ${(CATEGORIES as readonly string[]).length - 5}`}
                 {categoriesExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -296,7 +296,7 @@ export function FilterPanel({
                 className={cx(
                   'rounded-full border px-2.5 py-1 text-xs transition',
                   selectedContentType === ct || (!selectedContentType && ct === '全部')
-                    ? 'border-teal-border bg-teal-light font-black text-teal'
+                    ? 'border-teal-border bg-teal-light font-black text-teal-text'
                     : 'border-gray-200 bg-white font-semibold text-gray-600 hover:border-gray-300',
                 )}
               >
@@ -307,7 +307,7 @@ export function FilterPanel({
         </div>
         {activeFilterCount > 0 && (
           <div>
-            <Button variant="ghost" onClick={onClear} className="min-h-0 px-3 py-1.5 text-xs font-bold text-gray-500 hover:text-primary">
+            <Button variant="ghost" onClick={onClear} className="min-h-0 px-3 py-1.5 text-xs font-bold text-gray-600 hover:text-primary-text">
               清除筛选（{activeFilterCount}）
             </Button>
           </div>
@@ -393,7 +393,7 @@ export function TopicBoard({
             <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2.5 border-b border-gray-100 bg-[#FBFCFE] px-4.5 py-3.5">
               <div className="min-w-0">
                 <div className="text-[15px] font-black leading-snug text-gray-900">{topic.name}</div>
-                {topic.summary && <div className="mt-1 truncate text-xs text-gray-500">{topic.summary}</div>}
+                {topic.summary && <div className="mt-1 truncate text-xs text-gray-600">{topic.summary}</div>}
               </div>
               <Badge tone="primary">
                 {topicItems.length} 条
@@ -482,7 +482,7 @@ export function PickCard({
   const score = scoreOf(item);
   const tags = tagsOf(analysis);
   const recommendation = analysis?.recommendation || analysis?.recommended_reason || item.summary || '';
-  const scoreClass = score >= 80 ? 'text-primary' : score >= 70 ? 'text-amber' : 'text-teal';
+  const scoreClass = score >= 80 ? 'text-primary-text' : score >= 70 ? 'text-amber-800' : 'text-teal-text';
   const [showBreakdown, setShowBreakdown] = useState(false);
   const breakdown = analysis?.score_breakdown;
 
@@ -510,7 +510,7 @@ export function PickCard({
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
           <SourceBadge name={item.source_name} type={item.source_type} compact />
           <span className="text-[11px] text-gray-300">/</span>
-          <span className="text-[11px] text-gray-400">{timeAgo(item.published_at || item.crawled_at)}</span>
+          <span className="text-[11px] text-gray-600">{timeAgo(item.published_at || item.crawled_at)}</span>
           {analysis?.summary_source === 'local_fallback' && (
             <span
               title="该内容降级为本地速览：触发原因（预算/熔断）消除后将自动重新进行 AI 分析，分数为估算值"
@@ -519,10 +519,10 @@ export function PickCard({
               本地速览 · 待 AI 复核
             </span>
           )}
-          {item.category && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{item.category}</span>}
-          {item.content_type && <span className="rounded-full bg-teal-light px-2 py-0.5 text-[10px] font-bold text-teal">{item.content_type}</span>}
+          {item.category && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">{item.category}</span>}
+          {item.content_type && <span className="rounded-full bg-teal-light px-2 py-0.5 text-[10px] font-bold text-teal-text">{item.content_type}</span>}
           {tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: getTagColor(tag), background: `${getTagColor(tag)}12` }}>
+            <span key={tag} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: 'var(--color-gray-700)', background: `${getTagColor(tag)}12` }}>
               {tag}
             </span>
           ))}
@@ -532,7 +532,7 @@ export function PickCard({
           {item.title}
         </h3>
         {recommendation && (
-          <p className="mb-2.5 text-xs leading-6 text-gray-500">
+          <p className="mb-2.5 text-[13px] leading-6 text-gray-600">
             {recommendation}
           </p>
         )}
@@ -557,12 +557,12 @@ export function PickCard({
         <div className={cx('font-mono text-[22px] font-black leading-none', scoreClass)}>
           {Math.round(score)}
         </div>
-        <div className="mt-1 text-[10px] text-gray-400">分</div>
+        <div className="mt-1 text-[10px] text-gray-600">分</div>
         {breakdown && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setShowBreakdown((v) => !v); }}
-            className="mt-2 inline-flex items-center gap-0.5 rounded-xs border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-500 transition hover:border-primary-border hover:text-primary"
+            className="mt-2 inline-flex items-center gap-0.5 rounded-xs border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-600 transition hover:border-primary-border hover:text-primary-text"
             title={showBreakdown ? '收起评分解释' : '展开评分解释'}
           >
             <BarChart3 size={11} />
@@ -599,10 +599,10 @@ export function PickActions({
 }) {
   const actionClass = dark
     ? 'border-white/15 bg-white/10 text-gray-200 hover:bg-white/15'
-    : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border hover:text-primary';
+    : 'border-gray-200 bg-white text-gray-600 hover:border-primary-border hover:text-primary-text';
   const linkClass = dark
     ? 'border-white/15 bg-white/10 text-gray-200 hover:bg-white/15'
-    : 'border-teal-border bg-teal-light text-teal hover:border-teal-border';
+    : 'border-teal-border bg-teal-light text-teal-text hover:border-teal-border';
 
   return (
     <div className={cx('flex flex-wrap items-center gap-2', dark && 'mt-4')}>
@@ -647,7 +647,7 @@ export function PickActions({
         className={cx(
           'inline-flex items-center gap-1.5 rounded-xs border px-2.5 py-1.5 text-[11px] font-bold transition',
           dark ? 'border-white/15 bg-white/10 hover:bg-white/15' : 'border-gray-200 bg-white hover:border-amber-border',
-          isFav ? 'text-amber' : dark ? 'text-gray-300' : 'text-gray-400',
+          isFav ? (dark ? 'text-amber-300' : 'text-amber-800') : dark ? 'text-gray-300' : 'text-gray-600',
         )}
       >
         <Star size={13} fill={isFav ? '#F59E0B' : 'none'} /> 收藏
@@ -688,7 +688,7 @@ export function TopicToggle({
     <button
       type="button"
       onClick={onClick}
-      className={cx('w-full bg-[#FBFCFE] p-2.5 text-xs font-black transition hover:bg-primary-light', muted ? 'text-gray-400' : 'text-primary')}
+      className={cx('w-full bg-[#FBFCFE] p-2.5 text-xs font-black transition hover:bg-primary-light', muted ? 'text-gray-600' : 'text-primary-text')}
     >
       <span className="inline-flex items-center gap-1.5">
         {label}
@@ -704,7 +704,7 @@ export function SectionHeading({ title, count }: { title: string; count: number 
   return (
     <div className="mb-2.5 mt-1 flex items-center gap-2">
       <h2 className="text-sm font-black text-gray-800">{title}</h2>
-      <span className="font-mono text-[11px] text-gray-400">{count}</span>
+      <span className="font-mono text-[11px] text-gray-600">{count}</span>
     </div>
   );
 }

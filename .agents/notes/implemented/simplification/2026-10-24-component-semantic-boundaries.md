@@ -10,7 +10,7 @@ Status: implemented — 基线 738ac61 核实现有组件和注释；#151 从旧
 
 共享色彩、反馈分类和导航等同口径内容由共同模块维护；抽取组件前先比较输入语义、交互、空值与错误状态。
 [SourceForm](../../../../frontend/src/components/SourceForm.tsx) 的分类不含“全部”，因为它写入单个信源；[design-tokens](../../../../frontend/src/lib/design-tokens.ts) 的筛选分类允许“全部”。
-[趋势页](../../../../frontend/src/app/trends/page.tsx) 的简单折线与 [公共 Sparkline](../../../../frontend/src/components/Sparkline.tsx) 的富信息趋势卡保留不同接口，当前注释明确记录不合并理由。
+[话题线索视图](../../../../frontend/src/app/trends/TrendExplorer.tsx) 以原题索引与单次快照材料为主体，不为复用 [公共 Sparkline](../../../../frontend/src/components/Sparkline.tsx) 富信息趋势卡而重新加入缺乏连续可比数据的图形。按日身份、缺口与计算版本边界由[趋势与来源合同](../architecture/2026-10-24-trend-and-source-provenance.md)维护。
 
 ## Alternatives considered
 

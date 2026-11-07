@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, ArrowRight, RefreshCw } from 'lucide-react';
-import { Button, Panel, cx } from '@/components/ui';
+import { Button, cx } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { useFetch } from '@/hooks/useFetch';
 import { trendsApi } from '@/lib/api';
@@ -12,6 +12,8 @@ import { buildTrendModel } from './_trend-model';
 import TopicMaterials from './TopicMaterials';
 import TitleText from './_title-text';
 import styles from './page.module.css';
+import KeywordIndex from './KeywordIndex';
+import keywordStyles from './_keyword-index.module.css';
 
 type View = 'topics' | 'keywords';
 const WINDOWS = [3, 7, 14, 30];
@@ -42,18 +44,22 @@ export default function TrendExplorer({ view, days, onDaysChange, onReady, initi
     setSelectedTopic(null);
     requestAnimationFrame(() => { const trigger = triggerRefs.current.get(id); trigger?.focus({ preventScroll: true }); trigger?.scrollIntoView({ block: 'nearest', behavior: 'instant' }); });
   };
-  return <div className={styles.page}>
-      <div className={cx(styles.controls, "mt-4 flex flex-wrap items-center justify-between gap-3")} aria-label="趋势筛选">
+  const controls = (<div className={cx(styles.controls, view === 'keywords' && keywordStyles.controls, "mt-4 flex flex-wrap items-center justify-between gap-3")} aria-label="趋势筛选">
         <div role="group" aria-label="观察窗口" className="relative grid w-full grid-cols-4 rounded-sm bg-gray-100 p-1 sm:w-[280px]">
           <span aria-hidden className={cx(styles.indicator, 'absolute bottom-1 left-1 top-1 rounded-xs bg-white shadow-sm')} style={{ width: 'calc((100% - 8px) / 4)', transform: `translateX(${WINDOWS.indexOf(days) * 100}%)` }} />
           {WINDOWS.map(value => <button key={value} type="button" aria-pressed={days === value} onClick={() => changeDays(value)} className={cx(styles.press, 'relative min-h-9 rounded-xs px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary', days === value ? 'text-primary-text' : 'text-gray-600')}>{value}天</button>)}
         </div>
         <Button variant="ghost" type="button" disabled={busy} onClick={() => { setSelectedTopic(null); void refetch(); }} className="min-h-9 text-xs"><RefreshCw size={14} className={busy ? 'animate-spin motion-reduce:animate-none' : ''} />刷新{view === 'topics' ? '材料' : '热词'}</Button>
-      </div>
-      <div className={styles.edition}>
-        <p role="status">{busy ? `正在读取近 ${days} 天的${view === 'topics' ? '话题线索' : '高频热词'}…` : view === 'keywords' ? (current ? `近 ${days} 天 · 公共内容标签频率` : '尚未取得当前窗口数据') : model.latestDate ? `数据截至 ${dateLabel(model.latestDate)} · 近 ${days} 天有 ${model.recordedDays} 个记录日` : error ? '尚未取得当前窗口数据' : `近 ${days} 天暂无快照`}</p>
-        {current && !busy && (view === 'topics' ? <p aria-label="话题快照统计"><b>{model.topics.length}</b> 个话题 <span> / </span><b>{model.totalContent}</b> 条收录 <span> / </span><b>{model.totalPicks}</b> 条入选</p> : <p>显示 <b>{words.length}</b> 个关键词</p>)}
-      </div>
+      </div>);
+  return <div className={styles.page}>
+      {view === 'keywords' ? <header className={keywordStyles.header}><h2>高频热词</h2>{controls}</header> : controls}
+      {view === 'keywords' ? <div className={keywordStyles.meta}>
+        <p role="status">{busy ? `正在读取近 ${days} 天的高频热词…` : current ? <>近 {days} 天<span className={keywordStyles.dot}>·</span><span><b>{words.length}</b> 个关键词</span><span className={keywordStyles.dot}>·</span><span>按内容数排序</span></> : '尚未取得当前窗口数据'}</p>
+        <details className={keywordStyles.help}><summary>统计说明</summary><p>来自公共收录内容的分析标签。数值为带有该标签的内容数，一条内容可对应多个关键词，计数不能相加。点击词条查看来源。</p></details>
+      </div> : <div className={styles.edition}>
+        <p role="status">{busy ? `正在读取近 ${days} 天的话题线索…` : model.latestDate ? `数据截至 ${dateLabel(model.latestDate)} · 近 ${days} 天有 ${model.recordedDays} 个记录日` : error ? '尚未取得当前窗口数据' : `近 ${days} 天暂无快照`}</p>
+        {current && !busy && <p aria-label="话题快照统计"><b>{model.topics.length}</b> 个话题 <span> / </span><b>{model.totalContent}</b> 条收录 <span> / </span><b>{model.totalPicks}</b> 条入选</p>}
+      </div>}
       {error && <div className="mt-3"><ErrorState error={error} onRetry={() => void refetch()} panel={false} />{current && <p className="text-xs text-gray-500">以下保留当前窗口上次成功读取的快照。</p>}</div>}
       {busy ? <LoadingState label="加载趋势快照…" minHeight="180px" /> : current && <div className={entered ? undefined : styles.enter} onAnimationEnd={() => setEntered(true)}>
         <section id="trends-topics-panel" aria-label="话题线索" hidden={view !== 'topics'} tabIndex={0}>
@@ -77,8 +83,7 @@ export default function TrendExplorer({ view, days, onDaysChange, onReady, initi
           {shown.length < model.topics.length && <Button variant="secondary" type="button" onClick={() => { setLimit(model.topics.length); onLimitChange?.(model.topics.length); }} className="mt-3 w-full">查看其余 {model.topics.length - shown.length} 个话题</Button>}
         </section>
         <section id="trends-keywords-panel" aria-label="高频热词" hidden={view !== 'keywords'} tabIndex={0}>
-          <div className={styles.sectionHeading}><h2>高频热词</h2></div><p className="mb-4 text-sm leading-6 text-gray-600">来自公共收录内容的分析标签；数值为带有该标签的内容数，同一内容可贡献多个标签。点击查看来源。</p>
-          {!words.length ? <EmptyState title="暂无关键词数据" desc="关键词快照生成后会在这里展示。" /> : <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{words.map(word => <Panel key={word.keyword}><button type="button" onClick={() => openKeyword(word.keyword)} className={cx(styles.press, 'block min-h-20 w-full rounded-sm p-4 text-left focus-visible:outline-2 focus-visible:outline-primary')} aria-label={`查看关键词「${word.keyword}」的来源明细`}><span className="flex justify-between gap-3"><span className="min-w-0 break-words text-sm font-semibold text-gray-900">{word.keyword}</span><span className="font-mono text-sm text-gray-600">{word.count}</span></span><span className="mt-3 block h-1 overflow-hidden rounded-full bg-gray-100"><span className="block h-full bg-gray-400" style={{ width: `${Math.min(100, Math.max(0, word.count / Math.max(...words.map(item => item.count), 1) * 100))}%` }} /></span></button></Panel>)}</div>}
+          {!words.length ? <EmptyState title="暂无关键词数据" desc="关键词快照生成后会在这里展示。" /> : <KeywordIndex words={words} selectedKeyword={evidence?.kind === 'keyword' ? evidence.keyword : null} onSelect={openKeyword} />}
         </section>
       </div>}
     <TrendEvidenceDrawer request={evidence} onClose={() => setEvidence(null)} />

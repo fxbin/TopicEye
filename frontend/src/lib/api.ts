@@ -36,7 +36,7 @@ import type {
   NotificationListResponse,
 } from '@/types';
 import type { FavoriteCreatePayload, FavoriteTargetState } from '@/lib/favorites';
-import type { AiTracesReport, SensitiveCheckResponse } from '@/types/content-check';
+import type { AiTracesReport, HumanizeRewriteResponse, SensitiveCheckResponse } from '@/types/content-check';
 import type {
   RSSHubInstance,
   StatsOverview,
@@ -293,6 +293,14 @@ export const contentCheckApi = {
   /** AI 痕迹启发式统计（需登录，与敏感词检测同长度口径）。 */
   checkAiTraces(text: string): Promise<AiTracesReport> {
     return request('/content-check/ai-traces', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  /** 「去 AI 味」改写建议（需登录）：传全文，服务端只选取命中最密集的 ≤3 句进模型。 */
+  checkHumanizeRewrite(text: string): Promise<HumanizeRewriteResponse> {
+    return request('/content-check/humanize-rewrite', {
       method: 'POST',
       body: JSON.stringify({ text }),
     });

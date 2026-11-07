@@ -261,6 +261,20 @@ _PROMPT_CATALOG: list[dict[str, str]] = [
         "module": "app.services.llm.prompts.discovery",
         "attr": "TOPIC_CLUSTER_USER_TEMPLATE",
     },
+    {
+        "name": "humanize_rewrite_system",
+        "scene": "humanize_rewrite",
+        "description": "文稿「去 AI 味」改写建议系统提示词（写作建议口径，不改事实与数字）",
+        "module": "app.services.llm.prompts.humanize_rewrite",
+        "attr": "SYSTEM_PROMPT",
+    },
+    {
+        "name": "humanize_rewrite_user",
+        "scene": "humanize_rewrite",
+        "description": "文稿「去 AI 味」改写建议用户提示词（只拼入选取的 ≤3 句，不拼全文）",
+        "module": "app.services.llm.prompts.humanize_rewrite",
+        "attr": "USER_TEMPLATE",
+    },
 ]
 
 

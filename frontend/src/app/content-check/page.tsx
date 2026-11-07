@@ -6,6 +6,7 @@ import { contentCheckApi } from '@/lib/api';
 import { Badge, Button, Panel, cx } from '@/components/ui';
 import { ErrorState } from '@/components/StateView';
 import { HighlightText, type HighlightHit } from './_highlight';
+import { HumanizeRewritePanel } from './_humanize';
 import { scanPhase } from './_scan-state';
 import {
   AI_TRACE_LEVEL_META,
@@ -14,6 +15,7 @@ import {
   SENSITIVE_SEVERITY_LABELS,
   type AiTraceLevel,
   type AiTracesReport,
+  type HumanizeRewriteResponse,
   type SensitiveCategory,
   type SensitiveCheckResponse,
   type SensitiveSeverity,
@@ -49,6 +51,10 @@ export default function ContentCheckPage() {
   /** 结果对应的文稿快照：编辑后 phase 变 stale，旧结论与旧偏移不再展示 */
   const [scannedText, setScannedText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 「去 AI 味」改写建议：随检测快照走，重扫/清空即失效；错误独立于检测错误展示 */
+  const [rewrites, setRewrites] = useState<HumanizeRewriteResponse | null>(null);
+  const [rewriting, setRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
 
   const phase = scanPhase(scannedText, text, results);
   const current = phase.kind === 'current' ? phase.result : null;
@@ -76,6 +82,8 @@ export default function ContentCheckPage() {
   async function handleScan() {
     setScanning(true);
     setError(null);
+    setRewrites(null); // 重扫即换文稿快照，旧建议随之作废
+    setRewriteError(null);
     try {
       const [sensitive, aiTraces] = await Promise.all([
         contentCheckApi.checkSensitive(text),
@@ -92,11 +100,28 @@ export default function ContentCheckPage() {
     }
   }
 
+  /** 生成改写建议：只对 current 快照发起（scanPhase 合同保证 scannedText===text），全文上送、服务端选句。 */
+  async function handleGenerateRewrites() {
+    if (scannedText === null) return;
+    setRewriting(true);
+    setRewriteError(null);
+    try {
+      setRewrites(await contentCheckApi.checkHumanizeRewrite(scannedText));
+    } catch (err) {
+      setRewrites(null);
+      setRewriteError(err instanceof Error ? err.message : '改写建议生成失败，请稍后重试');
+    } finally {
+      setRewriting(false);
+    }
+  }
+
   function handleClear() {
     setText('');
     setResults(null);
     setScannedText(null);
     setError(null);
+    setRewrites(null);
+    setRewriteError(null);
   }
 
   const sensitiveTotal = current?.sensitive.total ?? 0;
@@ -108,8 +133,8 @@ export default function ContentCheckPage() {
         <h1 className="page-title mb-1.5 text-gray-900">文稿检测</h1>
         <p className="max-w-[760px] text-[13px] leading-6 text-gray-500">
           发布前粘贴文稿，检测广告法极限词、高危违禁词与平台限流词；另附 AI 痕迹启发式统计
-          （AI 高频词、套话连接词、句式节奏），仅供改稿参考。命中原文高亮显示，悬停查看建议；
-          文稿只在本次检测中使用，不落库、不留存。
+          （AI 高频词、套话连接词、句式节奏），并可对命中密集的句子生成口语化改写建议，
+          仅供改稿参考。命中原文高亮显示，悬停查看建议；文稿只在本次检测中使用，不落库、不留存。
         </p>
       </div>
 
@@ -200,6 +225,13 @@ export default function ContentCheckPage() {
               })}
 
               <AiTracesPanel report={current.aiTraces} />
+              <HumanizeRewritePanel
+                suggestions={rewrites?.suggestions ?? null}
+                loading={rewriting}
+                error={rewriteError}
+                canGenerate={current.aiTraces.hits.length > 0}
+                onGenerate={() => void handleGenerateRewrites()}
+              />
             </>
           ) : phase.kind === 'stale' ? (
             <Panel className="border-amber-border p-4">

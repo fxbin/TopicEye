@@ -36,6 +36,8 @@ export default defineConfig({
         // #175：文稿检测的高亮分段与结果时效判定（各有同目录测试，纳入门禁锁定）
         'src/app/content-check/_highlight.tsx',
         'src/app/content-check/_scan-state.ts',
+        // #241：文稿「去 AI 味」改写建议面板（同目录测试）
+        'src/app/content-check/_humanize.tsx',
         // #179：前端体验指标上报的整形与设备派生
         'src/lib/web-vitals.ts',
         // #179：采集器组件（回调稳定性由 ref 持有，不是靠 useCallback 依赖数组）

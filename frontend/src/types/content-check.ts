@@ -96,3 +96,16 @@ export const AI_TRACE_WORD_DIMENSION_LABELS: Record<AiTraceWordDimension, string
   buzzword: 'AI 高频词',
   connective: '套话连接词',
 };
+
+// ─── 「去 AI 味」改写建议（检测→改写闭环）───
+
+/** 单条改写建议：original 是服务端选取的原句（不取模型回显），hit_words 已对照词库真实命中过滤。 */
+export interface HumanizeRewriteSuggestion {
+  original: string;
+  rewritten: string;
+  hit_words: string[];
+}
+
+export interface HumanizeRewriteResponse {
+  suggestions: HumanizeRewriteSuggestion[];
+}

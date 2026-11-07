@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import { PICKS_VIEWS, picksViewHref, readPicksView, readSnapshotDays, type PicksView } from '@/lib/picks-view';
+import keywordStyles from '../trends/_keyword-index.module.css';
 import TrendExplorer from '../trends/TrendExplorer';
 import type { EvidenceMark } from '@/types';
 import { useAppContext } from '@/components/ClientLayout';
@@ -343,7 +344,7 @@ function TodayPicksPage() {
 
   return (
     <div ref={scrollRef} onScroll={event => { if (restoringScroll.current === null) viewScrolls.current[scrollKey] = event.currentTarget.scrollTop; }} className="workspace-scroll">
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 sm:px-6 lg:px-10 pb-4 backdrop-blur-xl">
+      <div className={cx("sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-10 border-b border-gray-200 bg-[#F8FAFC]/90 px-4 sm:px-6 lg:px-10 pb-4 backdrop-blur-xl", pageView === 'keywords' && keywordStyles.workspaceHeader)}>
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
@@ -352,9 +353,9 @@ function TodayPicksPage() {
                 <h1 className="page-title text-gray-900">当日精选</h1>
               </div>
             </div>
-            <p className="mt-1 hidden text-sm leading-6 text-gray-600 sm:block">
+            {pageView !== 'keywords' && <p className="mt-1 hidden text-sm leading-6 text-gray-600 sm:block">
               {pageView === 'picks' ? '从算法候选中筛出可写选题，按话题、质量和来源做二次判断' : '补充查看公共收录的材料与标签分布，观察窗口独立于精选筛选'}
-            </p>
+            </p>}
           </div>
           {pageView === 'picks' && <Button
             type="button"

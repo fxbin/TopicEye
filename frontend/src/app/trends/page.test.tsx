@@ -16,3 +16,31 @@ describe('趋势窗口渲染身份', () => {
  it('从辅助视图返回时保留先前已展开的话题数量', () => { state.data = { view: 'topics', days: 7, trends: Array.from({ length: 26 }, (_, i) => ({ ...snapshot, topic_id: i + 1 })), keywords: [] }; const html = renderToStaticMarkup(<TrendsPage view="topics" days={7} onDaysChange={() => {}} initialLimit={26} />); expect((html.match(/id="topic-trigger-/g) || []).length).toBe(26); });
  it('刷新失败保留当前窗口需说明', () => { state.error = '读取失败'; const html = renderToStaticMarkup(<TrendsPage view="topics" days={7} onDaysChange={() => {}} />); expect(html).toContain('以下保留当前窗口上次成功读取的快照'); state.error = null; });
 });
+
+describe('热词视图的范围与内容', () => {
+ it('窗口切换不展示旧窗口的词与计数', () => {
+  state.data = { view: 'keywords', days: 14, trends: [], keywords: [{ keyword: '旧窗口独有词', count: 345 }] }; state.error = null;
+  const html = renderToStaticMarkup(<TrendsPage view="keywords" days={3} onDaysChange={() => {}} />);
+  expect(html).toContain('正在读取近 3 天的高频热词');
+  expect(html).not.toContain('旧窗口独有词');
+  expect(html).not.toContain('345');
+ });
+ it('热词只有一个内容标题，说明保留公共范围和非互斥口径', () => {
+  state.data = { view: 'keywords', days: 3, trends: [], keywords: [{ keyword: 'ai', count: 319 }] }; state.error = null;
+  const html = renderToStaticMarkup(<TrendsPage view="keywords" days={3} onDaysChange={() => {}} />);
+  expect((html.match(/<h2[^>]*>高频热词<\/h2>/g) || []).length).toBe(1);
+  expect(html).toContain('来自公共收录内容的分析标签');
+  expect(html).toContain('计数不能相加');
+  expect(html).toContain('按内容数排序');
+  expect(html).toContain('查看关键词「ai」的来源明细');
+ });
+ it('当前窗口刷新失败保留原词，并显示失败与重试', () => {
+  state.data = { view: 'keywords', days: 3, trends: [], keywords: [{ keyword: '当前词', count: 22 }] }; state.error = '热词读取失败';
+  const html = renderToStaticMarkup(<TrendsPage view="keywords" days={3} onDaysChange={() => {}} />);
+  expect(html).toContain('热词读取失败');
+  expect(html).toContain('当前词');
+  expect(html).toContain('以下保留当前窗口上次成功读取的快照');
+  expect(html).toContain('重试');
+  state.error = null;
+ });
+});

@@ -4,9 +4,7 @@ import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useR
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
-  Columns3,
   FileText,
-  List,
 } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import { PICKS_VIEWS, picksViewHref, readPicksView, readSnapshotDays, type PicksView } from '@/lib/picks-view';
@@ -16,6 +14,8 @@ import type { EvidenceMark } from '@/types';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { PendingReview } from './_pending-review';
+import { groupPickItems } from './_grouping';
+import { PicksViewMode } from './_view-mode';
 import RadarSignature from '@/components/RadarSignature';
 import { Button, cx } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
@@ -252,23 +252,11 @@ function TodayPicksPage() {
     });
   }, [items, selectedLevel]);
 
-  const topicMap = useMemo(() => {
-    const map = new Map<number | null, ContentItem[]>();
-    for (const item of filteredItems) {
-      const tid = item.topic_id || null;
-      if (!map.has(tid)) map.set(tid, []);
-      map.get(tid)!.push(item);
-    }
-    return map;
-  }, [filteredItems]);
-
-  const sortedTopics = useMemo(() => (
-    topics
-      .filter((topic) => topicMap.has(topic.id) && (topicMap.get(topic.id)?.length || 0) > 0)
-      .sort((a, b) => b.best_score - a.best_score)
-  ), [topics, topicMap]);
-
-  const standaloneItems = topicMap.get(null) || [];
+  const { topicMap, sortedTopics, standaloneItems } = useMemo(
+    () => groupPickItems(filteredItems, topics),
+    [filteredItems, topics],
+  );
+  const showTopicGroups = groupByTopic && sortedTopics.length > 0;
   const activeFilterCount = [
     selectedCategory,
     selectedContentType,
@@ -357,14 +345,13 @@ function TodayPicksPage() {
               {pageView === 'picks' ? '从算法候选中筛出可写选题，按话题、质量和来源做二次判断' : '补充查看公共收录的材料与标签分布，观察窗口独立于精选筛选'}
             </p>}
           </div>
-          {pageView === 'picks' && <Button
-            type="button"
-            variant={groupByTopic ? 'primary' : 'secondary'}
-            onClick={() => setGroupByTopic(!groupByTopic)}
-          >
-            {groupByTopic ? <Columns3 size={15} /> : <List size={15} />}
-            {groupByTopic ? '精选分组' : '精选列表'}
-          </Button>}
+          {pageView === 'picks' && <PicksViewMode
+            grouped={showTopicGroups}
+            topicCount={sortedTopics.length}
+            itemCount={filteredItems.length}
+            loading={picksLoading}
+            onChange={setGroupByTopic}
+          />}
         </div>
         <div role="tablist" aria-label="当日精选视图" className="mx-auto mt-3 grid max-w-[1200px] grid-cols-3 gap-1 sm:flex sm:gap-5">
           {PICKS_VIEWS.map((view, index) => <button key={view.value} type="button" role="tab" id={`picks-${view.value}-tab`} aria-controls={`picks-${view.value}-panel`} aria-selected={pageView === view.value} tabIndex={pageView === view.value ? 0 : -1} onClick={() => changePageView(view.value)} onKeyDown={event => {
@@ -421,7 +408,7 @@ function TodayPicksPage() {
                 ...(activeFilterCount > 0 ? [{ label: '清除筛选', onClick: clearFilters, variant: 'secondary' as const }] : []),
               ]}
             />
-          ) : groupByTopic ? (
+          ) : showTopicGroups ? (
             <TopicBoard
               topics={sortedTopics}
               topicMap={topicMap}

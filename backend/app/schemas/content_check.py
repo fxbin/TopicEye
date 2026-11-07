@@ -87,7 +87,7 @@ class AiTraceRhythmStat(BaseModel):
 
 
 class AiTracesReport(BaseModel):
-    """POST /content-check/ai-traces 响应。
+    """POST /content-check/ai-traces 响应.
 
     启发式统计（非模型检测）：不输出「AI 率/AI 概率」，不影响风险把关结论，
     只给写作建议，前端独立展示。
@@ -100,3 +100,38 @@ class AiTracesReport(BaseModel):
     rhythm: AiTraceRhythmStat = Field(..., description="句式均匀度统计")
     hits: list[AiTraceHitResponse] = Field(default_factory=list, description="词命中清单（start 升序、区间不重叠）")
     advice: str = Field(..., description="综合建议（明示启发式统计口径）")
+
+
+class HumanizeRewriteRequest(BaseModel):
+    """POST /content-check/humanize-rewrite 请求体（与 sensitive 同长度口径）。
+
+    传全文而非句列表：分句与命中口径只在后端一份，服务端自行选取命中最密集
+    的 ≤3 句进模型，全文永不进 prompt。
+    """
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=20000,
+        description="待改写文稿原文（1~20000 字符，超限返回 422；服务端只选取命中密集的 ≤3 句进入模型）",
+    )
+
+
+class HumanizeRewriteSuggestionResponse(BaseModel):
+    """单条改写建议：服务端选取的原句 + 保留原意的口语化改写 + 该句真实命中词。"""
+
+    original: str = Field(..., description="服务端选取的原句（以服务端选取为准，不取模型回显）")
+    rewritten: str = Field(..., description="口语化改写建议（写作参考，需自行核对事实与数字）")
+    hit_words: list[str] = Field(
+        default_factory=list,
+        description="该句真实命中的 AI 痕迹词（已对照词库命中过滤，不含模型编造词）",
+    )
+
+
+class HumanizeRewriteResponse(BaseModel):
+    """POST /content-check/humanize-rewrite 响应（≤3 条，按命中密集程度排序）。"""
+
+    suggestions: list[HumanizeRewriteSuggestionResponse] = Field(
+        default_factory=list,
+        description="改写建议清单；命中句不足 3 句时条数相应减少",
+    )

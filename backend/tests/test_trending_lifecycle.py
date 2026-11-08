@@ -347,8 +347,18 @@ def test_stage_window_days_tied_to_snapshot_retention():
 
 
 @pytest.mark.asyncio
-async def test_compute_stages_window_boundary_includes_exactly_day_seven(db):
+async def test_compute_stages_window_boundary_includes_exactly_day_seven(db, monkeypatch):
     """窗口边界：恰好 today-STAGE_WINDOW_DAYS 当日的快照参与判定，再早一天排除。"""
+    from app.services import trending_lifecycle
+
+    # TODAY is captured at collection. A long suite can cross midnight before
+    # executing this test, so the service must use that same frozen anchor.
+    class FrozenDate(date):
+        @classmethod
+        def today(cls):
+            return TODAY
+
+    monkeypatch.setattr(trending_lifecycle, "date", FrozenDate)
 
     async def _add_snapshot(snapshot_date: date, title: str) -> None:
         db.add(

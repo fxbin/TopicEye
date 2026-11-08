@@ -14,14 +14,10 @@ import time
 from collections import defaultdict
 from datetime import UTC
 
-from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.analysis import AiAnalysis
-from app.models.content import ContentItem, ContentStatus
-from app.models.source import Source
-from app.models.topic import TopicGroup
-from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.repositories.app_setting_repo import AppSettingRepository
+from app.repositories.topic_repo import TopicRepository
 from app.services.content_evidence import has_readable_content, readable_content_title
 from app.services.feedback_signal import get_feedback_scores
 from app.services.llm import call_llm_json
@@ -363,9 +359,8 @@ async def cluster_topics(
     that have no ``topic_id`` yet. Already-assigned items and existing
     TopicGroups are left untouched.
 
-    ``max_items`` caps the per-run load（按 id 升序取最老的一批）：此前无
-    LIMIT，积压窗口内的全量行会一次性载入内存；超出的部分留给下一次
-    15 分钟的增量运行，最终仍会被处理完。
+    ``max_items`` caps the per-run load. A persisted per-window cursor advances
+    past standalone rows too, wrapping at the end to revisit older candidates.
 
     LLM naming is ON by default (with auto-name fallback when LLM is
     unavailable). Event membership is deliberately not inferred here.
@@ -378,24 +373,19 @@ async def cluster_topics(
     # 不用再猜 300s 花在了取数、命名还是写回。
     stage_started = time.perf_counter()
     cutoff = datetime.now(UTC) - timedelta(days=days)
-    latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
-    result = await db.execute(
-        select(ContentItem, AiAnalysis, Source.weight.label("source_weight_db"))
-        .select_from(ContentItem)
-        .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-        .outerjoin(Source, Source.id == ContentItem.source_id)
-        .where(
-            and_(
-                ContentItem.status == ContentStatus.ANALYZED,
-                ContentItem.topic_id.is_(None),
-                ContentItem.owner_user_id.is_(None),
-                ContentItem.created_at >= cutoff,
-            )
-        )
-        .order_by(ContentItem.id)
-        .limit(max_items)
-    )
-    rows = result.all()
+    settings_repo = AppSettingRepository(db)
+    cursor_key = f"topic_clustering_scan_cursor_v1:{days}d"
+    cursor_setting = await settings_repo.get_by_key(cursor_key)
+    try:
+        after_id = max(0, int(cursor_setting.value)) if cursor_setting else 0
+    except (TypeError, ValueError):
+        logger.warning("Invalid topic clustering scan cursor; restarting from the beginning")
+        after_id = 0
+    topic_repo = TopicRepository(db)
+    rows = await topic_repo.list_unassigned_candidates(cutoff, after_id=after_id, limit=max_items)
+    if not rows and after_id:
+        after_id = 0
+        rows = await topic_repo.list_unassigned_candidates(cutoff, after_id=0, limit=max_items)
 
     if not rows:
         return {
@@ -507,20 +497,23 @@ async def cluster_topics(
     # 2000 个串行往返，单是写回就能吃掉大半超时预算。单组成员数受
     # max_items 上限约束，IN 参数量不会逼近 asyncpg 限制。
     for written_groups, meta in enumerate(cluster_meta, start=1):
-        topic = TopicGroup(
+        topic = await topic_repo.create(
             name=meta["name"],
             keywords=meta["keywords"],
             summary=meta["summary"],
             content_count=meta["content_count"],
             best_score=meta["best_score"],
         )
-        db.add(topic)
-        await db.flush()  # get topic.id
-
-        await db.execute(update(ContentItem).where(ContentItem.id.in_(meta["item_ids"])).values(topic_id=topic.id))
+        await topic_repo.assign_public_items(topic.id, meta["item_ids"])
         if written_groups % _TOPIC_COMMIT_BATCH == 0:
             await db.commit()
 
+    await settings_repo.upsert_setting(
+        cursor_key,
+        str(rows[-1][0].id),
+        description="话题聚类已完成扫描的位置；到末尾后回绕复查独立文章",
+        existing=cursor_setting,
+    )
     await db.commit()
     write_ms = int((time.perf_counter() - stage_started) * 1000)
 

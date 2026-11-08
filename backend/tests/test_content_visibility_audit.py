@@ -177,6 +177,20 @@ async def test_creation_allows_public_and_own_content(scoped_content_client, pha
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["plan", "converge"])
+async def test_successful_creation_survives_new_session(scoped_content_client, phase):
+    client, _, factory, _ = scoped_content_client
+    response = await client.post(f"/creation/{phase}", json=phase_payload(phase, 2))
+    assert response.status_code == 200, response.text
+    async with factory() as db:
+        history = (await db.execute(select(CreationPlan))).scalars().all()
+        assert len(history) == 1
+        assert history[0].content_id == 2 and history[0].user_id == 1
+    history_response = await client.get("/creation/plans")
+    assert history_response.json()["count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_relation_target_is_filtered_for_user_and_anonymous(scoped_content_client):
     client, _, _, app = scoped_content_client
     response = await client.get("/contents/1/relations")

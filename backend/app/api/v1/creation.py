@@ -56,6 +56,7 @@ async def create_plan(
         )
     async with async_session() as db:
         result = await generate_creation_plan(db, req.content_id, req.platform, user_id=current_user.id)
+        await db.commit()
     if "error" in result:
         logger.warning(
             "Creation plan failed: user_id=%d, content_id=%d, platform=%s, error=%s",
@@ -168,6 +169,7 @@ async def converge_plan(
             req.focus_answers,
             user_id=current_user.id,
         )
+        await db.commit()
     if "error" in result:
         logger.warning(
             "Converge failed: user_id=%d, content_id=%d, platform=%s, error=%s",

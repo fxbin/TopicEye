@@ -20,6 +20,8 @@ export function useContentFavoriteStates(ids: Array<number | null | undefined>) 
   const requestSeq = useRef(0);
 
   const idsKey = useMemo(() => normalizeIds(ids).join(','), [ids]);
+  const userId = currentUser?.id;
+  const scopeKey = userId === undefined ? '' : `${userId}:${idsKey}`;
   const normalizedIds = useMemo(() => (
     idsKey ? idsKey.split(',').map((id) => Number(id)).filter((id) => Number.isFinite(id)) : []
   ), [idsKey]);
@@ -29,14 +31,12 @@ export function useContentFavoriteStates(ids: Array<number | null | undefined>) 
   }, []);
 
   useEffect(() => {
-    if (!idsKey || !currentUser) {
+    const seq = ++requestSeq.current;
+    if (!idsKey || userId === undefined) {
       setServerFavoriteIds(new Set());
       setValidatedKey('');
       return;
     }
-
-    const seq = requestSeq.current + 1;
-    requestSeq.current = seq;
 
     (async () => {
       try {
@@ -53,20 +53,22 @@ export function useContentFavoriteStates(ids: Array<number | null | undefined>) 
           if (Number.isFinite(id)) next.add(id);
         }
         setServerFavoriteIds(next);
-        setValidatedKey(idsKey);
+        setValidatedKey(scopeKey);
       } catch {
         if (requestSeq.current !== seq) return;
         setValidatedKey('');
       }
     })();
-  }, [currentUser, idsKey, refreshVersion]);
+    return () => { requestSeq.current += 1; };
+  }, [userId, idsKey, scopeKey, refreshVersion]);
 
   const favoriteIds = useMemo(() => {
-    if (!idsKey || validatedKey !== idsKey) {
+    if (userId === undefined) return new Set<number>();
+    if (!idsKey || validatedKey !== scopeKey) {
       return new Set(normalizedIds.filter((id) => favorites.has(id)));
     }
     return serverFavoriteIds;
-  }, [favorites, idsKey, normalizedIds, serverFavoriteIds, validatedKey]);
+  }, [favorites, userId, idsKey, scopeKey, normalizedIds, serverFavoriteIds, validatedKey]);
 
   const isFavorited = useCallback((id: number) => favoriteIds.has(id), [favoriteIds]);
 

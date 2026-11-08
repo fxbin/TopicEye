@@ -289,9 +289,14 @@ function TodayPicksPage() {
       return;
     }
     const wasFav = contentFavoriteState.isFavorited(id);
-    await toggleFavorite(id);
-    contentFavoriteState.refresh();
-    contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+    setActionError(null);
+    try {
+      const favorited = await toggleFavorite(id, { throwOnError: true });
+      contentFavoriteState.refresh();
+      if (wasFav !== favorited) contentsApi.trackEvidenceInteraction(id, favorited ? 'favorite' : 'unfavorite');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '收藏状态更新失败，请重试');
+    }
   };
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
     if (!currentUser) {
@@ -377,7 +382,7 @@ function TodayPicksPage() {
           />}
 
           {actionError && (
-            <div className="mb-4 rounded-sm border border-red/20 bg-red-light px-4 py-3 text-sm text-red">
+            <div role="alert" className="mb-4 rounded-sm border border-red/20 bg-red-light px-4 py-3 text-sm text-red">
               {actionError}
             </div>
           )}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from 'zustand';
 import {
@@ -75,18 +75,13 @@ export function FavoritesProvider({
   const authStore = useAuthStoreApi();
 
   // per-instance store
-  const storeRef = useRef<FavoritesStore | null>(null);
-  if (!storeRef.current) {
-    storeRef.current = createFavoritesStore({
-      authStore,
-      router,
-      initialCounts,
-    });
-  }
-  const store = storeRef.current;
+  const [store] = useState(() => createFavoritesStore({ authStore, router, initialCounts }));
 
   // 读取 authLoading（用于控制初始化时机）
   const authLoading = useStore(authStore, (s) => s.authLoading);
+  const currentUserId = useStore(authStore, (s) => s.currentUser?.id ?? null);
+  const initialOwnerId = useRef(currentUserId);
+  const initialized = useRef(false);
 
   // 同步 pathname 到 store（refreshCounts 依赖它判断是否跳过 today-picks 计数）
   useEffect(() => {
@@ -96,12 +91,14 @@ export function FavoritesProvider({
   // 主初始化 effect：登录/登出时加载或清空收藏
   useEffect(() => {
     if (authLoading) return;
+    const useInitialCounts = !initialized.current && initialCounts && currentUserId === initialOwnerId.current;
+    initialized.current = true;
     const currentUser = authStore.getState().currentUser;
     if (!currentUser) {
-      store.getState()._clear();
       // 未登录用户仍需 today-picks 计数（侧边栏 badge），
       // 但 SSR 未预取时才走客户端拉取。
-      if (!initialCounts) {
+      if (!useInitialCounts) {
+        store.getState()._clear();
         void store.getState().refreshCounts();
       }
       return;
@@ -112,12 +109,12 @@ export function FavoritesProvider({
 
     // SSR 已预取计数时，仅拉取完整收藏列表（更新 favorites Set / targetIds），
     // 跳过重复的计数请求。未预取时走原有 refreshCounts 全量拉取。
-    if (initialCounts) {
+    if (useInitialCounts) {
       void store.getState()._loadFromIndex();
     } else {
       void store.getState().refreshCounts();
     }
-  }, [authLoading, authStore, store, initialCounts]);
+  }, [authLoading, currentUserId, authStore, store, initialCounts]);
 
   return (
     <FavoritesStoreContext.Provider value={store}>

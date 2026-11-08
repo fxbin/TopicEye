@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentItem
 from app.models.content_relation import ContentRelation
+from app.repositories._query_helpers import apply_visibility
 
 
 class RelationRepository:
@@ -53,14 +54,19 @@ class RelationRepository:
         await self.db.flush()
         return record
 
-    async def list_relations_for_content(self, content_id: int, *, limit: int = 20) -> list[dict[str, Any]]:
+    async def list_relations_for_content(
+        self, content_id: int, *, limit: int = 20, visible_user_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Return all relations involving content_id (as source or target)."""
-        result = await self.db.execute(
+        stmt = (
             select(ContentRelation, ContentItem)
             .join(ContentItem, ContentItem.id == ContentRelation.target_id)
             .where(ContentRelation.source_id == content_id)
             .order_by(ContentRelation.confidence.desc())
             .limit(limit)
+        )
+        result = await self.db.execute(
+            apply_visibility(stmt, ContentItem, visible_user_id=visible_user_id, public_only=visible_user_id is None)
         )
         rows = result.all()
         out: list[dict[str, Any]] = []

@@ -31,6 +31,7 @@ class ReportsMixin:
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             -- 窗口按原文发布时间优先（口径同 list_for_report_window / query_today_picks）
             WHERE COALESCE(c.published_at, c.crawled_at) >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND a.curation_score IS NOT NULL
             ORDER BY (COALESCE(a.creator_score, 0) + COALESCE(a.viral_score, 0)) DESC
@@ -94,6 +95,7 @@ class ReportsMixin:
             -- 周报/月报同样按原文发布时间归档，口径与日报窗口一致
             WHERE CAST(COALESCE(c.published_at, c.crawled_at) AS DATE) >= DATE '{start_date}'
               AND CAST(COALESCE(c.published_at, c.crawled_at) AS DATE) <= DATE '{end_date}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND a.curation_score IS NOT NULL
             ORDER BY adjusted_score DESC, COALESCE(a.creator_score, 0) DESC

@@ -9,7 +9,8 @@ from sqlalchemy import func, or_, select, update
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
 from app.models.source import Source
-from app.repositories.analysis_queries import latest_analysis_id_for_content_id
+from app.repositories._query_helpers import apply_visibility
+from app.repositories.analysis_queries import latest_analysis_id_for_content_id, latest_analysis_id_subquery
 from app.repositories.base import BaseRepository
 
 
@@ -17,6 +18,20 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
     """AiAnalysis table CRUD + content-based lookups."""
 
     model = AiAnalysis
+
+    async def get_visible_content_and_analysis(
+        self, content_id: int, visible_user_id: int | None = None
+    ) -> tuple[ContentItem, AiAnalysis] | None:
+        """Read a creation input under the caller's public + own content scope."""
+        latest_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
+        stmt = (
+            select(ContentItem, AiAnalysis)
+            .join(AiAnalysis, AiAnalysis.id == latest_id)
+            .where(ContentItem.id == content_id)
+        )
+        stmt = apply_visibility(stmt, ContentItem, visible_user_id=visible_user_id, public_only=visible_user_id is None)
+        row = (await self.db.execute(stmt)).first()
+        return tuple(row) if row else None
 
     async def get_by_content_id(self, content_id: int) -> AiAnalysis | None:
         """Fetch the latest analysis record for a given content item."""
@@ -156,6 +171,7 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         page_size: int = 20,
         min_creator_score: float | None = None,
         min_viral_score: float | None = None,
+        visible_user_id: int | None = None,
     ):
         """List analyses with optional score thresholds."""
 
@@ -168,6 +184,17 @@ class AnalysisRepository(BaseRepository[AiAnalysis]):
         latest_id = latest_analysis_id_for_content_id(AiAnalysis.content_id)
         stmt = select(AiAnalysis).where(AiAnalysis.id == latest_id)
         count_stmt = select(func.count()).select_from(AiAnalysis).where(AiAnalysis.id == latest_id)
+        if visible_user_id is not None:
+            stmt = apply_visibility(
+                stmt.join(ContentItem, ContentItem.id == AiAnalysis.content_id),
+                ContentItem,
+                visible_user_id=visible_user_id,
+            )
+            count_stmt = apply_visibility(
+                count_stmt.join(ContentItem, ContentItem.id == AiAnalysis.content_id),
+                ContentItem,
+                visible_user_id=visible_user_id,
+            )
 
         if min_creator_score is not None:
             stmt = stmt.where(AiAnalysis.creator_score >= min_creator_score)

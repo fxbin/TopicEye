@@ -1,6 +1,7 @@
 # ruff: noqa: I001
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
@@ -1484,7 +1485,7 @@ async def test_analyze_single_commits_analyzing_status_before_llm_call(monkeypat
         )
         await db.commit()
 
-        result = await analyses_api.analyze_single(1, db=db)
+        result = await analyses_api.analyze_single(1, db=db, current_user=SimpleNamespace(id=1))
 
         stored_content = await db.get(ContentItem, 1)
 
@@ -1517,7 +1518,7 @@ async def test_analyze_single_rejects_fresh_analyzing_claim(monkeypatch):
         await db.commit()
 
         with pytest.raises(Exception) as exc_info:
-            await analyses_api.analyze_single(1, db=db)
+            await analyses_api.analyze_single(1, db=db, current_user=SimpleNamespace(id=1))
 
         stored_content = await db.get(ContentItem, 1)
 
@@ -1579,7 +1580,7 @@ async def test_analyze_single_invalidates_scoring_cache_after_commit(monkeypatch
         )
         await db.commit()
 
-        result = await analyses_api.analyze_single(1, db=db)
+        result = await analyses_api.analyze_single(1, db=db, current_user=SimpleNamespace(id=1))
 
     assert observed["cache_before_commit"] is True
     assert result.content_id == 1
@@ -1612,7 +1613,7 @@ async def test_analyze_single_failure_sets_error_cooldown_timestamp(monkeypatch)
         await db.commit()
 
         with pytest.raises(HTTPException):
-            await analyses_api.analyze_single(1, db=db)
+            await analyses_api.analyze_single(1, db=db, current_user=SimpleNamespace(id=1))
 
         stored_content = await db.get(ContentItem, 1)
 

@@ -274,6 +274,7 @@ class DailyReportRepository(BaseRepository[DailyReport]):
                 self.model.report_date >= start_iso,
                 self.model.report_date <= end_iso,
                 self.model.status == "DONE",
+                self._owner_clause(None),
             )
             .order_by(self.model.report_date)
         )

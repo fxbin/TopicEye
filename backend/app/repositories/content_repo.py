@@ -71,6 +71,16 @@ class ContentRepo(BaseRepository[ContentItem]):
     def __init__(self, db: AsyncSession):
         super().__init__(db)
 
+    async def get_visible_by_id(self, content_id: int, visible_user_id: int | None = None) -> ContentItem | None:
+        """Request-facing lookup: anonymous callers see public content only."""
+        stmt = apply_visibility(
+            select(self.model).where(self.model.id == content_id),
+            self.model,
+            visible_user_id=visible_user_id,
+            public_only=visible_user_id is None,
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     # ── Visibility helper ─────────────────────────────────────────
 
     def _visibility_clauses(
@@ -483,12 +493,13 @@ class ContentRepo(BaseRepository[ContentItem]):
             sort_order="desc",
         )
 
-    async def list_all_by_topic_id(self, topic_id: int) -> Sequence[ContentItem]:
+    async def list_all_by_topic_id(self, topic_id: int, *, public_only: bool = False) -> Sequence[ContentItem]:
         """返回指定 topic 下的全部内容项，按 crawled_at 倒序。
 
         供 /topics/{id} endpoint 使用，不分页（与历史行为等价）。
         """
         stmt = select(self.model).where(self.model.topic_id == topic_id).order_by(self.model.crawled_at.desc())
+        stmt = apply_visibility(stmt, self.model, public_only=public_only)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

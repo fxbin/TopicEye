@@ -8,7 +8,9 @@ from collections.abc import Sequence
 
 from sqlalchemy import func, select
 
+from app.models.content import ContentItem
 from app.models.topic import TopicGroup
+from app.repositories._query_helpers import public_topic_clause
 from app.repositories.base import BaseRepository
 
 
@@ -38,3 +40,11 @@ class TopicRepository(BaseRepository[TopicGroup]):
         """统计 topic 总数。"""
         result = await self.db.execute(select(func.count(TopicGroup.id)))
         return result.scalar() or 0
+
+    async def list_public(self) -> Sequence[TopicGroup]:
+        stmt = select(TopicGroup).where(public_topic_clause(TopicGroup.id, ContentItem))
+        return (await self.db.execute(stmt.order_by(TopicGroup.best_score.desc()))).scalars().all()
+
+    async def get_public(self, topic_id: int) -> TopicGroup | None:
+        stmt = select(TopicGroup).where(TopicGroup.id == topic_id, public_topic_clause(TopicGroup.id, ContentItem))
+        return (await self.db.execute(stmt)).scalar_one_or_none()

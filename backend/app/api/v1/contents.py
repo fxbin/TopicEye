@@ -648,13 +648,15 @@ async def get_enrichment(
     """Get or trigger Round-2 enrichment for a content item."""
     from app.services.enricher import enrich_content
 
+    content = await ContentRepo(db).get_visible_by_id(content_id, current_user.id)
+    if content is None:
+        raise HTTPException(404, "Content not found")
     repo = AnalysisRepository(db)
     analysis = await repo.get_by_content_id(content_id)
     if not analysis:
         raise HTTPException(404, "No analysis found for this content")
     from app.services.content_evidence import has_readable_content
 
-    content = await ContentRepo(db).get_by_id_or_raise(content_id, "Content")
     if not has_readable_content(content.title, content.summary, content.raw_content):
         raise HTTPException(422, "尚未采集到可读原文，暂不能增强分析")
     if analysis.enrichment_status == "completed" and analysis.enrichment:
@@ -906,8 +908,11 @@ async def get_content_relations(
     """获取内容的关联内容列表（规则引擎发现的关系）。"""
     from app.repositories.relation_repo import RelationRepository
 
+    visible_user_id = current_user.id if current_user else None
+    if await ContentRepo(db).get_visible_by_id(content_id, visible_user_id) is None:
+        raise HTTPException(404, "Content not found")
     repo = RelationRepository(db)
-    relations = await repo.list_relations_for_content(content_id, limit=limit)
+    relations = await repo.list_relations_for_content(content_id, limit=limit, visible_user_id=visible_user_id)
     return {"content_id": content_id, "relations": relations, "count": len(relations)}
 
 
@@ -919,7 +924,7 @@ async def toggle_favorite(
 ):
     """Toggle favorite status for a content item."""
     content_repo = ContentRepo(db)
-    if await content_repo.get_by_id(content_id) is None:
+    if await content_repo.get_visible_by_id(content_id, current_user.id) is None:
         raise HTTPException(404, "Content not found")
 
     favorite_repo = FavoriteRepo(db, current_user.id)
@@ -967,7 +972,7 @@ async def ignore_content(
     if scope == "global" and not is_admin(current_user):
         raise HTTPException(403, "Global ignore requires admin role")
 
-    content = await ContentRepo(db).get_by_id(content_id)
+    content = await ContentRepo(db).get_visible_by_id(content_id, current_user.id)
     if not content:
         raise HTTPException(404, "Content not found")
 

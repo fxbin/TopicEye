@@ -388,6 +388,7 @@ async def cluster_topics(
             and_(
                 ContentItem.status == ContentStatus.ANALYZED,
                 ContentItem.topic_id.is_(None),
+                ContentItem.owner_user_id.is_(None),
                 ContentItem.created_at >= cutoff,
             )
         )

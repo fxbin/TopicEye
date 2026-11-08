@@ -20,13 +20,12 @@ import json
 import logging
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.analysis import AiAnalysis
 from app.models.content import ContentItem
-from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.repositories.analysis_repo import AnalysisRepository
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.creation import (
     CONVERGE_PROMPT,
@@ -97,18 +96,10 @@ def _attach_self_evaluation(plan: dict[str, Any]) -> dict[str, Any]:
 async def _fetch_content_and_analysis(
     db: AsyncSession,
     content_id: int,
+    user_id: int | None = None,
 ) -> tuple[ContentItem, AiAnalysis] | None:
     """Fetch the content item and its latest analysis."""
-    latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
-    result = await db.execute(
-        select(ContentItem, AiAnalysis)
-        .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-        .where(ContentItem.id == content_id)
-    )
-    row = result.first()
-    if not row:
-        return None
-    return row
+    return await AnalysisRepository(db).get_visible_content_and_analysis(content_id, user_id)
 
 
 def _build_source_info(analysis: AiAnalysis) -> dict[str, str]:
@@ -131,6 +122,7 @@ def _build_source_info(analysis: AiAnalysis) -> dict[str, str]:
 async def generate_explore_directions(
     db: AsyncSession,
     content_id: int,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     """
     Explore phase: AI finds 3 domain assumptions, challenges them,
@@ -140,7 +132,7 @@ async def generate_explore_directions(
         {"assumptions": [...], "_meta": {"content_id": ..., "phase": "explore"}}
         or {"error": "..."}
     """
-    fetched = await _fetch_content_and_analysis(db, content_id)
+    fetched = await _fetch_content_and_analysis(db, content_id, user_id)
     if not fetched:
         return {"error": "内容不存在或未分析"}
 
@@ -191,6 +183,7 @@ async def generate_focus_questions(
     focus_round: int = 1,
     previous_qa: list[dict] | None = None,
     user_redirect: str | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     """
     Focus phase: AI asks one Socratic question per round.
@@ -200,7 +193,7 @@ async def generate_focus_questions(
         {"question": "...", "dimension": "...", "round": N,
          "can_converge": bool, "reason": "...", "_meta": {...}}
     """
-    fetched = await _fetch_content_and_analysis(db, content_id)
+    fetched = await _fetch_content_and_analysis(db, content_id, user_id)
     if not fetched:
         return {"error": "内容不存在或未分析"}
 
@@ -279,7 +272,7 @@ async def generate_converge_plan(
 
     Returns the final plan dict (persisted to creation_plans table).
     """
-    fetched = await _fetch_content_and_analysis(db, content_id)
+    fetched = await _fetch_content_and_analysis(db, content_id, user_id)
     if not fetched:
         return {"error": "内容不存在或未分析"}
 

@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin_user, get_current_user
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError
 from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.content_repo import ContentRepo
 from app.schemas.analysis import AiAnalysisResponse
@@ -32,15 +31,15 @@ logger = logging.getLogger(__name__)
 async def analyze_single(
     content_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Analyze a single content item."""
     content_repo = ContentRepo(db)
     analysis_repo = AnalysisRepository(db)
 
-    try:
-        content = await content_repo.get_by_id_or_raise(content_id, "Content")
-    except NotFoundError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+    content = await content_repo.get_visible_by_id(content_id, current_user.id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Content not found")
 
     if not has_readable_content(content.title, content.summary, content.raw_content):
         raise HTTPException(status_code=422, detail="尚未采集到可读原文，暂不能分析")
@@ -173,8 +172,10 @@ async def get_analysis_job_status(job_id: str):
 
 
 @router.get("/content/{content_id}", response_model=AiAnalysisResponse)
-async def get_analysis(content_id: int, db: AsyncSession = Depends(get_db)):
+async def get_analysis(content_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     """Get the AI analysis for a content item."""
+    if await ContentRepo(db).get_visible_by_id(content_id, current_user.id) is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
     analysis_repo = AnalysisRepository(db)
     analysis = await analysis_repo.get_by_content_id(content_id)
     if not analysis:
@@ -189,6 +190,7 @@ async def list_analyses(
     min_creator_score: float | None = None,
     min_viral_score: float | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """List all analyses with optional score filters."""
     analysis_repo = AnalysisRepository(db)
@@ -197,6 +199,7 @@ async def list_analyses(
         page_size=page_size,
         min_creator_score=min_creator_score,
         min_viral_score=min_viral_score,
+        visible_user_id=current_user.id,
     )
     return {
         "items": [

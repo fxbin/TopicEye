@@ -14,9 +14,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.analysis import AiAnalysis
-from app.models.content import ContentItem
-from app.repositories.analysis_queries import latest_analysis_id_subquery
+from app.repositories.analysis_repo import AnalysisRepository
 from app.services.creation_explore import _attach_self_evaluation
 from app.services.llm import call_llm_json
 from app.services.llm.prompts.creation import PLATFORM_PROMPTS
@@ -87,15 +85,7 @@ async def generate_creation_plan(
     Returns the parsed plan dict from LLM.
     """
     # 1. Fetch content + analysis
-    from sqlalchemy import select
-
-    latest_analysis_id = latest_analysis_id_subquery(ContentItem, AiAnalysis)
-    result = await db.execute(
-        select(ContentItem, AiAnalysis)
-        .join(AiAnalysis, AiAnalysis.id == latest_analysis_id)
-        .where(ContentItem.id == content_id)
-    )
-    row = result.first()
+    row = await AnalysisRepository(db).get_visible_content_and_analysis(content_id, user_id)
     if not row:
         return {"error": "内容不存在或未分析"}
 

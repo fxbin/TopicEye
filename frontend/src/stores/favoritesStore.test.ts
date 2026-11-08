@@ -37,6 +37,31 @@ describe('收藏异步结果的账号归属', () => {
     expect(store.getState().sourceCount).toBe(4);
     expect(store.getState().favoriteTotal).toBe(3);
   });
+  it.each(['logout', 'switch'] as const)('精选页%s清零后重新取得当前账号计数', async (transition) => {
+    const { auth, store } = fixture();
+    store.getState()._setPathname('/today-picks');
+    store.getState().reportTodayPicksTotal(37);
+    if (transition === 'logout') {
+      auth.setState({ currentUser: null });
+      store.getState()._clear();
+    } else {
+      auth.setState({ currentUser: user(2) });
+      store.getState()._loadFromStorage(2);
+      vi.mocked(favoritesApi.index).mockResolvedValueOnce(index(42));
+    }
+    await store.getState().refreshCounts();
+    expect(contentsApi.todayCount).toHaveBeenCalledTimes(1);
+    expect(store.getState().todayPicksCount).toBe(20);
+  });
+  it('精选页已上报计数时保留该值，避免重复获取', async () => {
+    const { store } = fixture();
+    store.getState()._setPathname('/today-picks');
+    store.getState().reportTodayPicksTotal(37);
+    vi.mocked(favoritesApi.index).mockResolvedValueOnce(index());
+    await store.getState().refreshCounts();
+    expect(contentsApi.todayCount).not.toHaveBeenCalled();
+    expect(store.getState().todayPicksCount).toBe(37);
+  });
   it('旧账号索引晚到，不写进新账号状态', async () => {
     const { auth, store } = fixture();
     const pending = deferred<ReturnType<typeof index>>();

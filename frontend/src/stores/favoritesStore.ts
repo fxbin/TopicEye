@@ -195,11 +195,12 @@ export function createFavoritesStore(deps: {
       const activeCounts = () => activeOwner() && sequence === countSequence;
       const { _pathname: pathname } = get();
       const currentUser = authStore.getState().currentUser;
-      const isTodayPicksPage = pathname === '/today-picks';
+      // 换号/退出会清零计数；页面 total 未变化时不会再次上报，须重新获取。
+      const hasPagePicksCount = pathname === '/today-picks' && get().todayPicksCount > 0;
 
       try {
         if (!currentUser) {
-          if (!isTodayPicksPage) {
+          if (!hasPagePicksCount) {
             const counts = await contentsApi.todayCount();
             if (!activeCounts()) return;
             set({ todayPicksCount: counts.today_picks || 0 });
@@ -214,7 +215,7 @@ export function createFavoritesStore(deps: {
           return;
         }
         const [counts, sources, favIndex] = await Promise.all([
-          isTodayPicksPage ? Promise.resolve(null) : contentsApi.todayCount(),
+          hasPagePicksCount ? Promise.resolve(null) : contentsApi.todayCount(),
           isAdmin(currentUser)
             ? sourcesApi.list({ page_size: 1 })
             : sourcesApi.listMine({ page_size: 1 }),

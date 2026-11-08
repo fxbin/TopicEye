@@ -117,3 +117,39 @@ async def test_weekly_pick_tracking_uses_only_public_daily_reports(db):
     reports = await DailyReportRepository(db).list_done_by_date_range("2026-11-01", "2026-11-08")
     assert len(reports) == 1
     assert reports[0].owner_user_id is None
+
+
+@pytest.mark.asyncio
+async def test_weekly_pick_appearances_count_dates_instead_of_editions(db):
+    import json
+
+    from app.api.v1.weekly_digests import get_pick_tracking
+    from app.models.daily_report import DailyReport
+    from app.models.pick_mark import PickMark
+    from app.models.user import User
+
+    user = User(id=1, email="weekly-count-a@test")
+    db.add_all([user, User(id=2, email="weekly-count-b@test")])
+    await db.flush()
+    for day, edition, owner in [
+        ("2026-11-02", "intraday", None),
+        ("2026-11-02", "final", None),
+        ("2026-11-04", "final", None),
+        ("2026-11-03", "final", 2),
+    ]:
+        db.add(
+            DailyReport(
+                report_date=day,
+                weekday=date.fromisoformat(day).weekday(),
+                status="DONE",
+                owner_user_id=owner,
+                edition=edition,
+                top_picks=json.dumps([{"title": "同一个选题"}]),
+            )
+        )
+    db.add(PickMark(user_id=1, report_date=date(2026, 11, 2), pick_title="同一个选题", action="watch"))
+    await db.commit()
+    result = await get_pick_tracking(week_key="2026-W45", db=db, user=user)
+    mark = result["marks"][0]
+    assert mark["appearances_in_week"] == 2
+    assert mark["appearance_dates"] == ["2026-11-02", "2026-11-04"]

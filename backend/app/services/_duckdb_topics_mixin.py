@@ -15,9 +15,13 @@ class TopicsMixin:
         """Get all topic groups ordered by best_score."""
         conn = self._get_conn()
         results = conn.execute("""
-            SELECT id, name, summary, keywords, best_score, content_count
-            FROM oltp_db.topic_groups
-            ORDER BY best_score DESC
+            SELECT tg.id, tg.name, tg.summary, tg.keywords, tg.best_score, tg.content_count
+            FROM oltp_db.topic_groups tg
+            WHERE NOT EXISTS (
+                SELECT 1 FROM oltp_db.content_items private_content
+                WHERE private_content.topic_id = tg.id AND private_content.owner_user_id IS NOT NULL
+            )
+            ORDER BY tg.best_score DESC
         """).fetchall()
 
         return [
@@ -43,6 +47,11 @@ class TopicsMixin:
                    provenance_status, calculation_version, created_at
             FROM oltp_db.topic_trends
             WHERE topic_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM oltp_db.content_items private_content
+                WHERE private_content.topic_id = topic_trends.topic_id
+                  AND private_content.owner_user_id IS NOT NULL
+              )
               AND snapshot_date >= '{cutoff}'
             ORDER BY snapshot_date, topic_id
         """).fetchall()

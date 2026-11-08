@@ -117,3 +117,41 @@ async def test_cluster_topics_commits_in_batches_and_assigns_all_items(monkeypat
             assert {item.topic_id for item in items} == {t.id for t in topics}
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_standalone_backlog_does_not_starve_later_cluster_candidates(test_session_factory):
+    from sqlalchemy import select
+
+    from app.models.analysis import AiAnalysis
+    from app.models.content import ContentItem, ContentStatus
+    from app.repositories.app_setting_repo import AppSettingRepository
+
+    async with test_session_factory() as db:
+        for cid, tags in [(1, ["alone-a"]), (2, ["alone-b"]), (3, ["alpha", "beta"]), (4, ["alpha", "beta"])]:
+            db.add(
+                ContentItem(
+                    id=cid,
+                    title=f"增量积压样本{cid}",
+                    url=f"https://example.test/backlog/{cid}",
+                    status=ContentStatus.ANALYZED,
+                )
+            )
+            await db.flush()
+            db.add(AiAnalysis(content_id=cid, tags=tags, curation_score=70))
+        await db.commit()
+        first = await topic_clustering.cluster_topics(db, use_llm_naming=False, max_items=2)
+        assert first["clusters"] == 0 and first["total"] == 2
+    # A new process/session must resume the same cursor.
+    async with test_session_factory() as db:
+        second = await topic_clustering.cluster_topics(db, use_llm_naming=False, max_items=2)
+        assert second["clusters"] == 1 and second["total"] == 2
+        rows = (await db.execute(select(ContentItem).order_by(ContentItem.id))).scalars().all()
+        assert rows[0].topic_id is None and rows[1].topic_id is None
+        assert rows[2].topic_id == rows[3].topic_id is not None
+        assert (await AppSettingRepository(db).get_by_key("topic_clustering_scan_cursor_v1:7d")).value == "4"
+    async with test_session_factory() as db:
+        # Reaching the end revisits old independent rows; it never leaves them behind permanently.
+        wrapped = await topic_clustering.cluster_topics(db, use_llm_naming=False, max_items=2)
+        assert wrapped["clusters"] == 0 and wrapped["total"] == 2
+        assert (await AppSettingRepository(db).get_by_key("topic_clustering_scan_cursor_v1:7d")).value == "2"

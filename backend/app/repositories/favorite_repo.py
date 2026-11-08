@@ -403,7 +403,13 @@ class FavoriteRepo:
         if content_id is None:
             return payload
 
-        result = await self.db.execute(select(ContentItem).where(ContentItem.id == content_id))
+        from app.repositories._query_helpers import apply_visibility
+
+        result = await self.db.execute(
+            apply_visibility(
+                select(ContentItem).where(ContentItem.id == content_id), ContentItem, visible_user_id=self.user_id
+            )
+        )
         content = result.scalar_one_or_none()
         if not content:
             raise LookupError("Content not found")

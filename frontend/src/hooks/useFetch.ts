@@ -14,7 +14,7 @@
  * 调用方可在 fetcher 内 catch 并抛出自定义 message（如「权益规划加载失败」）。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export type UseFetchResult<T> = {
   data: T | null;
@@ -44,9 +44,14 @@ export function useFetch<T>(
   // 竞态保护：每次请求递增 seq，回调里比对，丢弃过期结果。
   const seqRef = useRef(0);
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  const enabledRef = useRef(enabled);
+  useLayoutEffect(() => {
+    fetcherRef.current = fetcher;
+    enabledRef.current = enabled;
+  }, [fetcher, enabled]);
 
   const run = useCallback(async (): Promise<T | null> => {
+    if (!enabledRef.current) return null;
     const seq = ++seqRef.current;
     setLoading(true);
     setError(null);
@@ -67,17 +72,12 @@ export function useFetch<T>(
 
   // deps 变化或 enabled 切换时自动获取
   useEffect(() => {
+    const sequence = seqRef;
     if (!enabled) return;
     void run();
+    return () => { sequence.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, run, ...deps]);
-
-  // 卸载时使后续回调失效
-  useEffect(() => {
-    return () => {
-      seqRef.current++;
-    };
-  }, []);
 
   return { data, loading, error, refetch: run, setData };
 }

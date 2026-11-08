@@ -339,7 +339,7 @@ async def test_manual_analysis_reports_missing_source_instead_of_running_or_old_
     model = AsyncMock(side_effect=AssertionError("must not call model"))
     monkeypatch.setattr(analyses_api, "analyze_content", model)
     with pytest.raises(HTTPException) as error:
-        await analyses_api.analyze_single(item.id, db=db)
+        await analyses_api.analyze_single(item.id, db=db, current_user=SimpleNamespace(id=1))
     assert error.value.status_code == 422
     assert "原文" in error.value.detail
     model.assert_not_awaited()

@@ -118,7 +118,7 @@ async def get_pick_tracking(
     返回每个被标记的选题：
     - 标记类型（write/watch/skip）
     - 标记日期
-    - 该选题在本周出现在几天日报的 top_picks 里（连续在榜天数）
+    - 该选题在本周出现在几天日报的 top_picks 里（按日期去重，不等于连续天数）
 
     这是周报「金字塔压缩」的独特价值——日报看不到跨日趋势，
     周报能看到选题的持续性和变化。
@@ -151,14 +151,14 @@ async def get_pick_tracking(
     reports = await report_repo.list_done_by_date_range(monday.isoformat(), sunday.isoformat())
 
     # 构建 标题 → 出现日期集合
-    title_to_dates: dict[str, list[str]] = {}
+    title_to_dates: dict[str, set[str]] = {}
     for report in reports:
         try:
             picks = _json.loads(report.top_picks or "[]")
             for pick in picks:
                 title = pick.get("title", "").strip()
                 if title:
-                    title_to_dates.setdefault(title, []).append(report.report_date)
+                    title_to_dates.setdefault(title, set()).add(report.report_date)
         except (_json.JSONDecodeError, TypeError):
             continue
 
@@ -166,7 +166,7 @@ async def get_pick_tracking(
     result_marks = []
     for mark in marks:
         title = mark.pick_title.strip()
-        appearances = title_to_dates.get(title, [])
+        appearances = title_to_dates.get(title, set())
 
         # 模糊匹配（标记标题可能是日报 pick 标题的子串）
         if not appearances:
@@ -182,7 +182,7 @@ async def get_pick_tracking(
                 "mark_date": str(mark.report_date),
                 "pick_category": mark.pick_category,
                 "appearances_in_week": len(appearances),
-                "appearance_dates": appearances,
+                "appearance_dates": sorted(appearances),
                 "pick_source_url": mark.pick_source_url,
             }
         )

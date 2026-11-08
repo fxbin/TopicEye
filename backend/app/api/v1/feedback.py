@@ -39,8 +39,8 @@ async def _write_feedback(
 ):
     """写入用户反馈，处理 upsert + stale 清理。返回 UserFeedback 实例。"""
     content_repo = ContentRepo(db)
-    content_id = await content_repo.get_id_by_id(data.content_id)
-    if content_id is None:
+    content = await content_repo.get_visible_by_id(data.content_id, current_user.id)
+    if content is None:
         raise HTTPException(status_code=404, detail="Content not found")
 
     feedback_repo = FeedbackRepository(db)

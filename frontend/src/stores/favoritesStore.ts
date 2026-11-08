@@ -144,6 +144,26 @@ export function createFavoritesStore(deps: {
   const _favoriteTargetPending: Set<string> = new Set();
 
   const { authStore, router, initialCounts } = deps;
+  let ownerGeneration = 0;
+  let readSequence = 0;
+  let countSequence = 0;
+  let loadedUserId = authStore.getState().currentUser?.id ?? null;
+  const captureOwner = () => {
+    const generation = ownerGeneration;
+    const userId = authStore.getState().currentUser?.id ?? null;
+    return () => generation === ownerGeneration && (authStore.getState().currentUser?.id ?? null) === userId;
+  };
+  const beginRead = () => {
+    const activeOwner = captureOwner();
+    const sequence = ++readSequence;
+    return () => activeOwner() && sequence === readSequence;
+  };
+  const invalidateOwner = () => {
+    ownerGeneration += 1;
+    readSequence += 1;
+    _favoritePending.clear();
+    _favoriteTargetPending.clear();
+  };
 
   const store = createStore<FavoritesState>((set, get) => ({
     // ── Public state ──
@@ -169,14 +189,20 @@ export function createFavoritesStore(deps: {
     },
 
     refreshCounts: async () => {
+      const active = beginRead();
+      const activeOwner = captureOwner();
+      const sequence = ++countSequence;
+      const activeCounts = () => activeOwner() && sequence === countSequence;
       const { _pathname: pathname } = get();
       const currentUser = authStore.getState().currentUser;
-      const isTodayPicksPage = pathname === '/today-picks';
+      // 换号/退出会清零计数；页面 total 未变化时不会再次上报，须重新获取。
+      const hasPagePicksCount = pathname === '/today-picks' && get().todayPicksCount > 0;
 
       try {
         if (!currentUser) {
-          if (!isTodayPicksPage) {
+          if (!hasPagePicksCount) {
             const counts = await contentsApi.todayCount();
+            if (!activeCounts()) return;
             set({ todayPicksCount: counts.today_picks || 0 });
           }
           set({
@@ -189,14 +215,16 @@ export function createFavoritesStore(deps: {
           return;
         }
         const [counts, sources, favIndex] = await Promise.all([
-          isTodayPicksPage ? Promise.resolve(null) : contentsApi.todayCount(),
+          hasPagePicksCount ? Promise.resolve(null) : contentsApi.todayCount(),
           isAdmin(currentUser)
             ? sourcesApi.list({ page_size: 1 })
             : sourcesApi.listMine({ page_size: 1 }),
           favoritesApi.index(),
         ]);
+        if (!activeCounts()) return;
         if (counts) set({ todayPicksCount: counts.today_picks || 0 });
         set({ sourceCount: sources ? sources.total || sources.items?.length || 0 : 0 });
+        if (!active()) return;
         set({ favoriteTotal: favIndex.total || 0 });
 
         const targetKeys = new Set<string>();
@@ -224,6 +252,7 @@ export function createFavoritesStore(deps: {
     ): Promise<boolean> => {
       const key = getFavoriteTargetKey(target);
       const currentUser = authStore.getState().currentUser;
+      const active = captureOwner();
 
       if (!currentUser) {
         router.push(loginHref());
@@ -254,12 +283,15 @@ export function createFavoritesStore(deps: {
                   : undefined,
               target_keys: target.target_key ? [target.target_key] : undefined,
             });
+            if (!active()) return false;
             favoriteId = state.items.find((item) => item.is_favorited)?.favorite_id || undefined;
           }
           if (!favoriteId) {
             throw new Error('收藏记录不存在，请刷新后重试');
           }
           await favoritesApi.delete(favoriteId);
+          if (!active()) return false;
+          readSequence += 1;
           set((state) => {
             const newTargets = new Set(state.favoriteTargets);
             newTargets.delete(key);
@@ -280,6 +312,8 @@ export function createFavoritesStore(deps: {
         }
 
         const item = await favoritesApi.create(target);
+        if (!active()) return false;
+        readSequence += 1;
         const itemKey = favoriteItemToTargetKey(item);
         set((state) => {
           const newTargets = new Set(state.favoriteTargets);
@@ -299,18 +333,21 @@ export function createFavoritesStore(deps: {
         });
         return true;
       } catch (err) {
+        if (!active()) return false;
         console.error('Toggle favorite target failed:', err);
         if (options?.throwOnError) {
           throw err;
         }
         return get().favoriteTargets.has(key);
       } finally {
-        _favoriteTargetPending.delete(key);
-        set((state) => {
-          const next = new Set(state.favoriteTargetPendingKeys);
-          next.delete(key);
-          return { favoriteTargetPendingKeys: next };
-        });
+        if (active()) {
+          _favoriteTargetPending.delete(key);
+          set((state) => {
+            const next = new Set(state.favoriteTargetPendingKeys);
+            next.delete(key);
+            return { favoriteTargetPendingKeys: next };
+          });
+        }
       }
     },
 
@@ -320,6 +357,7 @@ export function createFavoritesStore(deps: {
     ): Promise<boolean> => {
       const targetKey = getContentFavoriteKey(id);
       const currentUser = authStore.getState().currentUser;
+      const active = captureOwner();
 
       if (!currentUser) {
         router.push(loginHref());
@@ -340,6 +378,8 @@ export function createFavoritesStore(deps: {
 
       try {
         const result = await contentsApi.toggleFavorite(id);
+        if (!active()) return false;
+        readSequence += 1;
         set((state) => {
           const newFavorites = new Set(state.favorites);
           if (result.is_favorited) {
@@ -372,18 +412,21 @@ export function createFavoritesStore(deps: {
         });
         return result.is_favorited;
       } catch (err) {
+        if (!active()) return false;
         console.error('Toggle favorite failed:', err);
         if (options?.throwOnError) {
           throw err;
         }
         return get().favorites.has(id);
       } finally {
-        _favoritePending.delete(id);
-        set((state) => {
-          const next = new Set(state.favoritePendingIds);
-          next.delete(id);
-          return { favoritePendingIds: next };
-        });
+        if (active()) {
+          _favoritePending.delete(id);
+          set((state) => {
+            const next = new Set(state.favoritePendingIds);
+            next.delete(id);
+            return { favoritePendingIds: next };
+          });
+        }
       }
     },
 
@@ -391,6 +434,9 @@ export function createFavoritesStore(deps: {
     _setPathname: (pathname: string) => set({ _pathname: pathname }),
 
     _loadFromStorage: (userId: number) => {
+      invalidateOwner();
+      const switchedUser = loadedUserId !== userId;
+      loadedUserId = userId;
       const storedFavorites = loadFavoritesFromStorage(userId);
       const storedFavoriteTargets = loadFavoriteTargetsFromStorage(userId);
       for (const id of storedFavorites) {
@@ -400,12 +446,17 @@ export function createFavoritesStore(deps: {
         favorites: storedFavorites,
         favoriteTargets: storedFavoriteTargets,
         _favoriteTargetIds: new Map(),
+        favoritePendingIds: new Set(),
+        favoriteTargetPendingKeys: new Set(),
+        ...(switchedUser ? { favoriteTotal: 0, sourceCount: 0, todayPicksCount: 0, topicCount: 0 } : {}),
       });
     },
 
     _loadFromIndex: async () => {
+      const active = beginRead();
       try {
         const favIndex = await favoritesApi.index();
+        if (!active()) return;
         const targetKeys = new Set<string>();
         const targetIds = new Map<string, number>();
         const contentIds = new Set<number>();
@@ -430,11 +481,18 @@ export function createFavoritesStore(deps: {
     },
 
     _clear: () => {
+      invalidateOwner();
+      loadedUserId = null;
       set({
         favorites: new Set(),
         favoriteTargets: new Set(),
         _favoriteTargetIds: new Map(),
         favoriteTotal: 0,
+        favoritePendingIds: new Set(),
+        favoriteTargetPendingKeys: new Set(),
+        sourceCount: 0,
+        todayPicksCount: 0,
+        topicCount: 0,
       });
     },
 

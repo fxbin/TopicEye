@@ -112,6 +112,7 @@ class StatsMixin:
             LEFT JOIN event_assignments event_assignment ON event_assignment.content_id = c.id
             LEFT JOIN latest_analysis canonical_analysis ON canonical_analysis.content_id = event_assignment.canonical_content_id
             WHERE c.crawled_at >= ?
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND a.curation_score IS NOT NULL
         """,
@@ -209,6 +210,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
         """).fetchone()
@@ -218,6 +220,7 @@ class StatsMixin:
             FROM oltp_db.content_items c
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{today_start}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
         """).fetchone()
@@ -253,6 +256,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY s.id, s.name, s.source_type
@@ -290,6 +294,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY c.category
@@ -328,6 +333,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND {ACCEPTED_EVENT_MEMBER_PREDICATE}
             GROUP BY CAST(c.crawled_at AS DATE)
@@ -400,6 +406,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
               AND a.risk_score <= {risk_threshold}
         """).fetchone()
@@ -440,6 +447,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
         """).fetchone()
 
@@ -457,6 +465,7 @@ class StatsMixin:
             LEFT JOIN oltp_db.sources s ON s.id = c.source_id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
             GROUP BY s.id, s.name, s.source_type
             HAVING COUNT(DISTINCT c.id) > 0
@@ -476,6 +485,7 @@ class StatsMixin:
             LEFT JOIN latest_analysis a ON a.content_id = c.id
             LEFT JOIN ignored_content ignored ON ignored.content_id = c.id
             WHERE c.crawled_at >= '{cutoff}'
+              AND c.owner_user_id IS NULL
               AND ignored.content_id IS NULL
             GROUP BY CAST(c.crawled_at AS DATE)
             ORDER BY crawl_date ASC

@@ -9,6 +9,7 @@ Status: implemented — 基线 738ac61 存在快速生成和 explore/focus/conve
 ## Decision
 
 [快速生成](../../../../backend/app/services/creation.py) 与 [探索服务](../../../../backend/app/services/creation_explore.py) 并存，按意图提供不同深度；探索先挑战假设、聚焦再收敛，最终仍由创作者判断方案。
+所有阶段在查询素材时实施公共加本人可见性，拒绝发生在模型调用前；快速与收敛服务 flush 方案记录后，入口须在关闭会话、返回结果前完成 commit，不能把 flush 或 HTTP 200 当成历史已保存。
 所有阶段共享清晰的内容身份与归属，失败时保留用户草稿；相关最近修复见 5d1ab45。AI 自评只作为辅助信息，规则通过也不能宣称创作质量或真实需求已验证。
 
 ## Alternatives considered

@@ -4,9 +4,7 @@ import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useR
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
-  Columns3,
   FileText,
-  List,
 } from 'lucide-react';
 import { contentsApi } from '@/lib/api';
 import { PICKS_VIEWS, picksViewHref, readPicksView, readSnapshotDays, type PicksView } from '@/lib/picks-view';
@@ -16,11 +14,13 @@ import type { EvidenceMark } from '@/types';
 import { useAppContext } from '@/components/ClientLayout';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { PendingReview } from './_pending-review';
+import { groupPickItems } from './_grouping';
+import { PicksViewMode } from './_view-mode';
 import RadarSignature from '@/components/RadarSignature';
 import { Button, cx } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateView';
 import { useContentFavoriteStates } from '@/hooks/useContentFavoriteStates';
-import { useFetch } from '@/hooks/useFetch';
+import { usePicksQuery } from './_use-picks-query';
 import { getRecommendLevelLabel } from '@/lib/utils';
 import { startContentWorkflow } from '@/lib/workflow';
 import type { ContentAnalysis, ContentItem, TopicInfo } from '@/types';
@@ -32,7 +32,6 @@ import {
   scoreOf,
 } from './_today-picks-utils';
 import {
-  PICK_PAGE_SIZE,
   hasMorePicks,
   mergePickPage,
   mergePickTopics,
@@ -68,7 +67,10 @@ function TodayPicksPage() {
   const selectedContentType = searchParams.get('content_type') || '';
   const selectedLevel = searchParams.get('level') || '';
   const selectedTimeRange = normalizeTimeRange(searchParams.get('time_range'));
-  const picksScope = JSON.stringify([selectedCategory, selectedContentType, selectedTimeRange]);
+  const { data, loading, error, refetch, scope: picksScope, buildParams } = usePicksQuery(
+    currentUser?.id ?? null, selectedCategory, selectedContentType, selectedTimeRange,
+  );
+  const ownerToken = useRef({});
   const scrollKey = pageView === 'picks' ? `picks:${picksScope}:${selectedLevel}` : `${pageView}:${snapshotDays}`;
   useLayoutEffect(() => { restoringScroll.current = scrollKey; if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [scrollKey]);
   const restoreScroll = useCallback(() => {
@@ -87,6 +89,13 @@ function TodayPicksPage() {
   const rememberMaterialLimit = useCallback((limit: number) => setMaterialLimits(current => ({ ...current, [snapshotDays]: limit })), [snapshotDays]);
   const [workflowPendingId, setWorkflowPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    ownerToken.current = {};
+    setSelectedAnalysis(null);
+    setActionError(null);
+    setWorkflowPendingId(null);
+    return () => { ownerToken.current = {}; };
+  }, [currentUser?.id]);
 
   const updateURL = useCallback((cat: string, ct: string, level: string, tr: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -129,26 +138,6 @@ function TodayPicksPage() {
   // 后端 today-picks 的 offset 返回的是同一条稳定序列的下一段，因此追加只做
   // 按 id 去重合并，已加载条目不会被后续页改写位置。首屏用 useFetch（含竞态
   // 保护），后续页用 loadMore 单独发起，失败时保留已加载内容可重试。
-  const buildParams = useCallback((offset: number) => {
-    const params: {
-      category?: string;
-      content_type?: string;
-      time_range?: string;
-      limit?: number;
-      offset?: number;
-    } = {};
-    if (selectedCategory) params.category = selectedCategory;
-    if (selectedContentType) params.content_type = selectedContentType;
-    params.time_range = selectedTimeRange;
-    params.limit = PICK_PAGE_SIZE;
-    params.offset = offset;
-    return params;
-  }, [selectedCategory, selectedContentType, selectedTimeRange]);
-
-  const fetchPicks = useCallback(async () => ({ ...await contentsApi.todayPicks(buildParams(0)), scope: picksScope }), [buildParams, picksScope]);
-
-  const { data: fetchedPicks, loading, error, refetch } = useFetch(fetchPicks, [selectedCategory, selectedContentType, selectedTimeRange]);
-  const data = fetchedPicks?.scope === picksScope ? fetchedPicks : null;
   const picksBusy = loading || (!data && !error);
 
   // 已加载的条目（首屏 + 后续页）。筛选变化时随首屏重置。
@@ -165,7 +154,7 @@ function TodayPicksPage() {
   const requestSeq = useRef(0);
 
   // 首屏结果落到已加载列表；筛选变化时整体替换
-  useEffect(() => {
+  useLayoutEffect(() => {
     requestSeq.current += 1;
     loadMorePending.current = false;
     setLoadingMore(false);
@@ -174,7 +163,7 @@ function TodayPicksPage() {
     setLoadedItems(data?.items || []);
     setLoadedTopics(data?.topics || []);
     setServerHasMore(data?.has_more);
-  }, [data]);
+  }, [data, picksScope]);
 
   const projectionReady = data !== null && loadedFrom === data;
   const picksLoading = picksBusy || (!!data && !projectionReady);
@@ -252,23 +241,11 @@ function TodayPicksPage() {
     });
   }, [items, selectedLevel]);
 
-  const topicMap = useMemo(() => {
-    const map = new Map<number | null, ContentItem[]>();
-    for (const item of filteredItems) {
-      const tid = item.topic_id || null;
-      if (!map.has(tid)) map.set(tid, []);
-      map.get(tid)!.push(item);
-    }
-    return map;
-  }, [filteredItems]);
-
-  const sortedTopics = useMemo(() => (
-    topics
-      .filter((topic) => topicMap.has(topic.id) && (topicMap.get(topic.id)?.length || 0) > 0)
-      .sort((a, b) => b.best_score - a.best_score)
-  ), [topics, topicMap]);
-
-  const standaloneItems = topicMap.get(null) || [];
+  const { topicMap, sortedTopics, standaloneItems } = useMemo(
+    () => groupPickItems(filteredItems, topics),
+    [filteredItems, topics],
+  );
+  const showTopicGroups = groupByTopic && sortedTopics.length > 0;
   const activeFilterCount = [
     selectedCategory,
     selectedContentType,
@@ -301,9 +278,17 @@ function TodayPicksPage() {
       return;
     }
     const wasFav = contentFavoriteState.isFavorited(id);
-    await toggleFavorite(id);
-    contentFavoriteState.refresh();
-    contentsApi.trackEvidenceInteraction(id, wasFav ? 'unfavorite' : 'favorite');
+    const token = ownerToken.current;
+    setActionError(null);
+    try {
+      const favorited = await toggleFavorite(id, { throwOnError: true });
+      if (token !== ownerToken.current) return;
+      contentFavoriteState.refresh();
+      if (wasFav !== favorited) contentsApi.trackEvidenceInteraction(id, favorited ? 'favorite' : 'unfavorite');
+    } catch (err) {
+      if (token !== ownerToken.current) return;
+      setActionError(err instanceof Error ? err.message : '收藏状态更新失败，请重试');
+    }
   };
   const handleStartWorkflow = useCallback(async (item: ContentItem, isFavorited: boolean) => {
     if (!currentUser) {
@@ -311,6 +296,8 @@ function TodayPicksPage() {
       return;
     }
     setWorkflowPendingId(item.id);
+    const token = ownerToken.current;
+    const isActive = () => token === ownerToken.current;
     setActionError(null);
     try {
       await startContentWorkflow({
@@ -319,12 +306,15 @@ function TodayPicksPage() {
         isFavorited,
         toggleFavorite,
         router,
+        isActive,
       });
+      if (!isActive()) return;
       contentFavoriteState.refresh();
     } catch (err) {
+      if (!isActive()) return;
       setActionError(err instanceof Error ? err.message : '推进选题失败');
     } finally {
-      setWorkflowPendingId(null);
+      if (isActive()) setWorkflowPendingId(null);
     }
   }, [contentFavoriteState, currentUser, router, toggleFavorite]);
 
@@ -357,14 +347,13 @@ function TodayPicksPage() {
               {pageView === 'picks' ? '从算法候选中筛出可写选题，按话题、质量和来源做二次判断' : '补充查看公共收录的材料与标签分布，观察窗口独立于精选筛选'}
             </p>}
           </div>
-          {pageView === 'picks' && <Button
-            type="button"
-            variant={groupByTopic ? 'primary' : 'secondary'}
-            onClick={() => setGroupByTopic(!groupByTopic)}
-          >
-            {groupByTopic ? <Columns3 size={15} /> : <List size={15} />}
-            {groupByTopic ? '精选分组' : '精选列表'}
-          </Button>}
+          {pageView === 'picks' && <PicksViewMode
+            grouped={showTopicGroups}
+            topicCount={sortedTopics.length}
+            itemCount={filteredItems.length}
+            loading={picksLoading}
+            onChange={setGroupByTopic}
+          />}
         </div>
         <div role="tablist" aria-label="当日精选视图" className="mx-auto mt-3 grid max-w-[1200px] grid-cols-3 gap-1 sm:flex sm:gap-5">
           {PICKS_VIEWS.map((view, index) => <button key={view.value} type="button" role="tab" id={`picks-${view.value}-tab`} aria-controls={`picks-${view.value}-panel`} aria-selected={pageView === view.value} tabIndex={pageView === view.value ? 0 : -1} onClick={() => changePageView(view.value)} onKeyDown={event => {
@@ -390,7 +379,7 @@ function TodayPicksPage() {
           />}
 
           {actionError && (
-            <div className="mb-4 rounded-sm border border-red/20 bg-red-light px-4 py-3 text-sm text-red">
+            <div role="alert" className="mb-4 rounded-sm border border-red/20 bg-red-light px-4 py-3 text-sm text-red">
               {actionError}
             </div>
           )}
@@ -421,7 +410,7 @@ function TodayPicksPage() {
                 ...(activeFilterCount > 0 ? [{ label: '清除筛选', onClick: clearFilters, variant: 'secondary' as const }] : []),
               ]}
             />
-          ) : groupByTopic ? (
+          ) : showTopicGroups ? (
             <TopicBoard
               topics={sortedTopics}
               topicMap={topicMap}

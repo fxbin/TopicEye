@@ -18,6 +18,7 @@ from app.models.content_evidence import ContentEvidenceMark
 from app.models.source import Source
 from app.models.topic import TopicGroup
 from app.models.trend import TopicTrend, TopicTrendMember
+from app.repositories._query_helpers import public_topic_clause
 from app.repositories.analysis_queries import latest_analysis_id_subquery
 from app.repositories.base import BaseRepository
 
@@ -74,6 +75,7 @@ class TrendRepository(BaseRepository[TopicTrend]):
                 and_(
                     ContentItem.owner_user_id.is_(None),
                     ContentItem.topic_id.isnot(None),
+                    public_topic_clause(ContentItem.topic_id, ContentItem),
                     ContentItem.created_at >= start_dt,
                     ContentItem.created_at < end_dt,
                 )
@@ -179,6 +181,7 @@ class TrendRepository(BaseRepository[TopicTrend]):
             select(TopicTrend).where(
                 TopicTrend.topic_id == topic_id,
                 TopicTrend.snapshot_date == snapshot_date,
+                public_topic_clause(TopicTrend.topic_id, ContentItem),
             )
         )
         return result.scalar_one_or_none()

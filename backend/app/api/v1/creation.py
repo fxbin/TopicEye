@@ -56,6 +56,7 @@ async def create_plan(
         )
     async with async_session() as db:
         result = await generate_creation_plan(db, req.content_id, req.platform, user_id=current_user.id)
+        await db.commit()
     if "error" in result:
         logger.warning(
             "Creation plan failed: user_id=%d, content_id=%d, platform=%s, error=%s",
@@ -85,7 +86,7 @@ async def explore_directions(
 ):
     """探索期：AI 找出 3 个领域假设并挑战，生成创作方向。"""
     async with async_session() as db:
-        result = await generate_explore_directions(db, req.content_id)
+        result = await generate_explore_directions(db, req.content_id, user_id=current_user.id)
     if "error" in result:
         logger.warning(
             "Explore failed: user_id=%d, content_id=%d, error=%s", current_user.id, req.content_id, result["error"]
@@ -121,6 +122,7 @@ async def focus_questions(
             focus_round=req.focus_round,
             previous_qa=req.previous_qa,
             user_redirect=req.user_redirect,
+            user_id=current_user.id,
         )
     if "error" in result:
         logger.warning(
@@ -167,6 +169,7 @@ async def converge_plan(
             req.focus_answers,
             user_id=current_user.id,
         )
+        await db.commit()
     if "error" in result:
         logger.warning(
             "Converge failed: user_id=%d, content_id=%d, platform=%s, error=%s",

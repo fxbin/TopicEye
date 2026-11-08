@@ -1,6 +1,7 @@
 """The source-evidence gate must survive every downstream model/read seam."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -85,7 +86,7 @@ async def test_enrichment_http_rejects_before_old_cache_or_claim(db, monkeypatch
     call = AsyncMock(side_effect=AssertionError("must not enrich"))
     monkeypatch.setattr(enricher, "enrich_content", call)
     with pytest.raises(HTTPException) as error:
-        await contents_api.get_enrichment(item.id, db=db, current_user=object())
+        await contents_api.get_enrichment(item.id, db=db, current_user=SimpleNamespace(id=1))
     assert error.value.status_code == 422
     assert "原文" in error.value.detail
     assert analysis.enrichment_status == status

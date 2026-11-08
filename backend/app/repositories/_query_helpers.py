@@ -16,7 +16,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, or_
+from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
 # ── Filter dict → WHERE clauses ─────────────────────────────────
@@ -52,6 +53,12 @@ def apply_filters(
 
 
 # ── Visibility scope ────────────────────────────────────────────
+
+
+def public_topic_clause(topic_id, content_model: Any) -> ColumnElement[bool]:
+    """Ownerless topic metadata must not disclose a group with private inputs."""
+    member = aliased(content_model)
+    return ~select(member.id).where(member.topic_id == topic_id, member.owner_user_id.is_not(None)).exists()
 
 
 def apply_visibility(

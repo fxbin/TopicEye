@@ -60,9 +60,8 @@ async def list_topics(
 ):
     """List all topic groups sorted by best_score desc."""
     repo = TopicRepository(db)
-    topics = await repo.list_ordered_by_best_score()
-    total = await repo.count_all()
-    return {"items": topics, "total": total}
+    topics = await repo.list_public()
+    return {"items": topics, "total": len(topics)}
 
 
 @router.get("/{topic_id}")
@@ -72,12 +71,12 @@ async def get_topic(
 ):
     """Get topic group with its member content items."""
     topic_repo = TopicRepository(db)
-    topic = await topic_repo.get_by_id(topic_id)
+    topic = await topic_repo.get_public(topic_id)
     if not topic:
         raise HTTPException(404, "Topic not found")
 
     content_repo = ContentRepo(db)
-    items = await content_repo.list_all_by_topic_id(topic_id)
+    items = await content_repo.list_all_by_topic_id(topic_id, public_only=True)
 
     return {
         "topic": TopicResponse.model_validate(topic).model_dump(),

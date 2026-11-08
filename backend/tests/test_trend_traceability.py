@@ -42,7 +42,7 @@ async def test_snapshot_freezes_only_public_canonical_members_and_keyword_tags_o
     created_at = datetime.combine(target, datetime.min.time(), tzinfo=UTC).replace(hour=12)
 
     async with session_factory() as db:
-        db.add(TopicGroup(id=1, name="公开 AI"))
+        db.add_all([TopicGroup(id=1, name="公开 AI"), TopicGroup(id=2, name="私有 AI")])
         db.add_all(
             [
                 ContentItem(
@@ -64,7 +64,7 @@ async def test_snapshot_freezes_only_public_canonical_members_and_keyword_tags_o
                     title="不得公开",
                     url="https://example.com/private",
                     owner_user_id=7,
-                    topic_id=1,
+                    topic_id=2,
                     status=ContentStatus.ANALYZED,
                     crawled_at=created_at,
                     created_at=created_at,

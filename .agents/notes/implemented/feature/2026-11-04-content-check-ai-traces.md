@@ -1,6 +1,6 @@
 # Agent Note: 文稿检测 AI 痕迹维度合同
 
-Status: implemented — #228 一期启发式统计；无持久化、无迁移
+Status: implemented — #228 一期启发式统计；#241 改写建议（检测→改写闭环）；无持久化、无迁移（prompt_registry 只加数据行）
 
 ## Problem
 
@@ -61,6 +61,38 @@ start/end 是原文 codepoint 偏移、不做 NFKC。两维度命中合并后按
   风险命中红/黄系不变，AI 痕迹命中**紫色系**（设计系统 --color-purple），
   同区间重叠时风险命中优先。「未发现违禁词，可以发布」只看 sensitive.total。
 
+### 改写建议（检测→改写闭环，#241）
+
+对 AI 痕迹命中密集的句子生成「保留原意的口语化改写」。长期合同：
+
+- **请求体 = 全文，不是句列表**：分句正则与词库命中只在后端一份
+  （ai_trace_service）；若前端传目标句，TS 必须重复实现分句+命中归因，词库
+  口径双份漂移。「限流」的意图改由后端实现：只有服务端选取的 ≤3 句进入
+  LLM prompt，**全文永不进 prompt**（20000 字请求体 ≠ 20000 字 prompt）。
+- **选句规则**（humanize_rewrite_service.select_target_sentences 纯函数）：
+  逐句 scan_words 统计句内命中（句末标点属掩码分隔符，词命中不可能跨句界，
+  逐句重扫与全扫在句内等价——测试锁该等价性）；命中数降序（同数按原文顺序）
+  取前 3，零命中句不入选。**没有「句数不足 422」**：1~2 句有命中照样改写，
+  响应建议数 <3 即可；只有选取结果为空（全文零命中）才 422 显式原因。
+- **响应不信 LLM 回显**：条目必须与服务端选取句逐字对应，original 以服务端
+  为准；hit_words 逐条对照该句真实 scan_words 过滤（LLM 编造词进不了徽标），
+  LLM 未回显时退回该句真实命中，不空着也不编造。
+- **数字/事实一致性不硬校验**：「3 个方法」→「三个方法」是合法改写，运行时
+  硬校验会误杀。可测口径 = prompt 显式指令（照抄时间/数字/专有名词/结论）+
+  mock 测试断言响应管道逐字透传。真实 LLM 服从性无法确定性保证，UI 文案
+  明示「发布前请自行核对事实与数字」。
+- 错误映射照 content_events 先例：LLM 链路异常（熔断/容量/预算/上下文）与
+  不可解析输出 → 502 显式中文文案；零命中 → 422；401 由 router 级
+  get_current_user 覆盖。文案红线沿用：改写是「写作建议」，禁止「AI 率/
+  概率/检测模型」表述，也不暗示能改变文稿来源判定。
+- 模块边界：humanize_rewrite_service 有 LLM IO，**不并入** ai_trace_service
+  （后者合同是纯启发式统计无 IO）；prompt 收进 llm/prompts/humanize_rewrite.py
+  并注册 prompt_registry（scene=humanize_rewrite，无 schema 变更）。
+- 前端：AI 痕迹面板下加「生成改写建议」按钮（_humanize.tsx，紫色系徽标），
+  按钮禁用条件 = phase 非 current 或 aiTraces.hits 为空（scanPhase 合同保证
+  current 时 text===scannedText，建议与展示结果同一文稿快照）；建议 state 随
+  重扫/清空作废；生成错误独立 inline 展示，不复用检测的 ErrorState 重试语义。
+
 ### 测试口径
 
 `tests/test_ai_traces.py`：词表零跳过/预算、偏移切片还原（含 emoji）、密度与
@@ -69,7 +101,14 @@ CV 分档边界等值行为、insufficient 边界、401/422、万字基准（均
 零回归验证：`tests/test_sensitive_word.py` 未改动、单跑通过；前端
 `npm run test:coverage` 通过（_scan-state / _highlight 用例同步扩）。
 
+改写闭环（#241）加 `tests/test_humanize_rewrite.py`：选句纯函数（优先级/
+补足/上限/零命中/逐句重扫等价）、mock call_llm_json 的成功路径（hit_words
+过滤、original=服务端选取句、数字逐字透传、prompt 含不改事实指令且全文不进
+prompt）、LLM 异常→502、零命中→422、401、超长 422；前端 `_humanize.test.tsx`
+渲染对照（建议句/紫色徽标/禁用态/独立 inline 错误）。
+
 ## 后续（v2 再议）
 
-全局总分/评分体系、逐句均匀度高亮（v1 只做词级定位）、改写建议生成、
-词库入库与用户自定义、英文文稿。
+全局总分/评分体系、逐句均匀度高亮（v1 只做词级定位）、改写建议的 diff 高亮
+对齐/一键替换/风格模板/改写回写检测（#241 只做生成与展示）、词库入库与用户
+自定义、英文文稿。
